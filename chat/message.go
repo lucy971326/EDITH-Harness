@@ -43,3 +43,8 @@ type Usage struct {
 	InputTokens  int
 	OutputTokens int
 }
+
+// Delta 是流式输出的一小截新增内容。
+type Delta struct {
+	Text string // 新增的字
+}
