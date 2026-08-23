@@ -25,9 +25,13 @@ func (a *App) Subscribe(name string, listener Listener) {
 
 // Broadcast 在调用者自己的 goroutine 里，按注册顺序同步通知全部同名观察者。
 // 观察者崩溃被隔离为告警；不起 goroutine、不等结果、不传错误。
+// 子作用域广播完会继续上浮，父的观察者也听得见；父广播不下沉。
 func (a *App) Broadcast(name string, payload any) {
 	for _, listener := range a.snapshotListeners(name) {
 		a.runListener(name, listener, payload)
+	}
+	if a.parent != nil {
+		a.parent.Broadcast(name, payload)
 	}
 }
 

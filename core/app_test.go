@@ -198,5 +198,8 @@ func TestInstallSucceedsWithoutTouchingRollback(t *testing.T) {
 	}
 }
 
-// fakeRegistry 是服务表测试用的占位能力对象。
-type fakeRegistry struct{}
+// fakeRegistry 是服务表测试用的占位能力对象；tag 让实例指针各不相同
+// （空结构体的地址全相同，没法用指针分辨两个实例）。
+type fakeRegistry struct {
+	tag string
+}
