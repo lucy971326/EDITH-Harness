@@ -125,6 +125,6 @@ core/
 
 ## 给下游的接口预留（终审修正）
 
-- session（M2）用：`Broadcast`（记账后通知 UI）；Journal（原子提交边界）由 session 自持；
+- session（M2）用：`Broadcast`（记账后通知 UI）；Journal（原子提交边界）由持久化插件登记，session 同步领取；
 - loop（M4）用：`RunChain`（pre-step 检查站）；
 - 投影缓存是 session 自己的内部状态，不经过 core。

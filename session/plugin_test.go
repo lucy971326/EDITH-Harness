@@ -12,7 +12,8 @@ func TestPluginRegistersStore(t *testing.T) {
 	t.Cleanup(app.Close)
 
 	journal := NewMemoryJournal()
-	err := app.Install(Plugin{Journal: journal})
+	app.RegisterService("journal", journal)
+	err := app.Install(Plugin{})
 	if err != nil {
 		t.Fatalf("session 插件启动失败：%v", err)
 	}
@@ -27,7 +28,7 @@ func TestPluginRegistersStore(t *testing.T) {
 
 	_, err = store.Create("测试账")
 	if err != nil {
-		t.Fatalf("注入的 Journal 没有生效：%v", err)
+		t.Fatalf("登记的 Journal 没有生效：%v", err)
 	}
 }
 

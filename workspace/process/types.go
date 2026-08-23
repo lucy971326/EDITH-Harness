@@ -9,8 +9,6 @@ import (
 	"harness/core"
 )
 
-const serviceName = "process"
-
 // Command 说明要启动的程序、参数和工作目录。
 type Command struct {
 	Program string   // 程序名或可执行文件路径
@@ -42,5 +40,5 @@ type Spawner interface {
 
 // Get 从 App 取出 process 能力。
 func Get(app *core.App) (Spawner, error) {
-	return core.Resolve[Spawner](app, serviceName)
+	return core.Resolve[Spawner](app, "process")
 }

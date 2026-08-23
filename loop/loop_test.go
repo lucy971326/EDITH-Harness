@@ -20,6 +20,16 @@ type silentBroadcaster struct{}
 
 func (silentBroadcaster) Broadcast(name string, payload any) {}
 
+// memoryJournalPlugin 给 loop 测试装内存账本，避免测试碰本地文件。
+type memoryJournalPlugin struct{}
+
+func (memoryJournalPlugin) Name() string { return "test-memory-journal" }
+
+func (memoryJournalPlugin) Start(app *core.App) error {
+	app.RegisterService("journal", session.NewMemoryJournal())
+	return nil
+}
+
 // scriptedAdapter 是剧本适配器：每次问模型按剧本回话，顺便记下收到的每个请求。
 type scriptedAdapter struct {
 	mu       sync.Mutex
@@ -92,7 +102,8 @@ func newTestStack(t *testing.T, scripts ...scriptCall) (*core.App, *Roster, *scr
 	t.Cleanup(app.Close)
 
 	err := app.Install(
-		session.Plugin{Journal: session.NewMemoryJournal()},
+		memoryJournalPlugin{},
+		session.Plugin{},
 		llm.Plugin{},
 		tools.Plugin{},
 	)

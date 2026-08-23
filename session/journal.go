@@ -8,7 +8,7 @@ import (
 
 // Journal 是落盘器：把账一笔一笔写进某个地方，读回来重放。
 // 规矩：要么整条，要么没有——失败后介质上不许留半条。
-// 真文件版（一行一条 JSON、fsync、烂尾修复）在 M6；本文件给内存版供单测。
+// JSONL 文件版在 persistence/jsonl；本文件同时给出内存版供单测。
 type Journal interface {
 	// Create 开一本新账（写封面）；账本号已存在返回 error。
 	Create(id string, header Header) error
@@ -58,7 +58,7 @@ func (j *MemoryJournal) Append(id string, event Event, durable bool) error {
 }
 
 // Flush 对内存版是空操作：账本来就全在手上，没有攒的概念。
-// 真文件版在这兑现"立刻全部写完并到硬盘"的承诺。
+// 文件版在这兑现"立刻全部写完并到硬盘"的承诺。
 func (j *MemoryJournal) Flush(id string) error {
 	j.mu.Lock()
 	defer j.mu.Unlock()

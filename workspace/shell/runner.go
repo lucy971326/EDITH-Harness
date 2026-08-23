@@ -14,7 +14,6 @@ import (
 )
 
 const (
-	serviceName        = "shell"
 	defaultOutputLimit = 64 * 1024
 )
 
@@ -57,7 +56,7 @@ func New(spawner process.Spawner, outputLimit int) (Runner, error) {
 
 // Get 从 App 取出 shell 能力。
 func Get(app *core.App) (Runner, error) {
-	return core.Resolve[Runner](app, serviceName)
+	return core.Resolve[Runner](app, "shell")
 }
 
 // Run 关掉 stdin，同时收 stdout/stderr，最后返回命令的真实退出结果。

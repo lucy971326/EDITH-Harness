@@ -7,8 +7,6 @@ import (
 	"harness/core"
 )
 
-const serviceName = "files"
-
 // Entry 是列目录时返回的一项。
 type Entry struct {
 	Name      string // 这一项的文件名
@@ -25,5 +23,5 @@ type Store interface {
 
 // Get 从 App 取出 files 能力。
 func Get(app *core.App) (Store, error) {
-	return core.Resolve[Store](app, serviceName)
+	return core.Resolve[Store](app, "files")
 }

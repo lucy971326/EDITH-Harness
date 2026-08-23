@@ -19,6 +19,7 @@
       --loop: #478b38;
       --chat: #60758a;
       --env: #b25442;
+      --persistence: #6c8e51;
       --shadow: 0 8px 24px rgba(31, 45, 61, .08);
     }
 
@@ -117,7 +118,7 @@
     .architecture-map {
       position: relative;
       width: 1480px;
-      height: 900px;
+      height: 1010px;
       background-color: #fbfcfe;
       background-image:
         linear-gradient(#edf1f6 1px, transparent 1px),
@@ -186,14 +187,15 @@
       font-weight: 700;
     }
 
-    #module-session { left: 55px; top: 70px; --accent: var(--session); --accent-border: #b9ded7; --accent-bg: #eaf7f4; }
-    #module-llm { left: 55px; top: 310px; --accent: var(--llm); --accent-border: #d7caed; --accent-bg: #f3effa; }
-    #module-tools { left: 55px; top: 550px; --accent: var(--tools); --accent-border: #ecd1b7; --accent-bg: #fbf2e9; }
+    #module-jsonl { left: 55px; top: 55px; --accent: var(--persistence); --accent-border: #cad9bb; --accent-bg: #f1f7eb; }
+    #module-session { left: 55px; top: 260px; --accent: var(--session); --accent-border: #b9ded7; --accent-bg: #eaf7f4; }
+    #module-llm { left: 55px; top: 470px; --accent: var(--llm); --accent-border: #d7caed; --accent-bg: #f3effa; }
+    #module-tools { left: 55px; top: 680px; --accent: var(--tools); --accent-border: #ecd1b7; --accent-bg: #fbf2e9; }
     #app-pillar { left: 470px; top: 88px; }
     #module-loop { left: 1175px; top: 170px; --accent: var(--loop); --accent-border: #c8dfc2; --accent-bg: #eef7ec; }
     #module-localenv { left: 1145px; top: 380px; width: 270px; --accent: var(--env); --accent-border: #e3c2bb; --accent-bg: #faf0ee; }
-    #agent-scope { left: 1160px; top: 665px; }
-    #module-chat { left: 585px; top: 735px; --accent: var(--chat); --accent-border: #cbd5df; --accent-bg: #f0f3f6; }
+    #agent-scope { left: 1160px; top: 700px; }
+    #module-chat { left: 585px; top: 840px; --accent: var(--chat); --accent-border: #cbd5df; --accent-bg: #f0f3f6; }
 
     .app-pillar {
       width: 540px;
@@ -371,10 +373,17 @@
           <svg class="links" id="architecture-links" aria-hidden="true"></svg>
 
           <article class="map-node map-card" id="module-session" data-module="session" tabindex="0">
-            <div class="module-kicker">必装插件 · 第一个</div>
+            <div class="module-kicker">必装插件 · 紧跟持久化</div>
             <h2>session</h2>
-            <p>用 Journal 建账本管家，把 <code>sessions</code> 能力放进 App。</p>
+            <p>领取 Journal 建账本管家，把 <code>sessions</code> 能力放进 App。</p>
             <div class="chips"><span class="chip">Store</span><span class="chip">Journal</span><span class="chip">History</span></div>
+          </article>
+
+          <article class="map-node map-card" id="module-jsonl" data-module="jsonl" tabindex="0">
+            <div class="module-kicker">持久化插件 · 先安装</div>
+            <h2>persistence/jsonl</h2>
+            <p>把 JSONL Journal 放进 App；以后 SQLite 在这里替换它。</p>
+            <div class="chips"><span class="chip">Journal</span><span class="chip">fsync</span><span class="chip">恢复烂尾</span></div>
           </article>
 
           <article class="map-node map-card" id="module-llm" data-module="llm" tabindex="0">
@@ -433,6 +442,7 @@
             <div class="rack">
               <div class="rack-title">② 内核自己的普通能力</div>
               <div class="capability-list">
+                <div class="capability" id="cap-journal"><code>journal</code><span>session.Journal</span></div>
                 <div class="capability" id="cap-sessions"><code>sessions</code><span>*session.Store</span></div>
                 <div class="capability" id="cap-llm"><code>llm</code><span>*llm.Service</span></div>
                 <div class="capability" id="cap-agents"><code>agents</code><span>*loop.Roster</span></div>
@@ -471,17 +481,22 @@
 
       <div class="detail-bar" id="module-detail">
         <div><h3>点击一个模块</h3><div class="path">查看它的代码入口</div></div>
-        <p>拖动不会打开说明；轻点 session、llm、tools、loop、localenv 或 chat 才会查看详情。</p>
+        <p>拖动不会打开说明；轻点 JSONL、session、llm、tools、loop、localenv 或 chat 才会查看详情。</p>
       </div>
     </section>
   </main>
 
   <script>
     const modules = {
+      jsonl: {
+        title: "persistence/jsonl · JSONL 账本插件",
+        path: "persistence/jsonl/plugin.go → journal.go",
+        text: "它直接写 app.RegisterService(\"journal\", journal)。session 随后同步领取它记账；它不监听 Broadcast，所以写盘失败会直接让记账失败。以后 sqlite.Plugin 会替换它，而不是和它同时安装。"
+      },
       session: {
         title: "session · 账本",
         path: "session/plugin.go → store.go → session.go",
-        text: "必装的第一个插件。它接收 Journal，创建 Store 并登记 sessions。它保证账只追加、编号连续；模型历史、恢复和审计都从同一本账出发。"
+        text: "必装插件。它直接按 \"journal\" 领取 Journal，创建 Store 并登记 \"sessions\"。它保证账只追加、编号连续；模型历史、恢复和审计都从同一本账出发。"
       },
       llm: {
         title: "llm · 模型入口",
@@ -511,6 +526,8 @@
     };
 
     const connections = [
+      ["module-jsonl", "cap-journal", "#6c8e51", "放入"],
+      ["cap-journal", "module-session", "#6c8e51", "领取"],
       ["module-session", "cap-sessions", "#149782", "放入"],
       ["module-llm", "cap-llm", "#8058c7", "放入"],
       ["module-tools", "cap-tools", "#d67824", "放入"],

@@ -17,7 +17,7 @@
 | 内核 | `core`（App + 事件 + 作用域）|
 | 运行时容器 | `App`（组合器：插件从它取服务、挂监听）|
 | 插件 | 结构体 + `Name()` + `Start(app)`；清理用 `app.OnCleanup(fn)` |
-| 会话日志 | `session`（必装的第一个插件；内核 Kind 走窄写入口，公开 Append 只给插件自定义 Kind；`s.ModelHistory()`）|
+| 会话日志 | `session`（必装插件，紧跟唯一 Journal 插件；内核 Kind 走窄写入口，公开 Append 只给插件自定义 Kind；`s.ModelHistory()`）|
 | 压缩 | 摘要事件带 `Replaces: [3,6]` 字段 |
 | 中间件链 | `RunChain`（原 waterfall）|
 | 主循环 | `loop` 包（`loop.Driver`）|
@@ -58,7 +58,7 @@
 
 ### 2. 会话日志（session）
 
-`session` 通过 `session.Plugin` 接入 App：它必须是安装顺序里的第一个插件，接收可替换的 `Journal`，创建并登记 `"sessions"` Store。插件化不等于可选；不能省略 session，只能替换 Journal 的实现。
+`session` 通过 `session.Plugin` 接入 App：持久化插件先登记可替换的 `"journal"`，session 再领取它、创建并登记 `"sessions"` Store。插件化不等于可选；不能省略 session，只能替换 Journal 插件。
 
 **只追加、不修改**的事件序列，是整个系统唯一的事实源：
 
@@ -157,7 +157,7 @@ UI 桥接协议（命令面 + 事件流）做**版本化**，桌面桥与服务�
 | 问题 | 决策 | 理由 |
 |---|---|---|
 | Go 没有声明合并，如何开放事件类型？ | 事件实现 `Kind() string` + 编解码器注册表 | 词汇开放、代码封闭 |
-| 插件启动顺序？ | 安装顺序即启动顺序；`session.Plugin` 必须第一个，之后按依赖装；中途失败逆序回滚已启动插件 | 手写组装自己排；将来 YAML 组装再加拓扑排序（纯增量） |
+| 插件启动顺序？ | 安装顺序即启动顺序；唯一 Journal 插件先装，`session.Plugin` 紧随其后，之后按依赖装；中途失败逆序回滚已启动插件 | 手写组装自己排；将来 YAML 组装再加拓扑排序（纯增量） |
 | 任务取消？ | `context.Context` 全链路 | 语言原生 |
 | 执行环境分几个座？ | **`files.Store` + `process.Spawner` 两个底座，`shell.Runner` 建在 process 上**；两者必须来自同一执行环境实现 | LSP/PTY/ACP/子 agent 都需要长生命周期进程、stdio、信号、进程树；一次性 shell 命令接不住（dsh 同样分 fs/subprocess/shell 三 seam）|
 | 本地 vs 沙箱？ | 本地实现一个插件同时提供 files + process；沙箱实现替换两者 | 换执行环境，工具零改动 |
@@ -171,7 +171,10 @@ harness/
   core/      App + 事件总线 + 作用域（零依赖）
   chat/      对话词汇表：Message / 内容块 / 用量（session 与 llm 共用）
   session/   会话事件日志 + 压缩 + 投影 + 持久化契约
-             必装的第一个插件：Journal → Store → `"sessions"`
+             必装插件：`"journal"` → Store → `"sessions"`
+  persistence/  持久化插件（一种介质一个目录，二选一）
+    jsonl/       JSONL Journal 插件
+    sqlite/       将来 SQLite Journal 插件
   loop/      主循环 Driver + 输入提交 + 取消
   tools/     工具注册表 + 执行链（五道关卡）
   llm/       模型适配接口 + 流式协议
@@ -184,7 +187,7 @@ harness/
   cmd/dsh/   main：组装 + 配置
 ```
 
-依赖方向单向：`core ← workspace/files`、`core ← workspace/process ← workspace/shell`；`localenv` 只负责把三者成对组装。将来的沙箱另做实现，不改工具。
+依赖方向单向：`core ← workspace/files`、`core ← workspace/process ← workspace/shell`；`localenv` 只负责把三者成对组装。`persistence/jsonl` / 将来的 `persistence/sqlite` 都依赖 `session.Journal`，但不反过来被 session import。将来的沙箱另做实现，不改工具。
 
 ## 七、明确不做
 
