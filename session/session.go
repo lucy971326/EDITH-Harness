@@ -163,8 +163,8 @@ func (s *Session) RecordStepEnd() (Event, error) {
 }
 
 // RecordDeliver 记一份进收件箱的投递：只入账，模型还看不见（M4 loop 用）。
-func (s *Session) RecordDeliver(id string, text string) (Event, error) {
-	return s.append(KindDeliver, DeliverData{ID: id, Text: text}, nil, false)
+func (s *Session) RecordDeliver(id string, text string, target string) (Event, error) {
+	return s.append(KindDeliver, DeliverData{ID: id, Text: text, Target: target}, nil, false)
 }
 
 // RecordClaim 记一次领出：这时消息才变成用户的话（M4 loop 用）。
@@ -172,9 +172,9 @@ func (s *Session) RecordClaim(id string) (Event, error) {
 	return s.append(KindClaim, ClaimData{ID: id}, nil, false)
 }
 
-// RecordSnapshot 存档当年发给模型的那份请求（M4 loop 用）。
-func (s *Session) RecordSnapshot(messagesJSON []byte) (Event, error) {
-	return s.append(KindSnapshot, SnapshotData{Messages: messagesJSON}, nil, false)
+// RecordSnapshot 存档当年发给模型的那份完整请求（M4 loop 用）。
+func (s *Session) RecordSnapshot(requestJSON []byte) (Event, error) {
+	return s.append(KindSnapshot, SnapshotData{Request: requestJSON}, nil, false)
 }
 
 // RecordSummary 记压缩摘要：声明取代哪些旧账，模型以后只看这份（压缩插件用）。

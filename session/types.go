@@ -76,8 +76,9 @@ type ToolResultData struct {
 }
 
 type DeliverData struct {
-	ID   string // 这份投递的编号，领出时对账
-	Text string
+	ID     string // 这份投递的编号，领出时对账
+	Text   string
+	Target string // 给谁："next-turn" 开新轮 / "next-step" 进当前轮下一步 / "context" 塞小抄不吵醒
 }
 
 type ClaimData struct {
@@ -85,7 +86,7 @@ type ClaimData struct {
 }
 
 type SnapshotData struct {
-	Messages []byte // 当年发给模型的完整消息列表（JSON 原文）
+	Request []byte // 当年发给模型的完整请求（llm.Request 的 JSON 原文）
 }
 
 type SummaryData struct {

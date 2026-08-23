@@ -99,7 +99,7 @@ func TestModelHistoryIgnoresInvisibleKinds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("记账失败：%v", err)
 	}
-	_, err = s.RecordDeliver("d1", "排队中的话")
+	_, err = s.RecordDeliver("d1", "排队中的话", "next-turn")
 	if err != nil {
 		t.Fatalf("记账失败：%v", err)
 	}
