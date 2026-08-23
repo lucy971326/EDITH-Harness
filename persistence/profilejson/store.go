@@ -11,7 +11,7 @@ import (
 	"sort"
 	"sync"
 
-	"harness/loop"
+	"harness/agents"
 )
 
 // Store 是一个目录里的 Agent 档案库；一档一文件，更新用替换保证旧档不被写坏。
@@ -20,7 +20,7 @@ type Store struct {
 	root string
 }
 
-var _ loop.ProfileStore = (*Store)(nil)
+var _ agents.ProfileStore = (*Store)(nil)
 
 // New 建档案目录，之后每个 Agent 独占一个 JSON 文件。
 func New(root string) (*Store, error) {
@@ -46,7 +46,7 @@ func New(root string) (*Store, error) {
 }
 
 // Create 保存一个新档案；同名档案绝不覆盖。
-func (s *Store) Create(profile loop.AgentProfile) error {
+func (s *Store) Create(profile agents.AgentProfile) error {
 	if err := validateNew(profile); err != nil {
 		return err
 	}
@@ -78,7 +78,7 @@ func (s *Store) Create(profile loop.AgentProfile) error {
 }
 
 // Update 原子替换一个已有档案；档案不存在或版本没有递增都报错。
-func (s *Store) Update(profile loop.AgentProfile) error {
+func (s *Store) Update(profile agents.AgentProfile) error {
 	if err := validateNew(profile); err != nil {
 		return err
 	}
@@ -99,14 +99,14 @@ func (s *Store) Update(profile loop.AgentProfile) error {
 }
 
 // Get 读取一份档案副本。
-func (s *Store) Get(id string) (loop.AgentProfile, error) {
+func (s *Store) Get(id string) (agents.AgentProfile, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.read(id)
 }
 
 // List 按 id 列出所有档案，方便 UI 或命令行调用。
-func (s *Store) List() ([]loop.AgentProfile, error) {
+func (s *Store) List() ([]agents.AgentProfile, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -114,7 +114,7 @@ func (s *Store) List() ([]loop.AgentProfile, error) {
 	if err != nil {
 		return nil, err
 	}
-	profiles := make([]loop.AgentProfile, 0, len(entries))
+	profiles := make([]agents.AgentProfile, 0, len(entries))
 	for _, entry := range entries {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
 			continue
@@ -150,26 +150,26 @@ func (s *Store) Archive(id string) error {
 	return s.replace(profile)
 }
 
-func (s *Store) read(id string) (loop.AgentProfile, error) {
+func (s *Store) read(id string) (agents.AgentProfile, error) {
 	data, err := os.ReadFile(s.path(id))
 	if err != nil {
-		return loop.AgentProfile{}, fmt.Errorf("读取 agent %s 档案失败：%w", id, err)
+		return agents.AgentProfile{}, fmt.Errorf("读取 agent %s 档案失败：%w", id, err)
 	}
-	var profile loop.AgentProfile
+	var profile agents.AgentProfile
 	err = json.Unmarshal(data, &profile)
 	if err != nil {
-		return loop.AgentProfile{}, fmt.Errorf("解开 agent %s 档案失败：%w", id, err)
+		return agents.AgentProfile{}, fmt.Errorf("解开 agent %s 档案失败：%w", id, err)
 	}
 	if profile.ID != id {
-		return loop.AgentProfile{}, fmt.Errorf("档案文件属于 agent %s，不是 %s", profile.ID, id)
+		return agents.AgentProfile{}, fmt.Errorf("档案文件属于 agent %s，不是 %s", profile.ID, id)
 	}
 	if err := validateNew(profile); err != nil {
-		return loop.AgentProfile{}, err
+		return agents.AgentProfile{}, err
 	}
 	return profile, nil
 }
 
-func (s *Store) replace(profile loop.AgentProfile) error {
+func (s *Store) replace(profile agents.AgentProfile) error {
 	data, err := json.Marshal(profile)
 	if err != nil {
 		return fmt.Errorf("编码 agent %s 档案失败：%w", profile.ID, err)
@@ -206,25 +206,7 @@ func (s *Store) path(id string) string {
 	return filepath.Join(s.root, name+".json")
 }
 
-func validateNew(profile loop.AgentProfile) error {
-	if profile.ID == "" {
-		return errors.New("agent 档案必须有 id")
-	}
-	if profile.Revision < 1 {
-		return fmt.Errorf("agent %s 的档案版本必须从 1 起", profile.ID)
-	}
-	seen := make(map[string]bool)
-	for _, name := range profile.Tools {
-		if name == "" {
-			return fmt.Errorf("agent %s 的工具名不能为空", profile.ID)
-		}
-		if seen[name] {
-			return fmt.Errorf("agent %s 的工具 %s 写了两次", profile.ID, name)
-		}
-		seen[name] = true
-	}
-	return nil
-}
+func validateNew(profile agents.AgentProfile) error { return agents.ValidateProfile(profile) }
 
 func writeFull(file *os.File, data []byte) error {
 	for len(data) > 0 {

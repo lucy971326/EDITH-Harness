@@ -16,6 +16,7 @@
       --session: #149782;
       --llm: #8058c7;
       --tools: #d67824;
+      --agents: #247c72;
       --loop: #478b38;
       --chat: #60758a;
       --env: #b25442;
@@ -117,8 +118,8 @@
 
     .architecture-map {
       position: relative;
-      width: 1480px;
-      height: 1010px;
+      width: 1280px;
+      height: 1100px;
       background-color: #fbfcfe;
       background-image:
         linear-gradient(#edf1f6 1px, transparent 1px),
@@ -191,10 +192,11 @@
     #module-session { left: 55px; top: 260px; --accent: var(--session); --accent-border: #b9ded7; --accent-bg: #eaf7f4; }
     #module-llm { left: 55px; top: 470px; --accent: var(--llm); --accent-border: #d7caed; --accent-bg: #f3effa; }
     #module-tools { left: 55px; top: 680px; --accent: var(--tools); --accent-border: #ecd1b7; --accent-bg: #fbf2e9; }
-    #app-pillar { left: 470px; top: 88px; }
-    #module-loop { left: 1175px; top: 170px; --accent: var(--loop); --accent-border: #c8dfc2; --accent-bg: #eef7ec; }
-    #module-localenv { left: 1145px; top: 380px; width: 270px; --accent: var(--env); --accent-border: #e3c2bb; --accent-bg: #faf0ee; }
-    #agent-scope { left: 1160px; top: 700px; }
+    #app-pillar { left: 400px; top: 88px; }
+    #module-agents { left: 985px; top: 120px; --accent: var(--agents); --accent-border: #b9ddd8; --accent-bg: #eaf7f5; }
+    #module-loop { left: 985px; top: 380px; --accent: var(--loop); --accent-border: #c8dfc2; --accent-bg: #eef7ec; }
+    #module-localenv { left: 965px; top: 610px; width: 270px; --accent: var(--env); --accent-border: #e3c2bb; --accent-bg: #faf0ee; }
+    #agent-scope { left: 970px; top: 860px; }
     #module-chat { left: 585px; top: 840px; --accent: var(--chat); --accent-border: #cbd5df; --accent-bg: #f0f3f6; }
 
     .app-pillar {
@@ -360,7 +362,7 @@
 
     <section class="board" aria-label="Harness 整体结构图">
       <div class="board-head">
-        <div><strong>App 是中间的公共场地</strong><span> · 点击模块查看说明</span></div>
+        <div><strong>App 是中间的公共场地</strong><span> · 青色的 agents 是小红管理插件</span></div>
         <div class="legend" aria-label="连线图例">
           <span><i class="dot" style="background:#3977e8"></i>作用域</span>
           <span><i class="dot" style="background:#478b38"></i>能力存取</span>
@@ -400,11 +402,18 @@
             <div class="chips"><span class="chip">Registry</span><span class="chip">Pipeline</span><span class="chip">Guard</span></div>
           </article>
 
+          <article class="map-node map-card" id="module-agents" data-module="agents" tabindex="0">
+            <div class="module-kicker">Agent 管理插件 · 对外唯一入口</div>
+            <h2>agents</h2>
+            <p>管小红档案和会话；自己不跑对话，把活交给已登记的 Runner。</p>
+            <div class="chips"><span class="chip">AgentProfile</span><span class="chip">Service</span><span class="chip">Runner contract</span></div>
+          </article>
+
           <article class="map-node map-card" id="module-loop" data-module="loop" tabindex="0">
-            <div class="module-kicker">当前主循环插件 · 最后</div>
+            <div class="module-kicker">对话搬运工插件 · 最后</div>
             <h2>loop</h2>
-            <p>领取档案、sessions、llm、tools；一个 Agent 可开很多会话搬运工。</p>
-            <div class="chips"><span class="chip">Roster</span><span class="chip">Profile</span><span class="chip">Conversation</span></div>
+            <p>启动时向 agents 登记“我能跑会话”；接活后才处理模型、工具、取消和恢复。</p>
+            <div class="chips"><span class="chip">Runner</span><span class="chip">Conversation</span><span class="chip">Driver</span></div>
           </article>
 
           <article class="map-node map-card" id="module-localenv" data-module="localenv" tabindex="0">
@@ -443,10 +452,10 @@
               <div class="rack-title">② 内核自己的普通能力</div>
               <div class="capability-list">
                 <div class="capability" id="cap-journal"><code>journal</code><span>session.Journal</span></div>
-                <div class="capability" id="cap-profiles"><code>agent-profiles</code><span>loop.ProfileStore</span></div>
+                <div class="capability" id="cap-profiles"><code>agent-profiles</code><span>agents.ProfileStore</span></div>
                 <div class="capability" id="cap-sessions"><code>sessions</code><span>*session.Store</span></div>
                 <div class="capability" id="cap-llm"><code>llm</code><span>*llm.Service</span></div>
-                <div class="capability" id="cap-agents"><code>agents</code><span>*loop.Roster</span></div>
+                <div class="capability" id="cap-agents"><code>agents</code><span>agents.Service 管理入口</span></div>
               </div>
             </div>
 
@@ -475,14 +484,14 @@
 
           <aside class="map-node scope-card" id="agent-scope" tabindex="0">
             <strong>Agent A 小场地</strong>
-            <p>Agent 的工具和人格在这里；每段会话再派一层小场地，收件箱、取消和账本完全分开。</p>
+            <p>agents 让 loop 为小红准备这块场地；每段会话再派一层小场地，收件箱、取消和账本完全分开。</p>
           </aside>
         </div>
       </div>
 
       <div class="detail-bar" id="module-detail">
         <div><h3>点击一个模块</h3><div class="path">查看它的代码入口</div></div>
-        <p>拖动不会打开说明；轻点 JSONL、session、llm、tools、loop、localenv 或 chat 才会查看详情。</p>
+        <p>拖动不会打开说明；轻点任意模块才会查看详情。</p>
       </div>
     </section>
   </main>
@@ -509,10 +518,15 @@
         path: "tools/plugin.go → registry.go → pipeline.go",
         text: "这是模型唯一认识的工具入口。具体工具先把自己登记进 Registry，模型才能在菜单上看到它；调用后再走固定流程执行和记账。"
       },
+      agents: {
+        title: "agents · 小红管理处",
+        path: "agents/plugin.go → service.go → profile.go",
+        text: "它是外界唯一需要认识的 Agent 入口：存取小红档案、创建或恢复一段会话、查找运行中的会话。它定义 Runner 这张合同，但不亲自问模型；loop 启动后会登记“我遵守这张合同”。之后 agents 把“请跑这段会话”委托给 loop。"
+      },
       loop: {
-        title: "loop · 唯一搬运工",
-        path: "loop/plugin.go → roster.go → agent.go → driver.go",
-        text: "领取 agent-profiles、sessions、llm、tools，登记 agents。长期 Agent 可以同时有很多 Conversation；每段会话各有 Driver、收件箱、取消和账本。恢复时按账本的 AgentID 领取当前档案。"
+        title: "loop · 对话搬运工（调整后）",
+        path: "loop/plugin.go → runner.go → conversation.go → driver.go",
+        text: "它领取 llm、tools，并向 agents 登记自己是 Runner。agents 让它跑某段会话时，它才创建 Conversation；每段会话各有 Driver、收件箱、取消和账本。它不再自己管理小红档案，也不再对外暴露 agents。"
       },
       chat: {
         title: "chat · 公共词汇",
@@ -533,11 +547,13 @@
       ["module-session", "cap-sessions", "#149782", "放入"],
       ["module-llm", "cap-llm", "#8058c7", "放入"],
       ["module-tools", "cap-tools", "#d67824", "放入"],
+      ["cap-profiles", "module-agents", "#247c72", "领取"],
+      ["module-agents", "cap-agents", "#247c72", "放入"],
+      ["module-loop", "module-agents", "#247c72", "登记 Runner"],
+      ["module-agents", "module-loop", "#247c72", "委托启动"],
       ["cap-sessions", "module-loop", "#478b38", "领取"],
       ["cap-llm", "module-loop", "#478b38", "领取"],
       ["cap-tools", "module-loop", "#478b38", "领取"],
-      ["cap-profiles", "module-loop", "#478b38", "领取"],
-      ["module-loop", "cap-agents", "#478b38", "放入"],
       ["module-localenv", "cap-files", "#b25442", "成套放入"],
       ["module-localenv", "cap-process", "#b25442", "成套放入"],
       ["module-localenv", "cap-shell", "#b25442", "成套放入"],

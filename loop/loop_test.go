@@ -9,12 +9,29 @@ import (
 	"testing"
 	"time"
 
+	"harness/agents"
 	"harness/chat"
 	"harness/core"
 	"harness/llm"
 	"harness/session"
 	"harness/tools"
 )
+
+// Roster 是测试用门面，让旧测试通过公开 agents.Service 进入系统。
+type Roster = testRoster
+type ProfileStore = agents.ProfileStore
+type AgentProfile = agents.AgentProfile
+
+type testRoster struct {
+	agents.Service
+	toolsReg *tools.Registry
+}
+
+func cloneProfile(profile AgentProfile) AgentProfile {
+	copied := profile
+	copied.Tools = append([]string(nil), profile.Tools...)
+	return copied
+}
 
 // silentBroadcaster 给账本一个不出声的广播口。
 type silentBroadcaster struct{}
@@ -250,14 +267,15 @@ func newTestStackWithStores(t *testing.T, journal session.Journal, profiles Prof
 		t.Fatalf("取工具登记处失败：%v", err)
 	}
 
-	err = app.Install(Plugin{})
+	err = app.Install(agents.Plugin{}, Plugin{})
 	if err != nil {
 		t.Fatalf("装 loop 插件失败：%v", err)
 	}
-	roster, err := Get(app)
+	service, err := agents.Get(app)
 	if err != nil {
-		t.Fatalf("取 agent 名册失败：%v", err)
+		t.Fatalf("取 Agent 管理入口失败：%v", err)
 	}
+	roster := &testRoster{Service: service, toolsReg: registry}
 
 	return app, roster, adapter, registry
 }
@@ -273,7 +291,7 @@ func startTestSession(t *testing.T, roster *Roster, id string, config AgentConfi
 	if err != nil {
 		t.Fatalf("开会话失败：%v", err)
 	}
-	return conversation
+	return conversation.(*Conversation)
 }
 
 func TestRosterResumesExistingAgent(t *testing.T) {
@@ -357,7 +375,7 @@ func TestUpdateAndStartSessionCannotMixTwoProfileVersions(t *testing.T) {
 		updated <- roster.UpdateAgent(AgentProfile{ID: "小红", Model: "new-model"})
 	}()
 	<-profiles.entered
-	started := make(chan *Conversation, 1)
+	started := make(chan agents.Conversation, 1)
 	startErr := make(chan error, 1)
 	go func() {
 		conversation, err := roster.StartSession("小红", "新会话")

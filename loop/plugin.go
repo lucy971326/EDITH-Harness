@@ -3,14 +3,13 @@ package loop
 import (
 	"fmt"
 
+	"harness/agents"
 	"harness/core"
 	"harness/llm"
-	"harness/session"
 	"harness/tools"
 )
 
-// Plugin 把名册装进场地（能力名 "agents"）。
-// 装它之前，session、llm、tools 必须已就位——缺谁启动就报谁的错，逆序回滚。
+// Plugin 把会话搬运工登记到 agents 管理处。
 type Plugin struct{}
 
 // Name 返回插件名。
@@ -18,12 +17,8 @@ func (Plugin) Name() string {
 	return "loop"
 }
 
-// Start 造名册挂进场地；名册跟着 App 一起收摊。
+// Start 领取模型和工具，再登记自己是会话 Runner。
 func (Plugin) Start(app *core.App) error {
-	store, err := session.Get(app)
-	if err != nil {
-		return fmt.Errorf("loop 要先有账本管家（sessions）：%w", err)
-	}
 	llmSvc, err := llm.Get(app)
 	if err != nil {
 		return fmt.Errorf("loop 要先有插座排（llm）：%w", err)
@@ -32,18 +27,15 @@ func (Plugin) Start(app *core.App) error {
 	if err != nil {
 		return fmt.Errorf("loop 要先有工具登记处（tools）：%w", err)
 	}
-	profiles, err := core.Resolve[ProfileStore](app, "agent-profiles")
+	service, err := agents.Get(app)
 	if err != nil {
-		return fmt.Errorf("loop 要先有 Agent 档案库（agent-profiles）：%w", err)
+		return fmt.Errorf("loop 要先有 Agent 管理处（agents）：%w", err)
 	}
-
-	roster := NewRoster(app, store, profiles, llmSvc, toolsReg)
-	app.RegisterService("agents", roster)
-	app.OnCleanup(roster.CloseAll)
+	runner := NewRunner(llmSvc, toolsReg)
+	remove, err := service.SetRunner(runner)
+	if err != nil {
+		return fmt.Errorf("loop 登记会话搬运工失败：%w", err)
+	}
+	app.OnCleanup(remove)
 	return nil
-}
-
-// Get 从场地取名册。
-func Get(app *core.App) (*Roster, error) {
-	return core.Resolve[*Roster](app, "agents")
 }

@@ -2,7 +2,7 @@
 
 ## 一句话理解
 
-`loop` 是搬运工：**领一条消息，问模型，按模型要求调用工具，再把工具结果交给模型，直到模型不再调用工具。**
+`loop` 是搬运工：**agents 把一段会话交给它后，它领消息、问模型、调用工具，再把工具结果交给模型，直到模型不再调用工具。**
 
 它不负责判断答案好不好，也不实现模型和工具。它只负责把 `session`、`llm`、`tools` 串起来，并保证每一步都有账可查。
 
@@ -12,8 +12,9 @@
 
 ```mermaid
 flowchart LR
-    Caller["UI / 调用方"] --> Profile["Agent 档案<br/>模型 / 人设 / 工具名"]
-    Profile --> Conversation["Conversation<br/>一段会话的对外门面"]
+    Caller["UI / 调用方"] --> Agents["agents<br/>小红管理处"]
+    Agents --> Profile["Agent 档案<br/>模型 / 人设 / 工具名"]
+    Agents --> Conversation["Conversation<br/>一段会话的对外门面"]
 
     subgraph OneSession["一段会话"]
         Conversation --> Inbox["inbox<br/>收件箱"]
@@ -35,7 +36,8 @@ flowchart LR
 - `session`：账本，发生过什么都以它为准。
 - `llm`：模型入口。
 - `tools`：工具执行入口。
-- `Roster`：名册，负责管理 Agent 档案，并创建、恢复和关闭会话。
+- `agents`：小红管理处，负责管理 Agent 档案，并创建、恢复和关闭会话。
+- `loop`：实现 `Runner` 合同，专心跑一段会话。
 
 ## 三种消息有什么区别
 
@@ -110,12 +112,12 @@ flowchart TD
 
 ```go
 func submit(app *core.App) error {
-    roster, err := loop.Get(app)
+    service, err := agents.Get(app)
     if err != nil {
         return err
     }
 
-    err = roster.CreateAgent(loop.AgentProfile{
+    err = service.CreateAgent(agents.AgentProfile{
         ID:           "assistant",
         Model:        "model-name",
         SystemPrompt: "你是一个助手",
@@ -124,7 +126,7 @@ func submit(app *core.App) error {
         return err
     }
 
-    conversation, err := roster.StartSession("assistant", "chat-001")
+    conversation, err := service.StartSession("assistant", "chat-001")
     if err != nil {
         return err
     }
@@ -138,23 +140,21 @@ func submit(app *core.App) error {
 }
 ```
 
-`loop.Plugin` 启动时需要四样东西已经装好：
+`loop.Plugin` 启动时需要三样东西已经装好：
 
-- `"agent-profiles"`：长期 Agent 档案库；
-- `"sessions"`：账本管家；
+- `"agents"`：Agent 管理处；
 - `"llm"`：模型入口；
 - `"tools"`：工具登记处。
 
-插件启动后会登记 `"agents"` 能力。UI 和其他模块只需要通过这个能力拿到 `Roster`，不必知道搬运工内部怎么实现。
+启动后它向 `agents` 登记自己是 `Runner`。UI 和其他模块只通过 `agents` 管小红，不必知道搬运工内部怎么实现。
 
 ## 读代码的顺序
 
-1. `plugin.go`：loop 怎么装进 App；
-2. `profile.go`：长期 Agent 档案长什么样；
-3. `roster.go`：怎么管理档案和多段会话；
-4. `agent.go`：一段会话对外有哪些操作；
-5. `inbox.go`：三种消息怎么排队；
-6. `driver.go`：主循环怎么跑；
-7. `recover.go`：重启后怎么收拾旧账。
+1. `plugin.go`：loop 怎么登记成 Runner；
+2. `runner.go`：agents 如何把会话交给 loop；
+3. `agent.go`：一段会话对外有哪些操作；
+4. `inbox.go`：三种消息怎么排队；
+5. `driver.go`：主循环怎么跑；
+6. `recover.go`：重启后怎么收拾旧账。
 
 读完这六个文件，就能掌握整个 loop 模块。

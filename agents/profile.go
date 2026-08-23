@@ -1,4 +1,5 @@
-package loop
+// Package agents 管理长期 Agent 档案和它们正在运行的会话。
+package agents
 
 import "fmt"
 
@@ -21,8 +22,8 @@ type ProfileStore interface {
 	Archive(id string) error
 }
 
-// validateProfile 检查档案自身能不能保存；工具是否存在由 Registry 检查。
-func validateProfile(profile AgentProfile) error {
+// ValidateProfile 检查档案自身能不能保存；工具是否存在由 tools.Registry 检查。
+func ValidateProfile(profile AgentProfile) error {
 	if profile.ID == "" {
 		return fmt.Errorf("agent 档案必须有 id")
 	}

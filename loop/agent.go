@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"harness/agents"
 	"harness/core"
 	"harness/llm"
 	"harness/session"
@@ -30,12 +31,12 @@ type Conversation struct {
 	busy      bool       // 正在跑一轮；State 对外只报这个
 	stepCtx   context.Context
 	stepStop  context.CancelFunc
-	close     func(*Conversation) error
+	close     func() error
 	closeErr  error
 	closeOnce sync.Once
 }
 
-func newConversation(agentID string, sessionID string, scope *core.App, book *session.Session, llmSvc *llm.Service, toolsReg *tools.Registry, profile AgentProfile) *Conversation {
+func newConversation(agentID string, sessionID string, scope *core.App, book *session.Session, llmSvc *llm.Service, toolsReg *tools.Registry, profile agents.AgentProfile) *Conversation {
 	conversation := &Conversation{
 		agentID:   agentID,
 		sessionID: sessionID,
@@ -65,7 +66,7 @@ func (a *Conversation) Start() {
 // Close 让这段会话下线、账本收口；重复调用安全，第一次的结果会被保留。
 func (a *Conversation) Close() error {
 	a.closeOnce.Do(func() {
-		a.closeErr = a.close(a)
+		a.closeErr = a.close()
 	})
 	return a.closeErr
 }

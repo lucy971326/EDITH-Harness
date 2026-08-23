@@ -2,6 +2,7 @@
 package profilejson
 
 import (
+	"harness/agents"
 	"harness/core"
 )
 
@@ -12,12 +13,12 @@ type Plugin struct {
 
 func (Plugin) Name() string { return "persistence-profilejson" }
 
-// Start 创建档案库并登记给 loop.Plugin 领取。
+// Start 创建档案库并登记给 agents.Plugin 领取。
 func (p Plugin) Start(app *core.App) error {
 	store, err := New(p.Root)
 	if err != nil {
 		return err
 	}
-	app.RegisterService("agent-profiles", store)
+	app.RegisterService("agent-profiles", agents.ProfileStore(store))
 	return nil
 }

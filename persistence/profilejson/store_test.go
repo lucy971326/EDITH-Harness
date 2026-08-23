@@ -3,7 +3,7 @@ package profilejson
 import (
 	"testing"
 
-	"harness/loop"
+	"harness/agents"
 )
 
 func TestStorePersistsProfileAcrossRestart(t *testing.T) {
@@ -12,7 +12,7 @@ func TestStorePersistsProfileAcrossRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	profile := loop.AgentProfile{
+	profile := agents.AgentProfile{
 		ID:           "小红",
 		Revision:     1,
 		Model:        "test-model",
