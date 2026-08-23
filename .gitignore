@@ -1,0 +1,6 @@
+# 外部参考源码，不属于本项目
+reference/
+
+# Go
+*.test
+*.out
