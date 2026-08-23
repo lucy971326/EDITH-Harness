@@ -21,18 +21,11 @@ type Adapter interface {
 
 // Request 是一次模型请求的全部输入。
 type Request struct {
-	Model       string         // 服务商内的型号名，如 "deepseek-chat"
-	Messages    []chat.Message // 完整对话历史（system 消息也在里面，各服务商自己认领）
-	Tools       []ToolSchema   // 可用的工具说明书，空 = 这次不许调工具
-	MaxTokens   int            // 回复上限，0 = 用服务商默认
-	Temperature float64        // 温度，0 = 用服务商默认
-}
-
-// ToolSchema 是给模型看的一份工具说明书。
-type ToolSchema struct {
-	Name        string
-	Description string
-	Parameters  []byte // 参数的 JSON Schema 说明，原样透传给服务商
+	Model       string             // 服务商内的型号名，如 "deepseek-chat"
+	Messages    []chat.Message     // 完整对话历史（system 消息也在里面，各服务商自己认领）
+	Tools       []chat.ToolSchema  // 可用的工具说明书，空 = 这次不许调工具
+	MaxTokens   int                // 回复上限，0 = 用服务商默认
+	Temperature float64            // 温度，0 = 用服务商默认
 }
 
 // Reply 是模型一次回复的完整聚合。

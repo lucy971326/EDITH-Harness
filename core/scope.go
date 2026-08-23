@@ -16,6 +16,15 @@ func (a *App) ForAgent(agentName string) *App {
 	}
 }
 
+// Parent 返回父作用域；全局根返回 nil。
+// 流水线一类的跨层逻辑靠它沿链聚合（父层在外、子层在内）。
+func (a *App) Parent() *App {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	return a.parent
+}
+
 // Restrict 裁掉若干能力名：之后从父继承的这些名字查不到。
 // 裁不到自己注册的——那叫替换，不叫裁剪。
 func (a *App) Restrict(names ...string) {

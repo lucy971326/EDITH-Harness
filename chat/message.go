@@ -48,3 +48,10 @@ type Usage struct {
 type Delta struct {
 	Text string // 新增的字
 }
+
+// ToolSchema 是给模型看的一份工具说明书。
+type ToolSchema struct {
+	Name        string // 工具名
+	Description string // 干什么用的
+	Parameters  []byte // 参数的 JSON Schema 说明，原样透传给服务商
+}
