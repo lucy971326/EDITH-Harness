@@ -3,6 +3,7 @@ package loop
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -21,12 +22,122 @@ type silentBroadcaster struct{}
 func (silentBroadcaster) Broadcast(name string, payload any) {}
 
 // memoryJournalPlugin 给 loop 测试装内存账本，避免测试碰本地文件。
-type memoryJournalPlugin struct{}
+type memoryJournalPlugin struct {
+	journal session.Journal
+}
+
+// memoryProfilePlugin 给 loop 测试装内存 Agent 档案库。
+type memoryProfilePlugin struct {
+	store ProfileStore
+}
+
+func (memoryProfilePlugin) Name() string { return "test-memory-profiles" }
+
+func (p memoryProfilePlugin) Start(app *core.App) error {
+	app.RegisterService("agent-profiles", p.store)
+	return nil
+}
+
+// blockingProfileStore 让更新停在真正写档案的位置，专门测名册锁会不会被中途放开。
+type blockingProfileStore struct {
+	base    *memoryProfileStore
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (s *blockingProfileStore) Create(profile AgentProfile) error {
+	return s.base.Create(profile)
+}
+
+func (s *blockingProfileStore) Get(id string) (AgentProfile, error) {
+	return s.base.Get(id)
+}
+
+func (s *blockingProfileStore) List() ([]AgentProfile, error) {
+	return s.base.List()
+}
+
+func (s *blockingProfileStore) Archive(id string) error {
+	return s.base.Archive(id)
+}
+
+func (s *blockingProfileStore) Update(profile AgentProfile) error {
+	close(s.entered)
+	<-s.release
+	return s.base.Update(profile)
+}
+
+// memoryProfileStore 是测试专用的档案库，语义与真正持久化档案库一致。
+type memoryProfileStore struct {
+	mu       sync.Mutex
+	profiles map[string]AgentProfile
+}
+
+func newMemoryProfileStore() *memoryProfileStore {
+	return &memoryProfileStore{profiles: make(map[string]AgentProfile)}
+}
+
+func (s *memoryProfileStore) Create(profile AgentProfile) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.profiles[profile.ID]; exists {
+		return fmt.Errorf("agent %s 已存在", profile.ID)
+	}
+	s.profiles[profile.ID] = cloneProfile(profile)
+	return nil
+}
+
+func (s *memoryProfileStore) Update(profile AgentProfile) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	old, exists := s.profiles[profile.ID]
+	if !exists {
+		return fmt.Errorf("agent %s 不存在", profile.ID)
+	}
+	if profile.Revision != old.Revision+1 {
+		return fmt.Errorf("agent %s 版本不连续", profile.ID)
+	}
+	s.profiles[profile.ID] = cloneProfile(profile)
+	return nil
+}
+
+func (s *memoryProfileStore) Get(id string) (AgentProfile, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	profile, exists := s.profiles[id]
+	if !exists {
+		return AgentProfile{}, fmt.Errorf("agent %s 不存在", id)
+	}
+	return cloneProfile(profile), nil
+}
+
+func (s *memoryProfileStore) List() ([]AgentProfile, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	profiles := make([]AgentProfile, 0, len(s.profiles))
+	for _, profile := range s.profiles {
+		profiles = append(profiles, cloneProfile(profile))
+	}
+	return profiles, nil
+}
+
+func (s *memoryProfileStore) Archive(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	profile, exists := s.profiles[id]
+	if !exists {
+		return fmt.Errorf("agent %s 不存在", id)
+	}
+	profile.Archived = true
+	profile.Revision++
+	s.profiles[id] = profile
+	return nil
+}
 
 func (memoryJournalPlugin) Name() string { return "test-memory-journal" }
 
-func (memoryJournalPlugin) Start(app *core.App) error {
-	app.RegisterService("journal", session.NewMemoryJournal())
+func (p memoryJournalPlugin) Start(app *core.App) error {
+	app.RegisterService("journal", p.journal)
 	return nil
 }
 
@@ -96,13 +207,22 @@ func (a *scriptedAdapter) sawRequests() []llm.Request {
 
 // newTestStack 搭一套最小可跑的家当：core 场地 + 账本 + 插座排（剧本适配器）+ 工具 + loop。
 func newTestStack(t *testing.T, scripts ...scriptCall) (*core.App, *Roster, *scriptedAdapter, *tools.Registry) {
+	return newTestStackWithStores(t, session.NewMemoryJournal(), newMemoryProfileStore(), scripts...)
+}
+
+func newTestStackWithJournal(t *testing.T, journal session.Journal, scripts ...scriptCall) (*core.App, *Roster, *scriptedAdapter, *tools.Registry) {
+	return newTestStackWithStores(t, journal, newMemoryProfileStore(), scripts...)
+}
+
+func newTestStackWithStores(t *testing.T, journal session.Journal, profiles ProfileStore, scripts ...scriptCall) (*core.App, *Roster, *scriptedAdapter, *tools.Registry) {
 	t.Helper()
 
 	app := core.New()
 	t.Cleanup(app.Close)
 
 	err := app.Install(
-		memoryJournalPlugin{},
+		memoryProfilePlugin{store: profiles},
+		memoryJournalPlugin{journal: journal},
 		session.Plugin{},
 		llm.Plugin{},
 		tools.Plugin{},
@@ -142,6 +262,287 @@ func newTestStack(t *testing.T, scripts ...scriptCall) (*core.App, *Roster, *scr
 	return app, roster, adapter, registry
 }
 
+func startTestSession(t *testing.T, roster *Roster, id string, config AgentConfig, seed ...session.Event) *Conversation {
+	t.Helper()
+	profile := AgentProfile{ID: id, Model: config.Model, SystemPrompt: config.SystemPrompt, Tools: roster.toolsReg.Names()}
+	err := roster.CreateAgent(profile)
+	if err != nil {
+		t.Fatalf("建 agent 档案失败：%v", err)
+	}
+	conversation, err := roster.StartSession(id, id, seed...)
+	if err != nil {
+		t.Fatalf("开会话失败：%v", err)
+	}
+	return conversation
+}
+
+func TestRosterResumesExistingAgent(t *testing.T) {
+	journal := session.NewMemoryJournal()
+	profiles := newMemoryProfileStore()
+	firstApp, firstRoster, _, _ := newTestStackWithStores(t, journal, profiles)
+	first := startTestSession(t, firstRoster, "小刚", AgentConfig{})
+	_, err := first.Book().RecordUserMessage("明天继续")
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstApp.Close()
+
+	_, secondRoster, _, _ := newTestStackWithStores(t, journal, profiles)
+	resumed, err := secondRoster.ResumeSession("小刚")
+	if err != nil {
+		t.Fatal(err)
+	}
+	history := resumed.Book().ModelHistory()
+	if len(history) != 1 || history[0].Text != "明天继续" {
+		t.Fatalf("恢复后应该读回旧会话：%+v", history)
+	}
+}
+
+func TestRecoveryBroadcastDoesNotHoldRosterLock(t *testing.T) {
+	app, roster, _, _ := newTestStack(t)
+	seen := make(chan error, 1)
+	app.Subscribe(session.EventAppended, func(payload any) {
+		appended := payload.(session.Appended)
+		if appended.SessionID != "恢复会话" || appended.Event.Kind != session.KindToolResult {
+			return
+		}
+		_, err := roster.GetSession("恢复会话")
+		seen <- err
+	})
+	err := roster.CreateAgent(AgentProfile{ID: "小红", Model: "m"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed := []session.Event{
+		event(session.KindToolCall, 1, session.ToolCallData{ID: "c1", Name: "mail"}),
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := roster.StartSession("小红", "恢复会话", seed...)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("恢复补账时不该被广播观察者卡死")
+	}
+	select {
+	case err := <-seen:
+		if err == nil {
+			t.Fatal("会话准备好前不该把半成品交给观察者")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("恢复补账应该广播给观察者")
+	}
+}
+
+func TestUpdateAndStartSessionCannotMixTwoProfileVersions(t *testing.T) {
+	profiles := &blockingProfileStore{
+		base:    newMemoryProfileStore(),
+		entered: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	_, roster, adapter, _ := newTestStackWithStores(t, session.NewMemoryJournal(), profiles,
+		scriptCall{deltas: []string{"好"}, reply: llm.Reply{StopReason: "stop"}},
+	)
+	err := roster.CreateAgent(AgentProfile{ID: "小红", Model: "old-model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated := make(chan error, 1)
+	go func() {
+		updated <- roster.UpdateAgent(AgentProfile{ID: "小红", Model: "new-model"})
+	}()
+	<-profiles.entered
+	started := make(chan *Conversation, 1)
+	startErr := make(chan error, 1)
+	go func() {
+		conversation, err := roster.StartSession("小红", "新会话")
+		if err != nil {
+			startErr <- err
+			return
+		}
+		started <- conversation
+	}()
+	select {
+	case <-started:
+		t.Fatal("档案更新尚未写完时，不该开出会话")
+	case err := <-startErr:
+		t.Fatalf("开会话不该抢在更新前失败：%v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(profiles.release)
+	err = <-updated
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation := <-started
+	err = conversation.SubmitFollowup("你好")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation.WaitIdle()
+	if adapter.sawRequests()[0].Model != "new-model" {
+		t.Fatalf("会话该只看到写完后的新档案：%+v", adapter.sawRequests()[0])
+	}
+}
+
+func TestOneAgentCanRunTwoSessions(t *testing.T) {
+	_, roster, _, _ := newTestStack(t,
+		scriptCall{deltas: []string{"会话一"}, reply: llm.Reply{StopReason: "stop"}},
+		scriptCall{deltas: []string{"会话二"}, reply: llm.Reply{StopReason: "stop"}},
+	)
+	err := roster.CreateAgent(AgentProfile{ID: "小红", Model: "m"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := roster.StartSession("小红", "张三")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := roster.StartSession("小红", "李四")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.AgentID() != "小红" || second.AgentID() != "小红" || first.SessionID() == second.SessionID() {
+		t.Fatalf("Agent 和会话身份没拆开：%s/%s, %s/%s", first.AgentID(), first.SessionID(), second.AgentID(), second.SessionID())
+	}
+	if first.Book().AgentID() != "小红" || first.Book().ProfileRevision() != 1 {
+		t.Fatalf("会话封面没记住 Agent 归属：%s / v%d", first.Book().AgentID(), first.Book().ProfileRevision())
+	}
+	err = first.SubmitFollowup("给张三")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = second.SubmitFollowup("给李四")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first.WaitIdle()
+	second.WaitIdle()
+	if first.Book().ModelHistory()[0].Text != "给张三" || second.Book().ModelHistory()[0].Text != "给李四" {
+		t.Fatalf("两段会话串台了：%+v / %+v", first.Book().ModelHistory(), second.Book().ModelHistory())
+	}
+}
+
+func TestArchiveBlocksNewSessionButAllowsResume(t *testing.T) {
+	_, roster, _, _ := newTestStack(t)
+	err := roster.CreateAgent(AgentProfile{ID: "小红", Model: "m"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation, err := roster.StartSession("小红", "旧会话")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = conversation.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = roster.ArchiveAgent("小红")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = roster.StartSession("小红", "新会话")
+	if err == nil {
+		t.Fatal("归档 Agent 不该再开新会话")
+	}
+	resumed, err := roster.ResumeSession("旧会话")
+	if err != nil {
+		t.Fatalf("归档 Agent 的旧会话仍该能恢复：%v", err)
+	}
+	if resumed.AgentID() != "小红" {
+		t.Fatalf("恢复后 Agent 不对：%s", resumed.AgentID())
+	}
+}
+
+func TestClosingOneSessionKeepsAgentToolsForTheOther(t *testing.T) {
+	_, roster, _, registry := newTestStack(t)
+	echoTool(registry, t)
+	err := registry.Register(tools.Tool{Schema: chat.ToolSchema{Name: "hidden"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = roster.CreateAgent(AgentProfile{ID: "小红", Model: "m", Tools: []string{"echo"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := roster.StartSession("小红", "会话一")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := roster.StartSession("小红", "会话二")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, visible := registry.Lookup("hidden", "小红")
+	if visible {
+		t.Fatal("白名单外工具不该给 Agent 看见")
+	}
+	err = first.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, visible = registry.Lookup("hidden", "小红")
+	if visible {
+		t.Fatal("关一段会话不该收掉另一段的 Agent 工具表")
+	}
+	err = second.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, visible = registry.Lookup("hidden", "小红")
+	if !visible {
+		t.Fatal("最后一段会话关闭后，Agent 小表该收掉")
+	}
+}
+
+func TestResumeUsesCurrentAgentProfile(t *testing.T) {
+	journal := session.NewMemoryJournal()
+	profiles := newMemoryProfileStore()
+	firstApp, firstRoster, _, _ := newTestStackWithStores(t, journal, profiles,
+		scriptCall{deltas: []string{"旧回复"}, reply: llm.Reply{StopReason: "stop"}},
+	)
+	err := firstRoster.CreateAgent(AgentProfile{ID: "小红", Model: "old-model", SystemPrompt: "旧人设"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := firstRoster.StartSession("小红", "旧会话")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = first.SubmitFollowup("你好")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first.WaitIdle()
+	firstApp.Close()
+
+	_, secondRoster, adapter, _ := newTestStackWithStores(t, journal, profiles,
+		scriptCall{deltas: []string{"新回复"}, reply: llm.Reply{StopReason: "stop"}},
+	)
+	err = secondRoster.UpdateAgent(AgentProfile{ID: "小红", Model: "new-model", SystemPrompt: "新人设"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resumed, err := secondRoster.ResumeSession("旧会话")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = resumed.SubmitFollowup("继续")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resumed.WaitIdle()
+	request := adapter.sawRequests()[0]
+	if request.Model != "new-model" || request.Messages[0].Text != "新人设" {
+		t.Fatalf("恢复后没有使用当前档案：%+v", request)
+	}
+}
+
 // echoTool 一个回显工具，给工具闭环用。
 func echoTool(registry *tools.Registry, t *testing.T) {
 	err := registry.Register(tools.Tool{
@@ -176,12 +577,9 @@ func TestHappyTurnFullLedger(t *testing.T) {
 	)
 	echoTool(registry, t)
 
-	agent, err := roster.Create("小红", AgentConfig{Model: "test-model", SystemPrompt: "你是测试员"})
-	if err != nil {
-		t.Fatalf("开 agent 失败：%v", err)
-	}
+	agent := startTestSession(t, roster, "小红", AgentConfig{Model: "test-model", SystemPrompt: "你是测试员"})
 
-	err = agent.SubmitFollowup("你好")
+	err := agent.SubmitFollowup("你好")
 	if err != nil {
 		t.Fatalf("投递失败：%v", err)
 	}
@@ -227,12 +625,9 @@ func TestToolLoopRunsSecondStep(t *testing.T) {
 	)
 	echoTool(registry, t)
 
-	agent, err := roster.Create("小红", AgentConfig{Model: "m"})
-	if err != nil {
-		t.Fatalf("开 agent 失败：%v", err)
-	}
+	agent := startTestSession(t, roster, "小红", AgentConfig{Model: "m"})
 
-	err = agent.SubmitFollowup("查一下")
+	err := agent.SubmitFollowup("查一下")
 	if err != nil {
 		t.Fatalf("投递失败：%v", err)
 	}
@@ -281,13 +676,10 @@ func TestFollowupQueuesWhileBusy(t *testing.T) {
 		scriptCall{deltas: []string{"第二轮"}, reply: llm.Reply{StopReason: "stop"}},
 	)
 
-	agent, err := roster.Create("小红", AgentConfig{Model: "m"})
-	if err != nil {
-		t.Fatalf("开 agent 失败：%v", err)
-	}
+	agent := startTestSession(t, roster, "小红", AgentConfig{Model: "m"})
 
 	// 两份一起投：第一份开轮时第二份只能在队列里等。
-	err = agent.SubmitFollowup("第一件事")
+	err := agent.SubmitFollowup("第一件事")
 	if err != nil {
 		t.Fatalf("投递失败：%v", err)
 	}
@@ -319,16 +711,13 @@ func TestSteerJoinsNextStepWhileBusy(t *testing.T) {
 	)
 	echoTool(registry, t)
 
-	agent, err := roster.Create("小红", AgentConfig{Model: "m"})
-	if err != nil {
-		t.Fatalf("开 agent 失败：%v", err)
-	}
+	agent := startTestSession(t, roster, "小红", AgentConfig{Model: "m"})
 
 	adapter.mu.Lock()
 	adapter.block = make(chan struct{})
 	adapter.mu.Unlock()
 
-	err = agent.SubmitFollowup("第一件事")
+	err := agent.SubmitFollowup("第一件事")
 	if err != nil {
 		t.Fatalf("投递失败：%v", err)
 	}
@@ -373,12 +762,9 @@ func TestMemoGoesToContextNotHistory(t *testing.T) {
 		scriptCall{deltas: []string{"知道了"}, reply: llm.Reply{StopReason: "stop"}},
 	)
 
-	agent, err := roster.Create("小红", AgentConfig{Model: "m"})
-	if err != nil {
-		t.Fatalf("开 agent 失败：%v", err)
-	}
+	agent := startTestSession(t, roster, "小红", AgentConfig{Model: "m"})
 
-	err = agent.InjectMemo("现在是周三，用户在赶时间")
+	err := agent.InjectMemo("现在是周三，用户在赶时间")
 	if err != nil {
 		t.Fatalf("塞小抄失败：%v", err)
 	}
@@ -422,10 +808,7 @@ func TestWaitIdleReturnsImmediatelyWhenIdle(t *testing.T) {
 		scriptCall{deltas: []string{"好"}, reply: llm.Reply{StopReason: "stop"}},
 	)
 
-	agent, err := roster.Create("小红", AgentConfig{Model: "m"})
-	if err != nil {
-		t.Fatalf("开 agent 失败：%v", err)
-	}
+	agent := startTestSession(t, roster, "小红", AgentConfig{Model: "m"})
 
 	done := make(chan struct{})
 	go func() {
@@ -444,12 +827,9 @@ func TestSystemPromptAndModelReachRequest(t *testing.T) {
 		scriptCall{deltas: []string{"嗯"}, reply: llm.Reply{StopReason: "stop"}},
 	)
 
-	agent, err := roster.Create("小红", AgentConfig{Model: "deepseek-chat", SystemPrompt: "你是管家"})
-	if err != nil {
-		t.Fatalf("开 agent 失败：%v", err)
-	}
+	agent := startTestSession(t, roster, "小红", AgentConfig{Model: "deepseek-chat", SystemPrompt: "你是管家"})
 
-	err = agent.SubmitFollowup("在吗")
+	err := agent.SubmitFollowup("在吗")
 	if err != nil {
 		t.Fatalf("投递失败：%v", err)
 	}
@@ -481,14 +861,17 @@ func TestSystemPromptAndModelReachRequest(t *testing.T) {
 func TestCloseStopsDriver(t *testing.T) {
 	_, roster, _, _ := newTestStack(t)
 
-	_, err := roster.Create("小红", AgentConfig{Model: "m"})
+	conversation := startTestSession(t, roster, "小红", AgentConfig{Model: "m"})
+	err := conversation.Close()
 	if err != nil {
-		t.Fatalf("开 agent 失败：%v", err)
+		t.Fatalf("关闭会话失败：%v", err)
+	}
+	err = conversation.Close()
+	if err != nil {
+		t.Fatalf("重复关闭不该失败：%v", err)
 	}
 
-	roster.Drop("小红")
-
-	_, err = roster.Get("小红")
+	_, err = roster.GetSession("小红")
 	if err == nil {
 		t.Fatal("除名后该取不到")
 	}
@@ -497,17 +880,14 @@ func TestCloseStopsDriver(t *testing.T) {
 func TestRosterRejectsDuplicateID(t *testing.T) {
 	_, roster, _, _ := newTestStack(t)
 
-	_, err := roster.Create("小红", AgentConfig{Model: "m"})
-	if err != nil {
-		t.Fatalf("开 agent 失败：%v", err)
-	}
-	_, err = roster.Create("小红", AgentConfig{Model: "m"})
+	_ = startTestSession(t, roster, "小红", AgentConfig{Model: "m"})
+	_, err := roster.StartSession("小红", "小红")
 	if err == nil {
-		t.Fatal("同名该报错")
+		t.Fatal("同名会话该报错")
 	}
 }
 
-func waitForState(t *testing.T, agent *Agent, state string) {
+func waitForState(t *testing.T, agent *Conversation, state string) {
 	t.Helper()
 
 	deadline := time.Now().Add(2 * time.Second)
@@ -533,12 +913,9 @@ func TestCancelFinalizesPartialReply(t *testing.T) {
 		scriptCall{deltas: []string{"说了", "半句"}, hang: true},
 	)
 
-	agent, err := roster.Create("小红", AgentConfig{Model: "m"})
-	if err != nil {
-		t.Fatalf("开 agent 失败：%v", err)
-	}
+	agent := startTestSession(t, roster, "小红", AgentConfig{Model: "m"})
 
-	err = agent.SubmitFollowup("讲个故事")
+	err := agent.SubmitFollowup("讲个故事")
 	if err != nil {
 		t.Fatalf("投递失败：%v", err)
 	}
@@ -580,10 +957,7 @@ func TestCancelWithRunningToolLeavesUnknown(t *testing.T) {
 		t.Fatalf("登记失败：%v", err)
 	}
 
-	agent, err := roster.Create("小红", AgentConfig{Model: "m"})
-	if err != nil {
-		t.Fatalf("开 agent 失败：%v", err)
-	}
+	agent := startTestSession(t, roster, "小红", AgentConfig{Model: "m"})
 
 	err = agent.SubmitFollowup("跑个慢工具")
 	if err != nil {
@@ -617,10 +991,7 @@ func TestRecoverRestoresPendingDeliveries(t *testing.T) {
 		event(session.KindDeliver, 6, session.DeliverData{ID: "d2", Text: "重启前没来得及办", Target: TargetNextTurn}),
 	}
 
-	agent, err := roster.Create("小红", AgentConfig{Model: "m"}, seed...)
-	if err != nil {
-		t.Fatalf("恢复失败：%v", err)
-	}
+	agent := startTestSession(t, roster, "小红", AgentConfig{Model: "m"}, seed...)
 	agent.WaitIdle()
 
 	joined := strings.Join(kinds(agent.Book().Events()), ",")
@@ -648,13 +1019,10 @@ func TestRecoverContinuesDeliveryIDs(t *testing.T) {
 		event(session.KindDeliver, 1, session.DeliverData{ID: "d1", Text: "重启前没办", Target: TargetNextTurn}),
 	}
 
-	agent, err := roster.Create("小红", AgentConfig{Model: "m"}, seed...)
-	if err != nil {
-		t.Fatalf("恢复失败：%v", err)
-	}
+	agent := startTestSession(t, roster, "小红", AgentConfig{Model: "m"}, seed...)
 	agent.WaitIdle()
 
-	err = agent.SubmitFollowup("重启后的新消息")
+	err := agent.SubmitFollowup("重启后的新消息")
 	if err != nil {
 		t.Fatalf("投递失败：%v", err)
 	}
@@ -702,10 +1070,7 @@ func TestRecoverFillsDanglingStartedTool(t *testing.T) {
 		event(session.KindChunk, 11, session.ChunkData{Delta: "邮件"}),
 	}
 
-	agent, err := roster.Create("小红", AgentConfig{Model: "m"}, seed...)
-	if err != nil {
-		t.Fatalf("恢复失败：%v", err)
-	}
+	agent := startTestSession(t, roster, "小红", AgentConfig{Model: "m"}, seed...)
 
 	events := agent.Book().Events()
 	var lastResult *session.ToolResultData
@@ -714,7 +1079,7 @@ func TestRecoverFillsDanglingStartedTool(t *testing.T) {
 			continue
 		}
 		var data session.ToolResultData
-		err = json.Unmarshal(e.Data, &data)
+		err := json.Unmarshal(e.Data, &data)
 		if err != nil {
 			t.Fatalf("解不开：%v", err)
 		}
@@ -752,17 +1117,14 @@ func TestRecoverSkipsUnstartedDanglingTool(t *testing.T) {
 		// 崩：c2 还没开跑
 	}
 
-	agent, err := roster.Create("小红", AgentConfig{Model: "m"}, seed...)
-	if err != nil {
-		t.Fatalf("恢复失败：%v", err)
-	}
+	agent := startTestSession(t, roster, "小红", AgentConfig{Model: "m"}, seed...)
 
 	for _, e := range agent.Book().Events() {
 		if e.Kind != session.KindToolResult {
 			continue
 		}
 		var data session.ToolResultData
-		err = json.Unmarshal(e.Data, &data)
+		err := json.Unmarshal(e.Data, &data)
 		if err != nil {
 			t.Fatalf("解不开：%v", err)
 		}

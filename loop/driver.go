@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 
 	"harness/chat"
 	"harness/llm"
@@ -18,12 +19,13 @@ const Checkpoint = "loop/pre-step"
 
 // driver 是门面背后的搬运工：一个 goroutine，闲了等铃，铃响干活，干完再等。
 type driver struct {
-	agent *Agent
-	stop  chan struct{}
-	done  chan struct{}
+	agent    *Conversation
+	stop     chan struct{}
+	done     chan struct{}
+	stopOnce sync.Once
 }
 
-func newDriver(agent *Agent) *driver {
+func newDriver(agent *Conversation) *driver {
 	return &driver{
 		agent: agent,
 		stop:  make(chan struct{}),
@@ -38,7 +40,9 @@ func (d *driver) start() {
 
 // stopAndJoin 让搬运工下线并等他收工。
 func (d *driver) stopAndJoin() {
-	close(d.stop)
+	d.stopOnce.Do(func() {
+		close(d.stop)
+	})
 	<-d.done
 }
 
@@ -145,6 +149,7 @@ func (d *driver) runStep() (bool, error) {
 	request := llm.Request{
 		Model:    a.config.Model,
 		Messages: buildMessages(a.config.SystemPrompt, memos, a.book.ModelHistory()),
+		Tools:    a.toolsReg.Schemas(a.agentID),
 	}
 	snapshot, err := json.Marshal(request)
 	if err != nil {
@@ -205,7 +210,7 @@ func (d *driver) runStep() (bool, error) {
 			ID:       call.ID,
 			Name:     call.Name,
 			Argument: call.Argument,
-			Agent:    a.id,
+			Agent:    a.agentID,
 		})
 		if result.Status == tools.ResultUnknown {
 			return false, fmt.Errorf("工具 %s 已开跑但结果不明，收轮待恢复", call.Name)

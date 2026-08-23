@@ -24,13 +24,14 @@ type Journal interface {
 
 // MemoryJournal 是内存假实现：给单测和不落盘的场景。
 type MemoryJournal struct {
-	mu    sync.Mutex
-	books map[string][]Event
+	mu      sync.Mutex
+	books   map[string][]Event
+	headers map[string]Header
 }
 
 // NewMemoryJournal 建一个空的内存落盘器。
 func NewMemoryJournal() *MemoryJournal {
-	return &MemoryJournal{books: make(map[string][]Event)}
+	return &MemoryJournal{books: make(map[string][]Event), headers: make(map[string]Header)}
 }
 
 func (j *MemoryJournal) Create(id string, header Header) error {
@@ -42,6 +43,7 @@ func (j *MemoryJournal) Create(id string, header Header) error {
 		return fmt.Errorf("账本 %s 已存在", id)
 	}
 	j.books[id] = []Event{}
+	j.headers[id] = header
 	return nil
 }
 
@@ -82,7 +84,7 @@ func (j *MemoryJournal) ReadAll(id string) (Header, []Event, error) {
 	for i, event := range book {
 		events[i] = cloneEvent(event)
 	}
-	header := Header{FormatVersion: 1, ID: id}
+	header := j.headers[id]
 	return header, events, nil
 }
 

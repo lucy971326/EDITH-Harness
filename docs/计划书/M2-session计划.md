@@ -87,7 +87,7 @@ func (s *Session) Events() []Event          // 全量视角：人 / 审计 / 回
 
 - 每种事件一份**格式说明**（结构体 ↔ JSON 互相怎么转，存进去什么样读出来还什么样）；
 - **不认识的事件种类**：默认整本账拒读（宁严勿猜）；带 `SkipIfUnknown` 标记的 → 保留并跳过；
-- 账本封面带**格式版本**（整本账一个版本号就够）；迁移函数表留入口（先空着）；将来某类事件要单独演进时再加事件级版本（纯增量）；
+- 账本封面带**格式版本**和所属 Agent：账本号只代表一段会话，`AgentID` 代表长期 Agent；会话创建时还记下档案版本作历史标记。当前格式为 v2，旧 v1 没有 AgentID，明确拒绝打开并提示迁移；
 - 事件种类对插件开放：插件注册自家种类 + 格式说明即可记账（todo、goal、视频摘要……）。
 
 ### ④ 名册（管家）
@@ -98,8 +98,10 @@ type Plugin struct{}
 func (Plugin) Start(app *core.App) error  // 领取 "journal"，登记 "sessions"
 func Get(app *core.App) (*Store, error)   // 从 App 取账本管家
 
-func (st *Store) Create(id string, seed ...Event) *Session  // 开新账；带 seed = 拿旧账重放重建
+func (st *Store) Create(sessionID, agentID string, profileRevision int, seed ...Event) *Session
+func (st *Store) Open(id string) *Session                   // 打开已有账；只重建内存，不重写旧账
 func (st *Store) Get(id string) *Session
+func (st *Store) Release(id string) error                   // 写穿并忘掉内存态，之后可再次 Open
 ```
 
 持久化插件先把 Journal 登记为 `"journal"`，`session.Plugin` 再领取它、建 Store 并登记 `"sessions"`。JSONL / SQLite 是二选一的同级持久化插件；session 不能因为插件化就被省略。
@@ -111,7 +113,7 @@ func (st *Store) Get(id string) *Session
 ```
 session/
   journal.go   落盘接口（"要么整条要么没有"+ Flush 立刻写完；内存假实现给单测，真文件版 M6 接）
-  store.go     管家：名册 Create/Get + 旧账重放；NewStore(journal, broadcaster) 两个都从外面注入
+  store.go     管家：Create/Open/Get + 旧账重放；NewStore(journal, broadcaster) 两个都从外面注入
   session.go   账本体：AppendEvent / ModelHistory / Events
   plugin.go    必装插件：领取 Journal、创建并登记 Store，提供 Get
   codec.go     格式说明：结构体 ↔ JSON + 不认识的事件怎么办 + 版本

@@ -32,8 +32,12 @@ func (Plugin) Start(app *core.App) error {
 	if err != nil {
 		return fmt.Errorf("loop 要先有工具登记处（tools）：%w", err)
 	}
+	profiles, err := core.Resolve[ProfileStore](app, "agent-profiles")
+	if err != nil {
+		return fmt.Errorf("loop 要先有 Agent 档案库（agent-profiles）：%w", err)
+	}
 
-	roster := NewRoster(app, store, llmSvc, toolsReg)
+	roster := NewRoster(app, store, profiles, llmSvc, toolsReg)
 	app.RegisterService("agents", roster)
 	app.OnCleanup(roster.CloseAll)
 	return nil

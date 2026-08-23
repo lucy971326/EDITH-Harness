@@ -11,7 +11,7 @@ import (
 
 // recoverFromLedger 拿旧账重建 agent：找回没领的待办、补齐悬空的账。
 // 原则：账说什么就是什么，绝不猜、绝不自动重跑可能已有副作用的工具。
-func recoverFromLedger(agent *Agent, seed []session.Event) error {
+func recoverFromLedger(agent *Conversation, seed []session.Event) error {
 	var (
 		delivered        = make(map[string]session.Event) // 投递了、还没领出的
 		calls            = make(map[string]bool)          // 要调了、还没回话的调用

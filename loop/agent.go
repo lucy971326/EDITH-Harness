@@ -10,67 +10,78 @@ import (
 	"harness/tools"
 )
 
-// AgentConfig 是开一个 agent 的配置。
-type AgentConfig struct {
-	Model        string // 用插座排的默认型号（将来可指名服务商）
-	SystemPrompt string // 系统提示词，可空
-}
-
-// Agent 是门面：UI 和外部服务只跟它说话，门后的搬运工长什么样不用管。
+// Conversation 是一段会话的门面：UI 和外部服务只跟它说话，门后的搬运工长什么样不用管。
 // 三种塞消息：SubmitFollowup 开新轮；Steer 中途捎话（忙时下一步生效，闲时就是新轮）；
 // InjectMemo 塞小抄（不吵醒，下次问模型时拼进上下文）。
-type Agent struct {
-	id       string
-	scope    *core.App // 专属子作用域：控制位、审批人、遮蔽工具都挂这
-	book     *session.Session
-	llmSvc   *llm.Service
-	toolsReg *tools.Registry
-	config   AgentConfig
-	inbox    *inbox
-	driver   *driver
+type Conversation struct {
+	agentID   string
+	sessionID string
+	scope     *core.App // 专属子作用域：控制位、审批人、遮蔽工具都挂这
+	book      *session.Session
+	llmSvc    *llm.Service
+	toolsReg  *tools.Registry
+	config    AgentConfig
+	inbox     *inbox
+	driver    *driver
 
-	mu       sync.Mutex
-	cond     *sync.Cond // 闲了广播一声，等闲的人全醒
-	working  bool       // 搬运工已经接活，可能刚把队列领空、还没正式开轮
-	busy     bool       // 正在跑一轮；State 对外只报这个
-	stepCtx  context.Context
-	stepStop context.CancelFunc
+	mu        sync.Mutex
+	cond      *sync.Cond // 闲了广播一声，等闲的人全醒
+	working   bool       // 搬运工已经接活，可能刚把队列领空、还没正式开轮
+	busy      bool       // 正在跑一轮；State 对外只报这个
+	stepCtx   context.Context
+	stepStop  context.CancelFunc
+	close     func(*Conversation) error
+	closeErr  error
+	closeOnce sync.Once
 }
 
-func newAgent(id string, scope *core.App, book *session.Session, llmSvc *llm.Service, toolsReg *tools.Registry, config AgentConfig) *Agent {
-	agent := &Agent{
-		id:       id,
-		scope:    scope,
-		book:     book,
-		llmSvc:   llmSvc,
-		toolsReg: toolsReg,
-		config:   config,
-		inbox:    newInbox(),
+func newConversation(agentID string, sessionID string, scope *core.App, book *session.Session, llmSvc *llm.Service, toolsReg *tools.Registry, profile AgentProfile) *Conversation {
+	conversation := &Conversation{
+		agentID:   agentID,
+		sessionID: sessionID,
+		scope:     scope,
+		book:      book,
+		llmSvc:    llmSvc,
+		toolsReg:  toolsReg,
+		config:    AgentConfig{Model: profile.Model, SystemPrompt: profile.SystemPrompt},
+		inbox:     newInbox(),
 	}
-	agent.cond = sync.NewCond(&agent.mu)
-	agent.driver = newDriver(agent)
-	return agent
+	conversation.cond = sync.NewCond(&conversation.mu)
+	conversation.driver = newDriver(conversation)
+	return conversation
+}
+
+// AgentConfig 是一次会话运行时从 Agent 档案取出的模型配置。
+type AgentConfig struct {
+	Model        string
+	SystemPrompt string
 }
 
 // Start 放搬运工上线。
-func (a *Agent) Start() {
+func (a *Conversation) Start() {
 	a.driver.start()
 }
 
-// Close 让搬运工下线、作用域收摊。
-func (a *Agent) Close() {
-	a.driver.stopAndJoin()
-	a.toolsReg.DropAgent(a.id)
-	a.scope.Close()
+// Close 让这段会话下线、账本收口；重复调用安全，第一次的结果会被保留。
+func (a *Conversation) Close() error {
+	a.closeOnce.Do(func() {
+		a.closeErr = a.close(a)
+	})
+	return a.closeErr
 }
 
-// ID 返回 agent 名。
-func (a *Agent) ID() string {
-	return a.id
+// AgentID 返回这段会话属于哪个长期 Agent。
+func (a *Conversation) AgentID() string {
+	return a.agentID
+}
+
+// SessionID 返回这段会话自己的账本号。
+func (a *Conversation) SessionID() string {
+	return a.sessionID
 }
 
 // State 返回 "idle"（闲）或 "busy"（忙）。
-func (a *Agent) State() string {
+func (a *Conversation) State() string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -80,9 +91,9 @@ func (a *Agent) State() string {
 	return "idle"
 }
 
-// WaitIdle 一直等到 agent 把手上的活干完：不在干活、且待办队列空。
+// WaitIdle 一直等到这段会话把手上的活干完：不在干活、且待办队列空。
 // 只看"忙"不够——消息刚投进来还没开跑的那一瞬也是"不忙"，等了等于没等。
-func (a *Agent) WaitIdle() {
+func (a *Conversation) WaitIdle() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -93,7 +104,7 @@ func (a *Agent) WaitIdle() {
 
 // Cancel 取消当前正在跑的步（模型请求、工具执行都会收到取消信号）。
 // 已吐的字和工具的善后按账本规矩走，绝不装作没发生。
-func (a *Agent) Cancel() {
+func (a *Conversation) Cancel() {
 	a.mu.Lock()
 	stop := a.stepStop
 	a.mu.Unlock()
@@ -103,27 +114,27 @@ func (a *Agent) Cancel() {
 }
 
 // SubmitFollowup 投一条开新轮的消息：忙时排队，本轮正常结束后才开新轮。
-func (a *Agent) SubmitFollowup(text string) error {
+func (a *Conversation) SubmitFollowup(text string) error {
 	return a.inbox.deliver(a.book, TargetNextTurn, text, true)
 }
 
 // Steer 中途捎话：忙时进当前轮的下一步；闲时没人可打扰，就当新轮的开头。
-func (a *Agent) Steer(text string) error {
+func (a *Conversation) Steer(text string) error {
 	return a.inbox.deliver(a.book, TargetNextStep, text, true)
 }
 
 // InjectMemo 塞一张小抄：不响铃不占待办，下次问模型时拼进上下文，不变成用户的话。
-func (a *Agent) InjectMemo(text string) error {
+func (a *Conversation) InjectMemo(text string) error {
 	return a.inbox.deliver(a.book, TargetMemo, text, false)
 }
 
-// Book 返回这个 agent 的账本（UI 读历史、审计用）。
-func (a *Agent) Book() *session.Session {
+// Book 返回这段会话的账本（UI 读历史、审计用）。
+func (a *Conversation) Book() *session.Session {
 	return a.book
 }
 
 // claimAsUserMessage 领出一份投递并落成用户的话——领出才进模型，两条账在这合上。
-func (a *Agent) claimAsUserMessage(item delivery) error {
+func (a *Conversation) claimAsUserMessage(item delivery) error {
 	_, err := a.book.RecordClaim(item.ID)
 	if err != nil {
 		return err
@@ -133,7 +144,7 @@ func (a *Agent) claimAsUserMessage(item delivery) error {
 }
 
 // stepContext 拿当前步的取消口；每步一个，Cancel 掐的就是它。
-func (a *Agent) stepContext() context.Context {
+func (a *Conversation) stepContext() context.Context {
 	ctx, stop := context.WithCancel(context.Background())
 	a.mu.Lock()
 	a.stepCtx = ctx
@@ -143,7 +154,7 @@ func (a *Agent) stepContext() context.Context {
 }
 
 // markWorking 先占住待办，防止队列刚领空时 WaitIdle 误判已经干完。
-func (a *Agent) markWorking() {
+func (a *Conversation) markWorking() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -151,7 +162,7 @@ func (a *Agent) markWorking() {
 }
 
 // markBusy 报告一轮已经正式开跑。
-func (a *Agent) markBusy() {
+func (a *Conversation) markBusy() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -159,7 +170,7 @@ func (a *Agent) markBusy() {
 }
 
 // markTurnDone 报告这一轮结束；搬运工可能还要接着办下一轮。
-func (a *Agent) markTurnDone() {
+func (a *Conversation) markTurnDone() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -167,7 +178,7 @@ func (a *Agent) markTurnDone() {
 }
 
 // markIdle 报闲并广播：所有等闲的人一起醒。
-func (a *Agent) markIdle() {
+func (a *Conversation) markIdle() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 

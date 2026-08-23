@@ -60,7 +60,7 @@ func newTestApp(t *testing.T) (*core.App, *Registry, *session.Session) {
 	app.RegisterService("tools", registry)
 
 	store := session.NewStore(session.NewMemoryJournal(), silentBroadcaster{})
-	book, err := store.Create("测试账")
+	book, err := store.Create("测试账", "测试 Agent", 1)
 	if err != nil {
 		t.Fatalf("开账失败：%v", err)
 	}

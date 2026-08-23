@@ -169,7 +169,7 @@ func TestReplayRebuildsIdenticalHistory(t *testing.T) {
 	store, s, _ := newTestStore(t)
 	recordScript(t, s)
 
-	replayed, err := store.Create("重放的账", s.Events()...)
+	replayed, err := store.Create("重放的账", "测试 Agent", 1, s.Events()...)
 	if err != nil {
 		t.Fatalf("重放失败：%v", err)
 	}
@@ -182,6 +182,46 @@ func TestReplayRebuildsIdenticalHistory(t *testing.T) {
 	}
 }
 
+func TestOpenRestoresExistingBook(t *testing.T) {
+	journal := NewMemoryJournal()
+	firstStore := NewStore(journal, &recordingBroadcaster{})
+	first, err := firstStore.Create("旧账", "测试 Agent", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recordScript(t, first)
+
+	secondStore := NewStore(journal, &recordingBroadcaster{})
+	opened, err := secondStore.Open("旧账")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(first.Events(), opened.Events()) {
+		t.Fatal("打开旧账后，所有事件都该回来")
+	}
+	if !reflect.DeepEqual(first.ModelHistory(), opened.ModelHistory()) {
+		t.Fatal("打开旧账后，模型历史也该一模一样")
+	}
+
+	_, err = secondStore.Create("旧账", "测试 Agent", 1)
+	if err == nil {
+		t.Fatal("已经打开的账本不能再当新账创建")
+	}
+}
+
+func TestOpenRejectsLegacyHeader(t *testing.T) {
+	journal := NewMemoryJournal()
+	err := journal.Create("旧账", Header{FormatVersion: 1, ID: "旧账"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := NewStore(journal, &recordingBroadcaster{})
+	_, err = store.Open("旧账")
+	if err == nil {
+		t.Fatal("没有 Agent 归属的旧账应该拒绝打开")
+	}
+}
+
 func TestReplayRejectsBrokenSeq(t *testing.T) {
 	store, _, _ := newTestStore(t)
 
@@ -189,7 +229,7 @@ func TestReplayRejectsBrokenSeq(t *testing.T) {
 		{Kind: KindUserMessage, Seq: 1, Data: []byte(`{"Text":"你好"}`)},
 		{Kind: KindUserMessage, Seq: 3, Data: []byte(`{"Text":"编号跳了"}`)},
 	}
-	_, err := store.Create("断号的账", seed...)
+	_, err := store.Create("断号的账", "测试 Agent", 1, seed...)
 	if err == nil {
 		t.Fatal("编号断了的重放该被拒绝")
 	}
@@ -202,7 +242,7 @@ func TestReplayRejectsUnknownRequiredKind(t *testing.T) {
 		{Kind: KindUserMessage, Seq: 1, Data: []byte(`{"Text":"你好"}`)},
 		{Kind: "ghost/critical", Seq: 2, Data: []byte(`{"x":1}`), SkipIfUnknown: false},
 	}
-	_, err := store.Create("带幽灵的账", seed...)
+	_, err := store.Create("带幽灵的账", "测试 Agent", 1, seed...)
 	if err == nil {
 		t.Fatal("不认识且必需的事件该让整本账拒读")
 	}
@@ -216,7 +256,7 @@ func TestReplaySkipsUnknownOptionalKind(t *testing.T) {
 		{Kind: "ghost/note", Seq: 2, Data: []byte(`{"x":1}`), SkipIfUnknown: true},
 		{Kind: KindUserMessage, Seq: 3, Data: []byte(`{"Text":"还在"}`)},
 	}
-	s, err := store.Create("带过客的账", seed...)
+	s, err := store.Create("带过客的账", "测试 Agent", 1, seed...)
 	if err != nil {
 		t.Fatalf("可跳过的事件不该挡住重放：%v", err)
 	}

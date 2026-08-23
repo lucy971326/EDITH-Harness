@@ -76,7 +76,7 @@ func newTestStore(t *testing.T) (*Store, *Session, *recordingBroadcaster) {
 	broadcaster := &recordingBroadcaster{}
 	store := NewStore(NewMemoryJournal(), broadcaster)
 
-	s, err := store.Create("测试账")
+	s, err := store.Create("测试账", "测试 Agent", 1)
 	if err != nil {
 		t.Fatalf("开账失败：%v", err)
 	}
@@ -152,7 +152,7 @@ func TestFailedAppendLeavesNoTrace(t *testing.T) {
 	journal := &failingJournal{inner: NewMemoryJournal()}
 	store := NewStore(journal, broadcaster)
 
-	s, err := store.Create("会失败的账")
+	s, err := store.Create("会失败的账", "测试 Agent", 1)
 	if err != nil {
 		t.Fatalf("开账失败：%v", err)
 	}

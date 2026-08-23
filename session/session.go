@@ -67,6 +67,16 @@ func (s *Session) ID() string {
 	return s.header.ID
 }
 
+// AgentID 返回这段会话所属的长期 Agent。
+func (s *Session) AgentID() string {
+	return s.header.AgentID
+}
+
+// ProfileRevision 返回开这段会话时 Agent 档案的版本，只作历史标记。
+func (s *Session) ProfileRevision() int {
+	return s.header.ProfileRevision
+}
+
 // Events 返回整本账的副本（改它不影响账）。
 func (s *Session) Events() []Event {
 	s.mu.Lock()

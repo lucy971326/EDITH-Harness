@@ -4,9 +4,15 @@ package core
 // 子继承父的服务表（同名可遮蔽），可用 Restrict 裁掉继承项；
 // 子广播的事件上浮到父的观察者；子 Close 后这一切随它消失，父毫发无损。
 func (a *App) ForAgent(agentName string) *App {
+	return a.ForChild(agentName)
+}
+
+// ForChild 从当前作用域派生一个子作用域。名字只用于诊断；子作用域继承父能力，
+// 关闭后只收自己的东西，不影响父作用域。
+func (a *App) ForChild(name string) *App {
 	return &App{
 		parent:      a,
-		agentName:   agentName,
+		agentName:   name,
 		services:    make(map[string]any),
 		listeners:   make(map[string][]Listener),
 		middlewares: make(map[string][]any),

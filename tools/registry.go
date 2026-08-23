@@ -12,14 +12,20 @@ import (
 type Registry struct {
 	mu       sync.Mutex
 	global   map[string]Tool
-	perAgent map[string]map[string]Tool
+	perAgent map[string]agentTools
+}
+
+// agentTools 是一个 Agent 的工具小表；only=true 时名单以外的全局工具也不可见。
+type agentTools struct {
+	tools map[string]Tool
+	only  bool
 }
 
 // NewRegistry 建一个空的登记处。
 func NewRegistry() *Registry {
 	return &Registry{
 		global:   make(map[string]Tool),
-		perAgent: make(map[string]map[string]Tool),
+		perAgent: make(map[string]agentTools),
 	}
 }
 
@@ -56,9 +62,13 @@ func (r *Registry) Lookup(name string, agent string) (Tool, bool) {
 	defer r.mu.Unlock()
 
 	if agent != "" {
-		tool, ok := r.perAgent[agent][name]
+		table, exists := r.perAgent[agent]
+		tool, ok := table.tools[name]
 		if ok {
 			return tool, true
+		}
+		if exists && table.only {
+			return Tool{}, false
 		}
 	}
 	tool, ok := r.global[name]
@@ -70,28 +80,81 @@ func (r *Registry) Schemas(agent string) []chat.ToolSchema {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	if agent != "" {
+		table, exists := r.perAgent[agent]
+		if exists && table.only {
+			return schemasFrom(table.tools)
+		}
+	}
 	seen := make(map[string]bool)
-	var schemas []chat.ToolSchema
-	for name, tool := range r.global {
-		schemas = append(schemas, tool.Schema)
-		seen[name] = true
+	schemas := schemasFrom(r.global)
+	for _, schema := range schemas {
+		seen[schema.Name] = true
 	}
 	if agent != "" {
-		for name, tool := range r.perAgent[agent] {
-			if !seen[name] {
-				schemas = append(schemas, tool.Schema)
-				seen[name] = true
-				continue
-			}
-			// 遮蔽：换掉全局那份说明书
-			for i, schema := range schemas {
-				if schema.Name == name {
-					schemas[i] = tool.Schema
+		table, exists := r.perAgent[agent]
+		if exists {
+			for name, tool := range table.tools {
+				if !seen[name] {
+					schemas = append(schemas, tool.Schema)
+					seen[name] = true
+					continue
+				}
+				// 遮蔽：换掉全局那份说明书
+				for i, schema := range schemas {
+					if schema.Name == name {
+						schemas[i] = tool.Schema
+					}
 				}
 			}
 		}
 	}
 	return schemas
+}
+
+// SetAllowed 给一个 Agent 绑定明确的工具白名单。名单外的全局工具也不可见；
+// 名单里的每个工具必须已由应用启动时登记。
+func (r *Registry) SetAllowed(agent string, names []string) error {
+	if agent == "" {
+		return fmt.Errorf("Agent 工具白名单必须写明 agent")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	table := make(map[string]Tool, len(names))
+	for _, name := range names {
+		tool, exists := r.global[name]
+		if !exists {
+			return fmt.Errorf("agent %s 要用工具 %s，但应用没登记它", agent, name)
+		}
+		table[name] = tool
+	}
+	r.perAgent[agent] = agentTools{tools: table, only: true}
+	return nil
+}
+
+// CheckAllowed 检查一个 Agent 档案的工具名单是否都已经安装，不改变登记处。
+func (r *Registry) CheckAllowed(names []string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, name := range names {
+		_, exists := r.global[name]
+		if !exists {
+			return fmt.Errorf("应用没登记工具 %s", name)
+		}
+	}
+	return nil
+}
+
+// Names 列出当前已安装的全局工具名；主要给组装层生成 Agent 档案用。
+func (r *Registry) Names() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	names := make([]string, 0, len(r.global))
+	for name := range r.global {
+		names = append(names, name)
+	}
+	return names
 }
 
 // DropAgent 扔掉某个 agent 的整张小表；agent 关闭时收摊用，防泄漏。
@@ -107,12 +170,20 @@ func (r *Registry) tableFor(agent string) map[string]Tool {
 	if agent == "" {
 		return r.global
 	}
-	table, exists := r.perAgent[agent]
+	entry, exists := r.perAgent[agent]
 	if !exists {
-		table = make(map[string]Tool)
-		r.perAgent[agent] = table
+		entry = agentTools{tools: make(map[string]Tool)}
+		r.perAgent[agent] = entry
 	}
-	return table
+	return entry.tools
+}
+
+func schemasFrom(table map[string]Tool) []chat.ToolSchema {
+	schemas := make([]chat.ToolSchema, 0, len(table))
+	for _, tool := range table {
+		schemas = append(schemas, tool.Schema)
+	}
+	return schemas
 }
 
 func scopeName(agent string) string {

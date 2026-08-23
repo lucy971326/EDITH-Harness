@@ -26,7 +26,7 @@ func TestPluginRegistersStore(t *testing.T) {
 		t.Fatal("session 插件登记的 Store 不该是 nil")
 	}
 
-	_, err = store.Create("测试账")
+	_, err = store.Create("测试账", "测试 Agent", 1)
 	if err != nil {
 		t.Fatalf("登记的 Journal 没有生效：%v", err)
 	}

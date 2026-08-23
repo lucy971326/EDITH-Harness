@@ -375,15 +375,15 @@
           <article class="map-node map-card" id="module-session" data-module="session" tabindex="0">
             <div class="module-kicker">必装插件 · 紧跟持久化</div>
             <h2>session</h2>
-            <p>领取 Journal 建账本管家，把 <code>sessions</code> 能力放进 App。</p>
+            <p>领取 Journal 建账本管家；能新开账，也能打开旧账。</p>
             <div class="chips"><span class="chip">Store</span><span class="chip">Journal</span><span class="chip">History</span></div>
           </article>
 
           <article class="map-node map-card" id="module-jsonl" data-module="jsonl" tabindex="0">
             <div class="module-kicker">持久化插件 · 先安装</div>
-            <h2>persistence/jsonl</h2>
-            <p>把 JSONL Journal 放进 App；以后 SQLite 在这里替换它。</p>
-            <div class="chips"><span class="chip">Journal</span><span class="chip">fsync</span><span class="chip">恢复烂尾</span></div>
+            <h2>persistence</h2>
+            <p>jsonl 保存聊天账；profilejson 保存长期 Agent 档案。</p>
+            <div class="chips"><span class="chip">Journal</span><span class="chip">Agent profiles</span><span class="chip">fsync</span></div>
           </article>
 
           <article class="map-node map-card" id="module-llm" data-module="llm" tabindex="0">
@@ -403,8 +403,8 @@
           <article class="map-node map-card" id="module-loop" data-module="loop" tabindex="0">
             <div class="module-kicker">当前主循环插件 · 最后</div>
             <h2>loop</h2>
-            <p>领取 sessions、llm、tools，造出 Agent 名册和唯一搬运工。</p>
-            <div class="chips"><span class="chip">Roster</span><span class="chip">Agent</span><span class="chip">Driver</span></div>
+            <p>领取档案、sessions、llm、tools；一个 Agent 可开很多会话搬运工。</p>
+            <div class="chips"><span class="chip">Roster</span><span class="chip">Profile</span><span class="chip">Conversation</span></div>
           </article>
 
           <article class="map-node map-card" id="module-localenv" data-module="localenv" tabindex="0">
@@ -443,6 +443,7 @@
               <div class="rack-title">② 内核自己的普通能力</div>
               <div class="capability-list">
                 <div class="capability" id="cap-journal"><code>journal</code><span>session.Journal</span></div>
+                <div class="capability" id="cap-profiles"><code>agent-profiles</code><span>loop.ProfileStore</span></div>
                 <div class="capability" id="cap-sessions"><code>sessions</code><span>*session.Store</span></div>
                 <div class="capability" id="cap-llm"><code>llm</code><span>*llm.Service</span></div>
                 <div class="capability" id="cap-agents"><code>agents</code><span>*loop.Roster</span></div>
@@ -474,7 +475,7 @@
 
           <aside class="map-node scope-card" id="agent-scope" tabindex="0">
             <strong>Agent A 小场地</strong>
-            <p>先找自己的能力，再找全局；可以遮蔽或禁止继承。自己的事件会往全局上浮。</p>
+            <p>Agent 的工具和人格在这里；每段会话再派一层小场地，收件箱、取消和账本完全分开。</p>
           </aside>
         </div>
       </div>
@@ -489,14 +490,14 @@
   <script>
     const modules = {
       jsonl: {
-        title: "persistence/jsonl · JSONL 账本插件",
-        path: "persistence/jsonl/plugin.go → journal.go",
-        text: "它直接写 app.RegisterService(\"journal\", journal)。session 随后同步领取它记账；它不监听 Broadcast，所以写盘失败会直接让记账失败。以后 sqlite.Plugin 会替换它，而不是和它同时安装。"
+        title: "persistence · 两种保存物",
+        path: "persistence/jsonl/ + persistence/profilejson/",
+        text: "jsonl 直接登记 journal，保存每段聊天发生了什么；profilejson 直接登记 agent-profiles，保存小红是谁、用什么模型、人设和工具名。两者分开，换 SQLite 时也可分别替换。"
       },
       session: {
         title: "session · 账本",
         path: "session/plugin.go → store.go → session.go",
-        text: "必装插件。它直接按 \"journal\" 领取 Journal，创建 Store 并登记 \"sessions\"。它保证账只追加、编号连续；模型历史、恢复和审计都从同一本账出发。"
+        text: "必装插件。它直接按 \"journal\" 领取 Journal，创建 Store 并登记 \"sessions\"。每本账封面写清 SessionID 属于哪个 AgentID；模型历史、恢复和审计都从同一本账出发。"
       },
       llm: {
         title: "llm · 模型入口",
@@ -511,7 +512,7 @@
       loop: {
         title: "loop · 唯一搬运工",
         path: "loop/plugin.go → roster.go → agent.go → driver.go",
-        text: "领取 sessions、llm、tools，登记 agents。每个 Agent 只有一个 driver，顺序处理收件箱；支持 Followup、Steer、Memo、取消、等待空闲和按旧账恢复。"
+        text: "领取 agent-profiles、sessions、llm、tools，登记 agents。长期 Agent 可以同时有很多 Conversation；每段会话各有 Driver、收件箱、取消和账本。恢复时按账本的 AgentID 领取当前档案。"
       },
       chat: {
         title: "chat · 公共词汇",
@@ -527,6 +528,7 @@
 
     const connections = [
       ["module-jsonl", "cap-journal", "#6c8e51", "放入"],
+      ["module-jsonl", "cap-profiles", "#6c8e51", "放入"],
       ["cap-journal", "module-session", "#6c8e51", "领取"],
       ["module-session", "cap-sessions", "#149782", "放入"],
       ["module-llm", "cap-llm", "#8058c7", "放入"],
@@ -534,6 +536,7 @@
       ["cap-sessions", "module-loop", "#478b38", "领取"],
       ["cap-llm", "module-loop", "#478b38", "领取"],
       ["cap-tools", "module-loop", "#478b38", "领取"],
+      ["cap-profiles", "module-loop", "#478b38", "领取"],
       ["module-loop", "cap-agents", "#478b38", "放入"],
       ["module-localenv", "cap-files", "#b25442", "成套放入"],
       ["module-localenv", "cap-process", "#b25442", "成套放入"],

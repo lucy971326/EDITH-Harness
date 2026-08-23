@@ -8,32 +8,34 @@
 
 ## 整体心智模型
 
-每个 Agent 都有自己的收件箱、账本和一个搬运工。搬运工只有一个，所以同一个 Agent 的事情按顺序处理，不会同时跑乱。
+一个 Agent 是长期保存的“人设档案”；它可以同时有很多段会话。每段会话各有收件箱、账本和一个搬运工，所以不会串台；同一段会话里的事情仍按顺序处理。
 
 ```mermaid
 flowchart LR
-    Caller["UI / 调用方"] --> Agent["Agent<br/>对外门面"]
+    Caller["UI / 调用方"] --> Profile["Agent 档案<br/>模型 / 人设 / 工具名"]
+    Profile --> Conversation["Conversation<br/>一段会话的对外门面"]
 
-    subgraph OneAgent["一个 Agent"]
-        Agent --> Inbox["inbox<br/>收件箱"]
+    subgraph OneSession["一段会话"]
+        Conversation --> Inbox["inbox<br/>收件箱"]
         Inbox --> Driver["driver<br/>唯一搬运工"]
         Driver <--> Book["session<br/>账本"]
         Driver <--> Model["llm<br/>模型"]
         Driver <--> Tools["tools<br/>工具"]
     end
 
-    Driver --> Agent
+    Driver --> Conversation
 ```
 
 可以这样记：
 
-- `Agent`：窗口，外面的人只跟它说话。
+- `Agent 档案`：长期保存的小红，记住模型、人设和允许用的工具名。
+- `Conversation`：一个聊天窗口，外面的人只跟它说话。
 - `inbox`：收件箱，消息先放这里排队。
 - `driver`：唯一搬运工，负责不断领活和干活。
 - `session`：账本，发生过什么都以它为准。
 - `llm`：模型入口。
 - `tools`：工具执行入口。
-- `Roster`：Agent 名册，负责创建、查找和关闭 Agent。
+- `Roster`：名册，负责管理 Agent 档案，并创建、恢复和关闭会话。
 
 ## 三种消息有什么区别
 
@@ -113,7 +115,8 @@ func submit(app *core.App) error {
         return err
     }
 
-    agent, err := roster.Create("assistant", loop.AgentConfig{
+    err = roster.CreateAgent(loop.AgentProfile{
+        ID:           "assistant",
         Model:        "model-name",
         SystemPrompt: "你是一个助手",
     })
@@ -121,17 +124,23 @@ func submit(app *core.App) error {
         return err
     }
 
-    err = agent.SubmitFollowup("帮我处理这件事")
+    conversation, err := roster.StartSession("assistant", "chat-001")
     if err != nil {
         return err
     }
-    agent.WaitIdle()
+
+    err = conversation.SubmitFollowup("帮我处理这件事")
+    if err != nil {
+        return err
+    }
+    conversation.WaitIdle()
     return nil
 }
 ```
 
-`loop.Plugin` 启动时需要三样东西已经装好：
+`loop.Plugin` 启动时需要四样东西已经装好：
 
+- `"agent-profiles"`：长期 Agent 档案库；
 - `"sessions"`：账本管家；
 - `"llm"`：模型入口；
 - `"tools"`：工具登记处。
@@ -141,10 +150,11 @@ func submit(app *core.App) error {
 ## 读代码的顺序
 
 1. `plugin.go`：loop 怎么装进 App；
-2. `roster.go`：怎么创建和管理 Agent；
-3. `agent.go`：对外有哪些操作；
-4. `inbox.go`：三种消息怎么排队；
-5. `driver.go`：主循环怎么跑；
-6. `recover.go`：重启后怎么收拾旧账。
+2. `profile.go`：长期 Agent 档案长什么样；
+3. `roster.go`：怎么管理档案和多段会话；
+4. `agent.go`：一段会话对外有哪些操作；
+5. `inbox.go`：三种消息怎么排队；
+6. `driver.go`：主循环怎么跑；
+7. `recover.go`：重启后怎么收拾旧账。
 
 读完这六个文件，就能掌握整个 loop 模块。

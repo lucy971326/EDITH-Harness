@@ -21,8 +21,10 @@ type Event struct {
 
 // Header 是账本封面：整本账一个格式版本。
 type Header struct {
-	FormatVersion int    // 格式版本，当前 1
-	ID            string // 账本号
+	FormatVersion   int    // 格式版本，当前 2
+	ID              string // 账本号，也是会话号
+	AgentID         string // 这段会话属于哪个长期 Agent
+	ProfileRevision int    // 开这段会话时 Agent 档案的版本
 }
 
 // 内核事件的种类。全部走专用记账方法，公开 AppendEvent 见到它们直接拒绝。
