@@ -31,7 +31,8 @@ type Agent struct {
 
 	mu       sync.Mutex
 	cond     *sync.Cond // 闲了广播一声，等闲的人全醒
-	busy     bool       // 搬运工正在干活
+	working  bool       // 搬运工已经接活，可能刚把队列领空、还没正式开轮
+	busy     bool       // 正在跑一轮；State 对外只报这个
 	stepCtx  context.Context
 	stepStop context.CancelFunc
 }
@@ -85,7 +86,7 @@ func (a *Agent) WaitIdle() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	for a.busy || a.inbox.pending() {
+	for a.working || a.busy || a.inbox.pending() {
 		a.cond.Wait()
 	}
 }
@@ -141,7 +142,15 @@ func (a *Agent) stepContext() context.Context {
 	return ctx
 }
 
-// markBusy 报忙。
+// markWorking 先占住待办，防止队列刚领空时 WaitIdle 误判已经干完。
+func (a *Agent) markWorking() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	a.working = true
+}
+
+// markBusy 报告一轮已经正式开跑。
 func (a *Agent) markBusy() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -149,11 +158,20 @@ func (a *Agent) markBusy() {
 	a.busy = true
 }
 
+// markTurnDone 报告这一轮结束；搬运工可能还要接着办下一轮。
+func (a *Agent) markTurnDone() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	a.busy = false
+}
+
 // markIdle 报闲并广播：所有等闲的人一起醒。
 func (a *Agent) markIdle() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
+	a.working = false
 	a.busy = false
 	a.cond.Broadcast()
 }

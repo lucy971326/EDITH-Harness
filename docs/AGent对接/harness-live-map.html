@@ -1,0 +1,584 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Harness 整体结构</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --page: #f7f9fc;
+      --paper: #ffffff;
+      --text: #182230;
+      --muted: #687386;
+      --line: #dce3ec;
+      --core: #3977e8;
+      --session: #149782;
+      --llm: #8058c7;
+      --tools: #d67824;
+      --loop: #478b38;
+      --chat: #60758a;
+      --shadow: 0 8px 24px rgba(31, 45, 61, .08);
+    }
+
+    * { box-sizing: border-box; }
+    html { min-width: 320px; background: var(--page); }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background: var(--page);
+      font-family: Inter, "SF Pro Display", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    button { font: inherit; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
+
+    .shell {
+      width: min(1600px, 100%);
+      margin: 0 auto;
+      padding: 26px clamp(14px, 2.5vw, 36px) 34px;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      gap: 20px;
+      margin-bottom: 16px;
+    }
+
+    .eyebrow {
+      margin: 0 0 5px;
+      color: var(--core);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(25px, 3.2vw, 38px);
+      line-height: 1.12;
+      letter-spacing: -.035em;
+    }
+
+    .subtitle { margin: 8px 0 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+
+    .reset-button {
+      flex: 0 0 auto;
+      padding: 9px 13px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      color: #465568;
+      background: var(--paper);
+      cursor: pointer;
+    }
+
+    .reset-button:hover { border-color: #aeb9c7; }
+
+    .board {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--paper);
+      box-shadow: var(--shadow);
+    }
+
+    .board-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 20px;
+      min-height: 54px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .board-head strong { font-size: 14px; }
+    .board-head span { color: var(--muted); font-size: 12px; }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .legend span { display: inline-flex; align-items: center; gap: 5px; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; }
+    .map-scroll { overflow: auto; overscroll-behavior: contain; }
+
+    .architecture-map {
+      position: relative;
+      width: 1480px;
+      height: 820px;
+      background-color: #fbfcfe;
+      background-image:
+        linear-gradient(#edf1f6 1px, transparent 1px),
+        linear-gradient(90deg, #edf1f6 1px, transparent 1px);
+      background-size: 32px 32px;
+    }
+
+    .links {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      overflow: visible;
+    }
+
+    .map-node {
+      position: absolute;
+      z-index: 2;
+      user-select: none;
+      touch-action: none;
+      cursor: grab;
+    }
+
+    .map-node.dragging {
+      z-index: 5;
+      cursor: grabbing;
+      box-shadow: 0 15px 34px rgba(31, 45, 61, .17);
+    }
+
+    .map-card {
+      width: 215px;
+      padding: 14px;
+      border: 1px solid var(--accent-border);
+      border-left: 4px solid var(--accent);
+      border-radius: 12px;
+      background: var(--paper);
+      box-shadow: 0 5px 15px rgba(31, 45, 61, .06);
+      transition: border-color .15s ease, box-shadow .15s ease, opacity .15s ease;
+    }
+
+    .map-card:hover,
+    .map-card.selected { border-color: var(--accent); box-shadow: 0 8px 22px rgba(31, 45, 61, .12); }
+    .map-card.dim { opacity: .32; }
+
+    .module-kicker {
+      color: var(--accent);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: .08em;
+    }
+
+    .map-card h2 { margin: 5px 0; font-size: 18px; }
+    .map-card p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
+    .chips { margin-top: 9px; }
+
+    .chip {
+      display: inline-block;
+      margin: 2px 3px 0 0;
+      padding: 3px 6px;
+      border-radius: 6px;
+      color: var(--accent);
+      background: var(--accent-bg);
+      font-size: 9px;
+      font-weight: 700;
+    }
+
+    #module-session { left: 55px; top: 70px; --accent: var(--session); --accent-border: #b9ded7; --accent-bg: #eaf7f4; }
+    #module-llm { left: 55px; top: 310px; --accent: var(--llm); --accent-border: #d7caed; --accent-bg: #f3effa; }
+    #module-tools { left: 55px; top: 550px; --accent: var(--tools); --accent-border: #ecd1b7; --accent-bg: #fbf2e9; }
+    #app-pillar { left: 470px; top: 88px; }
+    #module-loop { left: 1175px; top: 170px; --accent: var(--loop); --accent-border: #c8dfc2; --accent-bg: #eef7ec; }
+    #agent-scope { left: 1160px; top: 470px; }
+    #module-chat { left: 585px; top: 660px; --accent: var(--chat); --accent-border: #cbd5df; --accent-bg: #f0f3f6; }
+
+    .app-pillar {
+      width: 540px;
+      padding: 17px;
+      border: 2px solid #91b5f4;
+      border-radius: 15px;
+      background: #f7faff;
+      box-shadow: 0 9px 25px rgba(57, 119, 232, .1);
+    }
+
+    .app-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #d8e5fa;
+    }
+
+    .app-title strong { color: #245fbf; font-size: 20px; }
+    .app-title span { color: var(--muted); font-size: 10px; }
+
+    .rack {
+      margin-top: 13px;
+      padding: 11px;
+      border: 1px solid #d8e5fa;
+      border-radius: 10px;
+      background: var(--paper);
+    }
+
+    .rack-title { margin-bottom: 8px; color: #64748a; font-size: 10px; font-weight: 800; }
+    .capability-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; }
+
+    .capability {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 9px;
+      border-radius: 7px;
+      background: #f2f6fc;
+      font-size: 10px;
+    }
+
+    .capability code { color: #245fbf; font-weight: 800; }
+    .capability span { color: var(--muted); }
+    .event-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; }
+
+    .event-cell {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      padding: 8px 9px;
+      border-radius: 7px;
+      background: #f7f9fc;
+    }
+
+    .event-cell strong { color: #35445a; font-size: 10px; }
+    .event-cell span { color: var(--muted); font-size: 9px; }
+
+    .lifecycle {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 12px;
+      color: #53627a;
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .scope-card {
+      width: 240px;
+      padding: 14px;
+      border: 1px dashed #88a9de;
+      border-radius: 12px;
+      background: #f8fbff;
+      box-shadow: 0 5px 15px rgba(31, 45, 61, .05);
+    }
+
+    .scope-card strong { color: #2d63ba; font-size: 14px; }
+    .scope-card p { margin: 7px 0 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
+
+    .detail-bar {
+      display: grid;
+      grid-template-columns: minmax(210px, .6fr) 1.4fr;
+      gap: 24px;
+      min-height: 88px;
+      padding: 15px 18px;
+      border-top: 1px solid var(--line);
+      background: #fff;
+      cursor: default;
+    }
+
+    .detail-bar h3 { margin: 0 0 5px; font-size: 14px; }
+    .detail-bar .path { color: var(--core); font-family: "SFMono-Regular", Consolas, monospace; font-size: 10px; }
+    .detail-bar p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.65; }
+
+    @media (max-width: 760px) {
+      .topbar { align-items: flex-start; }
+      .board-head { align-items: flex-start; flex-direction: column; gap: 8px; }
+      .legend { justify-content: flex-start; }
+      .detail-bar { grid-template-columns: 1fr; gap: 8px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { scroll-behavior: auto !important; transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Harness · Current Architecture</p>
+        <h1>整体结构</h1>
+        <p class="subtitle">只画已经实现的部分。拖动任意组件整理布局，连线会自动跟随。</p>
+      </div>
+      <button class="reset-button" id="reset-layout" type="button">恢复初始位置</button>
+    </header>
+
+    <section class="board" aria-label="Harness 整体结构图">
+      <div class="board-head">
+        <div><strong>App 是中间的公共场地</strong><span> · 点击模块查看说明</span></div>
+        <div class="legend" aria-label="连线图例">
+          <span><i class="dot" style="background:#3977e8"></i>作用域</span>
+          <span><i class="dot" style="background:#478b38"></i>能力存取</span>
+          <span><i class="dot" style="background:#60758a"></i>公共词汇</span>
+        </div>
+      </div>
+
+      <div class="map-scroll">
+        <div class="architecture-map" id="architecture-map">
+          <svg class="links" id="architecture-links" aria-hidden="true"></svg>
+
+          <article class="map-node map-card" id="module-session" data-module="session" tabindex="0">
+            <div class="module-kicker">必装插件 · 第一个</div>
+            <h2>session</h2>
+            <p>用 Journal 建账本管家，把 <code>sessions</code> 能力放进 App。</p>
+            <div class="chips"><span class="chip">Store</span><span class="chip">Journal</span><span class="chip">History</span></div>
+          </article>
+
+          <article class="map-node map-card" id="module-llm" data-module="llm" tabindex="0">
+            <div class="module-kicker">基础能力插件</div>
+            <h2>llm</h2>
+            <p>提供统一模型入口；真正的模型适配器登记到它的插座排。</p>
+            <div class="chips"><span class="chip">Service</span><span class="chip">Adapter</span><span class="chip">Stream</span></div>
+          </article>
+
+          <article class="map-node map-card" id="module-tools" data-module="tools" tabindex="0">
+            <div class="module-kicker">基础能力插件</div>
+            <h2>tools</h2>
+            <p>提供工具登记处和执行流水线，调用、开跑、结果都记账。</p>
+            <div class="chips"><span class="chip">Registry</span><span class="chip">Pipeline</span><span class="chip">Guard</span></div>
+          </article>
+
+          <article class="map-node map-card" id="module-loop" data-module="loop" tabindex="0">
+            <div class="module-kicker">当前主循环插件 · 最后</div>
+            <h2>loop</h2>
+            <p>领取 sessions、llm、tools，造出 Agent 名册和唯一搬运工。</p>
+            <div class="chips"><span class="chip">Roster</span><span class="chip">Agent</span><span class="chip">Driver</span></div>
+          </article>
+
+          <article class="map-node map-card" id="module-chat" data-module="chat" tabindex="0">
+            <div class="module-kicker">中立词汇 · 不是插件</div>
+            <h2>chat</h2>
+            <p>Message、ToolCall、ToolResult、Delta 等公共数据格式。</p>
+            <div class="chips"><span class="chip">Message</span><span class="chip">Delta</span><span class="chip">Usage</span></div>
+          </article>
+
+          <section class="map-node app-pillar" id="app-pillar" tabindex="0" aria-label="App 能力柱">
+            <div class="app-title">
+              <strong>core.App</strong>
+              <span>能力表 · 事件系统 · 作用域 · 收摊顺序</span>
+            </div>
+
+            <div class="rack">
+              <div class="rack-title">能力表 · 插件按名字放入和领取</div>
+              <div class="capability-list">
+                <div class="capability" id="cap-sessions"><code>sessions</code><span>*session.Store</span></div>
+                <div class="capability" id="cap-llm"><code>llm</code><span>*llm.Service</span></div>
+                <div class="capability" id="cap-tools"><code>tools</code><span>*tools.Registry</span></div>
+                <div class="capability" id="cap-agents"><code>agents</code><span>*loop.Roster</span></div>
+              </div>
+            </div>
+
+            <div class="rack">
+              <div class="rack-title">四种事件执行方式 · 各有自己的失败规矩</div>
+              <div class="event-grid">
+                <div class="event-cell"><strong>Broadcast</strong><span>通知观察者，谁崩谁隔离</span></div>
+                <div class="event-cell"><strong>RunChain</strong><span>层层包住，可拦可改</span></div>
+                <div class="event-cell"><strong>Sequential</strong><span>排队执行，失败就停</span></div>
+                <div class="event-cell"><strong>Concurrent</strong><span>一起执行，最后收齐错误</span></div>
+              </div>
+            </div>
+
+            <div class="lifecycle"><span>Install：按顺序启动</span><span>Close：倒序收摊</span></div>
+          </section>
+
+          <aside class="map-node scope-card" id="agent-scope" tabindex="0">
+            <strong>Agent A 小场地</strong>
+            <p>先找自己的能力，再找全局；可以遮蔽或禁止继承。自己的事件会往全局上浮。</p>
+          </aside>
+        </div>
+      </div>
+
+      <div class="detail-bar" id="module-detail">
+        <div><h3>点击一个模块</h3><div class="path">查看它的代码入口</div></div>
+        <p>拖动不会打开说明；轻点 session、llm、tools、loop 或 chat 才会查看详情。</p>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const modules = {
+      session: {
+        title: "session · 账本",
+        path: "session/plugin.go → store.go → session.go",
+        text: "必装的第一个插件。它接收 Journal，创建 Store 并登记 sessions。它保证账只追加、编号连续；模型历史、恢复和审计都从同一本账出发。"
+      },
+      llm: {
+        title: "llm · 模型入口",
+        path: "llm/plugin.go → service.go → types.go",
+        text: "登记 llm 能力，统一 Stream 请求、模型选择和错误。具体服务商适配器以后插进来；当前只有测试剧本适配器。"
+      },
+      tools: {
+        title: "tools · 工具流水线",
+        path: "tools/plugin.go → registry.go → pipeline.go",
+        text: "登记 tools 能力。工具先入表，再按固定流程执行和记账。工具已经开跑却失去结果时，绝不装成 skipped。"
+      },
+      loop: {
+        title: "loop · 唯一搬运工",
+        path: "loop/plugin.go → roster.go → agent.go → driver.go",
+        text: "领取 sessions、llm、tools，登记 agents。每个 Agent 只有一个 driver，顺序处理收件箱；支持 Followup、Steer、Memo、取消、等待空闲和按旧账恢复。"
+      },
+      chat: {
+        title: "chat · 公共词汇",
+        path: "chat/message.go",
+        text: "它不是插件，也不占 App 的能力位。session、llm、tools 共同使用 Message、Attachment、ToolCall、ToolResult、Usage、Delta 和 ToolSchema。"
+      }
+    };
+
+    const connections = [
+      ["module-session", "cap-sessions", "#149782", "放入"],
+      ["module-llm", "cap-llm", "#8058c7", "放入"],
+      ["module-tools", "cap-tools", "#d67824", "放入"],
+      ["cap-sessions", "module-loop", "#478b38", "领取"],
+      ["cap-llm", "module-loop", "#478b38", "领取"],
+      ["cap-tools", "module-loop", "#478b38", "领取"],
+      ["module-loop", "cap-agents", "#478b38", "放入"],
+      ["app-pillar", "agent-scope", "#3977e8", "派生"],
+      ["module-chat", "module-session", "#60758a", "共用"],
+      ["module-chat", "module-llm", "#60758a", "共用"],
+      ["module-chat", "module-tools", "#60758a", "共用"]
+    ];
+
+    const map = document.getElementById("architecture-map");
+    const svg = document.getElementById("architecture-links");
+    const cards = [...document.querySelectorAll("[data-module]")];
+    const nodes = [...document.querySelectorAll(".map-node")];
+    const detail = document.getElementById("module-detail");
+    const initialPositions = new Map(nodes.map(node => [node.id, { left: node.offsetLeft, top: node.offsetTop }]));
+
+    function mapRectOf(id) {
+      const node = document.getElementById(id);
+      const nodeBox = node.getBoundingClientRect();
+      const mapBox = map.getBoundingClientRect();
+      return {
+        left: nodeBox.left - mapBox.left,
+        top: nodeBox.top - mapBox.top,
+        width: nodeBox.width,
+        height: nodeBox.height
+      };
+    }
+
+    function edgePoint(rect, target) {
+      const center = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      const dx = target.x - center.x;
+      const dy = target.y - center.y;
+      if (dx === 0 && dy === 0) return center;
+
+      const scaleX = dx === 0 ? Infinity : rect.width / 2 / Math.abs(dx);
+      const scaleY = dy === 0 ? Infinity : rect.height / 2 / Math.abs(dy);
+      const scale = Math.min(scaleX, scaleY);
+      return { x: center.x + dx * scale, y: center.y + dy * scale };
+    }
+
+    function drawConnections() {
+      const markers = connections.map(([, , color], index) => `
+        <marker id="arrow-${index}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="${color}"></path>
+        </marker>`).join("");
+
+      const lines = connections.map(([from, to, color, label], index) => {
+        const fromRect = mapRectOf(from);
+        const toRect = mapRectOf(to);
+        const fromCenter = { x: fromRect.left + fromRect.width / 2, y: fromRect.top + fromRect.height / 2 };
+        const toCenter = { x: toRect.left + toRect.width / 2, y: toRect.top + toRect.height / 2 };
+        const start = edgePoint(fromRect, toCenter);
+        const end = edgePoint(toRect, fromCenter);
+        const dx = end.x - start.x;
+        const bend = Math.max(34, Math.abs(dx) * .28);
+        const direction = dx >= 0 ? 1 : -1;
+        const d = `M ${start.x} ${start.y} C ${start.x + bend * direction} ${start.y}, ${end.x - bend * direction} ${end.y}, ${end.x} ${end.y}`;
+        const labelX = (start.x + end.x) / 2;
+        const labelY = (start.y + end.y) / 2 - 6;
+        return `<path d="${d}" fill="none" stroke="${color}" stroke-width="1.5" stroke-opacity=".62" marker-end="url(#arrow-${index})"></path>
+          <text x="${labelX}" y="${labelY}" text-anchor="middle" fill="${color}" font-size="9" font-weight="700">${label}</text>`;
+      }).join("");
+
+      svg.innerHTML = `<defs>${markers}</defs>${lines}`;
+    }
+
+    function selectModule(name) {
+      const info = modules[name];
+      cards.forEach(card => {
+        const selected = card.dataset.module === name;
+        card.classList.toggle("selected", selected);
+        card.classList.toggle("dim", !selected);
+      });
+      detail.innerHTML = `<div><h3>${info.title}</h3><div class="path">${info.path}</div></div><p>${info.text}</p>`;
+    }
+
+    function clearSelection() {
+      cards.forEach(card => card.classList.remove("selected", "dim"));
+    }
+
+    cards.forEach(card => {
+      card.addEventListener("keydown", event => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          selectModule(card.dataset.module);
+        }
+      });
+    });
+
+    nodes.forEach(node => {
+      node.addEventListener("pointerdown", event => {
+        if (event.button !== 0) return;
+        const startPointer = { x: event.clientX, y: event.clientY };
+        const startNode = { left: node.offsetLeft, top: node.offsetTop };
+        let moved = false;
+        node.setPointerCapture(event.pointerId);
+
+        const move = moveEvent => {
+          const dx = moveEvent.clientX - startPointer.x;
+          const dy = moveEvent.clientY - startPointer.y;
+          if (Math.abs(dx) + Math.abs(dy) > 4) moved = true;
+          if (!moved) return;
+
+          node.classList.add("dragging");
+          const maxLeft = map.clientWidth - node.offsetWidth;
+          const maxTop = map.clientHeight - node.offsetHeight;
+          node.style.left = `${Math.max(0, Math.min(maxLeft, startNode.left + dx))}px`;
+          node.style.top = `${Math.max(0, Math.min(maxTop, startNode.top + dy))}px`;
+          drawConnections();
+        };
+
+        const end = endEvent => {
+          if (node.hasPointerCapture(endEvent.pointerId)) {
+            node.releasePointerCapture(endEvent.pointerId);
+          }
+          node.removeEventListener("pointermove", move);
+          node.removeEventListener("pointerup", end);
+          node.removeEventListener("pointercancel", end);
+          node.classList.remove("dragging");
+          if (!moved && node.dataset.module) selectModule(node.dataset.module);
+        };
+
+        node.addEventListener("pointermove", move);
+        node.addEventListener("pointerup", end);
+        node.addEventListener("pointercancel", end);
+      });
+    });
+
+    detail.addEventListener("click", clearSelection);
+
+    document.getElementById("reset-layout").addEventListener("click", () => {
+      nodes.forEach(node => {
+        const position = initialPositions.get(node.id);
+        node.style.left = `${position.left}px`;
+        node.style.top = `${position.top}px`;
+      });
+      clearSelection();
+      drawConnections();
+    });
+
+    window.addEventListener("resize", drawConnections);
+    requestAnimationFrame(drawConnections);
+  </script>
+</body>
+</html>

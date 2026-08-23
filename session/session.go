@@ -10,8 +10,8 @@ import (
 	"harness/chat"
 )
 
-// Broadcaster 是"记完账喊一嗓子"的出口。session 不依赖 core——
-// 谁想收通知谁实现这个接口（core.App 天然满足），组装在 main 完成。
+// Broadcaster 是"记完账喊一嗓子"的出口。账本本体只依赖这个小接口——
+// 谁想收通知谁实现它（core.App 天然满足），组装时注入。
 type Broadcaster interface {
 	Broadcast(name string, payload any)
 }
@@ -25,12 +25,13 @@ type Appended struct {
 	Event     Event  // 那笔账的副本
 }
 
-// ErrInBroadcast：广播回调里同步记账被拒绝——这时记会插账或死锁。
-// 回调里要记账就投给 AppendLater，广播结束后自动补记。
+// ErrInBroadcast：广播回调里走插件公开口同步记账被拒绝——这时记会插账或死锁。
+// 回调里要记自定义事件就投给 AppendLater，广播结束后自动补记。
 var ErrInBroadcast = errors.New("广播进行中，回调里不能同步记账；请改用 AppendLater")
 
 // Session 是一本账。
 type Session struct {
+	writeMu     sync.Mutex // 一次只准一条“记账 + 通知”流程在跑，别让并发广播互相撞
 	mu          sync.Mutex // 一本账一次只有一笔在写
 	header      Header
 	events      []Event
@@ -95,6 +96,9 @@ func (s *Session) AppendEvent(kind string, data any) (Event, error) {
 	format, known := s.formats.lookup(kind)
 	if !known {
 		return Event{}, fmt.Errorf("种类 %s 没注册，先到 Store.RegisterKind", kind)
+	}
+	if s.inBroadcast() {
+		return Event{}, ErrInBroadcast
 	}
 	return s.append(kind, data, nil, format.skipIfUnknown)
 }
@@ -191,12 +195,11 @@ func (s *Session) Flush() error {
 
 // ---- 记账全流程：拿编号 -> 验内容 -> 写盘 -> 写内存 -> 通知 ----
 
-// append 记一笔并广播。广播窗口内的同步调用被拒（ErrInBroadcast）。
+// append 让专用记账方法排队完成“落盘 + 内存 + 通知”。
 // 失败时内存不加、编号不烧（下一笔自然复用）、不广播。
 func (s *Session) append(kind string, data any, replaces []int, skip bool) (Event, error) {
-	if s.inBroadcast() {
-		return Event{}, ErrInBroadcast
-	}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 
 	event, err := s.appendLocked(kind, data, replaces, skip)
 	if err != nil {

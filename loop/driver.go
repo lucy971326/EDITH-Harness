@@ -53,6 +53,8 @@ func (d *driver) run() {
 		case <-d.agent.inbox.wake:
 		}
 
+		// 先占住待办再领活：WaitIdle 不会在“队列刚领空、活还没开跑”的缝里早退。
+		d.agent.markWorking()
 		d.workOffQueue()
 
 		// 铃响到报闲之间又来了活，接着干；确认没活才报闲。
@@ -102,7 +104,7 @@ func (d *driver) runTurn(first delivery, extraSteerings []delivery) {
 	a.markBusy()
 	defer func() {
 		_, _ = a.book.RecordTurnEnd()
-		a.markIdle()
+		a.markTurnDone()
 	}()
 
 	for {

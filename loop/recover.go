@@ -30,6 +30,7 @@ func recoverFromLedger(agent *Agent, seed []session.Event) error {
 			if err != nil {
 				return fmt.Errorf("第 %d 笔投递解不开：%w", event.Seq, err)
 			}
+			agent.inbox.rememberDeliveryID(data.ID)
 			delivered[data.ID] = event
 		case session.KindClaim:
 			var data session.ClaimData

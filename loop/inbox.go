@@ -4,6 +4,7 @@ package loop
 
 import (
 	"fmt"
+	"strconv"
 	"sync"
 
 	"harness/session"
@@ -109,6 +110,27 @@ func (b *inbox) restore(item delivery, target string) {
 		b.nextStep = append(b.nextStep, item)
 	case TargetMemo:
 		b.memos = append(b.memos, item)
+	}
+}
+
+// rememberDeliveryID 读一个旧投递编号，让新编号接着旧账往后数。
+func (b *inbox) rememberDeliveryID(id string) {
+	if len(id) < 2 || id[0] != 'd' {
+		return
+	}
+	number, err := strconv.Atoi(id[1:])
+	if err != nil {
+		return
+	}
+	if number < 1 {
+		return
+	}
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if number > b.nextID {
+		b.nextID = number
 	}
 }
 

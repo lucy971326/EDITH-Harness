@@ -20,7 +20,7 @@ func (Plugin) Name() string {
 
 // Start 造名册挂进场地；名册跟着 App 一起收摊。
 func (Plugin) Start(app *core.App) error {
-	store, err := core.Resolve[*session.Store](app, "sessions")
+	store, err := session.Get(app)
 	if err != nil {
 		return fmt.Errorf("loop 要先有账本管家（sessions）：%w", err)
 	}

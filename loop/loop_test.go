@@ -91,12 +91,21 @@ func newTestStack(t *testing.T, scripts ...scriptCall) (*core.App, *Roster, *scr
 	app := core.New()
 	t.Cleanup(app.Close)
 
-	store := session.NewStore(session.NewMemoryJournal(), silentBroadcaster{})
-	app.RegisterService("sessions", store)
+	err := app.Install(
+		session.Plugin{Journal: session.NewMemoryJournal()},
+		llm.Plugin{},
+		tools.Plugin{},
+	)
+	if err != nil {
+		t.Fatalf("装基础插件失败：%v", err)
+	}
 
 	adapter := &scriptedAdapter{scripts: scripts}
-	llmSvc := llm.NewService()
-	err := llmSvc.Register(adapter)
+	llmSvc, err := llm.Get(app)
+	if err != nil {
+		t.Fatalf("取模型入口失败：%v", err)
+	}
+	err = llmSvc.Register(adapter)
 	if err != nil {
 		t.Fatalf("插适配器失败：%v", err)
 	}
@@ -104,13 +113,20 @@ func newTestStack(t *testing.T, scripts ...scriptCall) (*core.App, *Roster, *scr
 	if err != nil {
 		t.Fatalf("设默认失败：%v", err)
 	}
-	app.RegisterService("llm", llmSvc)
 
-	registry := tools.NewRegistry()
-	app.RegisterService("tools", registry)
+	registry, err := tools.Get(app)
+	if err != nil {
+		t.Fatalf("取工具登记处失败：%v", err)
+	}
 
-	roster := NewRoster(app, store, llmSvc, registry)
-	app.RegisterService("agents", roster)
+	err = app.Install(Plugin{})
+	if err != nil {
+		t.Fatalf("装 loop 插件失败：%v", err)
+	}
+	roster, err := Get(app)
+	if err != nil {
+		t.Fatalf("取 agent 名册失败：%v", err)
+	}
 
 	return app, roster, adapter, registry
 }
@@ -608,6 +624,52 @@ func TestRecoverRestoresPendingDeliveries(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("没领出的消息一条不丢：%+v", agent.Book().ModelHistory())
+	}
+}
+
+func TestRecoverContinuesDeliveryIDs(t *testing.T) {
+	_, roster, _, _ := newTestStack(t,
+		scriptCall{deltas: []string{"旧消息办完"}, reply: llm.Reply{StopReason: "stop"}},
+		scriptCall{deltas: []string{"新消息办完"}, reply: llm.Reply{StopReason: "stop"}},
+	)
+
+	seed := []session.Event{
+		event(session.KindDeliver, 1, session.DeliverData{ID: "d1", Text: "重启前没办", Target: TargetNextTurn}),
+	}
+
+	agent, err := roster.Create("小红", AgentConfig{Model: "m"}, seed...)
+	if err != nil {
+		t.Fatalf("恢复失败：%v", err)
+	}
+	agent.WaitIdle()
+
+	err = agent.SubmitFollowup("重启后的新消息")
+	if err != nil {
+		t.Fatalf("投递失败：%v", err)
+	}
+	agent.WaitIdle()
+
+	var deliveryIDs []string
+	for _, event := range agent.Book().Events() {
+		if event.Kind != session.KindDeliver {
+			continue
+		}
+		var data session.DeliverData
+		err = json.Unmarshal(event.Data, &data)
+		if err != nil {
+			t.Fatalf("投递解不开：%v", err)
+		}
+		deliveryIDs = append(deliveryIDs, data.ID)
+	}
+
+	want := []string{"d1", "d2"}
+	if len(deliveryIDs) != len(want) {
+		t.Fatalf("投递编号数量不对：got %v, want %v", deliveryIDs, want)
+	}
+	for i := range want {
+		if deliveryIDs[i] != want[i] {
+			t.Fatalf("重启后编号该接着旧账往后数：got %v, want %v", deliveryIDs, want)
+		}
 	}
 }
 

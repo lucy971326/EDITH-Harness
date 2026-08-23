@@ -16,7 +16,7 @@ M2 不懂 agent 知识——不知道"模型"是什么、不知道谁在记账�
 - ❌ 不管存到哪——一行一条 JSON 的文本文件、SQLite 是将来的插件；M2 只保证"存进去什么样，读出来还什么样"
 - ❌ 不管人看的排版——那是 UI 的事；本包的翻译是机器对机器
 - ❌ **不做 Fork**（评审砍掉）——`Create(seed)` 这个底子保留，Fork 只是它的组合用法，需要时再加（纯增量）
-- ❌ 不做成可拔插件——它是内核六件之一，"模型看到的每个字必须账上有"这条命根由它扛
+- ❌ 不允许省略 session 插件——它是必装的第一个插件；插件化不等于可选，"模型看到的每个字必须账上有"这条命根由它扛。Journal 实现可以替换
 
 ## 核心判据：什么才记账
 
@@ -93,9 +93,16 @@ func (s *Session) Events() []Event          // 全量视角：人 / 审计 / 回
 ### ④ 名册（管家）
 
 ```go
+type Plugin struct { Journal Journal }
+
+func (Plugin) Start(app *core.App) error  // 必须第一个安装，登记 "sessions"
+func Get(app *core.App) (*Store, error)   // 从 App 取账本管家
+
 func (st *Store) Create(id string, seed ...Event) *Session  // 开新账；带 seed = 拿旧账重放重建
 func (st *Store) Get(id string) *Session
 ```
+
+`session.Plugin` 负责用注入的 Journal 建 Store 并登记 "sessions"；Journal 决定账写到哪里，可以替换。它必须最先安装，但不能因为是插件就被省略。
 
 ---
 
@@ -106,12 +113,13 @@ session/
   journal.go   落盘接口（"要么整条要么没有"+ Flush 立刻写完；内存假实现给单测，真文件版 M6 接）
   store.go     管家：名册 Create/Get + 旧账重放；NewStore(journal, broadcaster) 两个都从外面注入
   session.go   账本体：AppendEvent / ModelHistory / Events
+  plugin.go    必装的第一个插件：创建并登记 Store，提供 Get
   codec.go     格式说明：结构体 ↔ JSON + 不认识的事件怎么办 + 版本
   history.go   算历史 + 有效名单 + 结果缓存（名单是算历史的内部状态，不独立成文件）
   types.go     数据格式：Event / 封面 / 各事件的字段
 ```
 
-五个文件，估计 ~400 行。
+七个文件，估计 ~400 行。
 
 **前置新增中立词汇包 `chat/`**（本里程碑建立）：Message、内容块、工具调用块、用量——session 与 llm 的公共词汇，免得 M2 借用 M3 才有的类型（外部审核修正）。
 
@@ -120,12 +128,12 @@ session/
 | 问题 | 裁决 | 理由 |
 |---|---|---|
 | 记什么 | 要复活的才记 | "模型看到的每个字必须账上有"是铁律；内部状态记账是浪费 |
-| session 是插件吗 | 内核件，不可拔 | 规矩的载体；拔了崩溃恢复/回放全塌。开放性靠事件种类注册保留 |
+| session 是插件吗 | 是必装的第一个插件，不能省略 | 规矩的载体；插件化不等于可选。Journal 可以替换，拔掉整个 session 则崩溃恢复/回放全塌 |
 | 翻译给谁服务 | 机器对机器 | 人看的排版是 UI 的事；格式说明的职责是存取无损 + 版本 |
 | Fork 要不要 | 砍 | Create(seed) 已覆盖其本质；Fork 是便利函数，需要时纯增量加 |
 | 有效名单独立吗 | 并入算历史 | 它是算历史的内部状态，不是独立能力（评审质疑成立） |
 | 为什么必须 JSON | 无损 + 可版本化 | 结构体直接存绑死了内存布局；JSON 让旧账永远可读 |
-| Session 依赖 core 吗 | **零依赖** | 记完账要通知大家，但不拿整个 App——session 自己定义一个"会广播"的小接口，构造只收它；App 天然满足。session 连 import core 都不需要，组装在 main 完成 |
+| Session 依赖 core 吗 | 账本对象只依赖 Broadcaster；`session.Plugin` 依赖 `core.App` | 账本本体仍可独立测试；插件统一从 App 登记 "sessions"，消费者通过 `session.Get` 取 |
 | Message 属于谁 | 中立词汇包 chat | session 与 llm 共用公共词汇，避免 M2 借用 M3 的类型 |
 
 ## 验收测试（写代码前先写这些）

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 )
 
 // recordingBroadcaster 记下每次广播；钩子模拟"回调里干点什么"。
@@ -185,14 +186,19 @@ func TestFailedAppendLeavesNoTrace(t *testing.T) {
 }
 
 func TestSyncAppendInBroadcastCallbackRejected(t *testing.T) {
-	_, s, broadcaster := newTestStore(t)
+	store, s, broadcaster := newTestStore(t)
+
+	err := store.RegisterKind("todo/note", false)
+	if err != nil {
+		t.Fatalf("注册失败：%v", err)
+	}
 
 	var rejected error
 	broadcaster.onEvent = func(Event) {
-		_, rejected = s.RecordUserMessage("回调里偷记一笔")
+		_, rejected = s.AppendEvent("todo/note", map[string]string{"text": "回调里偷记一笔"})
 	}
 
-	_, err := s.RecordUserMessage("正经一笔")
+	_, err = s.RecordUserMessage("正经一笔")
 	if err != nil {
 		t.Fatalf("记账失败：%v", err)
 	}
@@ -201,6 +207,54 @@ func TestSyncAppendInBroadcastCallbackRejected(t *testing.T) {
 	}
 	if len(s.Events()) != 1 {
 		t.Fatalf("被拒的笔不该入账：got %d 笔", len(s.Events()))
+	}
+}
+
+func TestKernelRecordsWaitForAnotherBroadcast(t *testing.T) {
+	_, s, broadcaster := newTestStore(t)
+
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	broadcaster.onEvent = func(Event) {
+		once.Do(func() {
+			close(entered)
+			<-release
+		})
+	}
+
+	firstDone := make(chan error, 1)
+	go func() {
+		_, err := s.RecordDeliver("d1", "第一条", "next-turn")
+		firstDone <- err
+	}()
+	<-entered
+
+	secondDone := make(chan error, 1)
+	go func() {
+		_, err := s.RecordClaim("d1")
+		secondDone <- err
+	}()
+
+	select {
+	case err := <-secondDone:
+		t.Fatalf("另一条内核记账应该等广播结束，不该抢跑或失败：%v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	close(release)
+	err := <-firstDone
+	if err != nil {
+		t.Fatalf("第一笔失败：%v", err)
+	}
+	err = <-secondDone
+	if err != nil {
+		t.Fatalf("第二笔失败：%v", err)
+	}
+
+	events := s.Events()
+	if len(events) != 2 || events[0].Seq != 1 || events[1].Seq != 2 {
+		t.Fatalf("并发记账应该排好队：%+v", events)
 	}
 }
 
