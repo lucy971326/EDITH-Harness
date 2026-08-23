@@ -18,6 +18,7 @@
       --tools: #d67824;
       --loop: #478b38;
       --chat: #60758a;
+      --env: #b25442;
       --shadow: 0 8px 24px rgba(31, 45, 61, .08);
     }
 
@@ -116,7 +117,7 @@
     .architecture-map {
       position: relative;
       width: 1480px;
-      height: 820px;
+      height: 900px;
       background-color: #fbfcfe;
       background-image:
         linear-gradient(#edf1f6 1px, transparent 1px),
@@ -190,8 +191,9 @@
     #module-tools { left: 55px; top: 550px; --accent: var(--tools); --accent-border: #ecd1b7; --accent-bg: #fbf2e9; }
     #app-pillar { left: 470px; top: 88px; }
     #module-loop { left: 1175px; top: 170px; --accent: var(--loop); --accent-border: #c8dfc2; --accent-bg: #eef7ec; }
-    #agent-scope { left: 1160px; top: 470px; }
-    #module-chat { left: 585px; top: 660px; --accent: var(--chat); --accent-border: #cbd5df; --accent-bg: #f0f3f6; }
+    #module-localenv { left: 1145px; top: 380px; width: 270px; --accent: var(--env); --accent-border: #e3c2bb; --accent-bg: #faf0ee; }
+    #agent-scope { left: 1160px; top: 665px; }
+    #module-chat { left: 585px; top: 735px; --accent: var(--chat); --accent-border: #cbd5df; --accent-bg: #f0f3f6; }
 
     .app-pillar {
       width: 540px;
@@ -224,6 +226,13 @@
 
     .rack-title { margin-bottom: 8px; color: #64748a; font-size: 10px; font-weight: 800; }
     .capability-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; }
+    .capability-list.three { grid-template-columns: repeat(3, 1fr); }
+
+    .app-note {
+      margin: 10px 1px 0;
+      color: #718096;
+      font-size: 9px;
+    }
 
     .capability {
       display: flex;
@@ -237,6 +246,23 @@
 
     .capability code { color: #245fbf; font-weight: 800; }
     .capability span { color: var(--muted); }
+
+    .tool-rack { border-color: #efcda9; background: #fffaf4; }
+    .tool-rack .rack-title { color: #a85d18; }
+    .tool-entry { border: 1px solid #edc28f; background: #fff0dd; }
+    .tool-entry code { color: #a85d18; }
+
+    .execution-rack { border-color: #e1c5bf; background: #fffafa; }
+    .execution-rack .rack-title { color: #984837; }
+    .execution-rack .capability { background: #f9eeec; }
+    .execution-rack .capability code { color: #984837; }
+
+    .rack-hint {
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 9px;
+      line-height: 1.45;
+    }
     .event-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; }
 
     .event-cell {
@@ -272,6 +298,25 @@
 
     .scope-card strong { color: #2d63ba; font-size: 14px; }
     .scope-card p { margin: 7px 0 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
+
+    .env-stack {
+      display: grid;
+      gap: 5px;
+      margin-top: 10px;
+    }
+
+    .env-stack div {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 6px 7px;
+      border-radius: 6px;
+      color: var(--muted);
+      background: var(--accent-bg);
+      font-size: 9px;
+    }
+
+    .env-stack strong { color: var(--accent); }
 
     .detail-bar {
       display: grid;
@@ -340,9 +385,9 @@
           </article>
 
           <article class="map-node map-card" id="module-tools" data-module="tools" tabindex="0">
-            <div class="module-kicker">基础能力插件</div>
+            <div class="module-kicker">模型工具入口</div>
             <h2>tools</h2>
-            <p>提供工具登记处和执行流水线，调用、开跑、结果都记账。</p>
+            <p>管理模型看得见的工具菜单，并负责执行和记账。</p>
             <div class="chips"><span class="chip">Registry</span><span class="chip">Pipeline</span><span class="chip">Guard</span></div>
           </article>
 
@@ -351,6 +396,17 @@
             <h2>loop</h2>
             <p>领取 sessions、llm、tools，造出 Agent 名册和唯一搬运工。</p>
             <div class="chips"><span class="chip">Roster</span><span class="chip">Agent</span><span class="chip">Driver</span></div>
+          </article>
+
+          <article class="map-node map-card" id="module-localenv" data-module="localenv" tabindex="0">
+            <div class="module-kicker">底层执行环境 · 不是模型工具</div>
+            <h2>localenv</h2>
+            <p>一次装上同根目录的三块能力，禁止拆开换。</p>
+            <div class="env-stack">
+              <div><strong>files.Store</strong><span>读 / 写 / 列</span></div>
+              <div><strong>process.Spawner</strong><span>长期进程</span></div>
+              <div><strong>shell.Runner</strong><span>一次命令</span></div>
+            </div>
           </article>
 
           <article class="map-node map-card" id="module-chat" data-module="chat" tabindex="0">
@@ -366,18 +422,35 @@
               <span>能力表 · 事件系统 · 作用域 · 收摊顺序</span>
             </div>
 
+            <div class="app-note">下面这些能力实际存在同一张表里，只是按职责分区画开。</div>
+
+            <div class="rack tool-rack">
+              <div class="rack-title">① 模型工具入口 · 模型只能从这里调工具</div>
+              <div class="capability tool-entry" id="cap-tools"><code>tools</code><span>Registry + 执行流程</span></div>
+              <div class="rack-hint">未来的 read_file、bash 等工具会登记到这张菜单。</div>
+            </div>
+
             <div class="rack">
-              <div class="rack-title">能力表 · 插件按名字放入和领取</div>
+              <div class="rack-title">② 内核自己的普通能力</div>
               <div class="capability-list">
                 <div class="capability" id="cap-sessions"><code>sessions</code><span>*session.Store</span></div>
                 <div class="capability" id="cap-llm"><code>llm</code><span>*llm.Service</span></div>
-                <div class="capability" id="cap-tools"><code>tools</code><span>*tools.Registry</span></div>
                 <div class="capability" id="cap-agents"><code>agents</code><span>*loop.Roster</span></div>
               </div>
             </div>
 
+            <div class="rack execution-rack">
+              <div class="rack-title">③ 底层执行能力 · 模型不能直接调用</div>
+              <div class="capability-list three">
+                <div class="capability" id="cap-files"><code>files</code><span>files.Store</span></div>
+                <div class="capability" id="cap-process"><code>process</code><span>process.Spawner</span></div>
+                <div class="capability" id="cap-shell"><code>shell</code><span>shell.Runner</span></div>
+              </div>
+              <div class="rack-hint">以后的具体工具插件会领取这些能力，然后再把自己登记进 tools。</div>
+            </div>
+
             <div class="rack">
-              <div class="rack-title">四种事件执行方式 · 各有自己的失败规矩</div>
+              <div class="rack-title">④ 四种事件执行方式 · 各有自己的失败规矩</div>
               <div class="event-grid">
                 <div class="event-cell"><strong>Broadcast</strong><span>通知观察者，谁崩谁隔离</span></div>
                 <div class="event-cell"><strong>RunChain</strong><span>层层包住，可拦可改</span></div>
@@ -398,7 +471,7 @@
 
       <div class="detail-bar" id="module-detail">
         <div><h3>点击一个模块</h3><div class="path">查看它的代码入口</div></div>
-        <p>拖动不会打开说明；轻点 session、llm、tools、loop 或 chat 才会查看详情。</p>
+        <p>拖动不会打开说明；轻点 session、llm、tools、loop、localenv 或 chat 才会查看详情。</p>
       </div>
     </section>
   </main>
@@ -416,9 +489,9 @@
         text: "登记 llm 能力，统一 Stream 请求、模型选择和错误。具体服务商适配器以后插进来；当前只有测试剧本适配器。"
       },
       tools: {
-        title: "tools · 工具流水线",
+        title: "tools · 模型工具入口",
         path: "tools/plugin.go → registry.go → pipeline.go",
-        text: "登记 tools 能力。工具先入表，再按固定流程执行和记账。工具已经开跑却失去结果时，绝不装成 skipped。"
+        text: "这是模型唯一认识的工具入口。具体工具先把自己登记进 Registry，模型才能在菜单上看到它；调用后再走固定流程执行和记账。"
       },
       loop: {
         title: "loop · 唯一搬运工",
@@ -429,6 +502,11 @@
         title: "chat · 公共词汇",
         path: "chat/message.go",
         text: "它不是插件，也不占 App 的能力位。session、llm、tools 共同使用 Message、Attachment、ToolCall、ToolResult、Usage、Delta 和 ToolSchema。"
+      },
+      localenv: {
+        title: "localenv · 本地执行环境",
+        path: "localenv/plugin.go → localenv/files.go + localenv/process.go + workspace/shell/runner.go",
+        text: "这一个插件同时登记 files、process 和 shell，三者共用同一个根目录。它们是未来具体工具背后的手脚，不会直接出现在模型的工具菜单里。App 关闭时，process 会收掉整棵进程树。"
       }
     };
 
@@ -440,6 +518,10 @@
       ["cap-llm", "module-loop", "#478b38", "领取"],
       ["cap-tools", "module-loop", "#478b38", "领取"],
       ["module-loop", "cap-agents", "#478b38", "放入"],
+      ["module-localenv", "cap-files", "#b25442", "成套放入"],
+      ["module-localenv", "cap-process", "#b25442", "成套放入"],
+      ["module-localenv", "cap-shell", "#b25442", "成套放入"],
+      ["cap-process", "cap-shell", "#b25442", "承托"],
       ["app-pillar", "agent-scope", "#3977e8", "派生"],
       ["module-chat", "module-session", "#60758a", "共用"],
       ["module-chat", "module-llm", "#60758a", "共用"],

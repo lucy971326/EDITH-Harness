@@ -175,14 +175,16 @@ harness/
   loop/      主循环 Driver + 输入提交 + 取消
   tools/     工具注册表 + 执行链（五道关卡）
   llm/       模型适配接口 + 流式协议
-  files/     文件能力接口
-  process/   进程能力接口（长生命周期：spawn/stdio/信号/进程树）
-  shell/     一次性命令接口（建在 process 之上）
+  workspace/ 工作空间能力（不是插件）
+    files/     文件能力接口（不碰本地磁盘）
+    process/   长期进程能力接口（不启本地进程）
+    shell/     站在 process 之上的通用一次性命令
+  localenv/  本地 files + process 实现，并成对组装 files + process + shell
   std/       第一批插件：bash / 文件 / 网络 / 技能 / 子 agent / 待办
   cmd/dsh/   main：组装 + 配置
 ```
 
-依赖方向单向：core ← session ← loop ← std。接口定义与实现分包。
+依赖方向单向：`core ← workspace/files`、`core ← workspace/process ← workspace/shell`；`localenv` 只负责把三者成对组装。将来的沙箱另做实现，不改工具。
 
 ## 七、明确不做
 
