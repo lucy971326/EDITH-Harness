@@ -4,3 +4,4 @@ reference/
 # Go
 *.test
 *.out
+.DS_Store
