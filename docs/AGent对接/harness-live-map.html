@@ -423,7 +423,7 @@
       <div>
         <p class="eyebrow">Harness · Current Architecture</p>
         <h1>整体结构</h1>
-        <p class="subtitle">已实现：启动入口、用户目录、显式模型归属、DeepSeek SDK、文件工具和多会话。拖动任意组件整理布局，连线会自动跟随。</p>
+        <p class="subtitle">已实现：YAML 装机清单、启动入口、显式模型归属、DeepSeek SDK、文件工具和多会话。拖动任意组件整理布局，连线会自动跟随。</p>
       </div>
       <button class="reset-button" id="reset-layout" type="button">恢复初始位置</button>
     </header>
@@ -463,8 +463,8 @@
           <article class="map-node map-card" id="module-startup" data-module="startup" tabindex="0">
             <div class="module-kicker">启动入口 · 不是插件</div>
             <h2>dsh + compose</h2>
-            <p>main 找到目录；compose 读配置，按清单把所有插件装进 App。</p>
-            <div class="chips"><span class="chip">~/.harness</span><span class="chip">config.json</span><span class="chip">compose.Open</span></div>
+            <p>config.yaml 选择大零件；compose 按固定顺序把它们装进 App。</p>
+            <div class="chips"><span class="chip">config.yaml</span><span class="chip">静态零件</span><span class="chip">compose.Open</span></div>
           </article>
 
           <article class="map-node map-card" id="module-llm" data-module="llm" tabindex="0">
@@ -584,12 +584,12 @@
       jsonl: {
         title: "persistence · 两种保存物",
         path: "persistence/jsonl/ + persistence/profilejson/",
-        text: "jsonl 直接登记 journal，保存每段聊天发生了什么；profilejson 直接登记 agent-profiles，保存小红是谁、用什么模型、人设和工具名。dsh 的私有目录是 ~/.harness：config.json、agents/、sessions/ 都在这里。"
+        text: "jsonl 直接登记 journal，保存每段聊天发生了什么；profilejson 直接登记 agent-profiles，保存小红是谁、用什么模型、人设和工具名。dsh 的私有目录是 ~/.harness：config.yaml、agents/、sessions/ 都在这里。"
       },
       startup: {
         title: "dsh + compose · 启动与总装",
-        path: "cmd/dsh/main.go → compose/compose.go",
-        text: "main 只负责找到 ~/.harness 和当前工作目录。compose.Open 读取 config.json，再严格按依赖顺序安装所有插件：档案、账本、session、llm、DeepSeek、tools、本地环境、文件工具、agents、loop。它们装好后才得到一个可运行的 App。"
+        path: "cmd/dsh/main.go → compose/config.go → plugins.go → compose.go",
+        text: "main 找到 ~/.harness 和当前工作目录。config.yaml 只选择档案存储、账本、模型适配器、执行环境、工具插件和 Runner；compose 把名字换成已编进程序的插件，再按固定顺序安装。session、llm、tools、agents 四个插座自动安装。"
       },
       session: {
         title: "session · 账本",
@@ -634,7 +634,7 @@
     };
 
     const connections = [
-      ["module-startup", "app-pillar", "#3e6fb4", "按清单组装"],
+      ["module-startup", "app-pillar", "#3e6fb4", "按 YAML 清单组装"],
       ["module-jsonl", "cap-journal", "#6c8e51", "放入"],
       ["module-jsonl", "cap-profiles", "#6c8e51", "放入"],
       ["cap-journal", "module-session", "#6c8e51", "领取"],
