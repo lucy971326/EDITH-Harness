@@ -2,6 +2,7 @@ package agents
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 
 	"harness/core"
@@ -23,6 +24,24 @@ type Conversation interface {
 	Close() error
 }
 
+// SessionSummary 是一段已保存会话的轻量目录项。
+type SessionSummary struct {
+	ID              string // 会话号，也是用户创建时输入的名字
+	AgentID         string // 所属长期 Agent
+	ProfileRevision int    // 开会话时使用的档案版本
+	Open            bool   // 本进程是否已经打开
+}
+
+// ConversationError 是会话运行中的实时故障通知；它不写进账本。
+type ConversationError struct {
+	AgentID   string // 哪个 Agent 的会话
+	SessionID string // 哪段会话
+	Message   string // 给界面显示的失败原因
+}
+
+// EventConversationError 是会话运行失败时的实时事件名。
+const EventConversationError = "agents/conversation-error"
+
 // PreparedConversation 是已恢复、尚未开始搬运消息的会话。
 type PreparedConversation interface {
 	Conversation
@@ -31,13 +50,14 @@ type PreparedConversation interface {
 
 // RunInput 是 agents 交给 Runner 的一段会话材料。
 type RunInput struct {
-	AgentID   string
-	SessionID string
-	Profile   AgentProfile
-	Scope     *core.App
-	Book      *session.Session
-	Recover   bool
-	Close     func() error
+	AgentID     string
+	SessionID   string
+	Profile     AgentProfile
+	Scope       *core.App
+	Book        *session.Session
+	Recover     bool
+	Close       func() error
+	ReportError func(error)
 }
 
 // Runner 负责把一段准备好的会话跑起来；loop.Plugin 提供默认实现。
@@ -51,9 +71,11 @@ type Service interface {
 	UpdateAgent(profile AgentProfile) error
 	ArchiveAgent(id string) error
 	GetAgent(id string) (AgentProfile, error)
+	ListAgents() ([]AgentProfile, error)
 	StartSession(agentID string, sessionID string, seed ...session.Event) (Conversation, error)
 	ResumeSession(sessionID string) (Conversation, error)
 	GetSession(sessionID string) (Conversation, error)
+	ListSessions(agentID string) ([]SessionSummary, error)
 	CloseSession(sessionID string) error
 	RegisterRunner(runner Runner) (func(), error)
 }
@@ -151,6 +173,22 @@ func (r *registry) GetAgent(id string) (AgentProfile, error) {
 	return cloneProfile(profile), nil
 }
 
+// ListAgents 按 id 列出全部长期 Agent 档案副本。
+func (r *registry) ListAgents() ([]AgentProfile, error) {
+	profiles, err := r.profiles.List()
+	if err != nil {
+		return nil, err
+	}
+	listed := make([]AgentProfile, len(profiles))
+	for i, profile := range profiles {
+		listed[i] = cloneProfile(profile)
+	}
+	sort.Slice(listed, func(i int, j int) bool {
+		return listed[i].ID < listed[j].ID
+	})
+	return listed, nil
+}
+
 // RegisterRunner 登记唯一会话搬运工，返回取消登记它的函数。
 func (r *registry) RegisterRunner(runner Runner) (func(), error) {
 	if runner == nil {
@@ -227,6 +265,16 @@ func (r *registry) prepareConversation(runner Runner, profile AgentProfile, entr
 		Close: func() error {
 			return r.finishSession(profile.ID, sessionID, scope)
 		},
+		ReportError: func(cause error) {
+			if cause == nil {
+				return
+			}
+			r.app.Broadcast(EventConversationError, ConversationError{
+				AgentID:   profile.ID,
+				SessionID: sessionID,
+				Message:   cause.Error(),
+			})
+		},
 	}
 	conversation, err := runner.Prepare(input)
 	if err != nil {
@@ -248,6 +296,31 @@ func (r *registry) GetSession(sessionID string) (Conversation, error) {
 		return nil, fmt.Errorf("会话 %s 没开过", sessionID)
 	}
 	return conversation, nil
+}
+
+// ListSessions 按会话号列出一个 Agent 的全部保存会话；列表不打开旧账。
+func (r *registry) ListSessions(agentID string) ([]SessionSummary, error) {
+	headers, err := r.store.ListHeaders()
+	if err != nil {
+		return nil, err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	sessions := make([]SessionSummary, 0, len(headers))
+	for _, header := range headers {
+		if header.AgentID != agentID {
+			continue
+		}
+		_, open := r.sessions[header.ID]
+		sessions = append(sessions, SessionSummary{
+			ID:              header.ID,
+			AgentID:         header.AgentID,
+			ProfileRevision: header.ProfileRevision,
+			Open:            open,
+		})
+	}
+	return sessions, nil
 }
 
 // CloseSession 让一段会话收摊；重复关闭安全。

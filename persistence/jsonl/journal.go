@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 
 	"harness/session"
@@ -187,6 +188,57 @@ func (j *Journal) ReadAll(id string) (session.Header, []session.Event, error) {
 		events = append(events, event)
 	}
 	return header, events, nil
+}
+
+// ListHeaders 按账本号列出目录里的所有完整封面；不读取事件正文，也不修复烂尾。
+func (j *Journal) ListHeaders() ([]session.Header, error) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+
+	entries, err := os.ReadDir(j.root)
+	if err != nil {
+		return nil, fmt.Errorf("读取账本目录失败：%w", err)
+	}
+	headers := make([]session.Header, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".jsonl" {
+			continue
+		}
+		encodedID := entry.Name()[:len(entry.Name())-len(".jsonl")]
+		idData, err := base64.RawURLEncoding.DecodeString(encodedID)
+		if err != nil {
+			return nil, fmt.Errorf("账本文件 %s 的名字不合法：%w", entry.Name(), err)
+		}
+		header, err := j.readHeader(string(idData))
+		if err != nil {
+			return nil, err
+		}
+		headers = append(headers, header)
+	}
+	sort.Slice(headers, func(i int, k int) bool {
+		return headers[i].ID < headers[k].ID
+	})
+	return headers, nil
+}
+
+func (j *Journal) readHeader(id string) (session.Header, error) {
+	data, err := os.ReadFile(j.bookPath(id))
+	if err != nil {
+		return session.Header{}, fmt.Errorf("读取账本 %s 的封面失败：%w", id, err)
+	}
+	newline := bytes.IndexByte(data, '\n')
+	if newline < 0 {
+		return session.Header{}, fmt.Errorf("账本 %s 没有完整封面", id)
+	}
+	var header session.Header
+	err = json.Unmarshal(data[:newline], &header)
+	if err != nil {
+		return session.Header{}, fmt.Errorf("账本 %s 的封面坏了：%w", id, err)
+	}
+	if header.ID != id {
+		return session.Header{}, fmt.Errorf("账本文件属于 %s，不是 %s", header.ID, id)
+	}
+	return header, nil
 }
 
 // commit 把一批完整行追加到文件；任何一步失败都退回追加前的位置。

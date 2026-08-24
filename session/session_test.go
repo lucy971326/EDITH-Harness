@@ -70,6 +70,10 @@ func (j *failingJournal) ReadAll(id string) (Header, []Event, error) {
 	return j.inner.ReadAll(id)
 }
 
+func (j *failingJournal) ListHeaders() ([]Header, error) {
+	return j.inner.ListHeaders()
+}
+
 func newTestStore(t *testing.T) (*Store, *Session, *recordingBroadcaster) {
 	t.Helper()
 

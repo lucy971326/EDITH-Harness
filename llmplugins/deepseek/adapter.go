@@ -36,6 +36,14 @@ func (a *adapter) Name() string {
 	return "deepseek"
 }
 
+// ProviderInfo 返回创建 Agent 时可选的 DeepSeek 思考档位。
+func (a *adapter) ProviderInfo() llm.ProviderInfo {
+	return llm.ProviderInfo{
+		Name:           a.Name(),
+		ThinkingLevels: []string{"off", "high", "max"},
+	}
+}
+
 // Stream 用官方 SDK 流式请求 DeepSeek，输出可见文字并聚合思考、工具和用量。
 func (a *adapter) Stream(ctx context.Context, req llm.Request, onDelta func(chat.Delta)) (llm.Reply, error) {
 	err := validateThinking(req.Thinking)

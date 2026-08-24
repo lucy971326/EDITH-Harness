@@ -908,6 +908,55 @@ func TestCloseStopsDriver(t *testing.T) {
 	if err == nil {
 		t.Fatal("除名后该取不到")
 	}
+	select {
+	case <-conversation.driver.done:
+	case <-time.After(time.Second):
+		t.Fatal("关闭会话后搬运工必须退出")
+	}
+}
+
+func TestCloseCancelsBusyDriverBeforeReleasingSession(t *testing.T) {
+	_, roster, _, _ := newTestStack(t, scriptCall{hang: true})
+	conversation := startTestSession(t, roster, "小红", AgentConfig{Model: "m"})
+	err := conversation.SubmitFollowup("别停")
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForState(t, conversation, "busy")
+	done := make(chan error, 1)
+	go func() {
+		done <- conversation.Close()
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("关闭忙会话必须先取消并等搬运工退出")
+	}
+}
+
+func TestLoopBroadcastsConversationError(t *testing.T) {
+	app, roster, _, _ := newTestStack(t)
+	seen := make(chan agents.ConversationError, 1)
+	app.Subscribe(agents.EventConversationError, func(payload any) {
+		seen <- payload.(agents.ConversationError)
+	})
+	conversation := startTestSession(t, roster, "小红", AgentConfig{Model: "m"})
+	err := conversation.SubmitFollowup("会失败")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation.WaitIdle()
+	select {
+	case problem := <-seen:
+		if problem.AgentID != "小红" || problem.SessionID != "小红" || problem.Message == "" {
+			t.Fatalf("实时错误通知不完整：%+v", problem)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("模型失败时终端应收到实时错误通知")
+	}
 }
 
 func TestRosterRejectsDuplicateID(t *testing.T) {

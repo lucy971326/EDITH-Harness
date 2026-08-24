@@ -19,10 +19,11 @@ const Checkpoint = "loop/pre-step"
 
 // driver 是门面背后的搬运工：一个 goroutine，闲了等铃，铃响干活，干完再等。
 type driver struct {
-	agent    *Conversation
-	stop     chan struct{}
-	done     chan struct{}
-	stopOnce sync.Once
+	agent     *Conversation
+	stop      chan struct{}
+	done      chan struct{}
+	startOnce sync.Once
+	stopOnce  sync.Once
 }
 
 func newDriver(agent *Conversation) *driver {
@@ -35,11 +36,14 @@ func newDriver(agent *Conversation) *driver {
 
 // start 把搬运工放上线。
 func (d *driver) start() {
-	go d.run()
+	d.startOnce.Do(func() {
+		go d.run()
+	})
 }
 
 // stopAndJoin 让搬运工下线并等他收工。
 func (d *driver) stopAndJoin() {
+	d.start()
 	d.stopOnce.Do(func() {
 		close(d.stop)
 	})
@@ -93,6 +97,7 @@ func (d *driver) runTurn(first delivery, extraSteerings []delivery) {
 	err := a.claimAsUserMessage(first)
 	if err != nil {
 		log.Printf("loop: 领出 %s 失败，这轮不跑：%v", first.ID, err)
+		a.report(err)
 		return
 	}
 	for _, steering := range extraSteerings {
@@ -102,6 +107,7 @@ func (d *driver) runTurn(first delivery, extraSteerings []delivery) {
 	_, err = a.book.RecordTurnStart()
 	if err != nil {
 		log.Printf("loop: 开轮记账失败，这轮不跑：%v", err)
+		a.report(err)
 		return
 	}
 
@@ -115,6 +121,7 @@ func (d *driver) runTurn(first delivery, extraSteerings []delivery) {
 		more, err := d.runStep()
 		if err != nil {
 			log.Printf("loop: 一步失败，收轮：%v", err)
+			a.report(err)
 			return
 		}
 		if !more {
@@ -183,11 +190,14 @@ func (d *driver) runStep() (bool, error) {
 	})
 	if err != nil {
 		// 被取消：已收到的半句固化成被打断的定稿——只落一条，绝不丢字。
-		if ctx.Err() != nil && len(chunkSeqs) > 0 {
-			_, _ = a.book.RecordAssistantFinal(session.AssistantFinalData{
-				Text:        chunkText.String(),
-				Interrupted: true,
-			}, chunkSeqs)
+		if ctx.Err() != nil {
+			if len(chunkSeqs) > 0 {
+				_, _ = a.book.RecordAssistantFinal(session.AssistantFinalData{
+					Text:        chunkText.String(),
+					Interrupted: true,
+				}, chunkSeqs)
+			}
+			return false, nil
 		}
 		return false, fmt.Errorf("问模型失败：%w", err)
 	}
@@ -217,6 +227,9 @@ func (d *driver) runStep() (bool, error) {
 		})
 		if result.Status == tools.ResultUnknown {
 			return false, fmt.Errorf("工具 %s 已开跑但结果不明，收轮待恢复", call.Name)
+		}
+		if ctx.Err() != nil {
+			return false, nil
 		}
 	}
 

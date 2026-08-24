@@ -25,18 +25,19 @@ type Conversation struct {
 	inbox     *inbox
 	driver    *driver
 
-	mu        sync.Mutex
-	cond      *sync.Cond // 闲了广播一声，等闲的人全醒
-	working   bool       // 搬运工已经接活，可能刚把队列领空、还没正式开轮
-	busy      bool       // 正在跑一轮；State 对外只报这个
-	stepCtx   context.Context
-	stepStop  context.CancelFunc
-	close     func() error
-	closeErr  error
-	closeOnce sync.Once
+	mu          sync.Mutex
+	cond        *sync.Cond // 闲了广播一声，等闲的人全醒
+	working     bool       // 搬运工已经接活，可能刚把队列领空、还没正式开轮
+	busy        bool       // 正在跑一轮；State 对外只报这个
+	stepCtx     context.Context
+	stepStop    context.CancelFunc
+	close       func() error
+	reportError func(error)
+	closeErr    error
+	closeOnce   sync.Once
 }
 
-func newConversation(agentID string, sessionID string, scope *core.App, book *session.Session, llmSvc *llm.Service, toolsReg *tools.Registry, profile agents.AgentProfile) *Conversation {
+func newConversation(agentID string, sessionID string, scope *core.App, book *session.Session, llmSvc *llm.Service, toolsReg *tools.Registry, profile agents.AgentProfile, reportError func(error)) *Conversation {
 	conversation := &Conversation{
 		agentID:   agentID,
 		sessionID: sessionID,
@@ -50,7 +51,8 @@ func newConversation(agentID string, sessionID string, scope *core.App, book *se
 			Thinking:     profile.Thinking,
 			SystemPrompt: profile.SystemPrompt,
 		},
-		inbox: newInbox(),
+		inbox:       newInbox(),
+		reportError: reportError,
 	}
 	conversation.cond = sync.NewCond(&conversation.mu)
 	conversation.driver = newDriver(conversation)
@@ -73,9 +75,18 @@ func (a *Conversation) Start() {
 // Close 让这段会话下线、账本收口；重复调用安全，第一次的结果会被保留。
 func (a *Conversation) Close() error {
 	a.closeOnce.Do(func() {
+		a.Cancel()
+		a.driver.stopAndJoin()
 		a.closeErr = a.close()
 	})
 	return a.closeErr
+}
+
+func (a *Conversation) report(cause error) {
+	if cause == nil || a.reportError == nil {
+		return
+	}
+	a.reportError(cause)
 }
 
 // AgentID 返回这段会话属于哪个长期 Agent。

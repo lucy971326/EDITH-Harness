@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 
 	"harness/chat"
@@ -32,6 +33,30 @@ func (s *Service) Register(adapter Adapter) error {
 	}
 	s.adapters[name] = adapter
 	return nil
+}
+
+// Providers 按名字列出已安装适配器及其创建 Agent 菜单信息。
+func (s *Service) Providers() []ProviderInfo {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	providers := make([]ProviderInfo, 0, len(s.adapters))
+	for name, adapter := range s.adapters {
+		info := ProviderInfo{Name: name, ThinkingLevels: []string{"off"}}
+		catalog, ok := adapter.(ProviderCatalog)
+		if ok {
+			info = catalog.ProviderInfo()
+		}
+		if info.Name == "" {
+			info.Name = name
+		}
+		info.ThinkingLevels = append([]string(nil), info.ThinkingLevels...)
+		providers = append(providers, info)
+	}
+	sort.Slice(providers, func(i int, j int) bool {
+		return providers[i].Name < providers[j].Name
+	})
+	return providers
 }
 
 // Complete 按请求指定的服务商发一次请求，不关心逐字（要逐字用 Stream）。

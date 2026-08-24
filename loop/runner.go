@@ -23,7 +23,7 @@ func NewRunner(llmSvc *llm.Service, toolsReg *tools.Registry) *Runner {
 
 // Prepare 用 agents 给的材料恢复一段会话，但尚不启动搬运工。
 func (r *Runner) Prepare(input agents.RunInput) (agents.PreparedConversation, error) {
-	conversation := newConversation(input.AgentID, input.SessionID, input.Scope, input.Book, r.llmSvc, r.toolsReg, input.Profile)
+	conversation := newConversation(input.AgentID, input.SessionID, input.Scope, input.Book, r.llmSvc, r.toolsReg, input.Profile, input.ReportError)
 	conversation.close = input.Close
 	if input.Recover {
 		err := recoverFromLedger(conversation, input.Book.Events())

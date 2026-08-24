@@ -75,6 +75,27 @@ func TestJournalReopensExistingBook(t *testing.T) {
 	}
 }
 
+func TestListHeadersReadsOnlyBookCovers(t *testing.T) {
+	journal, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"会话二", "会话一"} {
+		header := session.Header{FormatVersion: 2, ID: id, AgentID: "小红", ProfileRevision: 1}
+		err = journal.Create(id, header)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	headers, err := journal.ListHeaders()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(headers) != 2 || headers[0].ID != "会话一" || headers[1].ID != "会话二" {
+		t.Fatalf("封面应按账本号排序：%+v", headers)
+	}
+}
+
 func TestFlushWritesBufferedEvents(t *testing.T) {
 	journal, err := New(t.TempDir())
 	if err != nil {

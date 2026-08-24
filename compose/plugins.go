@@ -15,6 +15,7 @@ import (
 	"harness/session"
 	filetools "harness/toolplugins/files"
 	"harness/tools"
+	uiplugin "harness/uiplugins/terminal"
 )
 
 // pluginSelection 放本次启动选中的大零件；固定插座不交给配置选择。
@@ -25,6 +26,7 @@ type pluginSelection struct {
 	environment  core.Plugin
 	toolPlugins  []core.Plugin
 	runner       core.Plugin
+	ui           core.Plugin
 }
 
 func selectPlugins(config Config, home string, workspace string) (pluginSelection, error) {
@@ -86,6 +88,13 @@ func selectPlugins(config Config, home string, workspace string) (pluginSelectio
 		return pluginSelection{}, fmt.Errorf("未知的 plugins.runner：%s", config.Plugins.Runner)
 	}
 
+	switch config.Plugins.UI {
+	case "terminal":
+		selected.ui = uiplugin.Plugin{}
+	default:
+		return pluginSelection{}, fmt.Errorf("未知的 plugins.ui：%s", config.Plugins.UI)
+	}
+
 	return selected, nil
 }
 
@@ -99,6 +108,6 @@ func (p pluginSelection) ordered() []core.Plugin {
 	plugins = append(plugins, p.llmAdapters...)
 	plugins = append(plugins, tools.Plugin{}, p.environment)
 	plugins = append(plugins, p.toolPlugins...)
-	plugins = append(plugins, agents.Plugin{}, p.runner)
+	plugins = append(plugins, agents.Plugin{}, p.runner, p.ui)
 	return plugins
 }

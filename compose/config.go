@@ -24,6 +24,7 @@ plugins:
   tool_plugins:
     - files
   runner: loop
+  ui: terminal
 
 providers:
   deepseek:
@@ -46,6 +47,7 @@ type PluginConfig struct {
 	Environment  string   `yaml:"environment"`
 	ToolPlugins  []string `yaml:"tool_plugins"`
 	Runner       string   `yaml:"runner"`
+	UI           string   `yaml:"ui"`
 }
 
 // ProviderConfigs 放按服务商划分的连接配置。
@@ -88,11 +90,40 @@ func loadConfig(home string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	if config.Plugins.UI == "" {
+		config.Plugins.UI = "terminal"
+	}
 	err = validateConfig(config)
 	if err != nil {
 		return Config{}, err
 	}
 	return config, nil
+}
+
+// DumpConfig 读取并校验配置后写成标准 YAML，供查看或再次导入。
+func DumpConfig(home string, output io.Writer) error {
+	absoluteHome, err := privateDirectory(home, "用户目录")
+	if err != nil {
+		return err
+	}
+	config, err := loadConfig(absoluteHome)
+	if err != nil {
+		return err
+	}
+	_, err = selectPlugins(config, absoluteHome, ".")
+	if err != nil {
+		return fmt.Errorf("配置不能组装：%w", err)
+	}
+	encoder := yaml.NewEncoder(output)
+	encoder.SetIndent(2)
+	err = encoder.Encode(config)
+	if err == nil {
+		err = encoder.Close()
+	}
+	if err != nil {
+		return fmt.Errorf("导出配置失败：%w", err)
+	}
+	return nil
 }
 
 func validateConfig(config Config) error {
@@ -116,6 +147,9 @@ func validateConfig(config Config) error {
 	}
 	if config.Plugins.Runner == "" {
 		return fmt.Errorf("配置缺少 plugins.runner")
+	}
+	if config.Plugins.UI == "" {
+		return fmt.Errorf("配置缺少 plugins.ui")
 	}
 	err := rejectDuplicates("plugins.llm_adapters", config.Plugins.LLMAdapters)
 	if err != nil {

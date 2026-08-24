@@ -1,6 +1,7 @@
 package compose
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"slices"
@@ -8,6 +9,7 @@ import (
 	"testing"
 
 	"harness/tools"
+	"harness/ui"
 )
 
 func TestOpenWritesPrivateTemplateThenStops(t *testing.T) {
@@ -55,6 +57,10 @@ func TestOpenBuildsWithExplicitWorkspace(t *testing.T) {
 	if _, exists := registry.Lookup("write_file", ""); !exists {
 		t.Fatal("完整组装应带 write_file")
 	}
+	_, err = ui.Get(runtime.App)
+	if err != nil {
+		t.Fatalf("完整组装应带终端 UI：%v", err)
+	}
 	assertPrivate(t, filepath.Join(home, "agents"), 0o700)
 	assertPrivate(t, filepath.Join(home, "sessions"), 0o700)
 }
@@ -76,6 +82,50 @@ func TestOpenAllowsNoToolPlugins(t *testing.T) {
 	}
 	if _, exists := registry.Lookup("write_file", ""); exists {
 		t.Fatal("没有选择 files 插件时不应登记 write_file")
+	}
+}
+
+func TestDumpConfigRoundTrips(t *testing.T) {
+	firstHome := filepath.Join(t.TempDir(), "first")
+	secondHome := filepath.Join(t.TempDir(), "second")
+	writeConfig(t, firstHome, validConfig())
+
+	var dumped bytes.Buffer
+	err := DumpConfig(firstHome, &dumped)
+	if err != nil {
+		t.Fatalf("导出配置失败：%v", err)
+	}
+	if !strings.Contains(dumped.String(), "api_key: test-key") {
+		t.Fatalf("导出配置应保留可重新组装所需的密钥：%s", dumped.String())
+	}
+	writeConfig(t, secondHome, dumped.String())
+
+	firstConfig, err := loadConfig(firstHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondConfig, err := loadConfig(secondHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstSelection, err := selectPlugins(firstConfig, firstHome, "/workspace")
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondSelection, err := selectPlugins(secondConfig, secondHome, "/workspace")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var firstNames []string
+	for _, plugin := range firstSelection.ordered() {
+		firstNames = append(firstNames, plugin.Name())
+	}
+	var secondNames []string
+	for _, plugin := range secondSelection.ordered() {
+		secondNames = append(secondNames, plugin.Name())
+	}
+	if !slices.Equal(firstNames, secondNames) {
+		t.Fatalf("导出再导入后的安装顺序不同：%v 和 %v", firstNames, secondNames)
 	}
 }
 
@@ -140,6 +190,13 @@ func TestOpenRejectsBadConfig(t *testing.T) {
 				return strings.Replace(config, "runner: loop", "runner: debate", 1)
 			},
 			want: "未知的 plugins.runner：debate",
+		},
+		{
+			name: "未知 UI",
+			change: func(config string) string {
+				return strings.Replace(config, "ui: terminal", "ui: web", 1)
+			},
+			want: "未知的 plugins.ui：web",
 		},
 		{
 			name: "重复模型适配器",
@@ -209,6 +266,7 @@ func TestSelectedPluginsKeepFixedOrder(t *testing.T) {
 			Environment:  "localenv",
 			ToolPlugins:  []string{"files"},
 			Runner:       "loop",
+			UI:           "terminal",
 		},
 		Providers: ProviderConfigs{DeepSeek: DeepSeekConfig{
 			APIKey: "test-key",
@@ -233,6 +291,7 @@ func TestSelectedPluginsKeepFixedOrder(t *testing.T) {
 		"tool-files",
 		"agents",
 		"loop",
+		"ui-terminal",
 	}
 	if !slices.Equal(names, want) {
 		t.Fatalf("安装顺序是 %v，想要 %v", names, want)

@@ -216,3 +216,60 @@ func TestOldProfileNeedsUpdateBeforeStarting(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestListsAgentsAndTheirSessions(t *testing.T) {
+	app := core.New()
+	t.Cleanup(app.Close)
+	err := app.Install(
+		memoryProfilePlugin{store: newMemoryProfileStore()},
+		memoryJournalPlugin{journal: session.NewMemoryJournal()},
+		session.Plugin{},
+		tools.Plugin{},
+		Plugin{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := Get(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = service.RegisterRunner(&fakeRunner{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"小乙", "小甲"} {
+		err = service.CreateAgent(AgentProfile{ID: id, Provider: "test", Model: "m", Thinking: "off"})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	first, err := service.StartSession("小甲", "会话二")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := service.StartSession("小甲", "会话一")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	profiles, err := service.ListAgents()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(profiles) != 2 || profiles[0].ID != "小乙" || profiles[1].ID != "小甲" {
+		t.Fatalf("Agent 列表应稳定排序：%+v", profiles)
+	}
+	sessions, err := service.ListSessions("小甲")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 2 || sessions[0].ID != "会话一" || sessions[1].ID != "会话二" {
+		t.Fatalf("会话列表应只包含小甲且按号排序：%+v", sessions)
+	}
+	if !sessions[0].Open || !sessions[1].Open {
+		t.Fatalf("刚开的会话应标记为打开：%+v", sessions)
+	}
+	_ = first.Close()
+	_ = second.Close()
+}

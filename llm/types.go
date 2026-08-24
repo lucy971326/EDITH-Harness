@@ -19,6 +19,18 @@ type Adapter interface {
 	Stream(ctx context.Context, req Request, onDelta func(chat.Delta)) (Reply, error)
 }
 
+// ProviderInfo 是创建 Agent 时可展示的一家模型服务商信息。
+type ProviderInfo struct {
+	Name           string   // 插座上的服务商名
+	ThinkingLevels []string // 这家适配器接受的思考档位
+}
+
+// ProviderCatalog 是适配器可选提供的创建 Agent 菜单信息。
+// 没实现时仍能正常请求，只是界面只展示默认 off 档。
+type ProviderCatalog interface {
+	ProviderInfo() ProviderInfo
+}
+
 // Request 是一次模型请求的全部输入。
 type Request struct {
 	Provider    string            // 服务商名，如 "deepseek"；必须明确，不猜默认插座

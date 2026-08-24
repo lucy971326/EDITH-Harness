@@ -22,6 +22,7 @@
       --env: #b25442;
       --persistence: #6c8e51;
       --startup: #3e6fb4;
+      --ui: #9a5b95;
       --shadow: 0 8px 24px rgba(31, 45, 61, .08);
     }
 
@@ -85,10 +86,7 @@
 
     .board {
       overflow: hidden;
-      border: 1px solid var(--line);
-      border-radius: 16px;
-      background: var(--paper);
-      box-shadow: var(--shadow);
+      background: transparent;
     }
 
     .board-head {
@@ -98,7 +96,7 @@
       gap: 20px;
       min-height: 54px;
       padding: 12px 16px;
-      border-bottom: 1px solid var(--line);
+      background: var(--paper);
     }
 
     .board-head strong { font-size: 14px; }
@@ -115,12 +113,12 @@
 
     .legend span { display: inline-flex; align-items: center; gap: 5px; }
     .dot { width: 7px; height: 7px; border-radius: 50%; }
-    .map-scroll { overflow: auto; overscroll-behavior: contain; }
+    .map-scroll { overflow: visible; }
 
     .architecture-map {
       position: relative;
-      width: 1280px;
-      height: 1000px;
+      width: 2380px;
+      height: 2000px;
       background-color: #fbfcfe;
       background-image:
         linear-gradient(#edf1f6 1px, transparent 1px),
@@ -142,20 +140,17 @@
       position: absolute;
       z-index: 0;
       padding: 12px 14px;
-      border: 1px dashed #d4dde9;
-      border-radius: 16px;
       color: #8391a5;
-      background: rgba(255, 255, 255, .46);
-      font-size: 10px;
+      font-size: 14px;
       font-weight: 800;
       letter-spacing: .08em;
       pointer-events: none;
     }
 
-    #zone-supply { left: 25px; top: 120px; width: 275px; height: 830px; }
-    #zone-core { left: 335px; top: 120px; width: 610px; height: 585px; color: #5f84c2; border-color: #bdd1f1; background: rgba(241, 247, 255, .56); }
-    #zone-runtime { left: 965px; top: 120px; width: 290px; height: 830px; color: #5f8e87; border-color: #c7dfdb; background: rgba(242, 250, 248, .55); }
-    #zone-shared { left: 445px; top: 725px; width: 455px; height: 200px; color: #798798; }
+    #zone-supply { left: 45px; top: 165px; width: 380px; height: 1750px; }
+    #zone-core { left: 480px; top: 165px; width: 1160px; height: 1750px; color: #5f84c2; }
+    #zone-runtime { left: 1700px; top: 165px; width: 620px; height: 1750px; color: #5f8e87; }
+    #zone-shared { left: 720px; top: 1740px; width: 650px; height: 180px; color: #798798; }
 
     .map-node {
       position: absolute;
@@ -172,61 +167,61 @@
     }
 
     .map-card {
-      width: 215px;
-      padding: 14px;
-      border: 1px solid var(--accent-border);
-      border-left: 4px solid var(--accent);
-      border-radius: 12px;
-      background: var(--paper);
-      box-shadow: 0 5px 15px rgba(31, 45, 61, .06);
-      transition: border-color .15s ease, box-shadow .15s ease, opacity .15s ease;
+      width: 330px;
+      padding: 24px;
+      border: 0;
+      border-radius: 20px;
+      background: var(--accent-bg);
+      box-shadow: 0 12px 30px rgba(31, 45, 61, .07);
+      transition: box-shadow .15s ease, opacity .15s ease, transform .15s ease;
     }
 
     .map-card:hover,
-    .map-card.selected { border-color: var(--accent); box-shadow: 0 8px 22px rgba(31, 45, 61, .12); }
+    .map-card.selected { box-shadow: 0 18px 38px rgba(31, 45, 61, .15); transform: translateY(-2px); }
     .map-card.dim { opacity: .32; }
 
     .module-kicker {
       color: var(--accent);
-      font-size: 10px;
+      font-size: 13px;
       font-weight: 800;
       letter-spacing: .08em;
     }
 
-    .map-card h2 { margin: 5px 0; font-size: 18px; }
-    .map-card p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
-    .chips { margin-top: 9px; }
+    .map-card h2 { margin: 8px 0; font-size: 28px; }
+    .map-card p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.65; }
+    .chips { margin-top: 14px; }
 
     .chip {
       display: inline-block;
       margin: 2px 3px 0 0;
-      padding: 3px 6px;
-      border-radius: 6px;
+      padding: 5px 8px;
+      border-radius: 8px;
       color: var(--accent);
       background: var(--accent-bg);
-      font-size: 9px;
+      font-size: 12px;
       font-weight: 700;
     }
 
-    #module-jsonl { left: 55px; top: 165px; --accent: var(--persistence); --accent-border: #cad9bb; --accent-bg: #f1f7eb; }
-    #module-session { left: 55px; top: 355px; --accent: var(--session); --accent-border: #b9ded7; --accent-bg: #eaf7f4; }
-    #module-llm { left: 55px; top: 545px; --accent: var(--llm); --accent-border: #d7caed; --accent-bg: #f3effa; }
-    #module-tools { left: 55px; top: 735px; --accent: var(--tools); --accent-border: #ecd1b7; --accent-bg: #fbf2e9; }
-    #app-pillar { left: 370px; top: 165px; }
-    #module-agents { left: 985px; top: 165px; --accent: var(--agents); --accent-border: #b9ddd8; --accent-bg: #eaf7f5; }
-    #module-loop { left: 985px; top: 355px; --accent: var(--loop); --accent-border: #c8dfc2; --accent-bg: #eef7ec; }
-    #module-localenv { left: 985px; top: 545px; width: 230px; --accent: var(--env); --accent-border: #e3c2bb; --accent-bg: #faf0ee; }
-    #agent-scope { left: 970px; top: 735px; }
-    #module-chat { left: 575px; top: 745px; --accent: var(--chat); --accent-border: #cbd5df; --accent-bg: #f0f3f6; }
-    #module-startup { left: 505px; top: 25px; width: 270px; --accent: var(--startup); --accent-border: #c4d5ee; --accent-bg: #edf4fe; }
+    #module-jsonl { left: 80px; top: 250px; --accent: var(--persistence); --accent-border: #cad9bb; --accent-bg: #f1f7eb; }
+    #module-session { left: 80px; top: 600px; --accent: var(--session); --accent-border: #b9ded7; --accent-bg: #eaf7f4; }
+    #module-llm { left: 80px; top: 950px; --accent: var(--llm); --accent-border: #d7caed; --accent-bg: #f3effa; }
+    #module-tools { left: 80px; top: 1300px; --accent: var(--tools); --accent-border: #ecd1b7; --accent-bg: #fbf2e9; }
+    #app-pillar { left: 520px; top: 250px; }
+    #module-agents { left: 1780px; top: 250px; --accent: var(--agents); --accent-border: #b9ddd8; --accent-bg: #eaf7f5; }
+    #module-loop { left: 1780px; top: 610px; --accent: var(--loop); --accent-border: #c8dfc2; --accent-bg: #eef7ec; }
+    #module-localenv { left: 1780px; top: 970px; --accent: var(--env); --accent-border: #e3c2bb; --accent-bg: #faf0ee; }
+    #module-ui { left: 1780px; top: 1330px; --accent: var(--ui); --accent-border: #dfc5dc; --accent-bg: #fbf0fa; }
+    #agent-scope { left: 1740px; top: 1670px; }
+    #module-chat { left: 845px; top: 1800px; --accent: var(--chat); --accent-border: #cbd5df; --accent-bg: #f0f3f6; }
+    #module-startup { left: 850px; top: 35px; width: 470px; --accent: var(--startup); --accent-border: #c4d5ee; --accent-bg: #edf4fe; }
 
     .app-pillar {
-      width: 540px;
-      padding: 15px;
-      border: 2px solid #91b5f4;
-      border-radius: 15px;
+      width: 1100px;
+      padding: 28px;
+      border: 0;
+      border-radius: 24px;
       background: #f7faff;
-      box-shadow: 0 9px 25px rgba(57, 119, 232, .1);
+      box-shadow: 0 14px 34px rgba(57, 119, 232, .09);
     }
 
     .app-title {
@@ -234,67 +229,68 @@
       justify-content: space-between;
       align-items: baseline;
       gap: 12px;
-      padding-bottom: 12px;
-      border-bottom: 1px solid #d8e5fa;
+      padding-bottom: 18px;
     }
 
-    .app-title strong { color: #245fbf; font-size: 20px; }
-    .app-title span { color: var(--muted); font-size: 10px; }
+    .app-title strong { color: #245fbf; font-size: 34px; }
+    .app-title span { color: var(--muted); font-size: 15px; }
 
     .rack {
-      margin-top: 13px;
-      padding: 11px;
-      border: 1px solid #d8e5fa;
-      border-radius: 10px;
+      margin-top: 22px;
+      padding: 20px;
+      border: 0;
+      border-radius: 18px;
       background: var(--paper);
     }
 
-    .rack-title { margin-bottom: 7px; color: #64748a; font-size: 10px; font-weight: 800; }
-    .capability-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; }
+    .rack-title { margin-bottom: 14px; color: #64748a; font-size: 15px; font-weight: 800; }
+    .capability-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
     .capability-list.services { grid-template-columns: repeat(3, 1fr); }
     .capability-list.three { grid-template-columns: repeat(3, 1fr); }
 
     .app-note {
-      margin: 10px 1px 0;
+      margin: 16px 2px 0;
       color: #718096;
-      font-size: 9px;
+      font-size: 14px;
     }
 
     .capability {
-      display: flex;
-      justify-content: space-between;
-      gap: 8px;
-      padding: 7px 8px;
-      border-radius: 7px;
+      display: block;
+      padding: 15px;
+      border-radius: 14px;
       background: #f2f6fc;
-      font-size: 10px;
+      font-size: 13px;
     }
 
-    .capability code { color: #245fbf; font-weight: 800; }
-    .capability span { color: var(--muted); }
+    .capability > code { display: block; color: #245fbf; font-size: 17px; font-weight: 800; }
+    .capability > span { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; }
 
-    .tool-rack { border-color: #efcda9; background: #fffaf4; }
+    .method-list { display: grid; gap: 5px; margin-top: 12px; }
+    .method-list p { display: flex; align-items: baseline; gap: 7px; margin: 0; color: #5d6a7c; font-size: 12px; line-height: 1.35; }
+    .method-list code { flex: 0 0 auto; color: #2a66bf; font-size: 12px; font-weight: 800; }
+
+    .tool-rack { background: #fffaf4; }
     .tool-rack .rack-title { color: #a85d18; }
-    .tool-entry { border: 1px solid #edc28f; background: #fff0dd; }
+    .tool-entry { background: #fff0dd; }
     .tool-entry code { color: #a85d18; }
 
-    .execution-rack { border-color: #e1c5bf; background: #fffafa; }
+    .execution-rack { background: #fffafa; }
     .execution-rack .rack-title { color: #984837; }
     .execution-rack .capability { background: #f9eeec; }
     .execution-rack .capability code { color: #984837; }
 
     .rack-hint {
-      margin-top: 7px;
+      margin-top: 12px;
       color: var(--muted);
-      font-size: 9px;
+      font-size: 12px;
       line-height: 1.45;
     }
     .core-summary {
-      padding: 9px;
-      border-radius: 7px;
+      padding: 14px;
+      border-radius: 12px;
       color: #64748a;
       background: #f7f9fc;
-      font-size: 9px;
+      font-size: 13px;
       line-height: 1.55;
     }
 
@@ -302,23 +298,23 @@
       display: flex;
       justify-content: space-between;
       gap: 12px;
-      margin-top: 12px;
+      margin-top: 18px;
       color: #53627a;
-      font-size: 10px;
+      font-size: 13px;
       font-weight: 700;
     }
 
     .scope-card {
-      width: 285px;
-      padding: 14px;
-      border: 1px dashed #88a9de;
-      border-radius: 12px;
+      width: 480px;
+      padding: 24px;
+      border: 0;
+      border-radius: 20px;
       background: #f8fbff;
       box-shadow: 0 5px 15px rgba(31, 45, 61, .05);
     }
 
-    .scope-card strong { color: #2d63ba; font-size: 14px; }
-    .scope-card p { margin: 7px 0 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
+    .scope-card strong { color: #2d63ba; font-size: 22px; }
+    .scope-card p { margin: 10px 0 0; color: var(--muted); font-size: 15px; line-height: 1.65; }
 
     .done-tag {
       display: inline-block;
@@ -341,21 +337,19 @@
 
     .agent-route div {
       padding: 6px 7px;
-      border: 1px solid #e7cf9c;
       border-radius: 6px;
       background: #fffaf0;
-      font-size: 9px;
+      font-size: 12px;
     }
 
     .agent-route span { display: block; color: #8a5a14; font-weight: 800; }
-    .agent-route code { color: #5d6470; font-size: 9px; }
+    .agent-route code { color: #5d6470; font-size: 12px; }
 
     .session-stack {
       display: grid;
       gap: 5px;
       margin-top: 10px;
       padding-top: 9px;
-      border-top: 1px solid #d8e5fa;
     }
 
     .session-stack div {
@@ -366,10 +360,10 @@
       border-radius: 6px;
       color: #52657c;
       background: #eef4fc;
-      font-size: 9px;
+      font-size: 12px;
     }
 
-    .session-stack strong { color: #2d63ba; font-size: 9px; }
+    .session-stack strong { color: #2d63ba; font-size: 12px; }
 
     .env-stack {
       display: grid;
@@ -385,7 +379,7 @@
       border-radius: 6px;
       color: var(--muted);
       background: var(--accent-bg);
-      font-size: 9px;
+      font-size: 12px;
     }
 
     .env-stack strong { color: var(--accent); }
@@ -396,7 +390,6 @@
       gap: 24px;
       min-height: 88px;
       padding: 15px 18px;
-      border-top: 1px solid var(--line);
       background: #fff;
       cursor: default;
     }
@@ -405,11 +398,91 @@
     .detail-bar .path { color: var(--core); font-family: "SFMono-Regular", Consolas, monospace; font-size: 10px; }
     .detail-bar p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.65; }
 
+    /* 这张图是阅读页，不是可拖拽画布：只允许页面向下阅读。 */
+    .architecture-map {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-areas:
+        "startup startup startup startup"
+        "jsonl session llm tools"
+        "app app app app"
+        "agents loop localenv ui"
+        "agent agent chat chat";
+      gap: 24px;
+      width: 100%;
+      height: auto;
+      padding: 28px;
+      background: transparent;
+    }
+
+    .zone,
+    .links { display: none; }
+
+    .map-node,
+    #module-jsonl,
+    #module-session,
+    #module-llm,
+    #module-tools,
+    #module-agents,
+    #module-loop,
+    #module-localenv,
+    #module-ui,
+    #module-chat,
+    #module-startup,
+    #app-pillar,
+    #agent-scope {
+      position: relative;
+      inset: auto;
+      width: auto;
+      margin: 0;
+      cursor: pointer;
+      touch-action: auto;
+    }
+
+    #module-startup { grid-area: startup; }
+    #module-jsonl { grid-area: jsonl; }
+    #module-session { grid-area: session; }
+    #module-llm { grid-area: llm; }
+    #module-tools { grid-area: tools; }
+    #app-pillar { grid-area: app; }
+    #module-agents { grid-area: agents; }
+    #module-loop { grid-area: loop; }
+    #module-localenv { grid-area: localenv; }
+    #module-ui { grid-area: ui; }
+    #agent-scope { grid-area: agent; }
+    #module-chat { grid-area: chat; }
+
+    .app-pillar,
+    .scope-card { width: auto; }
+
+    @media (max-width: 1080px) {
+      .architecture-map {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-areas:
+          "startup startup"
+          "jsonl session"
+          "llm tools"
+          "app app"
+          "agents loop"
+          "localenv ui"
+          "agent chat";
+      }
+    }
+
     @media (max-width: 760px) {
       .topbar { align-items: flex-start; }
       .board-head { align-items: flex-start; flex-direction: column; gap: 8px; }
       .legend { justify-content: flex-start; }
       .detail-bar { grid-template-columns: 1fr; gap: 8px; }
+      .architecture-map {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+          "startup" "jsonl" "session" "llm" "tools" "app"
+          "agents" "loop" "localenv" "ui" "agent" "chat";
+        padding: 16px;
+      }
+      .capability-list.services,
+      .capability-list.three { grid-template-columns: 1fr; }
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -423,14 +496,13 @@
       <div>
         <p class="eyebrow">Harness · Current Architecture</p>
         <h1>整体结构</h1>
-        <p class="subtitle">已实现：YAML 装机清单、启动入口、显式模型归属、DeepSeek SDK、文件工具和多会话。拖动任意组件整理布局，连线会自动跟随。</p>
+        <p class="subtitle">已实现：YAML 装机清单、终端 UI、显式模型归属、DeepSeek SDK、文件工具、多会话和配置导出。页面按普通文档上下滚动。</p>
       </div>
-      <button class="reset-button" id="reset-layout" type="button">恢复初始位置</button>
     </header>
 
     <section class="board" aria-label="Harness 整体结构图">
       <div class="board-head">
-        <div><strong>App 是中间的公共场地</strong><span> · 青色的 agents 是小红管理插件</span></div>
+        <div><strong>App 是中间的公共场地</strong><span> · 从上到下看，不需要横向拖动</span></div>
         <div class="legend" aria-label="连线图例">
           <span><i class="dot" style="background:#3977e8"></i>作用域</span>
           <span><i class="dot" style="background:#478b38"></i>能力存取</span>
@@ -440,12 +512,7 @@
 
       <div class="map-scroll">
         <div class="architecture-map" id="architecture-map">
-          <div class="zone" id="zone-supply">装进 App 的插件</div>
-          <div class="zone" id="zone-core">中间公共场地</div>
-          <div class="zone" id="zone-runtime">Agent 运行关系</div>
-          <div class="zone" id="zone-shared">公共数据格式</div>
           <svg class="links" id="architecture-links" aria-hidden="true"></svg>
-
           <article class="map-node map-card" id="module-session" data-module="session" tabindex="0">
             <div class="module-kicker">必装插件 · 紧跟持久化</div>
             <h2>session</h2>
@@ -463,8 +530,8 @@
           <article class="map-node map-card" id="module-startup" data-module="startup" tabindex="0">
             <div class="module-kicker">启动入口 · 不是插件</div>
             <h2>dsh + compose</h2>
-            <p>config.yaml 选择大零件；compose 按固定顺序把它们装进 App。</p>
-            <div class="chips"><span class="chip">config.yaml</span><span class="chip">静态零件</span><span class="chip">compose.Open</span></div>
+            <p>config.yaml 选择大零件；compose 装进 App 后，main 启动选中的 UI。<code>--dump-config</code> 只导出配置并退出。</p>
+            <div class="chips"><span class="chip">config.yaml</span><span class="chip">静态零件</span><span class="chip">compose.Open</span><span class="chip">--dump-config</span><span class="chip">ui.Run</span></div>
           </article>
 
           <article class="map-node map-card" id="module-llm" data-module="llm" tabindex="0">
@@ -506,6 +573,13 @@
             </div>
           </article>
 
+          <article class="map-node map-card" id="module-ui" data-module="ui" tabindex="0">
+            <div class="module-kicker">UI 插件 · 当前是 terminal</div>
+            <h2>terminal UI</h2>
+            <p>选 Agent / 会话，发消息；只找 agents，过程从账本事件显示。</p>
+            <div class="chips"><span class="chip">Run</span><span class="chip">agents</span><span class="chip">session/appended</span></div>
+          </article>
+
           <article class="map-node map-card" id="module-chat" data-module="chat" tabindex="0">
             <div class="module-kicker">中立词汇 · 不是插件</div>
             <h2>chat</h2>
@@ -519,31 +593,109 @@
               <span>能力表 · 事件系统 · 作用域 · 收摊顺序</span>
             </div>
 
-            <div class="app-note">下面是同一张能力表的职责分区；图上只画最关键的关系。</div>
+            <div class="app-note">能力名是抽屉标签；拿到能力后，插件靠下面这些方法真正合作。图上只画最关键的关系。</div>
 
             <div class="rack tool-rack">
             <div class="rack-title">① 模型工具入口 · 模型只能从这里调工具</div>
-            <div class="capability tool-entry" id="cap-tools"><code>tools</code><span>Registry + 执行流程</span></div>
+            <div class="capability tool-entry" id="cap-tools">
+              <code>tools</code><span>tools.Registry · 工具菜单和执行流程</span>
+              <div class="method-list">
+                <p><code>Register</code><span>登记一个全局工具</span></p>
+                <p><code>Schemas</code><span>拿给模型看的工具说明</span></p>
+                <p><code>ExecuteCall</code><span>按固定步骤执行工具</span></p>
+                <p><code>Names</code><span>列出可选工具名</span></p>
+              </div>
+            </div>
               <div class="rack-hint">已登记 write_file；以后 read_file、bash 等工具也会来这里报名。</div>
             </div>
 
             <div class="rack">
               <div class="rack-title">② 内核自己的普通能力</div>
               <div class="capability-list services">
-                <div class="capability" id="cap-journal"><code>journal</code><span>session.Journal</span></div>
-                <div class="capability" id="cap-profiles"><code>agent-profiles</code><span>agents.ProfileStore</span></div>
-                <div class="capability" id="cap-sessions"><code>sessions</code><span>*session.Store</span></div>
-                <div class="capability" id="cap-llm"><code>llm</code><span>*llm.Service</span></div>
-                <div class="capability" id="cap-agents"><code>agents</code><span>agents.Service 管理入口</span></div>
+                <div class="capability" id="cap-journal">
+                  <code>journal</code><span>session.Journal · 账本存放处</span>
+                  <div class="method-list">
+                    <p><code>Create</code><span>开一本新账</span></p>
+                    <p><code>Append</code><span>追加一笔</span></p>
+                    <p><code>Flush</code><span>把攒着的账写完</span></p>
+                    <p><code>ReadAll</code><span>读整本旧账</span></p>
+                    <p><code>ListHeaders</code><span>列所有账本封面</span></p>
+                  </div>
+                </div>
+                <div class="capability" id="cap-profiles">
+                  <code>agent-profiles</code><span>agents.ProfileStore · 小红档案柜</span>
+                  <div class="method-list">
+                    <p><code>Create</code><span>存新小红</span></p>
+                    <p><code>Update</code><span>改小红档案</span></p>
+                    <p><code>Get</code><span>取一份档案</span></p>
+                    <p><code>List</code><span>列全部档案</span></p>
+                    <p><code>Archive</code><span>归档小红</span></p>
+                  </div>
+                </div>
+                <div class="capability" id="cap-sessions">
+                  <code>sessions</code><span>*session.Store · 账本管家</span>
+                  <div class="method-list">
+                    <p><code>Create</code><span>新开会话账本</span></p>
+                    <p><code>Open</code><span>打开旧账本</span></p>
+                    <p><code>Get</code><span>取已打开的账</span></p>
+                    <p><code>Release</code><span>写完并从内存放下</span></p>
+                    <p><code>ListHeaders</code><span>列会话目录</span></p>
+                  </div>
+                </div>
+                <div class="capability" id="cap-llm">
+                  <code>llm</code><span>*llm.Service · 模型插座排</span>
+                  <div class="method-list">
+                    <p><code>Register</code><span>接入一家模型</span></p>
+                    <p><code>Providers</code><span>列已接入服务商</span></p>
+                    <p><code>Stream</code><span>边收字边请求模型</span></p>
+                    <p><code>Complete</code><span>只要最终回答</span></p>
+                  </div>
+                </div>
+                <div class="capability" id="cap-agents">
+                  <code>agents</code><span>agents.Service · 小红管理入口</span>
+                  <div class="method-list">
+                    <p><code>CreateAgent</code><span>新建小红</span></p>
+                    <p><code>UpdateAgent</code><span>修改档案</span></p>
+                    <p><code>ListAgents</code><span>列小红</span></p>
+                    <p><code>StartSession</code><span>新开会话</span></p>
+                    <p><code>ResumeSession</code><span>恢复旧会话</span></p>
+                    <p><code>ListSessions</code><span>列某小红的会话</span></p>
+                    <p><code>CloseSession</code><span>关一段会话</span></p>
+                  </div>
+                </div>
+                <div class="capability" id="cap-ui">
+                  <code>ui</code><span>ui.Service · 当前界面入口</span>
+                  <div class="method-list">
+                    <p><code>Run</code><span>把界面跑起来</span></p>
+                  </div>
+                </div>
               </div>
             </div>
 
             <div class="rack execution-rack">
               <div class="rack-title">③ 底层执行能力 · 模型不能直接调用</div>
               <div class="capability-list three">
-                <div class="capability" id="cap-files"><code>files</code><span>files.Store</span></div>
-                <div class="capability" id="cap-process"><code>process</code><span>process.Spawner</span></div>
-                <div class="capability" id="cap-shell"><code>shell</code><span>shell.Runner</span></div>
+                <div class="capability" id="cap-files">
+                  <code>files</code><span>files.Store · 工作目录文件</span>
+                  <div class="method-list">
+                    <p><code>Read</code><span>读文件</span></p>
+                    <p><code>Write</code><span>写文件</span></p>
+                    <p><code>List</code><span>列目录</span></p>
+                  </div>
+                </div>
+                <div class="capability" id="cap-process">
+                  <code>process</code><span>process.Spawner · 长期进程</span>
+                  <div class="method-list">
+                    <p><code>Spawn</code><span>启动一个进程</span></p>
+                    <p><code>Close</code><span>收掉全部进程树</span></p>
+                  </div>
+                </div>
+                <div class="capability" id="cap-shell">
+                  <code>shell</code><span>shell.Runner · 一次性命令</span>
+                  <div class="method-list">
+                    <p><code>Run</code><span>跑完一条命令并收结果</span></p>
+                  </div>
+                </div>
               </div>
               <div class="rack-hint">以后的具体工具插件会领取这些能力，然后再把自己登记进 tools。</div>
             </div>
@@ -574,7 +726,7 @@
 
       <div class="detail-bar" id="module-detail">
         <div><h3>点击一个模块</h3><div class="path">查看它的代码入口</div></div>
-        <p>拖动不会打开说明；轻点任意模块才会查看详情。</p>
+        <p>轻点任意模块，可查看它的代码入口和一句话职责。</p>
       </div>
     </section>
   </main>
@@ -589,7 +741,7 @@
       startup: {
         title: "dsh + compose · 启动与总装",
         path: "cmd/dsh/main.go → compose/config.go → plugins.go → compose.go",
-        text: "main 找到 ~/.harness 和当前工作目录。config.yaml 只选择档案存储、账本、模型适配器、执行环境、工具插件和 Runner；compose 把名字换成已编进程序的插件，再按固定顺序安装。session、llm、tools、agents 四个插座自动安装。"
+        text: "main 找到 ~/.harness 和当前工作目录。普通启动时，config.yaml 选择档案存储、账本、模型适配器、执行环境、工具插件、Runner 和 UI；compose 把名字换成已编进程序的插件，再按固定顺序安装，最后 main 只领取 ui 并运行。传入 --dump-config 时只读取、校验并输出 YAML，不安装 App。session、llm、tools、agents 四个插座自动安装。"
       },
       session: {
         title: "session · 账本",
@@ -630,6 +782,11 @@
         title: "localenv · 本地执行环境",
         path: "localenv/plugin.go → localenv/files.go + localenv/process.go + workspace/shell/runner.go",
         text: "这一个插件同时登记 files、process 和 shell，三者共用同一个根目录。它们是未来具体工具背后的手脚，不会直接出现在模型的工具菜单里。App 关闭时，process 会收掉整棵进程树。"
+      },
+      ui: {
+        title: "terminal UI · 当前终端前端",
+        path: "uiplugins/terminal/plugin.go → terminal.go",
+        text: "它是一个可选的大零件，当前由 YAML 选 terminal。它用 agents 建/找小红和会话，普通消息交给 Conversation；它不认识 loop。聊天文字、工具开始和结果都从 session/appended 事件显示；监听器只把事件放进自己的队列，因此慢终端不会卡住同步记账。"
       }
     };
 
@@ -645,6 +802,8 @@
       ["module-agents", "cap-agents", "#247c72", "放入"],
       ["module-loop", "module-agents", "#247c72", "RegisterRunner"],
       ["module-localenv", "cap-files", "#b25442", "成套放入"],
+      ["module-ui", "cap-ui", "#9a5b95", "放入"],
+      ["cap-agents", "module-ui", "#9a5b95", "管理会话"],
       ["module-agents", "agent-scope", "#247c72", "长期档案"],
       ["app-pillar", "agent-scope", "#3977e8", "会话作用域"],
       ["module-chat", "app-pillar", "#60758a", "共用"]
@@ -730,56 +889,24 @@
       });
     });
 
-    nodes.forEach(node => {
-      node.addEventListener("pointerdown", event => {
-        if (event.button !== 0) return;
-        const startPointer = { x: event.clientX, y: event.clientY };
-        const startNode = { left: node.offsetLeft, top: node.offsetTop };
-        let moved = false;
-        node.setPointerCapture(event.pointerId);
-
-        const move = moveEvent => {
-          const dx = moveEvent.clientX - startPointer.x;
-          const dy = moveEvent.clientY - startPointer.y;
-          if (Math.abs(dx) + Math.abs(dy) > 4) moved = true;
-          if (!moved) return;
-
-          node.classList.add("dragging");
-          const maxLeft = map.clientWidth - node.offsetWidth;
-          const maxTop = map.clientHeight - node.offsetHeight;
-          node.style.left = `${Math.max(0, Math.min(maxLeft, startNode.left + dx))}px`;
-          node.style.top = `${Math.max(0, Math.min(maxTop, startNode.top + dy))}px`;
-          drawConnections();
-        };
-
-        const end = endEvent => {
-          if (node.hasPointerCapture(endEvent.pointerId)) {
-            node.releasePointerCapture(endEvent.pointerId);
-          }
-          node.removeEventListener("pointermove", move);
-          node.removeEventListener("pointerup", end);
-          node.removeEventListener("pointercancel", end);
-          node.classList.remove("dragging");
-          if (!moved && node.dataset.module) selectModule(node.dataset.module);
-        };
-
-        node.addEventListener("pointermove", move);
-        node.addEventListener("pointerup", end);
-        node.addEventListener("pointercancel", end);
-      });
+    cards.forEach(card => {
+      card.addEventListener("click", () => selectModule(card.dataset.module));
     });
 
     detail.addEventListener("click", clearSelection);
 
-    document.getElementById("reset-layout").addEventListener("click", () => {
-      nodes.forEach(node => {
-        const position = initialPositions.get(node.id);
-        node.style.left = `${position.left}px`;
-        node.style.top = `${position.top}px`;
+    const resetButton = document.getElementById("reset-layout");
+    if (resetButton) {
+      resetButton.addEventListener("click", () => {
+        nodes.forEach(node => {
+          const position = initialPositions.get(node.id);
+          node.style.left = `${position.left}px`;
+          node.style.top = `${position.top}px`;
+        });
+        clearSelection();
+        drawConnections();
       });
-      clearSelection();
-      drawConnections();
-    });
+    }
 
     window.addEventListener("resize", drawConnections);
     requestAnimationFrame(drawConnections);

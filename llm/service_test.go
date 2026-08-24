@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -218,5 +219,35 @@ func TestPluginRegistersServiceInApp(t *testing.T) {
 	err = service.Register(&fakeAdapter{name: "假的"})
 	if err != nil {
 		t.Fatalf("插适配器失败：%v", err)
+	}
+}
+
+type catalogAdapter struct {
+	fakeAdapter
+}
+
+func (a *catalogAdapter) ProviderInfo() ProviderInfo {
+	return ProviderInfo{Name: a.Name(), ThinkingLevels: []string{"off", "high"}}
+}
+
+func TestProvidersReturnsSortedCatalog(t *testing.T) {
+	service := NewService()
+	err := service.Register(&fakeAdapter{name: "zeta"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = service.Register(&catalogAdapter{fakeAdapter: fakeAdapter{name: "alpha"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	providers := service.Providers()
+	if len(providers) != 2 || providers[0].Name != "alpha" || providers[1].Name != "zeta" {
+		t.Fatalf("服务商应按名排序：%+v", providers)
+	}
+	if !reflect.DeepEqual(providers[0].ThinkingLevels, []string{"off", "high"}) {
+		t.Fatalf("适配器目录应透传：%+v", providers[0])
+	}
+	if !reflect.DeepEqual(providers[1].ThinkingLevels, []string{"off"}) {
+		t.Fatalf("没提供目录的适配器应默认 off：%+v", providers[1])
 	}
 }

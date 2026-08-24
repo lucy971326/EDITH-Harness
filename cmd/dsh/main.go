@@ -2,14 +2,34 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	"harness/compose"
+	"harness/ui"
 )
 
 func main() {
+	if len(os.Args) > 1 {
+		if len(os.Args) != 2 || os.Args[1] != "--dump-config" {
+			fmt.Fprintln(os.Stderr, "用法：dsh [--dump-config]")
+			os.Exit(2)
+		}
+		userHome, err := os.UserHomeDir()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "读取用户目录失败：", err)
+			os.Exit(1)
+		}
+		err = compose.DumpConfig(filepath.Join(userHome, ".harness"), os.Stdout)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	userHome, err := os.UserHomeDir()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "读取用户目录失败：", err)
@@ -25,5 +45,15 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	runtime.App.Close()
+	defer runtime.App.Close()
+	screen, err := ui.Get(runtime.App)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	err = screen.Run(context.Background())
+	if err != nil && !errors.Is(err, context.Canceled) {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 }

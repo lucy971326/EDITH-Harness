@@ -123,6 +123,11 @@ func (st *Store) Get(id string) (*Session, error) {
 	return s, nil
 }
 
+// ListHeaders 列出所有已保存账本的封面；不把它们打开到内存。
+func (st *Store) ListHeaders() ([]Header, error) {
+	return st.journal.ListHeaders()
+}
+
 // replay 重放旧账：编号必须从 1 连续，每笔过体检，逐笔写盘进内存，不广播。
 func (s *Session) replay(seed []Event) error {
 	for i, event := range seed {

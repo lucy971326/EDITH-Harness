@@ -3,6 +3,7 @@ package session
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"sync"
 )
 
@@ -20,6 +21,8 @@ type Journal interface {
 	Flush(id string) error
 	// ReadAll 读回整本账：封面 + 全部笔。
 	ReadAll(id string) (Header, []Event, error)
+	// ListHeaders 列出所有账本封面；只读封面，不打开整本账。
+	ListHeaders() ([]Header, error)
 }
 
 // MemoryJournal 是内存假实现：给单测和不落盘的场景。
@@ -86,6 +89,21 @@ func (j *MemoryJournal) ReadAll(id string) (Header, []Event, error) {
 	}
 	header := j.headers[id]
 	return header, events, nil
+}
+
+// ListHeaders 按账本号列出内存里的所有封面。
+func (j *MemoryJournal) ListHeaders() ([]Header, error) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+
+	headers := make([]Header, 0, len(j.headers))
+	for _, header := range j.headers {
+		headers = append(headers, header)
+	}
+	sort.Slice(headers, func(i int, k int) bool {
+		return headers[i].ID < headers[k].ID
+	})
+	return headers, nil
 }
 
 // cloneEvent 拷一份事件，连 Data 和 Replaces 一起，防止内外共享可改的切片。

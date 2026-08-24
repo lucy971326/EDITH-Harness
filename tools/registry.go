@@ -2,6 +2,7 @@ package tools
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 
 	"harness/chat"
@@ -154,6 +155,7 @@ func (r *Registry) Names() []string {
 	for name := range r.global {
 		names = append(names, name)
 	}
+	sort.Strings(names)
 	return names
 }
 
