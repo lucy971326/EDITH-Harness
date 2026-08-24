@@ -31,9 +31,13 @@ func New(root string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("解析 Agent 档案目录失败：%w", err)
 	}
-	err = os.MkdirAll(absolute, 0o755)
+	err = os.MkdirAll(absolute, 0o700)
 	if err != nil {
 		return nil, fmt.Errorf("创建 Agent 档案目录失败：%w", err)
+	}
+	err = os.Chmod(absolute, 0o700)
+	if err != nil {
+		return nil, fmt.Errorf("收紧 Agent 档案目录权限失败：%w", err)
 	}
 	info, err := os.Stat(absolute)
 	if err != nil {
@@ -58,7 +62,7 @@ func (s *Store) Create(profile agents.AgentProfile) error {
 		return fmt.Errorf("编码 agent %s 档案失败：%w", profile.ID, err)
 	}
 	path := s.path(profile.ID)
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return fmt.Errorf("创建 agent %s 档案失败：%w", profile.ID, err)
 	}

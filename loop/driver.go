@@ -147,7 +147,9 @@ func (d *driver) runStep() (bool, error) {
 
 	// 组装最终请求：系统提示 + 小抄 + 账本投影出的历史。
 	request := llm.Request{
+		Provider: a.config.Provider,
 		Model:    a.config.Model,
+		Thinking: a.config.Thinking,
 		Messages: buildMessages(a.config.SystemPrompt, memos, a.book.ModelHistory()),
 		Tools:    a.toolsReg.Schemas(a.agentID),
 	}
@@ -191,8 +193,9 @@ func (d *driver) runStep() (bool, error) {
 	}
 
 	_, err = a.book.RecordAssistantFinal(session.AssistantFinalData{
-		Text:  reply.Text,
-		Usage: reply.Usage,
+		Text:     reply.Text,
+		Thinking: reply.Thinking,
+		Usage:    reply.Usage,
 	}, chunkSeqs)
 	if err != nil {
 		return false, err

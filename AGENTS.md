@@ -2,18 +2,12 @@
 
 本项目用 Go 写一个插件化 agent 框架。设计哲学参考 `reference/deepseek-harness`，但**不照抄**：静态编译、无动态插件、无热重载、无 AI 自改。
 
-## 施工依据
-
-- 总设计：`Go框架设计构想.md`（命名、代码组织、模块划分）
-- 里程碑：`M1-core计划.md` → `M2-session` → `M3-llm+tools` → `M4-loop` → `M5-接口` → `M6-组装冒烟`
-- 崩溃恢复语义：`失败边界与恢复状态机.md`（M2/M4/M6 动手前必读）
-- 每完成一节：`go test -race` 全绿才算数
-
 ## 代码风格（钦定，不许漂移）
 
 - **err 的获取和判断不许写在同一行**：先 `err := f()`，下一行 `if err != nil {`
 - 禁止花里胡哨的语法；可读性、职责清晰优先——要的是**全局**可读性，不是单个函数的可读性
 - 方法名用自解释动词（SubmitFollowup / ExecuteCall / AppendEvent）；包名用领域词（session/tools/loop）
+- 往登记处放可被别人使用的东西，一律叫 `RegisterX`；改已有配置或状态才叫 `SetX`。登记返回的撤销函数一律命名 `unregister`
 - 一包一个公开构造；闭包只做无状态包装；插件用结构体 + Start，不用闭包式插件
 - 命名避开 Go 标准库撞名
 

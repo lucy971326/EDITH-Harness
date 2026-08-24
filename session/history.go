@@ -13,8 +13,9 @@ type historyCache struct {
 	alive     map[int]bool    // 有效名单：编号 -> 还没被取代
 	processed int             // 已算到第几笔（增量用）
 	messages  []chat.Message  // 已收口的消息
-	textBuf   strings.Builder // 未收口的助手文字（流式片段攒着）
-	callsBuf  []chat.ToolCall // 同一条助手消息里攒的工具调用
+	textBuf   strings.Builder // 没有定稿的流式文字
+	pending   *chat.Message   // 已定稿、等候其后工具调用的助手消息
+	results   []chat.Message  // 等候助手消息收口的工具结果
 	rebuilds  int             // 全量重算次数，测试观察用
 }
 
@@ -38,7 +39,8 @@ func (h *historyCache) rebuild(events []Event) {
 	h.processed = 0
 	h.messages = nil
 	h.textBuf.Reset()
-	h.callsBuf = nil
+	h.pending = nil
+	h.results = nil
 	for _, event := range events {
 		if h.alive[event.Seq] {
 			h.step(event)
@@ -72,35 +74,43 @@ func (h *historyCache) step(event Event) {
 		h.textBuf.WriteString(data.Delta)
 
 	case KindAssistantFinal:
-		// 定稿收场：它引用的素材已被有效名单收编，这里只管产出定稿。
-		// 残余没被收编的素材（异常路径）先收口，别混进定稿。
+		// 定稿先不立刻放进历史。工具调用在它之后入账，必须合成同一条消息。
 		h.flush()
 		data := decodeInto(&AssistantFinalData{}, event.Data)
-		h.messages = append(h.messages, chat.Message{
+		h.pending = &chat.Message{
 			Role:        "assistant",
 			Text:        data.Text,
+			Thinking:    data.Thinking,
 			Interrupted: data.Interrupted,
-		})
+		}
 
 	case KindToolCall:
 		data := decodeInto(&ToolCallData{}, event.Data)
-		h.callsBuf = append(h.callsBuf, chat.ToolCall{
+		if h.pending == nil {
+			h.pending = &chat.Message{Role: "assistant", Text: h.textBuf.String()}
+			h.textBuf.Reset()
+		}
+		h.pending.Calls = append(h.pending.Calls, chat.ToolCall{
 			ID:       data.ID,
 			Name:     data.Name,
 			Argument: append(json.RawMessage(nil), data.Argument...),
 		})
 
 	case KindToolResult:
-		h.flush()
 		data := decodeInto(&ToolResultData{}, event.Data)
-		h.messages = append(h.messages, chat.Message{
+		result := chat.Message{
 			Role: "tool",
 			Result: &chat.ToolResult{
 				CallID: data.CallID,
 				Output: data.Output,
 				Status: data.Status,
 			},
-		})
+		}
+		if h.pending != nil {
+			h.results = append(h.results, result)
+			return
+		}
+		h.messages = append(h.messages, result)
 
 	case KindSummary:
 		h.flush()
@@ -116,18 +126,22 @@ func (h *historyCache) step(event Event) {
 	}
 }
 
-// flush 把攒的助手文字和工具调用收口成一条助手消息。
+// flush 把已定稿的助手消息及没有定稿的流式尾巴收口。
 func (h *historyCache) flush() {
-	if h.textBuf.Len() == 0 && len(h.callsBuf) == 0 {
-		return
+	if h.pending != nil {
+		message := *h.pending
+		message.Calls = append([]chat.ToolCall(nil), h.pending.Calls...)
+		h.messages = append(h.messages, message)
+		h.pending = nil
 	}
-	h.messages = append(h.messages, chat.Message{
-		Role:  "assistant",
-		Text:  h.textBuf.String(),
-		Calls: h.callsBuf,
-	})
-	h.textBuf.Reset()
-	h.callsBuf = nil
+	if len(h.results) > 0 {
+		h.messages = append(h.messages, h.results...)
+		h.results = nil
+	}
+	if h.textBuf.Len() > 0 {
+		h.messages = append(h.messages, chat.Message{Role: "assistant", Text: h.textBuf.String()})
+		h.textBuf.Reset()
+	}
 }
 
 // ModelHistory 返回当前模型该看到的消息。
@@ -136,11 +150,18 @@ func (h *historyCache) modelHistory() []chat.Message {
 	messages := make([]chat.Message, len(h.messages))
 	copy(messages, h.messages)
 
-	if h.textBuf.Len() > 0 || len(h.callsBuf) > 0 {
+	if h.pending != nil {
+		message := *h.pending
+		message.Calls = append([]chat.ToolCall(nil), h.pending.Calls...)
+		messages = append(messages, message)
+	}
+	if len(h.results) > 0 {
+		messages = append(messages, h.results...)
+	}
+	if h.textBuf.Len() > 0 {
 		messages = append(messages, chat.Message{
-			Role:  "assistant",
-			Text:  h.textBuf.String(),
-			Calls: append([]chat.ToolCall(nil), h.callsBuf...),
+			Role: "assistant",
+			Text: h.textBuf.String(),
 		})
 	}
 	return messages

@@ -57,6 +57,7 @@ type ChunkData struct {
 
 type AssistantFinalData struct {
 	Text        string     // 这段话的完整定稿
+	Thinking    string     // 服务商返回的隐藏思考；续聊时交还给同一服务商
 	Interrupted bool       // true = 被打断的半句（已收到的部分固化）
 	Usage       chat.Usage // 这段话的用量（花了多少 token）
 }

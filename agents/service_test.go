@@ -2,6 +2,7 @@ package agents
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 
@@ -137,7 +138,7 @@ func TestAgentsUsesRegisteredRunner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = service.CreateAgent(AgentProfile{ID: "小红", Model: "m"})
+	err = service.CreateAgent(AgentProfile{ID: "小红", Provider: "test", Model: "m", Thinking: "off"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +148,7 @@ func TestAgentsUsesRegisteredRunner(t *testing.T) {
 	}
 
 	runner := &fakeRunner{}
-	remove, err := service.SetRunner(runner)
+	unregister, err := service.RegisterRunner(runner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,5 +170,49 @@ func TestAgentsUsesRegisteredRunner(t *testing.T) {
 	if err == nil {
 		t.Fatal("关闭后不该还能取到会话")
 	}
-	remove()
+	unregister()
+}
+
+func TestOldProfileNeedsUpdateBeforeStarting(t *testing.T) {
+	profiles := newMemoryProfileStore()
+	err := profiles.Create(AgentProfile{ID: "旧小红", Revision: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := core.New()
+	t.Cleanup(app.Close)
+	err = app.Install(
+		memoryProfilePlugin{store: profiles},
+		memoryJournalPlugin{journal: session.NewMemoryJournal()},
+		session.Plugin{},
+		tools.Plugin{},
+		Plugin{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := Get(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = service.RegisterRunner(&fakeRunner{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = service.StartSession("旧小红", "旧会话")
+	if err == nil || !strings.Contains(err.Error(), "provider") {
+		t.Fatalf("旧档案缺模型归属应明确拒绝：%v", err)
+	}
+	err = service.UpdateAgent(AgentProfile{ID: "旧小红", Provider: "test", Model: "m", Thinking: "off"})
+	if err != nil {
+		t.Fatalf("更新补齐模型归属失败：%v", err)
+	}
+	conversation, err := service.StartSession("旧小红", "新会话")
+	if err != nil {
+		t.Fatalf("补齐后应能开会话：%v", err)
+	}
+	err = conversation.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
 }

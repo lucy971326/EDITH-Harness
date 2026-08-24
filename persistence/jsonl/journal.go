@@ -34,9 +34,13 @@ func New(root string) (*Journal, error) {
 	if err != nil {
 		return nil, fmt.Errorf("解析 JSONL 账本目录失败：%w", err)
 	}
-	err = os.MkdirAll(absolute, 0o755)
+	err = os.MkdirAll(absolute, 0o700)
 	if err != nil {
 		return nil, fmt.Errorf("创建 JSONL 账本目录失败：%w", err)
+	}
+	err = os.Chmod(absolute, 0o700)
+	if err != nil {
+		return nil, fmt.Errorf("收紧 JSONL 账本目录权限失败：%w", err)
 	}
 	info, err := os.Stat(absolute)
 	if err != nil {
@@ -65,7 +69,7 @@ func (j *Journal) Create(id string, header session.Header) error {
 		return fmt.Errorf("账本 %s 的封面无法编码：%w", id, err)
 	}
 	path := j.bookPath(id)
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return fmt.Errorf("创建账本 %s 失败：%w", id, err)
 	}

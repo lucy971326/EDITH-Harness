@@ -9,6 +9,7 @@ import "encoding/json"
 type Message struct {
 	Role        string       // "system" / "user" / "assistant" / "tool"
 	Text        string       // 说的文字
+	Thinking    string       // 助手的隐藏思考；传给同一家模型续聊，不给默认 UI
 	Interrupted bool         // 助手消息专用：true = 被打断的半句（界面上可以画成"未说完"）
 	Media       []Attachment // 夹带的图片/音频（多模态输入），纯文字时为空
 	Calls       []ToolCall   // 发起的工具调用（助手消息可带多个）

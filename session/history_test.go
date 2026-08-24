@@ -366,3 +366,85 @@ func TestAssistantFinalInterruptedKeepsPrefix(t *testing.T) {
 		t.Fatalf("该是带打断标记的半句：got %+v", history[0])
 	}
 }
+
+func TestHistoryMergesFinalThinkingAndToolCall(t *testing.T) {
+	store, book, _ := newTestStore(t)
+	_, err := book.RecordAssistantFinal(AssistantFinalData{Text: "我来写", Thinking: "先确认路径"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = book.RecordToolCall(ToolCallData{ID: "call-1", Name: "write_file", Argument: json.RawMessage(`{"path":"a.txt"}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = book.RecordToolResult(ToolResultData{CallID: "call-1", Output: "写好了", Status: ResultSuccess})
+	if err != nil {
+		t.Fatal(err)
+	}
+	history := book.ModelHistory()
+	if len(history) != 2 {
+		t.Fatalf("定稿、工具调用和结果应是两条消息：%+v", history)
+	}
+	if history[0].Role != "assistant" || history[0].Text != "我来写" || history[0].Thinking != "先确认路径" || len(history[0].Calls) != 1 {
+		t.Fatalf("助手定稿与工具调用没有合并：%+v", history[0])
+	}
+	if history[1].Role != "tool" || history[1].Result.CallID != "call-1" {
+		t.Fatalf("工具结果没有排在合成助手消息后：%+v", history[1])
+	}
+	opened, err := store.Create("重放思考", "测试 Agent", 1, book.Events()...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(history, opened.ModelHistory()) {
+		t.Fatalf("重放后 Thinking 和工具调用应保留：%+v", opened.ModelHistory())
+	}
+}
+
+func TestHistoryKeepsSiblingToolCallsInOneAssistantMessage(t *testing.T) {
+	_, book, _ := newTestStore(t)
+	_, err := book.RecordAssistantFinal(AssistantFinalData{Text: "我一起做"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, call := range []ToolCallData{
+		{ID: "call-1", Name: "first", Argument: json.RawMessage(`{}`)},
+		{ID: "call-2", Name: "second", Argument: json.RawMessage(`{}`)},
+	} {
+		_, err = book.RecordToolCall(call)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = book.RecordToolResult(ToolResultData{CallID: call.ID, Output: "好了", Status: ResultSuccess})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, err = book.RecordStepEnd()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	history := book.ModelHistory()
+	if len(history) != 3 {
+		t.Fatalf("一条助手消息和两条工具结果：%+v", history)
+	}
+	if len(history[0].Calls) != 2 || history[0].Calls[0].ID != "call-1" || history[0].Calls[1].ID != "call-2" {
+		t.Fatalf("同一次模型回复的工具调用不能拆开：%+v", history[0])
+	}
+}
+
+func TestOldSessionWithoutThinkingStillOpens(t *testing.T) {
+	store, _, _ := newTestStore(t)
+	seed := []Event{
+		{Kind: KindUserMessage, Seq: 1, Data: json.RawMessage(`{"Text":"旧问题"}`)},
+		{Kind: KindAssistantFinal, Seq: 2, Data: json.RawMessage(`{"Text":"旧回复"}`)},
+	}
+	book, err := store.Create("旧 Thinking", "测试 Agent", 1, seed...)
+	if err != nil {
+		t.Fatalf("旧账缺 Thinking 仍应兼容：%v", err)
+	}
+	history := book.ModelHistory()
+	if len(history) != 2 || history[1].Text != "旧回复" || history[1].Thinking != "" {
+		t.Fatalf("旧账投影不对：%+v", history)
+	}
+}

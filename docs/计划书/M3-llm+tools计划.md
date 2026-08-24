@@ -10,13 +10,17 @@ loop / 压缩插件（要用模型的）
       ↓ 只认识插座排，从不 import deepseek
   ┌─ llm 包 ──────────────┐
   │ ① 统一的对话格式（消息、流式分片）│  ← 全系统说同一种话
-  │ ② 适配器登记表                  │  ← map: "deepseek" → 适配器
+  │ ② 适配器登记表                  │  ← Request.Provider → "deepseek" 适配器
   │ ③ 报错统一                      │  ← 适配器随便抛错，出口统一成一种样子
   └───────────────────────┘
       ↑ 将来插上（全是插件）：deepseek / openai / 假适配器(测试)
 ```
 
 **对话格式用 M2 的 `chat/` 公共词汇，llm 不另造一套**（终审修正）；流式增量类型也放 chat/，别让账本反过来依赖 llm。
+
+请求必须明确写 `Provider`、`Model`、`Thinking`，插座排不再有默认服务商，也不需要 `StreamWith` / `CompleteWith`。`Complete` 只是 `Stream(..., nil)` 的便捷入口。DeepSeek 的 Thinking 只认 `off`、`high`、`max`；其他值在出网前报 `bad_request`。
+
+M6 的真适配器在 `llmplugins/deepseek/`：只用官方 `github.com/openai/openai-go/v3` 的 Chat Completions 流，显式传配置中的 API key 和 BaseURL。DeepSeek 扩展的 `reasoning_effort` / `reasoning_content` 经 SDK 的 ExtraFields 和原始扩展字段处理，不手写 HTTP 或 SSE。
 
 测试要加一份**真实响应样本**：OpenAI、Anthropic 各存几份真实流式响应，喂给解析层——防止我们闭门造车把格式想歪。
 

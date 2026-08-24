@@ -257,11 +257,6 @@ func newTestStackWithStores(t *testing.T, journal session.Journal, profiles Prof
 	if err != nil {
 		t.Fatalf("插适配器失败：%v", err)
 	}
-	err = llmSvc.SetDefault("剧本")
-	if err != nil {
-		t.Fatalf("设默认失败：%v", err)
-	}
-
 	registry, err := tools.Get(app)
 	if err != nil {
 		t.Fatalf("取工具登记处失败：%v", err)
@@ -282,7 +277,19 @@ func newTestStackWithStores(t *testing.T, journal session.Journal, profiles Prof
 
 func startTestSession(t *testing.T, roster *Roster, id string, config AgentConfig, seed ...session.Event) *Conversation {
 	t.Helper()
-	profile := AgentProfile{ID: id, Model: config.Model, SystemPrompt: config.SystemPrompt, Tools: roster.toolsReg.Names()}
+	provider := config.Provider
+	if provider == "" {
+		provider = "剧本"
+	}
+	model := config.Model
+	if model == "" {
+		model = "test-model"
+	}
+	thinking := config.Thinking
+	if thinking == "" {
+		thinking = "off"
+	}
+	profile := AgentProfile{ID: id, Provider: provider, Model: model, Thinking: thinking, SystemPrompt: config.SystemPrompt, Tools: roster.toolsReg.Names()}
 	err := roster.CreateAgent(profile)
 	if err != nil {
 		t.Fatalf("建 agent 档案失败：%v", err)
@@ -327,7 +334,7 @@ func TestRecoveryBroadcastDoesNotHoldRosterLock(t *testing.T) {
 		_, err := roster.GetSession("恢复会话")
 		seen <- err
 	})
-	err := roster.CreateAgent(AgentProfile{ID: "小红", Model: "m"})
+	err := roster.CreateAgent(AgentProfile{ID: "小红", Provider: "剧本", Model: "m", Thinking: "off"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -366,13 +373,13 @@ func TestUpdateAndStartSessionCannotMixTwoProfileVersions(t *testing.T) {
 	_, roster, adapter, _ := newTestStackWithStores(t, session.NewMemoryJournal(), profiles,
 		scriptCall{deltas: []string{"好"}, reply: llm.Reply{StopReason: "stop"}},
 	)
-	err := roster.CreateAgent(AgentProfile{ID: "小红", Model: "old-model"})
+	err := roster.CreateAgent(AgentProfile{ID: "小红", Provider: "剧本", Model: "old-model", Thinking: "off"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	updated := make(chan error, 1)
 	go func() {
-		updated <- roster.UpdateAgent(AgentProfile{ID: "小红", Model: "new-model"})
+		updated <- roster.UpdateAgent(AgentProfile{ID: "小红", Provider: "剧本", Model: "new-model", Thinking: "off"})
 	}()
 	<-profiles.entered
 	started := make(chan agents.Conversation, 1)
@@ -413,7 +420,7 @@ func TestOneAgentCanRunTwoSessions(t *testing.T) {
 		scriptCall{deltas: []string{"会话一"}, reply: llm.Reply{StopReason: "stop"}},
 		scriptCall{deltas: []string{"会话二"}, reply: llm.Reply{StopReason: "stop"}},
 	)
-	err := roster.CreateAgent(AgentProfile{ID: "小红", Model: "m"})
+	err := roster.CreateAgent(AgentProfile{ID: "小红", Provider: "剧本", Model: "m", Thinking: "off"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -448,7 +455,7 @@ func TestOneAgentCanRunTwoSessions(t *testing.T) {
 
 func TestArchiveBlocksNewSessionButAllowsResume(t *testing.T) {
 	_, roster, _, _ := newTestStack(t)
-	err := roster.CreateAgent(AgentProfile{ID: "小红", Model: "m"})
+	err := roster.CreateAgent(AgentProfile{ID: "小红", Provider: "剧本", Model: "m", Thinking: "off"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -484,7 +491,7 @@ func TestClosingOneSessionKeepsAgentToolsForTheOther(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = roster.CreateAgent(AgentProfile{ID: "小红", Model: "m", Tools: []string{"echo"}})
+	err = roster.CreateAgent(AgentProfile{ID: "小红", Provider: "剧本", Model: "m", Thinking: "off", Tools: []string{"echo"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -524,7 +531,7 @@ func TestResumeUsesCurrentAgentProfile(t *testing.T) {
 	firstApp, firstRoster, _, _ := newTestStackWithStores(t, journal, profiles,
 		scriptCall{deltas: []string{"旧回复"}, reply: llm.Reply{StopReason: "stop"}},
 	)
-	err := firstRoster.CreateAgent(AgentProfile{ID: "小红", Model: "old-model", SystemPrompt: "旧人设"})
+	err := firstRoster.CreateAgent(AgentProfile{ID: "小红", Provider: "剧本", Model: "old-model", Thinking: "off", SystemPrompt: "旧人设"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -542,7 +549,7 @@ func TestResumeUsesCurrentAgentProfile(t *testing.T) {
 	_, secondRoster, adapter, _ := newTestStackWithStores(t, journal, profiles,
 		scriptCall{deltas: []string{"新回复"}, reply: llm.Reply{StopReason: "stop"}},
 	)
-	err = secondRoster.UpdateAgent(AgentProfile{ID: "小红", Model: "new-model", SystemPrompt: "新人设"})
+	err = secondRoster.UpdateAgent(AgentProfile{ID: "小红", Provider: "剧本", Model: "new-model", Thinking: "off", SystemPrompt: "新人设"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -636,6 +643,7 @@ func TestHappyTurnFullLedger(t *testing.T) {
 func TestToolLoopRunsSecondStep(t *testing.T) {
 	_, roster, adapter, registry := newTestStack(t,
 		scriptCall{deltas: []string{"我查查"}, reply: llm.Reply{
+			Thinking:   "先想想怎么查",
 			Calls:      []chat.ToolCall{{ID: "c1", Name: "echo", Argument: json.RawMessage(`{"Text":"内部消息"}`)}},
 			StopReason: "tool_calls",
 		}},
@@ -661,13 +669,20 @@ func TestToolLoopRunsSecondStep(t *testing.T) {
 	}
 	second := requests[1].Messages
 	toolSeen := false
+	assistantSeen := false
 	for _, message := range second {
+		if message.Role == "assistant" && message.Text == "我查查" && message.Thinking == "先想想怎么查" && len(message.Calls) == 1 && message.Calls[0].ID == "c1" {
+			assistantSeen = true
+		}
 		if message.Result != nil && message.Result.Output == "内部消息" {
 			toolSeen = true
 		}
 	}
 	if !toolSeen {
 		t.Fatalf("第二步请求该带工具结果：%+v", second)
+	}
+	if !assistantSeen {
+		t.Fatalf("第二步请求该把 thinking 和工具调用放回同一条助手消息：%+v", second)
 	}
 
 	wantSequence := []string{

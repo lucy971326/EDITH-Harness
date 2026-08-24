@@ -44,8 +44,13 @@ func newConversation(agentID string, sessionID string, scope *core.App, book *se
 		book:      book,
 		llmSvc:    llmSvc,
 		toolsReg:  toolsReg,
-		config:    AgentConfig{Model: profile.Model, SystemPrompt: profile.SystemPrompt},
-		inbox:     newInbox(),
+		config: AgentConfig{
+			Provider:     profile.Provider,
+			Model:        profile.Model,
+			Thinking:     profile.Thinking,
+			SystemPrompt: profile.SystemPrompt,
+		},
+		inbox: newInbox(),
 	}
 	conversation.cond = sync.NewCond(&conversation.mu)
 	conversation.driver = newDriver(conversation)
@@ -54,7 +59,9 @@ func newConversation(agentID string, sessionID string, scope *core.App, book *se
 
 // AgentConfig 是一次会话运行时从 Agent 档案取出的模型配置。
 type AgentConfig struct {
+	Provider     string
 	Model        string
+	Thinking     string
 	SystemPrompt string
 }
 

@@ -21,16 +21,19 @@ type Adapter interface {
 
 // Request 是一次模型请求的全部输入。
 type Request struct {
-	Model       string             // 服务商内的型号名，如 "deepseek-chat"
-	Messages    []chat.Message     // 完整对话历史（system 消息也在里面，各服务商自己认领）
-	Tools       []chat.ToolSchema  // 可用的工具说明书，空 = 这次不许调工具
-	MaxTokens   int                // 回复上限，0 = 用服务商默认
-	Temperature float64            // 温度，0 = 用服务商默认
+	Provider    string            // 服务商名，如 "deepseek"；必须明确，不猜默认插座
+	Model       string            // 服务商内的型号名，如 "deepseek-chat"
+	Thinking    string            // 思考强度：由服务商插件解释，DeepSeek 只认 off/high/max
+	Messages    []chat.Message    // 完整对话历史（system 消息也在里面，各服务商自己认领）
+	Tools       []chat.ToolSchema // 可用的工具说明书，空 = 这次不许调工具
+	MaxTokens   int               // 回复上限，0 = 用服务商默认
+	Temperature float64           // 温度，0 = 用服务商默认
 }
 
 // Reply 是模型一次回复的完整聚合。
 type Reply struct {
 	Text       string          // 说了什么字
+	Thinking   string          // 模型的隐藏思考；要入账，续聊时再交还给服务商
 	Calls      []chat.ToolCall // 要调哪些工具（可以边说边调），没调用就为空
 	Usage      chat.Usage      // 这次花了多少 token
 	StopReason string          // 为什么停："stop" 说完了 / "tool_calls" 要调工具 / "length" 到字数上限 / "cancelled" 被取消

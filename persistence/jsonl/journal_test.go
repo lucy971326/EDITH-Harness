@@ -21,6 +21,8 @@ func TestJSONLJournalCreatesWritesAndReads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	assertPrivate(t, journal.root, 0o700)
+	assertPrivate(t, journal.bookPath(header.ID), 0o600)
 	first := testEvent(1, "你好")
 	second := testEvent(2, "世界")
 	err = journal.Append(header.ID, first, false)
@@ -214,6 +216,17 @@ func TestReadRejectsBrokenSequence(t *testing.T) {
 	_, _, err = journal.ReadAll(header.ID)
 	if err == nil {
 		t.Fatal("编号不连续必须拒绝读账")
+	}
+}
+
+func assertPrivate(t *testing.T, path string, want os.FileMode) {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != want {
+		t.Fatalf("%s 权限是 %o，想要 %o", path, info.Mode().Perm(), want)
 	}
 }
 

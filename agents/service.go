@@ -55,7 +55,7 @@ type Service interface {
 	ResumeSession(sessionID string) (Conversation, error)
 	GetSession(sessionID string) (Conversation, error)
 	CloseSession(sessionID string) error
-	SetRunner(runner Runner) (func(), error)
+	RegisterRunner(runner Runner) (func(), error)
 }
 
 // registry 管长期 Agent 档案和它们正在运行的多段会话。
@@ -94,7 +94,7 @@ func newRegistry(app *core.App, store *session.Store, profiles ProfileStore, too
 func (r *registry) CreateAgent(profile AgentProfile) error {
 	profile.Revision = 1
 	profile.Archived = false
-	err := ValidateProfile(profile)
+	err := ValidateRunnableProfile(profile)
 	if err != nil {
 		return err
 	}
@@ -120,7 +120,7 @@ func (r *registry) UpdateAgent(profile AgentProfile) error {
 	}
 	profile.Revision = old.Revision + 1
 	profile.Archived = old.Archived
-	err = ValidateProfile(profile)
+	err = ValidateRunnableProfile(profile)
 	if err != nil {
 		return err
 	}
@@ -151,8 +151,8 @@ func (r *registry) GetAgent(id string) (AgentProfile, error) {
 	return cloneProfile(profile), nil
 }
 
-// SetRunner 登记唯一会话搬运工，返回卸下它的函数。
-func (r *registry) SetRunner(runner Runner) (func(), error) {
+// RegisterRunner 登记唯一会话搬运工，返回取消登记它的函数。
+func (r *registry) RegisterRunner(runner Runner) (func(), error) {
 	if runner == nil {
 		return nil, fmt.Errorf("Agent Runner 不能为空")
 	}
@@ -301,6 +301,10 @@ func (r *registry) reserveSession(agentID string, sessionID string, allowArchive
 	}
 	if profile.Archived && !allowArchived {
 		return AgentProfile{}, nil, nil, fmt.Errorf("agent %s 已归档，不能开新会话", agentID)
+	}
+	err = ValidateRunnableProfile(profile)
+	if err != nil {
+		return AgentProfile{}, nil, nil, err
 	}
 	entry, err := r.acquireAgentLocked(profile)
 	if err != nil {

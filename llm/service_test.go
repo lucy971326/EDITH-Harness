@@ -62,13 +62,9 @@ func newTestService(t *testing.T) (*Service, *fakeAdapter) {
 
 func TestStreamDeliversDeltasThenReply(t *testing.T) {
 	service, _ := newTestService(t)
-	err := service.SetDefault("假的")
-	if err != nil {
-		t.Fatalf("设默认失败：%v", err)
-	}
 
 	var received []string
-	reply, err := service.Stream(context.Background(), Request{Model: "test"},
+	reply, err := service.Stream(context.Background(), Request{Provider: "假的", Model: "test", Thinking: "off"},
 		func(d chat.Delta) { received = append(received, d.Text) })
 	if err != nil {
 		t.Fatalf("请求失败：%v", err)
@@ -85,12 +81,8 @@ func TestStreamDeliversDeltasThenReply(t *testing.T) {
 func TestAdapterErrorBecomesUnifiedError(t *testing.T) {
 	service, fake := newTestService(t)
 	fake.fail = errors.New("连接被重置")
-	err := service.SetDefault("假的")
-	if err != nil {
-		t.Fatalf("设默认失败：%v", err)
-	}
 
-	_, err = service.Complete(context.Background(), Request{})
+	_, err := service.Complete(context.Background(), Request{Provider: "假的", Model: "test", Thinking: "off"})
 	if err == nil {
 		t.Fatal("适配器炸了该报错")
 	}
@@ -107,12 +99,8 @@ func TestAdapterErrorBecomesUnifiedError(t *testing.T) {
 func TestAdapterMayReturnKindedErrorAsIs(t *testing.T) {
 	service, fake := newTestService(t)
 	fake.fail = NewError("假的", ErrRateLimit, "太快了")
-	err := service.SetDefault("假的")
-	if err != nil {
-		t.Fatalf("设默认失败：%v", err)
-	}
 
-	_, err = service.Complete(context.Background(), Request{})
+	_, err := service.Complete(context.Background(), Request{Provider: "假的", Model: "test", Thinking: "off"})
 	if err == nil {
 		t.Fatal("该报错")
 	}
@@ -135,7 +123,7 @@ func TestRoutesToNamedAdapter(t *testing.T) {
 		t.Fatalf("插适配器失败：%v", err)
 	}
 
-	reply, err := service.CompleteWith(context.Background(), "贵的", Request{})
+	reply, err := service.Complete(context.Background(), Request{Provider: "贵的", Model: "test", Thinking: "off"})
 	if err != nil {
 		t.Fatalf("请求失败：%v", err)
 	}
@@ -156,19 +144,19 @@ func TestRegisterRejectsDuplicateName(t *testing.T) {
 	}
 }
 
-func TestCompleteWithoutDefaultErrors(t *testing.T) {
+func TestCompleteWithoutProviderErrors(t *testing.T) {
 	service, _ := newTestService(t)
 
 	_, err := service.Complete(context.Background(), Request{})
 	if err == nil {
-		t.Fatal("没设默认插座该报错，不能猜")
+		t.Fatal("没指定 provider 该报错，不能猜")
 	}
 }
 
 func TestUnknownProviderErrors(t *testing.T) {
 	service, _ := newTestService(t)
 
-	_, err := service.CompleteWith(context.Background(), "不存在的", Request{})
+	_, err := service.Complete(context.Background(), Request{Provider: "不存在的", Model: "test", Thinking: "off"})
 	if err == nil {
 		t.Fatal("没登记过的插座该报错")
 	}
@@ -177,10 +165,6 @@ func TestUnknownProviderErrors(t *testing.T) {
 func TestCancellationReachesAdapter(t *testing.T) {
 	service, fake := newTestService(t)
 	fake.delay = 50 * time.Millisecond
-	err := service.SetDefault("假的")
-	if err != nil {
-		t.Fatalf("设默认失败：%v", err)
-	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
@@ -188,7 +172,7 @@ func TestCancellationReachesAdapter(t *testing.T) {
 		cancel()
 	}()
 
-	_, err = service.Stream(ctx, Request{}, nil)
+	_, err := service.Stream(ctx, Request{Provider: "假的", Model: "test", Thinking: "off"}, nil)
 	if err == nil {
 		t.Fatal("取消后该收到错误")
 	}
@@ -209,12 +193,7 @@ func TestToolCallRoundTripsThroughRequest(t *testing.T) {
 		}},
 		StopReason: "tool_calls",
 	}
-	err := service.SetDefault("假的")
-	if err != nil {
-		t.Fatalf("设默认失败：%v", err)
-	}
-
-	reply, err := service.Complete(context.Background(), Request{})
+	reply, err := service.Complete(context.Background(), Request{Provider: "假的", Model: "test", Thinking: "off"})
 	if err != nil {
 		t.Fatalf("请求失败：%v", err)
 	}

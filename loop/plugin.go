@@ -32,10 +32,10 @@ func (Plugin) Start(app *core.App) error {
 		return fmt.Errorf("loop 要先有 Agent 管理处（agents）：%w", err)
 	}
 	runner := NewRunner(llmSvc, toolsReg)
-	remove, err := service.SetRunner(runner)
+	unregister, err := service.RegisterRunner(runner)
 	if err != nil {
 		return fmt.Errorf("loop 登记会话搬运工失败：%w", err)
 	}
-	app.OnCleanup(remove)
+	app.OnCleanup(unregister)
 	return nil
 }

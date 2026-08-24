@@ -7,7 +7,9 @@ import "fmt"
 type AgentProfile struct {
 	ID           string   // 长期 Agent 的身份
 	Revision     int      // 每次更新递增，供会话封面留历史标记
+	Provider     string   // 后续请求使用的模型服务商
 	Model        string   // 后续请求使用的模型
+	Thinking     string   // 后续请求使用的思考强度
 	SystemPrompt string   // 后续请求使用的系统提示词
 	Tools        []string // 允许调用的全局工具名
 	Archived     bool     // 归档后不再开新会话
@@ -39,6 +41,25 @@ func ValidateProfile(profile AgentProfile) error {
 			return fmt.Errorf("agent %s 的工具 %s 写了两次", profile.ID, name)
 		}
 		seen[name] = true
+	}
+	return nil
+}
+
+// ValidateRunnableProfile 检查一份档案能否真的开启或恢复会话。
+// 老档案可以继续读取；少模型归属时不猜，明确拒绝启动。
+func ValidateRunnableProfile(profile AgentProfile) error {
+	err := ValidateProfile(profile)
+	if err != nil {
+		return err
+	}
+	if profile.Provider == "" {
+		return fmt.Errorf("agent %s 缺少 provider，请更新档案后再开会话", profile.ID)
+	}
+	if profile.Model == "" {
+		return fmt.Errorf("agent %s 缺少 model，请更新档案后再开会话", profile.ID)
+	}
+	if profile.Thinking == "" {
+		return fmt.Errorf("agent %s 缺少 thinking，请更新档案后再开会话", profile.ID)
 	}
 	return nil
 }
