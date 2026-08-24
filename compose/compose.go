@@ -1,4 +1,4 @@
-// Package compose 读取 dsh 配置并按固定顺序组装插件。
+// Package compose 读取 edith-harness 配置并按固定顺序组装插件。
 package compose
 
 import (
@@ -9,7 +9,7 @@ import (
 	"harness/core"
 )
 
-// Runtime 是一次已经组装好的 dsh 运行时。
+// Runtime 是一次已经组装好的 edith-harness 运行时。
 type Runtime struct {
 	App       *core.App // 已按依赖顺序装好的公共场地
 	Home      string    // 用户私有目录

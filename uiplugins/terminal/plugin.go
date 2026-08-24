@@ -43,7 +43,7 @@ func (p Plugin) Start(app *core.App) error {
 	if p.Output == nil {
 		p.Output = os.Stdout
 	}
-	service := newService(app, roster, models, registry, p.Input, p.Output)
+	service := newTUIService(app, roster, models, registry, p.Input, p.Output)
 	app.RegisterService("ui", service)
 	return nil
 }

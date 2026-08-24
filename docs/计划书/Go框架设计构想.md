@@ -1,4 +1,4 @@
-# Go Agent 框架设计构想
+# edith-harness：Go Agent 框架设计构想
 
 > 目标：保留 dsh 的"任意可扩展"能力，去掉它的包袱。
 > 不做：动态插件、AI 自我修改、热重载、Web 分体架构。
@@ -91,7 +91,7 @@
 
 turn（一轮）> step（一次模型请求 + 工具执行），由 `loop.Driver` 驱动。输入三种：`SubmitFollowup`（开新轮）、`SubmitSteering`（下一步骤消费）、`InjectContext`（只带上下文不唤醒）。主循环本身是插件，可整体替换。
 
-### 5. 组装（cmd/dsh + config）
+### 5. 组装（cmd/edith-harness + config）
 
 v1 用一份极简 YAML 选择已经编进程序的大零件：档案存储、账本、模型适配器、执行环境、工具插件和 Runner。`session`、`llm`、`tools`、`agents` 四个固定插座自动安装；同一内核，不同组装 = 不同产品。
 
@@ -184,7 +184,7 @@ harness/
     shell/     站在 process 之上的通用一次性命令
   localenv/  本地 files + process 实现，并成对组装 files + process + shell
   std/       第一批插件：bash / 文件 / 网络 / 技能 / 子 agent / 待办
-  cmd/dsh/   main：组装 + 配置
+  cmd/edith-harness/   main：组装 + 配置
 ```
 
 依赖方向单向：`core ← workspace/files`、`core ← workspace/process ← workspace/shell`；`localenv` 只负责把三者成对组装。`persistence/jsonl` / 将来的 `persistence/sqlite` 都依赖 `session.Journal`，但不反过来被 session import。将来的沙箱另做实现，不改工具。
@@ -204,7 +204,7 @@ harness/
 3. **llm + tools**：适配器 + 五道关卡
 4. **loop**：最小主循环 + 三种输入提交 + 取消
 5. **files + process + shell**：接口 + 本地执行实现 + 行为测试
-6. **cmd/dsh**：组装配置 + `--dump-config` + 真实闭环冒烟（真实模型 + 副作用工具 + 重启恢复）
+6. **cmd/edith-harness**：组装配置 + `--dump-config` + 真实闭环冒烟（真实模型 + 副作用工具 + 重启恢复）
 7. 之后全部是插件：std 工具集（bash/文件/网络/技能/待办）、沙箱、压缩、审批、子 agent、ACP……
 
 v1 冻结前用两个模型适配器、两个执行后端、一个子 agent 插件做验证，再承诺"内核不改"。

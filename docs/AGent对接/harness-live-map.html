@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Harness 整体结构</title>
+  <title>edith-harness 整体结构</title>
   <style>
     :root {
       color-scheme: light;
@@ -398,6 +398,90 @@
     .detail-bar .path { color: var(--core); font-family: "SFMono-Regular", Consolas, monospace; font-size: 10px; }
     .detail-bar p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.65; }
 
+    .tui-map {
+      margin-top: 18px;
+      padding: 22px;
+      background: #f7fbff;
+    }
+
+    .tui-map-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .tui-map-head h2 { margin: 0; font-size: 22px; }
+    .tui-map-head p { margin: 0; color: var(--muted); font-size: 12px; }
+
+    .tui-layout {
+      display: grid;
+      grid-template-columns: minmax(210px, 1fr) minmax(260px, 1.2fr) minmax(210px, 1fr);
+      gap: 14px;
+      align-items: stretch;
+    }
+
+    .tui-column { display: grid; gap: 10px; }
+
+    .tui-part,
+    .tui-center {
+      padding: 15px;
+      background: #fff;
+      box-shadow: 0 6px 18px rgba(31, 45, 61, .06);
+    }
+
+    .tui-part h3,
+    .tui-center h3 { margin: 0 0 7px; font-size: 15px; }
+    .tui-part p,
+    .tui-center p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+
+    .tui-part code,
+    .tui-center code { color: #2a66bf; font-size: 12px; font-weight: 800; }
+
+    .tui-methods {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 10px;
+    }
+
+    .tui-methods span {
+      padding: 4px 6px;
+      color: #52657c;
+      background: #eef4fc;
+      font: 11px/1.2 "SFMono-Regular", Consolas, monospace;
+    }
+
+    .tui-center {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      background: #eaf7f4;
+      text-align: center;
+    }
+
+    .tui-center h3 { color: #147d70; font-size: 23px; }
+    .tui-center .tui-route {
+      margin-top: 16px;
+      color: #147d70;
+      font: 800 12px/1.5 "SFMono-Regular", Consolas, monospace;
+    }
+
+    .tui-label {
+      display: inline-block;
+      margin-bottom: 8px;
+      color: #6b7a8e;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: .08em;
+    }
+
+    @media (max-width: 760px) {
+      .tui-map-head { align-items: flex-start; flex-direction: column; gap: 6px; }
+      .tui-layout { grid-template-columns: 1fr; }
+    }
+
     /* 这张图是阅读页，不是可拖拽画布：只允许页面向下阅读。 */
     .architecture-map {
       display: grid;
@@ -494,9 +578,9 @@
   <main class="shell">
     <header class="topbar">
       <div>
-        <p class="eyebrow">Harness · Current Architecture</p>
+        <p class="eyebrow">edith-harness · Current Architecture</p>
         <h1>整体结构</h1>
-        <p class="subtitle">已实现：YAML 装机清单、终端 UI、显式模型归属、DeepSeek SDK、文件工具、多会话和配置导出。页面按普通文档上下滚动。</p>
+        <p class="subtitle">已实现：YAML 装机清单、Bubble Tea TUI、显式模型归属、DeepSeek SDK、文件工具、多会话和配置导出。页面按普通文档上下滚动。</p>
       </div>
     </header>
 
@@ -529,7 +613,7 @@
 
           <article class="map-node map-card" id="module-startup" data-module="startup" tabindex="0">
             <div class="module-kicker">启动入口 · 不是插件</div>
-            <h2>dsh + compose</h2>
+            <h2>edith-harness + compose</h2>
             <p>config.yaml 选择大零件；compose 装进 App 后，main 启动选中的 UI。<code>--dump-config</code> 只导出配置并退出。</p>
             <div class="chips"><span class="chip">config.yaml</span><span class="chip">静态零件</span><span class="chip">compose.Open</span><span class="chip">--dump-config</span><span class="chip">ui.Run</span></div>
           </article>
@@ -574,10 +658,10 @@
           </article>
 
           <article class="map-node map-card" id="module-ui" data-module="ui" tabindex="0">
-            <div class="module-kicker">UI 插件 · 当前是 terminal</div>
-            <h2>terminal UI</h2>
-            <p>选 Agent / 会话，发消息；只找 agents，过程从账本事件显示。</p>
-            <div class="chips"><span class="chip">Run</span><span class="chip">agents</span><span class="chip">session/appended</span></div>
+            <div class="module-kicker">UI 插件 · 当前是 terminal TUI</div>
+            <h2>terminal TUI</h2>
+            <p>左侧管选择，中间显示账本，底部接收输入；不直接认识 loop。</p>
+            <div class="chips"><span class="chip">Bubble Tea</span><span class="chip">agents</span><span class="chip">llm / tools</span><span class="chip">session events</span></div>
           </article>
 
           <article class="map-node map-card" id="module-chat" data-module="chat" tabindex="0">
@@ -724,6 +808,51 @@
         </div>
       </div>
 
+      <section class="tui-map" aria-label="TUI 使用的能力">
+        <div class="tui-map-head">
+          <h2>TUI 工作台：每个部位拿什么能力</h2>
+          <p>它只是界面，不接管账本，也不直接调用 loop。</p>
+        </div>
+        <div class="tui-layout">
+          <div class="tui-column">
+            <article class="tui-part">
+              <span class="tui-label">左侧导航</span>
+              <h3>Agent / 会话列表</h3>
+              <p>从 <code>agents</code> 读取档案和会话目录。</p>
+              <div class="tui-methods"><span>ListAgents</span><span>ListSessions</span><span>GetAgent</span></div>
+            </article>
+            <article class="tui-part">
+              <span class="tui-label">新建 Agent</span>
+              <h3>填写模型和工具</h3>
+              <p><code>llm</code> 给服务商，<code>tools</code> 给工具名，最后交给 <code>agents</code> 保存。</p>
+              <div class="tui-methods"><span>Providers</span><span>Names</span><span>CreateAgent</span></div>
+            </article>
+          </div>
+
+          <article class="tui-center">
+            <span class="tui-label">当前 UI 插件</span>
+            <h3>terminal TUI</h3>
+            <p>Bubble Tea 只维护当前画面状态：焦点、列表、滚动位置、输入框和帮助弹窗。</p>
+            <div class="tui-route">ui.Run → agents → Conversation<br>session/appended → 历史投影 → 画面</div>
+          </article>
+
+          <div class="tui-column">
+            <article class="tui-part">
+              <span class="tui-label">中间聊天区</span>
+              <h3>历史和实时过程</h3>
+              <p>历史读 <code>Conversation.Book().Events()</code>；新事件听 <code>session/appended</code>。</p>
+              <div class="tui-methods"><span>Events</span><span>viewport</span><span>Tool 过程</span></div>
+            </article>
+            <article class="tui-part">
+              <span class="tui-label">底部输入区</span>
+              <h3>发消息和取消</h3>
+              <p>输入框把动作交给 <code>Conversation</code>，不会越过 <code>agents</code> 去找 loop。</p>
+              <div class="tui-methods"><span>SubmitFollowup</span><span>Cancel</span><span>Close</span></div>
+            </article>
+          </div>
+        </div>
+      </section>
+
       <div class="detail-bar" id="module-detail">
         <div><h3>点击一个模块</h3><div class="path">查看它的代码入口</div></div>
         <p>轻点任意模块，可查看它的代码入口和一句话职责。</p>
@@ -736,11 +865,11 @@
       jsonl: {
         title: "persistence · 两种保存物",
         path: "persistence/jsonl/ + persistence/profilejson/",
-        text: "jsonl 直接登记 journal，保存每段聊天发生了什么；profilejson 直接登记 agent-profiles，保存小红是谁、用什么模型、人设和工具名。dsh 的私有目录是 ~/.harness：config.yaml、agents/、sessions/ 都在这里。"
+        text: "jsonl 直接登记 journal，保存每段聊天发生了什么；profilejson 直接登记 agent-profiles，保存小红是谁、用什么模型、人设和工具名。edith-harness 的私有目录是 ~/.harness：config.yaml、agents/、sessions/ 都在这里。"
       },
       startup: {
-        title: "dsh + compose · 启动与总装",
-        path: "cmd/dsh/main.go → compose/config.go → plugins.go → compose.go",
+        title: "edith-harness + compose · 启动与总装",
+        path: "cmd/edith-harness/main.go → compose/config.go → plugins.go → compose.go",
         text: "main 找到 ~/.harness 和当前工作目录。普通启动时，config.yaml 选择档案存储、账本、模型适配器、执行环境、工具插件、Runner 和 UI；compose 把名字换成已编进程序的插件，再按固定顺序安装，最后 main 只领取 ui 并运行。传入 --dump-config 时只读取、校验并输出 YAML，不安装 App。session、llm、tools、agents 四个插座自动安装。"
       },
       session: {
@@ -784,9 +913,9 @@
         text: "这一个插件同时登记 files、process 和 shell，三者共用同一个根目录。它们是未来具体工具背后的手脚，不会直接出现在模型的工具菜单里。App 关闭时，process 会收掉整棵进程树。"
       },
       ui: {
-        title: "terminal UI · 当前终端前端",
-        path: "uiplugins/terminal/plugin.go → terminal.go",
-        text: "它是一个可选的大零件，当前由 YAML 选 terminal。它用 agents 建/找小红和会话，普通消息交给 Conversation；它不认识 loop。聊天文字、工具开始和结果都从 session/appended 事件显示；监听器只把事件放进自己的队列，因此慢终端不会卡住同步记账。"
+        title: "terminal TUI · 当前终端前端",
+        path: "uiplugins/terminal/plugin.go → tui.go → helpers.go",
+        text: "它是一个可选的大零件，当前由 YAML 选 terminal。Bubble Tea 只负责画面和按键；它从 agents 读取小红与会话，从 llm 和 tools 读取新建 Agent 所需的清单，把消息交给 Conversation。历史来自 Book().Events()，实时过程来自 session/appended 事件；它不直接认识 loop。"
       }
     };
 

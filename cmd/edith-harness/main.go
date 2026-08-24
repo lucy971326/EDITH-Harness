@@ -1,4 +1,4 @@
-// Command dsh 读取 ~/.harness 并组装最小 Harness 运行时。
+// Command edith-harness 读取 ~/.harness 并组装最小 Harness 运行时。
 package main
 
 import (
@@ -15,7 +15,7 @@ import (
 func main() {
 	if len(os.Args) > 1 {
 		if len(os.Args) != 2 || os.Args[1] != "--dump-config" {
-			fmt.Fprintln(os.Stderr, "用法：dsh [--dump-config]")
+			fmt.Fprintln(os.Stderr, "用法：edith-harness [--dump-config]")
 			os.Exit(2)
 		}
 		userHome, err := os.UserHomeDir()
