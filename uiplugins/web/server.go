@@ -317,7 +317,8 @@ func (s *service) handleSubmitMessage(writer http.ResponseWriter, request *http.
 	projectID := request.Form.Get("project_id")
 	sessionID := request.Form.Get("session_id")
 	presetID := request.Form.Get("preset_id")
-	selection, selectionErr := s.parseSelection(request.Form.Get("model_selection"))
+	fallback := s.currentOrProjectModel(projectID, sessionID)
+	selection, selectionErr := s.parseSelectionFromForm(request.Form, fallback)
 	if selectionErr != nil {
 		s.respondMessageError(writer, request, projectID, sessionID, selectionErr.Error())
 		return
@@ -383,7 +384,7 @@ func (s *service) handleSubmitMessage(writer http.ResponseWriter, request *http.
 	render(writer, request, ChatPanel(data))
 }
 
-// handleSelectModel 立刻切换已打开会话的下一轮模型，并把它记进账本。
+// handleSelectModel 立刻切换已打开会话或草稿的下一轮模型，并把它记进账本与偏好。
 func (s *service) handleSelectModel(writer http.ResponseWriter, request *http.Request) {
 	err := request.ParseForm()
 	if err != nil {
@@ -392,8 +393,10 @@ func (s *service) handleSelectModel(writer http.ResponseWriter, request *http.Re
 	}
 	projectID := request.Form.Get("project_id")
 	sessionID := request.Form.Get("session_id")
-	selection, err := s.parseSelection(request.Form.Get("model_selection"))
-	if err == nil {
+	draft := request.Form.Get("draft")
+	fallback := s.currentOrProjectModel(projectID, sessionID)
+	selection, err := s.parseSelectionFromForm(request.Form, fallback)
+	if err == nil && sessionID != "" {
 		conversation, openErr := s.agents.OpenSession(sessionID)
 		if openErr != nil {
 			err = openErr
@@ -405,11 +408,13 @@ func (s *service) handleSelectModel(writer http.ResponseWriter, request *http.Re
 		s.respondMessageError(writer, request, projectID, sessionID, err.Error())
 		return
 	}
-	err = s.projects.RememberModel(projectID, selection)
-	if err != nil {
-		fmt.Printf("Web UI：记住项目模型失败：%v\n", err)
+	if projectID != "" {
+		remErr := s.projects.RememberModel(projectID, selection)
+		if remErr != nil {
+			fmt.Printf("Web UI：记住项目模型失败：%v\n", remErr)
+		}
 	}
-	data, err := s.pageData(projectID, sessionID, "", "")
+	data, err := s.pageData(projectID, sessionID, draft, "")
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
@@ -588,6 +593,97 @@ func presetFromForm(request *http.Request) (presets.Preset, error) {
 		Tools:        request.Form["tools"],
 	}
 	return preset, nil
+}
+
+func (s *service) parseSelectionFromForm(form url.Values, fallback llm.Selection) (llm.Selection, error) {
+	modelKey := form.Get("model_id")
+	thinking := strings.TrimSpace(form.Get("thinking"))
+
+	var provider, model string
+	if modelKey != "" {
+		parts := strings.Split(modelKey, "\x1f")
+		if len(parts) == 2 && parts[0] != "" && parts[1] != "" {
+			provider = parts[0]
+			model = parts[1]
+		}
+	} else if fallback.Provider != "" && fallback.Model != "" {
+		provider = fallback.Provider
+		model = fallback.Model
+	}
+
+	if provider != "" && model != "" {
+		if thinking == "" && provider == fallback.Provider && model == fallback.Model {
+			thinking = fallback.Thinking
+		}
+		resolvedThinking, err := s.resolveThinking(provider, model, thinking)
+		if err != nil {
+			return llm.Selection{}, err
+		}
+		selection := llm.Selection{
+			Provider: provider,
+			Model:    model,
+			Thinking: resolvedThinking,
+		}
+		err = s.llm.Validate(selection)
+		if err != nil {
+			return llm.Selection{}, err
+		}
+		return selection, nil
+	}
+
+	if raw := form.Get("model_selection"); raw != "" {
+		return s.parseSelection(raw)
+	}
+	if fallback.Provider != "" && fallback.Model != "" && fallback.Thinking != "" {
+		return fallback, nil
+	}
+	return s.llm.DefaultSelection()
+}
+
+func (s *service) resolveThinking(providerName string, modelID string, preferredThinking string) (string, error) {
+	for _, provider := range s.llm.Providers() {
+		if provider.Name != providerName {
+			continue
+		}
+		for _, model := range provider.Models {
+			if model.ID != modelID {
+				continue
+			}
+			if len(model.ThinkingLevels) == 0 {
+				return "", fmt.Errorf("模型 %s 没有可用的思考档位", modelID)
+			}
+			for _, level := range model.ThinkingLevels {
+				if level == preferredThinking {
+					return level, nil
+				}
+			}
+			return model.ThinkingLevels[0], nil
+		}
+	}
+	return "", fmt.Errorf("服务商 %s 没有模型 %s", providerName, modelID)
+}
+
+func (s *service) currentOrProjectModel(projectID string, sessionID string) llm.Selection {
+	if sessionID != "" {
+		_, events, err := s.books.Read(sessionID)
+		if err == nil {
+			selected, found := latestModelSelection(events)
+			if found {
+				return selected
+			}
+		}
+	}
+	if projectID != "" {
+		project, err := s.projects.Get(projectID)
+		if err == nil && project.LastModel.Provider != "" {
+			return project.LastModel
+		}
+	}
+	def, err := s.llm.DefaultSelection()
+	if err == nil {
+		return def
+	}
+	return llm.Selection{}
 }
 
 func (s *service) parseSelection(value string) (llm.Selection, error) {

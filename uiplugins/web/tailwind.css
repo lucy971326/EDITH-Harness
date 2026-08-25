@@ -78,8 +78,13 @@
   .cancel-button { @apply rounded-xl px-3 py-2 text-sm; color: var(--color-muted); }
   .preset-picker { @apply mb-2 flex items-center gap-2 px-2 text-xs; color: var(--color-muted); }
   .preset-picker select, .preset-form select { @apply rounded-lg border px-2 py-1; border-color: var(--color-line); background: var(--color-paper); color: var(--color-ink); }
-  .model-picker { @apply max-w-72 rounded-lg border px-2 py-2 text-xs outline-none; border-color: var(--color-line); background: var(--color-paper); color: var(--color-muted); }
+  .model-picker-group { @apply flex items-center gap-1.5; }
+  .model-picker { @apply rounded-lg border px-2.5 py-1.5 text-xs outline-none transition; border-color: var(--color-line); background: var(--color-paper); color: var(--color-muted); }
   .model-picker:focus { border-color: var(--color-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 14%, transparent); }
+  .model-select { @apply max-w-56 font-medium; }
+  .thinking-select { @apply max-w-24; }
+  .model-picker optgroup { font-weight: 600; color: var(--color-ink); }
+  .model-picker option { font-weight: normal; color: var(--color-ink); }
   .send-button, .primary-link { @apply inline-block rounded-xl px-4 py-2 text-sm font-medium transition; background: var(--color-accent); color: white; }
   .send-button:hover, .primary-link:hover { filter: brightness(.94); }
   .form-error { @apply rounded-xl px-4 py-3 text-sm; background: #fff0f0; color: #b42318; }

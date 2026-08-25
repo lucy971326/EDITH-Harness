@@ -215,6 +215,32 @@ func presetHasTool(preset presets.Preset, name string) bool {
 	return false
 }
 
+func modelBaseKey(provider string, modelID string) string {
+	return provider + "\x1f" + modelID
+}
+
+func currentModelBaseKey(selection llm.Selection) string {
+	return modelBaseKey(selection.Provider, selection.Model)
+}
+
+func currentModelThinkingLevels(providers []llm.ProviderInfo, selection llm.Selection) []string {
+	for _, provider := range providers {
+		if provider.Name != selection.Provider {
+			continue
+		}
+		for _, model := range provider.Models {
+			if model.ID != selection.Model {
+				continue
+			}
+			return model.ThinkingLevels
+		}
+	}
+	if selection.Thinking != "" {
+		return []string{selection.Thinking}
+	}
+	return nil
+}
+
 func selectedProvider(providers []llm.ProviderInfo, selected string) llm.ProviderInfo {
 	for _, provider := range providers {
 		if provider.Name == selected {

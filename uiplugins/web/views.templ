@@ -1,9 +1,7 @@
 package web
 
-import (
-	"harness/llm"
-	"harness/presets"
-)
+import "harness/presets"
+
 
 templ Page(data PageData) {
 	<!doctype html>
@@ -95,11 +93,12 @@ templ ChatLog(items []ChatItem) {
 		} else {
 			if data.HasSession {
 				<form id="model-state" hx-post="/sessions/model" hx-target="#chat-panel" hx-swap="outerHTML"><input type="hidden" name="project_id" value={ data.Project.ID }/><input type="hidden" name="session_id" value={ data.Header.ID }/></form>
+			} else {
+				<form id="model-state" hx-post="/sessions/model" hx-target="#chat-panel" hx-swap="outerHTML"><input type="hidden" name="project_id" value={ data.Project.ID }/><input type="hidden" name="draft" value="1"/></form>
 			}
 			<form class="composer" hx-post="/messages" hx-target="#chat-panel" hx-swap="outerHTML"><input type="hidden" name="project_id" value={ data.Project.ID }/>
 				if data.HasSession {
 					<input type="hidden" name="session_id" value={ data.Header.ID }/>
-					<input id="composer-model-selection" type="hidden" name="model_selection" value={ selectionKey(data.SelectedModel) }/>
 				} else {
 					<label class="preset-picker">Agent 模式<select name="preset_id">
 						for _, preset := range activePresets(data.Presets) {
@@ -107,6 +106,8 @@ templ ChatLog(items []ChatItem) {
 						}
 					</select></label>
 				}
+				<input id="composer-model-id" type="hidden" name="model_id" value={ currentModelBaseKey(data.SelectedModel) }/>
+				<input id="composer-thinking" type="hidden" name="thinking" value={ data.SelectedModel.Thinking }/>
 				<textarea name="text" rows="3" placeholder="说点什么…"></textarea>
 				<div class="composer-footer">
 					if data.HasSession {
@@ -115,7 +116,7 @@ templ ChatLog(items []ChatItem) {
 						<span>首条消息会创建会话</span>
 					}
 					<div class="composer-actions">
-						@ModelPicker(data, data.HasSession)
+						@ModelPicker(data, true)
 						if data.HasSession {
 							<button class="cancel-button" type="button" hx-post={ "/sessions/cancel?project_id=" + data.Project.ID + "&session_id=" + data.Header.ID } hx-target="#chat-panel" hx-swap="outerHTML">取消</button>
 						}
@@ -128,27 +129,22 @@ templ ChatLog(items []ChatItem) {
 }
 
 templ ModelPicker(data PageData, commit bool) {
-	if commit {
-		<select class="model-picker" name="model_selection" form="model-state" hx-post="/sessions/model" hx-trigger="change" hx-include="#model-state" hx-target="#chat-panel" hx-swap="outerHTML" data-model-copy="composer-model-selection">
+	<div class="model-picker-group">
+		<select class="model-picker model-select" name="model_id" form="model-state" hx-post="/sessions/model" hx-trigger="change" hx-include="#model-state, .model-select, .thinking-select" hx-target="#chat-panel" hx-swap="outerHTML" data-model-copy="composer-model-id">
 			for _, provider := range data.Providers {
-				for _, model := range provider.Models {
-					for _, thinking := range model.ThinkingLevels {
-						<option value={ selectionKey(llm.Selection{Provider: provider.Name, Model: model.ID, Thinking: thinking}) } selected?={ selectionKey(data.SelectedModel) == selectionKey(llm.Selection{Provider: provider.Name, Model: model.ID, Thinking: thinking}) }>{ selectionLabel(llm.Selection{Provider: provider.Name, Model: model.ID, Thinking: thinking}) }</option>
+				<optgroup label={ provider.Name }>
+					for _, model := range provider.Models {
+						<option value={ modelBaseKey(provider.Name, model.ID) } selected?={ data.SelectedModel.Provider == provider.Name && data.SelectedModel.Model == model.ID }>{ model.ID }</option>
 					}
-				}
+				</optgroup>
 			}
 		</select>
-	} else {
-		<select class="model-picker" name="model_selection">
-			for _, provider := range data.Providers {
-				for _, model := range provider.Models {
-					for _, thinking := range model.ThinkingLevels {
-						<option value={ selectionKey(llm.Selection{Provider: provider.Name, Model: model.ID, Thinking: thinking}) } selected?={ selectionKey(data.SelectedModel) == selectionKey(llm.Selection{Provider: provider.Name, Model: model.ID, Thinking: thinking}) }>{ selectionLabel(llm.Selection{Provider: provider.Name, Model: model.ID, Thinking: thinking}) }</option>
-					}
-				}
+		<select class="model-picker thinking-select" name="thinking" form="model-state" hx-post="/sessions/model" hx-trigger="change" hx-include="#model-state, .model-select, .thinking-select" hx-target="#chat-panel" hx-swap="outerHTML" data-model-copy="composer-thinking">
+			for _, level := range currentModelThinkingLevels(data.Providers, data.SelectedModel) {
+				<option value={ level } selected?={ data.SelectedModel.Thinking == level }>{ level }</option>
 			}
 		</select>
-	}
+	</div>
 }
 
 templ ProjectPickerButton(className string) {

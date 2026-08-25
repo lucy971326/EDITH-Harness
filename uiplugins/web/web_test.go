@@ -324,8 +324,84 @@ func TestChatModelPickerComesFromProviderCatalog(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := writer.Body.String()
-	if !strings.Contains(body, "fake-fast") || !strings.Contains(body, "fake-pro") {
-		t.Fatalf("模型菜单应来自适配器目录：%s", body)
+	if !strings.Contains(body, `<optgroup label="fake">`) || !strings.Contains(body, "fake-fast") || !strings.Contains(body, "fake-pro") {
+		t.Fatalf("模型菜单应来自适配器目录且按分组展示：%s", body)
+	}
+	if !strings.Contains(body, "thinking-select") || !strings.Contains(body, "off") || !strings.Contains(body, "high") {
+		t.Fatalf("思考档位应作为独立选择框展示：%s", body)
+	}
+}
+
+func TestFirstMessageWithSplitModelAndThinking(t *testing.T) {
+	service, projectService, presetService, _, agentService := newWebService(t)
+	project, err := projectService.Create(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = presetService.Create(presets.Preset{ID: "极简"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	modelID := "fake\x1ffake-pro"
+	request := httptest.NewRequest(http.MethodPost, "/messages", strings.NewReader("project_id="+project.ID+"&preset_id=%E6%9E%81%E7%AE%80&model_id="+url.QueryEscape(modelID)+"&thinking=max&text=%E4%BD%A0%E5%A5%BD"))
+	request.Header.Set("HX-Request", "true")
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	writer := httptest.NewRecorder()
+	service.handleSubmitMessage(writer, request)
+	if writer.Code != http.StatusNoContent || agentService.startCalls != 1 || agentService.conversation.submitted != "你好" {
+		t.Fatalf("首次发送没有启动并投递：code=%d calls=%d text=%q", writer.Code, agentService.startCalls, agentService.conversation.submitted)
+	}
+	if agentService.startInput.Model.Provider != "fake" || agentService.startInput.Model.Model != "fake-pro" || agentService.startInput.Model.Thinking != "max" {
+		t.Fatalf("传递给会话的模型不正确：%+v", agentService.startInput.Model)
+	}
+	stored, err := projectService.Get(project.ID)
+	if err != nil || stored.LastModel.Model != "fake-pro" || stored.LastModel.Thinking != "max" {
+		t.Fatalf("首次发送没有记住模型：%+v err=%v", stored, err)
+	}
+}
+
+func TestSelectModelAutoResolvesIncompatibleThinking(t *testing.T) {
+	service, projectService, _, _, _ := newWebService(t)
+	project, err := projectService.Create(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// fake-fast 只支持 "off", "high"；传入 "max" 应自动降级为 "off"（首个档位）
+	request := httptest.NewRequest(http.MethodPost, "/sessions/model", strings.NewReader("project_id="+project.ID+"&draft=1&model_id="+url.QueryEscape("fake\x1ffake-fast")+"&thinking=max"))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	writer := httptest.NewRecorder()
+	service.handleSelectModel(writer, request)
+	if writer.Code != http.StatusOK {
+		t.Fatalf("切换草稿模型失败，实际状态 %d：%s", writer.Code, writer.Body.String())
+	}
+	stored, err := projectService.Get(project.ID)
+	if err != nil || stored.LastModel.Model != "fake-fast" || stored.LastModel.Thinking != "off" {
+		t.Fatalf("不兼容的思考档位应自动校准为支持的档位：%+v err=%v", stored.LastModel, err)
+	}
+}
+
+func TestSelectThinkingOnlyPreservesModel(t *testing.T) {
+	service, projectService, _, _, _ := newWebService(t)
+	project, err := projectService.Create(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 先设置基础模型为 fake-fast
+	err = projectService.RememberModel(project.ID, llm.Selection{Provider: "fake", Model: "fake-fast", Thinking: "off"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 切换档位为 high（同时带 model_id 或仅带 thinking）
+	request := httptest.NewRequest(http.MethodPost, "/sessions/model", strings.NewReader("project_id="+project.ID+"&draft=1&model_id="+url.QueryEscape("fake\x1ffake-fast")+"&thinking=high"))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	writer := httptest.NewRecorder()
+	service.handleSelectModel(writer, request)
+	if writer.Code != http.StatusOK {
+		t.Fatalf("切换思考档位失败，实际状态 %d：%s", writer.Code, writer.Body.String())
+	}
+	stored, err := projectService.Get(project.ID)
+	if err != nil || stored.LastModel.Model != "fake-fast" || stored.LastModel.Thinking != "high" {
+		t.Fatalf("思考档位应成功更新为 high：%+v err=%v", stored.LastModel, err)
 	}
 }
 
