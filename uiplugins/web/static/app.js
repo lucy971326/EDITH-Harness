@@ -41,9 +41,13 @@
   function bindComposer() {
     document.querySelectorAll("[data-autogrow]").forEach((textarea) => {
       resizeComposer(textarea);
-      textarea.addEventListener("input", () => resizeComposer(textarea));
     });
   }
+
+  document.addEventListener("input", (event) => {
+    const target = event.target instanceof Element ? event.target.closest("[data-autogrow]") : null;
+    resizeComposer(target);
+  });
 
   function readCollapsedProjects() {
     try {
@@ -235,7 +239,7 @@
   document.body.addEventListener("htmx:afterSwap", (event) => {
     const detail = event.detail || {};
     const target = detail.target;
-    bindComposer();
+    if (target && (target.id === "chat-panel" || target.id === "composer")) bindComposer();
     if (target && target.id === "composer" && isCancelResponse(detail)) {
       finishCancelRequest();
     }
@@ -257,15 +261,53 @@
   const projectID = document.body.dataset.project;
   if (!sessionID || !projectID) return;
   let stream = null;
+  let chatRefreshInFlight = false;
+  let chatRefreshQueued = false;
+  let composerRefreshInFlight = false;
+  let composerRefreshQueued = false;
+
+  function refreshChatLog() {
+    if (chatRefreshInFlight) {
+      chatRefreshQueued = true;
+      return;
+    }
+    chatRefreshInFlight = true;
+    const finish = () => {
+      chatRefreshInFlight = false;
+      if (!chatRefreshQueued) return;
+      chatRefreshQueued = false;
+      refreshChatLog();
+    };
+    htmx.ajax("GET", `/fragments/chat-log?project=${encodeURIComponent(projectID)}&session=${encodeURIComponent(sessionID)}`, {target: "#chat-log", swap: "outerHTML"}).then(finish, finish);
+  }
+
+  function refreshComposer() {
+    if (document.body.dataset.canceling === "true") return;
+    if (composerRefreshInFlight) {
+      composerRefreshQueued = true;
+      return;
+    }
+    composerRefreshInFlight = true;
+    const finish = () => {
+      composerRefreshInFlight = false;
+      if (!composerRefreshQueued || document.body.dataset.canceling === "true") {
+        composerRefreshQueued = false;
+        return;
+      }
+      composerRefreshQueued = false;
+      refreshComposer();
+    };
+    htmx.ajax("GET", `/fragments/composer?project=${encodeURIComponent(projectID)}&session=${encodeURIComponent(sessionID)}`, {target: "#composer", swap: "outerHTML"}).then(finish, finish);
+  }
+
   const connectLiveRefresh = () => {
     if (stream) return;
     stream = new EventSource(`/events?session=${encodeURIComponent(sessionID)}`);
     stream.addEventListener("refresh", () => {
-      htmx.ajax("GET", `/fragments/chat-log?project=${encodeURIComponent(projectID)}&session=${encodeURIComponent(sessionID)}`, {target: "#chat-log", swap: "outerHTML"});
+      refreshChatLog();
     });
     stream.addEventListener("composer", () => {
-      if (document.body.dataset.canceling === "true") return;
-      htmx.ajax("GET", `/fragments/composer?project=${encodeURIComponent(projectID)}&session=${encodeURIComponent(sessionID)}`, {target: "#composer", swap: "outerHTML"});
+      refreshComposer();
     });
   };
   connectLiveRefresh();

@@ -34,7 +34,7 @@ func Page(data PageData) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>edith-harness</title><link rel=\"stylesheet\" href=\"/assets/site.css\"><script defer src=\"/assets/htmx.min.js\"></script><script defer src=\"/assets/app.js?v=2\"></script></head><body data-session=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>edith-harness</title><link rel=\"stylesheet\" href=\"/assets/site.css\"><script defer src=\"/assets/htmx.min.js\"></script><script defer src=\"/assets/app.js?v=3\"></script></head><body data-session=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
