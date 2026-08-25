@@ -25,7 +25,7 @@ plugins:
   tool_plugins:
     - files
   runner: loop
-  ui: terminal
+  ui: web
 
 providers:
   deepseek:
@@ -93,7 +93,7 @@ func loadConfig(home string) (Config, error) {
 		return Config{}, err
 	}
 	if config.Plugins.UI == "" {
-		config.Plugins.UI = "terminal"
+		config.Plugins.UI = "web"
 	}
 	err = validateConfig(config)
 	if err != nil {

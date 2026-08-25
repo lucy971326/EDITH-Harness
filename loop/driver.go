@@ -153,11 +153,14 @@ func (d *driver) runStep() (bool, error) {
 	memos := a.inbox.takeMemos()
 
 	// 组装最终请求：系统提示 + 小抄 + 账本投影出的历史。
+	a.mu.Lock()
+	config := a.config
+	a.mu.Unlock()
 	request := llm.Request{
-		Provider: a.config.Provider,
-		Model:    a.config.Model,
-		Thinking: a.config.Thinking,
-		Messages: buildMessages(a.config.SystemPrompt, memos, a.book.ModelHistory()),
+		Provider: config.Provider,
+		Model:    config.Model,
+		Thinking: config.Thinking,
+		Messages: buildMessages(config.SystemPrompt, memos, a.book.ModelHistory()),
 		Tools:    a.toolsReg.Schemas(a.sessionID),
 	}
 	snapshot, err := json.Marshal(request)

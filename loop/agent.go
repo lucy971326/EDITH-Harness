@@ -2,6 +2,7 @@ package loop
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"harness/core"
@@ -36,7 +37,7 @@ type Conversation struct {
 	closeOnce   sync.Once
 }
 
-func newConversation(sessionID string, scope *core.App, book *session.Session, llmSvc *llm.Service, toolsReg *tools.Registry, preset presets.Revision, reportError func(error)) *Conversation {
+func newConversation(sessionID string, scope *core.App, book *session.Session, llmSvc *llm.Service, toolsReg *tools.Registry, preset presets.Revision, model llm.Selection, reportError func(error)) *Conversation {
 	conversation := &Conversation{
 		sessionID: sessionID,
 		scope:     scope,
@@ -44,9 +45,9 @@ func newConversation(sessionID string, scope *core.App, book *session.Session, l
 		llmSvc:    llmSvc,
 		toolsReg:  toolsReg,
 		config: RunConfig{
-			Provider:     preset.Provider,
-			Model:        preset.Model,
-			Thinking:     preset.Thinking,
+			Provider:     model.Provider,
+			Model:        model.Model,
+			Thinking:     model.Thinking,
 			SystemPrompt: preset.SystemPrompt,
 		},
 		inbox:       newInbox(),
@@ -57,7 +58,7 @@ func newConversation(sessionID string, scope *core.App, book *session.Session, l
 	return conversation
 }
 
-// RunConfig 是一次会话从锁定模式版本取出的模型配置。
+// RunConfig 是一次会话当前模型和锁定模式提示词的组合。
 type RunConfig struct {
 	Provider     string
 	Model        string
@@ -127,7 +128,34 @@ func (a *Conversation) Cancel() {
 
 // SubmitFollowup 投一条开新轮的消息：忙时排队，本轮正常结束后才开新轮。
 func (a *Conversation) SubmitFollowup(text string) error {
+	a.mu.Lock()
+	ready := a.config.Provider != "" && a.config.Model != "" && a.config.Thinking != ""
+	a.mu.Unlock()
+	if !ready {
+		return fmt.Errorf("请先选择模型")
+	}
 	return a.inbox.deliver(a.book, TargetNextTurn, text, true)
+}
+
+// SelectModel 在会话空闲时切换下一轮使用的模型，并把选择同步记进账本。
+func (a *Conversation) SelectModel(selection llm.Selection) error {
+	err := a.llmSvc.Validate(selection)
+	if err != nil {
+		return err
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.working {
+		return fmt.Errorf("当前回答尚未结束，请稍后再切换模型")
+	}
+	_, err = a.book.RecordModelSelection(session.ModelSelectedData{Provider: selection.Provider, Model: selection.Model, Thinking: selection.Thinking})
+	if err != nil {
+		return err
+	}
+	a.config.Provider = selection.Provider
+	a.config.Model = selection.Model
+	a.config.Thinking = selection.Thinking
+	return nil
 }
 
 // Steer 中途捎话：忙时进当前轮的下一步；闲时没人可打扰，就当新轮的开头。

@@ -227,7 +227,7 @@ type catalogAdapter struct {
 }
 
 func (a *catalogAdapter) ProviderInfo() ProviderInfo {
-	return ProviderInfo{Name: a.Name(), ThinkingLevels: []string{"off", "high"}}
+	return ProviderInfo{Name: a.Name(), Models: []ModelInfo{{ID: "alpha-1", ThinkingLevels: []string{"off", "high"}}}}
 }
 
 func TestProvidersReturnsSortedCatalog(t *testing.T) {
@@ -244,10 +244,26 @@ func TestProvidersReturnsSortedCatalog(t *testing.T) {
 	if len(providers) != 2 || providers[0].Name != "alpha" || providers[1].Name != "zeta" {
 		t.Fatalf("服务商应按名排序：%+v", providers)
 	}
-	if !reflect.DeepEqual(providers[0].ThinkingLevels, []string{"off", "high"}) {
+	if !reflect.DeepEqual(providers[0].Models, []ModelInfo{{ID: "alpha-1", ThinkingLevels: []string{"off", "high"}}}) {
 		t.Fatalf("适配器目录应透传：%+v", providers[0])
 	}
-	if !reflect.DeepEqual(providers[1].ThinkingLevels, []string{"off"}) {
-		t.Fatalf("没提供目录的适配器应默认 off：%+v", providers[1])
+	if len(providers[1].Models) != 0 {
+		t.Fatalf("没提供目录的适配器不应假装有模型：%+v", providers[1])
+	}
+}
+
+func TestValidateSelectionChecksCatalogPair(t *testing.T) {
+	service := NewService()
+	err := service.Register(&catalogAdapter{fakeAdapter: fakeAdapter{name: "alpha"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = service.ValidateSelection("alpha", "alpha-1", "high")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = service.ValidateSelection("alpha", "alpha-1", "max")
+	if err == nil {
+		t.Fatal("不支持的思考档位不该通过")
 	}
 }

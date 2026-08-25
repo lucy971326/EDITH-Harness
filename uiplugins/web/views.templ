@@ -1,0 +1,202 @@
+package web
+
+import (
+	"harness/llm"
+	"harness/presets"
+)
+
+templ Page(data PageData) {
+	<!doctype html>
+	<html lang="zh-CN">
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>edith-harness</title>
+			<link rel="stylesheet" href="/assets/site.css"/>
+			<script defer src="/assets/htmx.min.js"></script>
+			<script defer src="/assets/app.js"></script>
+		</head>
+		<body data-session={ data.Header.ID } data-project={ data.Project.ID }>
+			<div class="app-shell">
+				@Sidebar(data)
+				<main class="main-area">@ChatPanel(data)</main>
+			</div>
+		</body>
+	</html>
+}
+
+templ Sidebar(data PageData) {
+	<aside class="sidebar">
+		<a class="brand" href="/">edith<span>·</span>harness</a>
+		<a class="new-chat" href={ newChatURL(data) }>＋ 新会话</a>
+		<div class="side-label"><span>工作区</span>@ProjectPickerButton("project-add")</div>
+		<nav class="project-list project-tree">
+			for _, tree := range data.ProjectTrees {
+				<section class="project-branch"><a class={ projectClass(tree.Project.ID, data.Project.ID) } href={ templ.URL("/?project=" + tree.Project.ID + "&draft=1") }><span class="folder">□</span>{ tree.Project.Name }</a>
+					for _, header := range tree.Sessions {
+						<a class={ sessionClass(header.ID, data.Header.ID) } href={ templ.URL("/?project=" + tree.Project.ID + "&session=" + header.ID) }>{ header.Title }</a>
+					}
+				</section>
+			}
+		</nav>
+		<div class="side-bottom"><a href="/presets">◇ Agent 模式</a><button class="plain-button" type="button" data-theme-toggle>◐ 主题</button></div>
+	</aside>
+}
+
+templ ChatPanel(data PageData) {
+	<section id="chat-panel" class="chat-panel">
+		if !data.HasProject {
+			<div class="empty-state"><p class="eyebrow">edith-harness</p><h1>先添加一个项目</h1><p>选择一个本机工作目录；目录名就是项目名，每个项目下面有自己的会话。</p>@ProjectPickerButton("primary-link")</div>
+		} else if data.HasSession {
+			<header class="chat-header"><div><p class="eyebrow">{ data.Project.Name }</p><h1>{ data.Header.Title }</h1></div><span class="locked-preset">{ data.SelectedPreset.ID } · v{ fmtInt(data.Header.PresetRevision) }</span></header>
+			@ChatLog(data.Chat)
+			@MessageBox(data)
+		} else if data.Draft {
+			<div class="draft-state"><p class="eyebrow">{ data.Project.Name }</p><h1>从这里开始</h1><p>先选 Agent 模式；第一句话发出时才创建会话并锁定它。</p></div>
+			@MessageBox(data)
+		} else {
+			<div class="empty-state"><p class="eyebrow">{ data.Project.Name }</p><h1>选择一个会话</h1><p>或者新建一段对话；空草稿不会产生任何账本。</p><a class="primary-link" href={ templ.URL("/?project=" + data.Project.ID + "&draft=1") }>＋ 新会话</a></div>
+		}
+	</section>
+}
+
+templ ChatLog(items []ChatItem) {
+	<div class="chat-log">
+		for _, item := range items {
+			if item.Kind == "user" {
+				<article class="message user-message"><p>{ item.Text }</p></article>
+			} else if item.Kind == "queued" {
+				<article class="queued-message"><span>已排队</span><p>{ item.Text }</p></article>
+			} else if item.Kind == "tool" {
+				<details class="tool-card"><summary><span>工具</span>{ item.ToolName }<b>{ item.ToolStatus }</b></summary>
+					if item.Text != "" {
+						<pre>{ item.Text }</pre>
+					}
+				</details>
+			} else {
+				<article class="message assistant-message">
+					if item.Kind == "assistant interrupted" {
+						<span class="interrupted">已中断</span>
+					}
+					@templ.Raw(item.HTML)
+				</article>
+			}
+		}
+	</div>
+}
+
+	templ MessageBox(data PageData) {
+	<div class="composer-wrap">
+			if data.Error != "" {
+				<p class="form-error">{ data.Error }</p>
+			}
+		if !data.HasPreset {
+			<p class="form-error">还没有可用的 Agent 模式。<a href="/presets/new">先创建一个</a></p>
+		} else {
+			if data.HasSession {
+				<form id="model-state" hx-post="/sessions/model" hx-target="#chat-panel" hx-swap="outerHTML"><input type="hidden" name="project_id" value={ data.Project.ID }/><input type="hidden" name="session_id" value={ data.Header.ID }/></form>
+			}
+			<form class="composer" hx-post="/messages" hx-target="#chat-panel" hx-swap="outerHTML"><input type="hidden" name="project_id" value={ data.Project.ID }/>
+				if data.HasSession {
+					<input type="hidden" name="session_id" value={ data.Header.ID }/>
+					<input id="composer-model-selection" type="hidden" name="model_selection" value={ selectionKey(data.SelectedModel) }/>
+				} else {
+					<label class="preset-picker">Agent 模式<select name="preset_id">
+						for _, preset := range activePresets(data.Presets) {
+							<option value={ preset.ID } selected?={ preset.ID == data.SelectedPreset.ID }>{ preset.ID }</option>
+						}
+					</select></label>
+				}
+				<textarea name="text" rows="3" placeholder="说点什么…"></textarea>
+				<div class="composer-footer">
+					if data.HasSession {
+						<span>{ data.SelectedPreset.ID } · 已锁定</span>
+					} else {
+						<span>首条消息会创建会话</span>
+					}
+					<div class="composer-actions">
+						@ModelPicker(data, data.HasSession)
+						if data.HasSession {
+							<button class="cancel-button" type="button" hx-post={ "/sessions/cancel?project_id=" + data.Project.ID + "&session_id=" + data.Header.ID } hx-target="#chat-panel" hx-swap="outerHTML">取消</button>
+						}
+						<button class="send-button" type="submit">发送 ↑</button>
+					</div>
+				</div>
+			</form>
+		}
+	</div>
+}
+
+templ ModelPicker(data PageData, commit bool) {
+	if commit {
+		<select class="model-picker" name="model_selection" form="model-state" hx-post="/sessions/model" hx-trigger="change" hx-include="#model-state" hx-target="#chat-panel" hx-swap="outerHTML" data-model-copy="composer-model-selection">
+			for _, provider := range data.Providers {
+				for _, model := range provider.Models {
+					for _, thinking := range model.ThinkingLevels {
+						<option value={ selectionKey(llm.Selection{Provider: provider.Name, Model: model.ID, Thinking: thinking}) } selected?={ selectionKey(data.SelectedModel) == selectionKey(llm.Selection{Provider: provider.Name, Model: model.ID, Thinking: thinking}) }>{ selectionLabel(llm.Selection{Provider: provider.Name, Model: model.ID, Thinking: thinking}) }</option>
+					}
+				}
+			}
+		</select>
+	} else {
+		<select class="model-picker" name="model_selection">
+			for _, provider := range data.Providers {
+				for _, model := range provider.Models {
+					for _, thinking := range model.ThinkingLevels {
+						<option value={ selectionKey(llm.Selection{Provider: provider.Name, Model: model.ID, Thinking: thinking}) } selected?={ selectionKey(data.SelectedModel) == selectionKey(llm.Selection{Provider: provider.Name, Model: model.ID, Thinking: thinking}) }>{ selectionLabel(llm.Selection{Provider: provider.Name, Model: model.ID, Thinking: thinking}) }</option>
+					}
+				}
+			}
+		</select>
+	}
+}
+
+templ ProjectPickerButton(className string) {
+	<form class="project-picker" method="post" action="/projects/pick"><button class={ className } type="submit">＋ 添加项目</button></form>
+}
+
+templ PresetListPage(data PresetPageData) {
+	<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Agent 模式 · edith-harness</title><link rel="stylesheet" href="/assets/site.css"/></head>
+	<body><main class="form-page wide-page"><a class="brand" href="/">edith<span>·</span>harness</a><section class="form-card"><div class="page-title"><div><p class="eyebrow">Agent 模式</p><h1>模式管理</h1><p>模式只定义人设和允许工具；模型由每段会话自己选择。</p></div><a class="send-button" href="/presets/new">＋ 新模式</a></div>
+		if data.Error != "" {
+			<p class="form-error">{ data.Error }</p>
+		}
+		<div class="preset-grid">
+			for _, preset := range data.Presets {
+				<article class="preset-card"><div><h2>{ preset.ID }</h2><p>{ preset.SystemPrompt }</p></div><div class="preset-actions">
+					if preset.Archived {
+						<span class="archived">已归档</span>
+					} else {
+						<a href={ templ.URL(presetEditURL(preset.ID)) }>编辑</a><form method="post" action="/presets/archive"><input type="hidden" name="id" value={ preset.ID }/><button type="submit">归档</button></form>
+					}
+				</div></article>
+			}
+		</div></section></main></body></html>
+}
+
+templ PresetFormPage(data PresetPageData, preset presets.Preset) {
+	<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Agent 模式 · edith-harness</title><link rel="stylesheet" href="/assets/site.css"/><script defer src="/assets/htmx.min.js"></script></head>
+	<body><main class="form-page wide-page"><a class="brand" href="/">edith<span>·</span>harness</a><section class="form-card"><p class="eyebrow">Agent 模式</p><h1>
+			if preset.ID == "" {
+				新建模式
+			} else {
+				编辑模式
+			}
+	</h1><p>修改会生成新版本；已经存在的会话仍然使用它们锁定的旧版本。</p>
+			if data.Error != "" {
+				<p class="form-error">{ data.Error }</p>
+			}
+		<form method="post" action={ templ.URL(presetAction(preset.ID)) } class="preset-form">
+			if preset.ID != "" {
+				<input type="hidden" name="id" value={ preset.ID }/>
+			}
+			<label>模式名称<input name="id" value={ preset.ID } required disabled?={ preset.ID != "" }/></label>
+			<label>人设 / 系统提示词<textarea name="system_prompt" rows="5">{ preset.SystemPrompt }</textarea></label>
+			<fieldset><legend>可用工具</legend>
+				for _, name := range data.Tools {
+					<label class="check"><input type="checkbox" name="tools" value={ name } checked?={ presetHasTool(preset, name) }/>{ name }</label>
+				}
+			</fieldset>
+			<div class="form-actions"><a href="/presets">取消</a><button class="send-button" type="submit">保存模式</button></div>
+		</form></section></main></body></html>
+}

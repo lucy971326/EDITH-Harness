@@ -66,7 +66,7 @@ func TestAdapterSendsThinkingAndReadsStream(t *testing.T) {
 	var visible strings.Builder
 	reply, err := adapter.Stream(context.Background(), llm.Request{
 		Provider: "deepseek",
-		Model:    "deepseek-reasoner",
+		Model:    "deepseek-v4-flash",
 		Thinking: "high",
 		Messages: []chat.Message{
 			{Role: "user", Text: "写文件"},
@@ -202,7 +202,7 @@ func TestPluginRegistersDeepSeek(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = service.Complete(context.Background(), llm.Request{Provider: "deepseek", Model: "m", Thinking: "off"})
+	_, err = service.Complete(context.Background(), llm.Request{Provider: "deepseek", Model: "deepseek-v4-flash", Thinking: "off"})
 	if err == nil {
 		t.Fatal("测试服务的坏请求应返回错误")
 	}
@@ -277,7 +277,7 @@ func TestLoopSendsThinkingWithAssistantToolCallOnSecondRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	project, err := projectService.Create("测试项目", t.TempDir())
+	project, err := projectService.Create(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,11 +286,8 @@ func TestLoopSendsThinkingWithAssistantToolCallOnSecondRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = presetService.Create(presets.Preset{
-		ID:       "小红",
-		Provider: "deepseek",
-		Model:    "deepseek-reasoner",
-		Thinking: "high",
-		Tools:    []string{"echo"},
+		ID:    "小红",
+		Tools: []string{"echo"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -299,7 +296,7 @@ func TestLoopSendsThinkingWithAssistantToolCallOnSecondRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	conversation, err := service.StartSession(agents.StartInput{ProjectID: project.ID, PresetID: "小红", Title: "会话一"})
+	conversation, err := service.StartSession(agents.StartInput{ProjectID: project.ID, PresetID: "小红", Title: "会话一", Model: llm.Selection{Provider: "deepseek", Model: "deepseek-v4-flash", Thinking: "high"}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -17,9 +17,6 @@ func TestStorePersistsAllRevisionsAcrossRestart(t *testing.T) {
 	initial := presets.Revision{
 		ID:           "小红",
 		Revision:     1,
-		Provider:     "deepseek",
-		Model:        "test-model",
-		Thinking:     "off",
 		SystemPrompt: "第一版",
 		Tools:        []string{"read_file"},
 	}
@@ -33,7 +30,6 @@ func TestStorePersistsAllRevisionsAcrossRestart(t *testing.T) {
 
 	updated := initial
 	updated.Revision = 2
-	updated.Model = "new-model"
 	updated.SystemPrompt = "第二版"
 	updated.Tools = []string{"write_file"}
 	err = first.Update(updated)
@@ -55,21 +51,21 @@ func TestStorePersistsAllRevisionsAcrossRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if current.Revision != 3 || !current.Archived || current.Model != "new-model" {
+	if current.Revision != 3 || !current.Archived || current.SystemPrompt != "第二版" {
 		t.Fatalf("重启后当前版本不对：%+v", current)
 	}
 	old, err := second.GetRevision("小红", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if old.Archived || old.Model != "test-model" || old.SystemPrompt != "第一版" || old.Tools[0] != "read_file" {
+	if old.Archived || old.SystemPrompt != "第一版" || old.Tools[0] != "read_file" {
 		t.Fatalf("第 1 版不对：%+v", old)
 	}
 	beforeArchive, err := second.GetRevision("小红", 2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if beforeArchive.Archived || beforeArchive.Model != "new-model" || beforeArchive.Tools[0] != "write_file" {
+	if beforeArchive.Archived || beforeArchive.Tools[0] != "write_file" {
 		t.Fatalf("第 2 版不对：%+v", beforeArchive)
 	}
 	listed, err := second.List()
@@ -86,7 +82,7 @@ func TestStoreRejectsBrokenVersionSequence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	invalid := presets.Revision{ID: "小红", Revision: 2, Provider: "test", Model: "m", Thinking: "off"}
+	invalid := presets.Revision{ID: "小红", Revision: 2}
 	err = store.Create(invalid)
 	if err == nil {
 		t.Fatal("第 2 版不该能直接创建")
@@ -120,7 +116,7 @@ func TestStoreArchiveIsIdempotentAndKeepsOldRevision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = store.Create(presets.Revision{ID: "小红", Revision: 1, Provider: "test", Model: "m", Thinking: "off"})
+	err = store.Create(presets.Revision{ID: "小红", Revision: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +149,7 @@ func TestStoreUsesEncodedDirectoriesForPresetID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	revision := presets.Revision{ID: "团队/客服", Revision: 1, Provider: "test", Model: "m", Thinking: "off"}
+	revision := presets.Revision{ID: "团队/客服", Revision: 1}
 	err = store.Create(revision)
 	if err != nil {
 		t.Fatal(err)
@@ -182,7 +178,7 @@ func TestPluginRegistersPresetStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = service.Create(presets.Preset{ID: "模式", Provider: "test", Model: "m", Thinking: "off"})
+	err = service.Create(presets.Preset{ID: "模式"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,15 +1,20 @@
 // Package projects 管理工作目录及其会话归属。
 package projects
 
-import "fmt"
+import (
+	"fmt"
+
+	"harness/llm"
+)
 
 // Project 是一个工作目录及其长期选择状态。
 type Project struct {
-	ID           string // 稳定身份，创建后不变
-	Name         string // 给用户看的项目名称
-	Root         string // 规范化后的工作目录，创建后不变
-	LastPresetID string // 上次成功使用的 Agent 模式
-	Archived     bool   // 归档后保留历史，不再作为默认可用项目
+	ID           string        // 稳定身份，创建后不变
+	Name         string        // 根目录名，用于显示
+	Root         string        // 规范化后的工作目录，创建后不变
+	LastPresetID string        // 上次成功使用的 Agent 模式
+	LastModel    llm.Selection // 上次成功使用的模型组合
+	Archived     bool          // 归档后保留历史，不再作为默认可用项目
 }
 
 // Store 是项目的存取口；具体介质由持久化插件提供。

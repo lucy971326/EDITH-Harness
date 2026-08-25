@@ -30,6 +30,7 @@ var builtinFormats = map[string]eventFormat{
 	KindClaim:          {modelVisible: false, kernel: true, decode: decodeAs(&ClaimData{})},
 	KindSnapshot:       {modelVisible: false, kernel: true, decode: decodeAs(&SnapshotData{})},
 	KindSummary:        {modelVisible: true, kernel: true, decode: decodeAs(&SummaryData{})},
+	KindModelSelected:  {modelVisible: false, kernel: true, decode: decodeAs(&ModelSelectedData{})},
 }
 
 // decodeAs 返回"把 JSON 解进这种结构体"的函数，解不动就是账数据坏了。

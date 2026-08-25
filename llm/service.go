@@ -35,14 +35,14 @@ func (s *Service) Register(adapter Adapter) error {
 	return nil
 }
 
-// Providers 按名字列出已安装适配器及其创建 Agent 菜单信息。
+// Providers 按名字列出已安装适配器及其会话模型选择目录。
 func (s *Service) Providers() []ProviderInfo {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	providers := make([]ProviderInfo, 0, len(s.adapters))
 	for name, adapter := range s.adapters {
-		info := ProviderInfo{Name: name, ThinkingLevels: []string{"off"}}
+		info := ProviderInfo{Name: name}
 		catalog, ok := adapter.(ProviderCatalog)
 		if ok {
 			info = catalog.ProviderInfo()
@@ -50,13 +50,58 @@ func (s *Service) Providers() []ProviderInfo {
 		if info.Name == "" {
 			info.Name = name
 		}
-		info.ThinkingLevels = append([]string(nil), info.ThinkingLevels...)
+		info.Models = cloneModels(info.Models)
 		providers = append(providers, info)
 	}
 	sort.Slice(providers, func(i int, j int) bool {
 		return providers[i].Name < providers[j].Name
 	})
 	return providers
+}
+
+// ValidateSelection 检查服务商、模型和思考档位是否是适配器声明的有效组合。
+func (s *Service) ValidateSelection(provider string, model string, thinking string) error {
+	s.mu.Lock()
+	adapter, exists := s.adapters[provider]
+	s.mu.Unlock()
+	if !exists {
+		return fmt.Errorf("模型服务商 %s 没有安装", provider)
+	}
+	catalog, hasCatalog := adapter.(ProviderCatalog)
+	if !hasCatalog {
+		return nil
+	}
+	info := catalog.ProviderInfo()
+	for _, candidate := range info.Models {
+		if candidate.ID != model {
+			continue
+		}
+		for _, level := range candidate.ThinkingLevels {
+			if level == thinking {
+				return nil
+			}
+		}
+		return fmt.Errorf("模型 %s 不支持思考档位 %s", model, thinking)
+	}
+	return fmt.Errorf("服务商 %s 没有模型 %s", provider, model)
+}
+
+// Validate 检查一段会话选中的模型组合是否可用。
+func (s *Service) Validate(selection Selection) error {
+	return s.ValidateSelection(selection.Provider, selection.Model, selection.Thinking)
+}
+
+// DefaultSelection 返回已安装目录中的第一个可用模型组合；没有目录时返回错误。
+func (s *Service) DefaultSelection() (Selection, error) {
+	for _, provider := range s.Providers() {
+		for _, model := range provider.Models {
+			if len(model.ThinkingLevels) == 0 {
+				continue
+			}
+			return Selection{Provider: provider.Name, Model: model.ID, Thinking: model.ThinkingLevels[0]}, nil
+		}
+	}
+	return Selection{}, fmt.Errorf("没有已安装且声明模型目录的服务商")
 }
 
 // Complete 按请求指定的服务商发一次请求，不关心逐字（要逐字用 Stream）。
@@ -75,7 +120,20 @@ func (s *Service) Stream(ctx context.Context, req Request, onDelta func(chat.Del
 	if req.Thinking == "" {
 		return Reply{}, NewError(req.Provider, ErrBadRequest, "模型请求缺少 thinking")
 	}
+	err := s.ValidateSelection(req.Provider, req.Model, req.Thinking)
+	if err != nil {
+		return Reply{}, NewError(req.Provider, ErrBadRequest, err.Error())
+	}
 	return s.stream(ctx, req, onDelta)
+}
+
+func cloneModels(models []ModelInfo) []ModelInfo {
+	copied := make([]ModelInfo, len(models))
+	for index, model := range models {
+		copied[index] = model
+		copied[index].ThinkingLevels = append([]string(nil), model.ThinkingLevels...)
+	}
+	return copied
 }
 
 // stream 路由到插座并包错误——出口只有这一个，统一长相在这保证。

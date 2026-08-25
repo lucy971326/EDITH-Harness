@@ -5,6 +5,7 @@ import (
 
 	"harness/core"
 	"harness/environment"
+	"harness/llm"
 	"harness/presets"
 	"harness/projects"
 	"harness/session"
@@ -41,7 +42,11 @@ func (Plugin) Start(app *core.App) error {
 	if err != nil {
 		return fmt.Errorf("agents 要先有执行环境（environment）：%w", err)
 	}
-	service := newRegistry(app, store, projectService, presetService, provider, toolsReg)
+	llmService, err := llm.Get(app)
+	if err != nil {
+		return fmt.Errorf("agents 要先有模型插座（llm）：%w", err)
+	}
+	service := newRegistry(app, store, projectService, presetService, provider, toolsReg, llmService)
 	app.RegisterService("agents", service)
 	app.OnCleanup(service.CloseAll)
 	return nil

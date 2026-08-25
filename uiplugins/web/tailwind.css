@@ -1,0 +1,117 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #20252e;
+  --color-muted: #747b86;
+  --color-line: #e7e8eb;
+  --color-paper: #ffffff;
+  --color-canvas: #f8f8f6;
+  --color-accent: #2563eb;
+  --color-accent-soft: #eaf1ff;
+  --color-mint: #0f9f86;
+  --radius-card: 18px;
+}
+
+@layer base {
+  * { box-sizing: border-box; }
+  html { min-width: 720px; background: var(--color-canvas); }
+  body { margin: 0; color: var(--color-ink); background: var(--color-canvas); font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  body[data-theme="dark"] { --color-ink: #edf0f3; --color-muted: #a8afb9; --color-line: #303743; --color-paper: #191d24; --color-canvas: #11151b; --color-accent-soft: #1d335a; }
+  a { color: inherit; text-decoration: none; }
+  button, input, textarea, select { font: inherit; }
+  button { cursor: pointer; }
+}
+
+@layer components {
+  .app-shell { @apply grid min-h-screen; grid-template-columns: 288px minmax(0, 1fr); }
+  .sidebar { @apply sticky top-0 flex h-screen flex-col border-r px-4 py-6; border-color: var(--color-line); background: var(--color-paper); }
+  .brand { @apply mb-8 px-2 text-xl font-semibold tracking-tight; }
+  .brand span { color: var(--color-accent); }
+  .new-chat { @apply mb-8 rounded-xl border px-4 py-3 text-center text-sm font-medium transition; border-color: var(--color-line); }
+  .new-chat:hover { background: var(--color-accent-soft); border-color: var(--color-accent); }
+  .project-picker { @apply m-0; }
+  .project-picker .new-chat { @apply block w-full; background: var(--color-paper); color: var(--color-ink); }
+  .project-picker .primary-link { @apply border-0; }
+  .side-label { @apply flex items-center justify-between px-2 text-xs font-semibold tracking-widest uppercase; color: var(--color-muted); }
+  .project-add { @apply border-0 bg-transparent p-0 text-lg leading-none; color: var(--color-muted); }
+  .project-add:hover { color: var(--color-accent); }
+  .sessions-label { @apply mt-8; }
+  .project-list, .session-list { @apply mt-2 space-y-1; }
+  .project-branch { @apply mb-3; }
+  .project-branch .session-link { @apply ml-5 py-1.5 text-[13px]; }
+  .project-link, .session-link { @apply block rounded-lg px-3 py-2 text-sm transition; color: var(--color-muted); }
+  .project-link:hover, .session-link:hover { background: var(--color-accent-soft); color: var(--color-ink); }
+  .project-link.selected, .session-link.selected { background: var(--color-accent-soft); color: var(--color-accent); font-weight: 600; }
+  .folder { @apply mr-2; color: var(--color-accent); }
+  .empty-side { @apply px-3 text-sm; color: var(--color-muted); }
+  .side-bottom { @apply mt-auto flex flex-col gap-1 border-t pt-4 text-sm; border-color: var(--color-line); color: var(--color-muted); }
+  .side-bottom a, .plain-button { @apply rounded-lg px-3 py-2 text-left transition; }
+  .side-bottom a:hover, .plain-button:hover { background: var(--color-accent-soft); color: var(--color-ink); }
+  .plain-button { @apply border-0 bg-transparent; color: inherit; }
+  .main-area { @apply min-w-0; }
+  .chat-panel { @apply mx-auto flex min-h-screen w-full max-w-4xl flex-col px-8; }
+  .chat-header { @apply flex items-start justify-between border-b py-8; border-color: var(--color-line); }
+  .chat-header h1, .draft-state h1, .empty-state h1, .form-card h1 { @apply m-0 text-2xl font-semibold tracking-tight; }
+  .eyebrow { @apply mb-2 text-xs font-semibold tracking-widest uppercase; color: var(--color-muted); }
+  .locked-preset { @apply rounded-full px-3 py-1 text-sm; background: var(--color-accent-soft); color: var(--color-accent); }
+  .chat-log { @apply flex flex-1 flex-col gap-5 py-8; }
+  .message { @apply max-w-[82%] rounded-2xl px-5 py-4 leading-7; }
+  .message p { @apply my-0; }
+  .user-message { @apply self-end rounded-br-md; background: var(--color-accent); color: white; }
+  .assistant-message { @apply self-start rounded-bl-md; background: var(--color-paper); box-shadow: 0 1px 2px rgb(0 0 0 / .04); }
+  .assistant-message p { @apply my-0 mb-3; }
+  .assistant-message p:last-child { @apply mb-0; }
+  .assistant-message pre { @apply overflow-x-auto rounded-xl p-4 text-sm; background: color-mix(in srgb, var(--color-ink) 8%, transparent); }
+  .interrupted, .queued-message span { @apply mr-2 rounded px-2 py-1 text-xs; background: #fff1d6; color: #a85e00; }
+  .queued-message { @apply self-end rounded-xl border px-4 py-3 text-sm; border-color: #f2cf8c; background: #fffaf0; }
+  .queued-message p { @apply mt-2 mb-0; }
+  .tool-card { @apply self-start w-full rounded-xl border text-sm; border-color: var(--color-line); background: var(--color-paper); }
+  .tool-card summary { @apply flex cursor-pointer items-center gap-3 px-4 py-3 font-medium; }
+  .tool-card summary span { @apply rounded px-2 py-1 text-xs; background: var(--color-accent-soft); color: var(--color-accent); }
+  .tool-card summary b { @apply ml-auto text-xs font-medium; color: var(--color-mint); }
+  .tool-card pre { @apply m-0 max-h-72 overflow-auto border-t p-4 text-xs leading-5; border-color: var(--color-line); }
+  .composer-wrap { @apply sticky bottom-0 mt-auto pb-8; background: linear-gradient(transparent, var(--color-canvas) 20%); }
+  .composer { @apply rounded-2xl border p-3; border-color: var(--color-line); background: var(--color-paper); box-shadow: 0 12px 36px rgb(0 0 0 / .06); }
+  .composer textarea { @apply block w-full resize-none border-0 bg-transparent p-2 outline-none; color: var(--color-ink); }
+  .composer-footer { @apply flex items-center justify-between px-2 pt-2 text-xs; color: var(--color-muted); }
+  .composer-actions { @apply flex items-center gap-2; }
+  .cancel-button { @apply rounded-xl px-3 py-2 text-sm; color: var(--color-muted); }
+  .preset-picker { @apply mb-2 flex items-center gap-2 px-2 text-xs; color: var(--color-muted); }
+  .preset-picker select, .preset-form select { @apply rounded-lg border px-2 py-1; border-color: var(--color-line); background: var(--color-paper); color: var(--color-ink); }
+  .model-picker { @apply max-w-72 rounded-lg border px-2 py-2 text-xs outline-none; border-color: var(--color-line); background: var(--color-paper); color: var(--color-muted); }
+  .model-picker:focus { border-color: var(--color-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 14%, transparent); }
+  .send-button, .primary-link { @apply inline-block rounded-xl px-4 py-2 text-sm font-medium transition; background: var(--color-accent); color: white; }
+  .send-button:hover, .primary-link:hover { filter: brightness(.94); }
+  .form-error { @apply rounded-xl px-4 py-3 text-sm; background: #fff0f0; color: #b42318; }
+  .draft-state, .empty-state { @apply mx-auto flex min-h-[68vh] max-w-xl flex-col justify-center; }
+  .draft-state p, .empty-state p { @apply leading-7; color: var(--color-muted); }
+  .empty-state .project-picker { @apply mt-3 self-start; }
+  .form-page { @apply mx-auto min-h-screen w-full max-w-2xl px-8 py-10; }
+  .wide-page { @apply max-w-5xl; }
+  .form-card { @apply mt-10 rounded-2xl border p-8; border-color: var(--color-line); background: var(--color-paper); }
+  .form-card > p { @apply leading-7; color: var(--color-muted); }
+  .form-card form { @apply mt-8 grid gap-5; }
+  .form-card label { @apply grid gap-2 text-sm font-medium; }
+  .form-card input, .form-card textarea { @apply w-full rounded-xl border px-3 py-2 outline-none; border-color: var(--color-line); background: var(--color-paper); color: var(--color-ink); }
+  .form-card input:focus, .form-card textarea:focus { border-color: var(--color-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 14%, transparent); }
+  .form-actions, .page-title, .preset-actions { @apply flex items-center justify-between gap-3; }
+  .form-actions a, .preset-actions a, .preset-actions button { @apply rounded-lg px-3 py-2 text-sm; color: var(--color-muted); }
+  .preset-grid { @apply mt-8 grid gap-3 sm:grid-cols-2; }
+  .preset-card { @apply flex min-h-28 flex-col justify-between rounded-xl border p-5; border-color: var(--color-line); }
+  .preset-card h2 { @apply m-0 text-lg; }
+  .preset-card p { @apply mt-2 mb-0 text-sm; color: var(--color-muted); }
+  .preset-actions form { @apply m-0; }
+  .preset-actions button { @apply border-0 bg-transparent text-red-600; }
+  .archived { @apply text-sm; color: var(--color-muted); }
+  .preset-form { @apply grid gap-5; }
+  .preset-form fieldset { @apply rounded-xl border p-4; border-color: var(--color-line); }
+  .preset-form legend { @apply px-1 text-sm font-medium; }
+  .check { @apply flex! items-center gap-2 py-1 font-normal!; }
+}
+
+@media (max-width: 800px) {
+  html { min-width: 0; }
+  .app-shell { grid-template-columns: 210px minmax(0, 1fr); }
+  .chat-panel { @apply px-5; }
+  .sidebar { @apply px-3; }
+}

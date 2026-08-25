@@ -18,7 +18,8 @@ import (
 	"harness/session"
 	filetools "harness/toolplugins/files"
 	"harness/tools"
-	uiplugin "harness/uiplugins/terminal"
+	terminalui "harness/uiplugins/terminal"
+	webui "harness/uiplugins/web"
 )
 
 // pluginSelection 放本次启动选中的大零件；固定插座不交给配置选择。
@@ -101,7 +102,9 @@ func selectPlugins(config Config, home string) (pluginSelection, error) {
 
 	switch config.Plugins.UI {
 	case "terminal":
-		selected.ui = uiplugin.Plugin{}
+		selected.ui = terminalui.Plugin{}
+	case "web":
+		selected.ui = webui.Plugin{}
 	default:
 		return pluginSelection{}, fmt.Errorf("未知的 plugins.ui：%s", config.Plugins.UI)
 	}

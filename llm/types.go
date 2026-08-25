@@ -19,16 +19,29 @@ type Adapter interface {
 	Stream(ctx context.Context, req Request, onDelta func(chat.Delta)) (Reply, error)
 }
 
-// ProviderInfo 是创建 Agent 时可展示的一家模型服务商信息。
-type ProviderInfo struct {
-	Name           string   // 插座上的服务商名
-	ThinkingLevels []string // 这家适配器接受的思考档位
+// ModelInfo 是服务商声明的一个可选模型及其能力。
+type ModelInfo struct {
+	ID             string   // 发请求时使用的模型标识
+	ThinkingLevels []string // 这个模型支持的思考档位
 }
 
-// ProviderCatalog 是适配器可选提供的创建 Agent 菜单信息。
-// 没实现时仍能正常请求，只是界面只展示默认 off 档。
+// ProviderInfo 是界面可展示的一家模型服务商及其模型目录。
+type ProviderInfo struct {
+	Name   string      // 插座上的服务商名
+	Models []ModelInfo // 已适配且可让用户选择的模型
+}
+
+// ProviderCatalog 是适配器提供给界面的模型目录。
+// 目录只描述这个适配器实际支持的模型和能力，不代表全网服务商。
 type ProviderCatalog interface {
 	ProviderInfo() ProviderInfo
+}
+
+// Selection 是一段会话当前选中的模型组合。
+type Selection struct {
+	Provider string // 服务商插座名
+	Model    string // 服务商内的模型标识
+	Thinking string // 该模型支持的思考档位
 }
 
 // Request 是一次模型请求的全部输入。

@@ -196,9 +196,9 @@ func TestOpenRejectsBadConfig(t *testing.T) {
 		{
 			name: "未知 UI",
 			change: func(config string) string {
-				return strings.Replace(config, "ui: terminal", "ui: web", 1)
+				return strings.Replace(config, "ui: web", "ui: desktop", 1)
 			},
-			want: "未知的 plugins.ui：web",
+			want: "未知的 plugins.ui：desktop",
 		},
 		{
 			name: "重复模型适配器",
@@ -268,7 +268,7 @@ func TestSelectedPluginsKeepFixedOrder(t *testing.T) {
 			Environment:  "localenv",
 			ToolPlugins:  []string{"files"},
 			Runner:       "loop",
-			UI:           "terminal",
+			UI:           "web",
 		},
 		Providers: ProviderConfigs{DeepSeek: DeepSeekConfig{
 			APIKey: "test-key",
@@ -296,7 +296,7 @@ func TestSelectedPluginsKeepFixedOrder(t *testing.T) {
 		"presets",
 		"agents",
 		"loop",
-		"ui-terminal",
+		"ui-web",
 	}
 	if !slices.Equal(names, want) {
 		t.Fatalf("安装顺序是 %v，想要 %v", names, want)

@@ -7,9 +7,6 @@ import "fmt"
 type Revision struct {
 	ID           string   // Agent 模式的稳定身份
 	Revision     int      // 此身份下不可变版本号，从 1 起递增
-	Provider     string   // 后续请求使用的模型服务商
-	Model        string   // 后续请求使用的模型
-	Thinking     string   // 后续请求使用的思考强度
 	SystemPrompt string   // 后续请求使用的系统提示词
 	Tools        []string // 允许调用的全局工具名
 	Archived     bool     // 归档后不能用于新会话
@@ -35,24 +32,6 @@ func Validate(revision Revision) error {
 			return fmt.Errorf("Agent 模式 %s 的工具 %s 写了两次", revision.ID, name)
 		}
 		seen[name] = true
-	}
-	return nil
-}
-
-// ValidateRunnable 检查一个模式版本能否真的启动模型会话。
-func ValidateRunnable(revision Revision) error {
-	err := Validate(revision)
-	if err != nil {
-		return err
-	}
-	if revision.Provider == "" {
-		return fmt.Errorf("Agent 模式 %s 缺少 provider", revision.ID)
-	}
-	if revision.Model == "" {
-		return fmt.Errorf("Agent 模式 %s 缺少 model", revision.ID)
-	}
-	if revision.Thinking == "" {
-		return fmt.Errorf("Agent 模式 %s 缺少 thinking", revision.ID)
 	}
 	return nil
 }

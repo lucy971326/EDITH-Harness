@@ -16,15 +16,12 @@ func TestServiceManagesProjectLifecycle(t *testing.T) {
 	books := &memoryHeaders{}
 	service := New(store, books)
 
-	created, err := service.Create("  演示项目  ", root)
+	created, err := service.Create(root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if created.ID == "" {
 		t.Fatal("项目 id 没有自动生成")
-	}
-	if created.Name != "演示项目" {
-		t.Fatalf("项目名称 = %q，想要 演示项目", created.Name)
 	}
 	wantRoot, err := filepath.EvalSymlinks(root)
 	if err != nil {
@@ -33,10 +30,8 @@ func TestServiceManagesProjectLifecycle(t *testing.T) {
 	if created.Root != wantRoot {
 		t.Fatalf("项目根目录 = %q，想要 %q", created.Root, wantRoot)
 	}
-
-	err = service.Rename(created.ID, "新名称")
-	if err != nil {
-		t.Fatal(err)
+	if created.Name != filepath.Base(wantRoot) {
+		t.Fatalf("项目名称 = %q，想要目录名 %q", created.Name, filepath.Base(wantRoot))
 	}
 	err = service.RememberPreset(created.ID, "code-review")
 	if err != nil {
@@ -50,7 +45,7 @@ func TestServiceManagesProjectLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if archived.Name != "新名称" || archived.LastPresetID != "code-review" || !archived.Archived {
+	if archived.LastPresetID != "code-review" || !archived.Archived {
 		t.Fatalf("项目状态不对：%+v", archived)
 	}
 	err = service.Restore(created.ID)
@@ -74,7 +69,7 @@ func TestServiceNormalizesRootAndRejectsDuplicate(t *testing.T) {
 		t.Fatal(err)
 	}
 	service := New(newMemoryStore(), &memoryHeaders{})
-	first, err := service.Create("项目一", link)
+	first, err := service.Create(link)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +80,7 @@ func TestServiceNormalizesRootAndRejectsDuplicate(t *testing.T) {
 	if first.Root != wantRoot {
 		t.Fatalf("符号链接没有规范化：%q", first.Root)
 	}
-	_, err = service.Create("项目二", root)
+	_, err = service.Create(root)
 	if err == nil {
 		t.Fatal("同一个规范化目录可以重复登记")
 	}
@@ -101,7 +96,7 @@ func TestServiceRejectsFileAsRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	service := New(newMemoryStore(), &memoryHeaders{})
-	_, err = service.Create("项目", file.Name())
+	_, err = service.Create(file.Name())
 	if err == nil {
 		t.Fatal("普通文件可以作为项目根目录")
 	}

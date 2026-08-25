@@ -275,7 +275,7 @@ func newCrashStack(t *testing.T, root string) (*core.App, *testRoster, *crashAda
 	}
 	var project projects.Project
 	if len(listed) == 0 {
-		project, err = projectService.Create("崩溃测试", workspaceRoot)
+		project, err = projectService.Create(workspaceRoot)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -301,6 +301,7 @@ func newCrashStack(t *testing.T, root string) (*core.App, *testRoster, *crashAda
 		books:     books,
 		projectID: project.ID,
 		toolsReg:  registry,
+		profiles:  make(map[string]llm.Selection),
 	}
 	return app, roster, adapter
 }

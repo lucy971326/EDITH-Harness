@@ -49,7 +49,7 @@ func (st *Store) Create(header Header, seed ...Event) (*Session, error) {
 	if header.CreatedAt.IsZero() {
 		return nil, fmt.Errorf("账本 %s 没写创建时间", header.ID)
 	}
-	header.FormatVersion = 3
+	header.FormatVersion = 4
 
 	_, exists := st.sessions[header.ID]
 	if exists {
@@ -81,18 +81,9 @@ func (st *Store) Open(id string) (*Session, error) {
 	if exists {
 		return nil, fmt.Errorf("账本 %s 已经打开", id)
 	}
-	header, events, err := st.journal.ReadAll(id)
+	header, events, err := st.readJournal(id)
 	if err != nil {
 		return nil, err
-	}
-	if header.FormatVersion != 3 {
-		return nil, fmt.Errorf("账本 %s 的格式版本是 %d，当前只认识 3", id, header.FormatVersion)
-	}
-	if header.ID != id {
-		return nil, fmt.Errorf("要打开账本 %s，读到的却是 %s", id, header.ID)
-	}
-	if header.Title == "" || header.CreatedAt.IsZero() || header.ProjectID == "" || header.ProjectRoot == "" || header.PresetID == "" || header.PresetRevision < 1 {
-		return nil, fmt.Errorf("账本 %s 的封面信息不完整", id)
 	}
 
 	s := newSession(header, st.journal, st.broadcaster, st.formats)
@@ -102,6 +93,48 @@ func (st *Store) Open(id string) (*Session, error) {
 	}
 	st.sessions[id] = s
 	return s, nil
+}
+
+// Read 只读一本账的封面和事件，不把它放进运行中账本表。
+// Web 等界面浏览旧会话走这里，因此不会挂载执行环境或启动 Agent。
+func (st *Store) Read(id string) (Header, []Event, error) {
+	st.mu.Lock()
+	opened, exists := st.sessions[id]
+	st.mu.Unlock()
+	if exists {
+		return opened.Header(), opened.Events(), nil
+	}
+	return st.readJournal(id)
+}
+
+func (st *Store) readJournal(id string) (Header, []Event, error) {
+	header, events, err := st.journal.ReadAll(id)
+	if err != nil {
+		return Header{}, nil, err
+	}
+	err = validateHeader(id, header)
+	if err != nil {
+		return Header{}, nil, err
+	}
+	probe := newSession(header, st.journal, st.broadcaster, st.formats)
+	err = probe.restore(events)
+	if err != nil {
+		return Header{}, nil, fmt.Errorf("账本 %s 的旧账重建失败：%w", id, err)
+	}
+	return header, probe.Events(), nil
+}
+
+func validateHeader(id string, header Header) error {
+	if header.FormatVersion != 3 && header.FormatVersion != 4 {
+		return fmt.Errorf("账本 %s 的格式版本是 %d，当前只认识 3 或 4", id, header.FormatVersion)
+	}
+	if header.ID != id {
+		return fmt.Errorf("要打开账本 %s，读到的却是 %s", id, header.ID)
+	}
+	if header.Title == "" || header.CreatedAt.IsZero() || header.ProjectID == "" || header.ProjectRoot == "" || header.PresetID == "" || header.PresetRevision < 1 {
+		return fmt.Errorf("账本 %s 的封面信息不完整", id)
+	}
+	return nil
 }
 
 // Release 先把账本写穿，再从本进程的打开表摘掉；之后可再次 Open。

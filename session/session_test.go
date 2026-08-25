@@ -163,6 +163,26 @@ func TestEveryAppendBroadcastsOnce(t *testing.T) {
 	}
 }
 
+func TestReadDoesNotOpenBook(t *testing.T) {
+	store, book, _ := newTestStore(t)
+	_, err := book.RecordUserMessage("只读历史")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = store.Release(book.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = store.Read(book.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = store.Get(book.ID())
+	if err == nil {
+		t.Fatal("只读历史不该把账本放进打开表")
+	}
+}
+
 func TestFailedAppendLeavesNoTrace(t *testing.T) {
 	broadcaster := &recordingBroadcaster{}
 	journal := &failingJournal{inner: NewMemoryJournal()}

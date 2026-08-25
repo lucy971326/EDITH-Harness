@@ -1,13 +1,16 @@
 package agents
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"sync"
 	"testing"
 
+	"harness/chat"
 	"harness/core"
 	"harness/environment"
+	"harness/llm"
 	"harness/presets"
 	"harness/projects"
 	"harness/session"
@@ -175,6 +178,7 @@ func (*fakeConversation) Cancel()                          {}
 func (*fakeConversation) SubmitFollowup(text string) error { return nil }
 func (*fakeConversation) Steer(text string) error          { return nil }
 func (*fakeConversation) InjectMemo(text string) error     { return nil }
+func (*fakeConversation) SelectModel(llm.Selection) error  { return nil }
 func (c *fakeConversation) Book() *session.Session         { return c.input.Book }
 func (c *fakeConversation) Close() error                   { return c.input.Close() }
 
@@ -190,22 +194,39 @@ func newTestRegistry(t *testing.T) (*registry, projects.Service, presets.Service
 	projectService := projects.New(newProjectMemoryStore(), books)
 	presetService := presets.New(newPresetMemoryStore())
 	toolsReg := tools.NewRegistry()
-	registry := newRegistry(app, books, projectService, presetService, environment.Provider(fakeEnvironment{}), toolsReg)
+	llmService := llm.NewService()
+	err := llmService.Register(testAdapter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := newRegistry(app, books, projectService, presetService, environment.Provider(fakeEnvironment{}), toolsReg, llmService)
 	runner := &fakeRunner{}
-	_, err := registry.RegisterRunner(runner)
+	_, err = registry.RegisterRunner(runner)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return registry, projectService, presetService, runner
 }
 
+type testAdapter struct{}
+
+func (testAdapter) Name() string { return "test" }
+
+func (testAdapter) Stream(context.Context, llm.Request, func(chat.Delta)) (llm.Reply, error) {
+	return llm.Reply{}, nil
+}
+
+func (testAdapter) ProviderInfo() llm.ProviderInfo {
+	return llm.ProviderInfo{Name: "test", Models: []llm.ModelInfo{{ID: "test", ThinkingLevels: []string{"off"}}}}
+}
+
 func TestSessionOwnsProjectPresetAndOpaqueID(t *testing.T) {
 	registry, projectService, presetService, runner := newTestRegistry(t)
-	project, err := projectService.Create("测试项目", t.TempDir())
+	project, err := projectService.Create(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = presetService.Create(presets.Preset{ID: "极简", Provider: "fake", Model: "m1", Thinking: "off"})
+	err = presetService.Create(presets.Preset{ID: "极简"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,11 +258,11 @@ func TestSessionOwnsProjectPresetAndOpaqueID(t *testing.T) {
 
 func TestResumeUsesLockedPresetRevision(t *testing.T) {
 	registry, projectService, presetService, runner := newTestRegistry(t)
-	project, err := projectService.Create("测试项目", t.TempDir())
+	project, err := projectService.Create(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = presetService.Create(presets.Preset{ID: "编程", Provider: "fake", Model: "old", Thinking: "off"})
+	err = presetService.Create(presets.Preset{ID: "编程", SystemPrompt: "旧提示词"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +275,7 @@ func TestResumeUsesLockedPresetRevision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = presetService.Update(presets.Preset{ID: "编程", Provider: "fake", Model: "new"})
+	err = presetService.Update(presets.Preset{ID: "编程", SystemPrompt: "新提示词"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,19 +284,53 @@ func TestResumeUsesLockedPresetRevision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if runner.lastInput().Preset.Revision != 1 || runner.lastInput().Preset.Model != "old" {
+	if runner.lastInput().Preset.Revision != 1 || runner.lastInput().Preset.SystemPrompt != "旧提示词" {
 		t.Fatalf("恢复时没有使用锁定版本：%+v", runner.lastInput().Preset)
 	}
 	_ = resumed.Close()
 }
 
-func TestConversationInterfaceDoesNotDependOnLoop(t *testing.T) {
-	registry, projectService, presetService, _ := newTestRegistry(t)
-	project, err := projectService.Create("测试项目", t.TempDir())
+func TestOpenSessionUsesRunningConversationOrRestoresHistory(t *testing.T) {
+	registry, projectService, presetService, runner := newTestRegistry(t)
+	project, err := projectService.Create(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = presetService.Create(presets.Preset{ID: "假模式", Provider: "fake", Model: "fake", Thinking: "off"})
+	err = presetService.Create(presets.Preset{ID: "模式"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, err := registry.StartSession(StartInput{ProjectID: project.ID, PresetID: "模式", Title: "历史"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, err := registry.OpenSession(started.SessionID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opened != started || len(runner.inputs) != 1 {
+		t.Fatal("运行中的会话应直接返回，不该重复恢复")
+	}
+	err = started.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = registry.OpenSession(started.SessionID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runner.inputs) != 2 || !runner.lastInput().Recover {
+		t.Fatal("历史会话应恢复一次后返回")
+	}
+}
+
+func TestConversationInterfaceDoesNotDependOnLoop(t *testing.T) {
+	registry, projectService, presetService, _ := newTestRegistry(t)
+	project, err := projectService.Create(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = presetService.Create(presets.Preset{ID: "假模式"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,11 +349,11 @@ func TestConversationInterfaceDoesNotDependOnLoop(t *testing.T) {
 
 func TestMountFailurePublishesNoSessionAndClosesScope(t *testing.T) {
 	registry, projectService, presetService, runner := newTestRegistry(t)
-	project, err := projectService.Create("测试项目", t.TempDir())
+	project, err := projectService.Create(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = presetService.Create(presets.Preset{ID: "假模式", Provider: "fake", Model: "fake", Thinking: "off"})
+	err = presetService.Create(presets.Preset{ID: "假模式"})
 	if err != nil {
 		t.Fatal(err)
 	}

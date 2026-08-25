@@ -84,6 +84,20 @@ func (s *Session) Events() []Event {
 	return events
 }
 
+// LastModelSelection 返回账本最后记录的模型组合；没有记录时第二返回值为 false。
+func (s *Session) LastModelSelection() (ModelSelectedData, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for index := len(s.events) - 1; index >= 0; index-- {
+		event := s.events[index]
+		if event.Kind != KindModelSelected {
+			continue
+		}
+		return *decodeInto(&ModelSelectedData{}, event.Data), true
+	}
+	return ModelSelectedData{}, false
+}
+
 // ModelHistory 返回模型该看到的消息：被摘要收编的不算，连续片段折叠成整句。
 func (s *Session) ModelHistory() []chat.Message {
 	s.mu.Lock()
@@ -190,6 +204,11 @@ func (s *Session) RecordSnapshot(requestJSON []byte) (Event, error) {
 // data 里顺手记下哪个模型写的摘要、花了多少 token——将来排查"这摘要谁写的"有答案。
 func (s *Session) RecordSummary(data SummaryData, replaces []int) (Event, error) {
 	return s.append(KindSummary, data, replaces, false)
+}
+
+// RecordModelSelection 记下会话刚切换到的模型组合。
+func (s *Session) RecordModelSelection(data ModelSelectedData) (Event, error) {
+	return s.append(KindModelSelected, data, nil, false)
 }
 
 // Flush 把这本账攒着没写的部分立刻全部写完并到硬盘。

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"harness/llm"
 	"harness/session"
 )
 
@@ -20,13 +21,13 @@ type HeaderStore interface {
 
 // Service 提供项目登记和项目会话查询。
 type Service interface {
-	Create(name string, root string) (Project, error)
+	Create(root string) (Project, error)
 	Get(id string) (Project, error)
 	List() ([]Project, error)
-	Rename(id string, name string) error
 	Archive(id string) error
 	Restore(id string) error
 	RememberPreset(id string, presetID string) error
+	RememberModel(id string, selection llm.Selection) error
 	ListSessions(projectID string) ([]session.Header, error)
 }
 
@@ -45,16 +46,13 @@ func New(store Store, sessions HeaderStore) Service {
 	}
 }
 
-// Create 按名称和目录登记项目，返回自动生成身份且根目录已规范化的项目。
-func (s *service) Create(name string, root string) (Project, error) {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return Project{}, fmt.Errorf("项目名称不能为空")
-	}
+// Create 登记工作目录，项目名称自动取目录名。
+func (s *service) Create(root string) (Project, error) {
 	normalized, err := normalizeRoot(root)
 	if err != nil {
 		return Project{}, err
 	}
+	name := filepath.Base(normalized)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -102,26 +100,6 @@ func (s *service) List() ([]Project, error) {
 	}
 	sort.Slice(listed, func(i int, j int) bool { return listed[i].ID < listed[j].ID })
 	return listed, nil
-}
-
-// Rename 修改一个项目给用户看的名称。
-func (s *service) Rename(id string, name string) error {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return fmt.Errorf("项目名称不能为空")
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	project, err := s.store.Get(id)
-	if err != nil {
-		return err
-	}
-	project.Name = name
-	err = s.store.Update(project)
-	if err != nil {
-		return fmt.Errorf("重命名项目 %s 失败：%w", id, err)
-	}
-	return nil
 }
 
 // Archive 标记项目为归档；工作目录和历史会话都保留。
@@ -177,6 +155,25 @@ func (s *service) RememberPreset(id string, presetID string) error {
 	err = s.store.Update(project)
 	if err != nil {
 		return fmt.Errorf("记住项目 %s 的 Agent 模式失败：%w", id, err)
+	}
+	return nil
+}
+
+// RememberModel 记住项目上次成功使用的模型组合。
+func (s *service) RememberModel(id string, selection llm.Selection) error {
+	if selection.Provider == "" || selection.Model == "" || selection.Thinking == "" {
+		return fmt.Errorf("模型选择不完整")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	project, err := s.store.Get(id)
+	if err != nil {
+		return err
+	}
+	project.LastModel = selection
+	err = s.store.Update(project)
+	if err != nil {
+		return fmt.Errorf("记住项目 %s 的模型失败：%w", id, err)
 	}
 	return nil
 }

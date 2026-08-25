@@ -21,7 +21,7 @@ type Event struct {
 
 // Header 是账本封面：整本账一个格式版本。
 type Header struct {
-	FormatVersion  int       // 格式版本，当前 3
+	FormatVersion  int       // 格式版本，当前 4
 	ID             string    // 内部会话号，不拿标题充当身份
 	Title          string    // 给用户看的标题，不要求全局唯一
 	CreatedAt      time.Time // 会话创建时间
@@ -47,6 +47,7 @@ const (
 	KindClaim          = "inbox/claim"      // 从收件箱领出（这时才变成 user/message）
 	KindSnapshot       = "request/snapshot" // 当年发给模型的那份请求的存档
 	KindSummary        = "summary"          // 压缩摘要：取代一堆旧账，模型看它
+	KindModelSelected  = "model/selected"   // 会话切换到哪个模型组合
 )
 
 // 各内核事件的内容结构。字段只加不改，改了就是格式版本的事。
@@ -101,6 +102,13 @@ type SummaryData struct {
 	Provider string     // 谁写的摘要（服务商名），可空
 	Model    string     // 哪个模型写的，可空
 	Usage    chat.Usage // 写摘要花了多少 token
+}
+
+// ModelSelectedData 是一段会话某时刻选中的模型组合。
+type ModelSelectedData struct {
+	Provider string
+	Model    string
+	Thinking string
 }
 
 // 工具结果的三种状态。

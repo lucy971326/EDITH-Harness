@@ -92,9 +92,6 @@ func TestServiceKeepsHistoricalRevisions(t *testing.T) {
 	err := service.Create(Preset{
 		ID:           "客服",
 		Revision:     99,
-		Provider:     "deepseek",
-		Model:        "chat",
-		Thinking:     "off",
 		SystemPrompt: "第一版",
 		Tools:        []string{"read_file"},
 		Archived:     true,
@@ -113,9 +110,6 @@ func TestServiceKeepsHistoricalRevisions(t *testing.T) {
 	err = service.Update(Preset{
 		ID:           "客服",
 		Revision:     42,
-		Provider:     "deepseek",
-		Model:        "reasoner",
-		Thinking:     "high",
 		SystemPrompt: "第二版",
 		Tools:        []string{"write_file"},
 		Archived:     true,
@@ -127,14 +121,14 @@ func TestServiceKeepsHistoricalRevisions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if current.Revision != 2 || current.Archived || current.Model != "reasoner" {
+	if current.Revision != 2 || current.Archived || current.SystemPrompt != "第二版" {
 		t.Fatalf("更新没有生成正确的当前版本：%+v", current)
 	}
 	first, err = service.GetRevision("客服", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.Model != "chat" || first.SystemPrompt != "第一版" || first.Tools[0] != "read_file" {
+	if first.SystemPrompt != "第一版" || first.Tools[0] != "read_file" {
 		t.Fatalf("旧版本被改写：%+v", first)
 	}
 
@@ -153,26 +147,26 @@ func TestServiceKeepsHistoricalRevisions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second.Archived || second.Model != "reasoner" {
+	if second.Archived || second.SystemPrompt != "第二版" {
 		t.Fatalf("归档改写了旧版本：%+v", second)
 	}
 }
 
 func TestServiceSerializesVersionAllocation(t *testing.T) {
 	service := New(newMemoryStore())
-	err := service.Create(Preset{ID: "串行", Provider: "test", Model: "m", Thinking: "off"})
+	err := service.Create(Preset{ID: "串行"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	var group sync.WaitGroup
 	errs := make(chan error, 2)
-	for _, model := range []string{"m2", "m3"} {
+	for _, prompt := range []string{"版本二", "版本三"} {
 		group.Add(1)
-		go func(model string) {
+		go func(prompt string) {
 			defer group.Done()
-			errs <- service.Update(Preset{ID: "串行", Provider: "test", Model: model, Thinking: "off"})
-		}(model)
+			errs <- service.Update(Preset{ID: "串行", SystemPrompt: prompt})
+		}(prompt)
 	}
 	group.Wait()
 	close(errs)
@@ -192,7 +186,7 @@ func TestServiceSerializesVersionAllocation(t *testing.T) {
 
 func TestServiceReturnsIndependentCopies(t *testing.T) {
 	service := New(newMemoryStore())
-	err := service.Create(Preset{ID: "副本", Provider: "test", Model: "m", Thinking: "off", Tools: []string{"read_file"}})
+	err := service.Create(Preset{ID: "副本", Tools: []string{"read_file"}})
 	if err != nil {
 		t.Fatal(err)
 	}

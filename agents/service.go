@@ -10,6 +10,7 @@ import (
 
 	"harness/core"
 	"harness/environment"
+	"harness/llm"
 	"harness/presets"
 	"harness/projects"
 	"harness/session"
@@ -25,6 +26,7 @@ type Conversation interface {
 	SubmitFollowup(text string) error
 	Steer(text string) error
 	InjectMemo(text string) error
+	SelectModel(selection llm.Selection) error
 	Book() *session.Session
 	Close() error
 }
@@ -43,6 +45,7 @@ type StartInput struct {
 	ProjectID string
 	PresetID  string
 	Title     string
+	Model     llm.Selection
 }
 
 // PreparedConversation 是已恢复、尚未开始搬运消息的会话。
@@ -56,6 +59,7 @@ type RunInput struct {
 	SessionID   string
 	Project     projects.Project
 	Preset      presets.Revision
+	Model       llm.Selection
 	Scope       *core.App
 	Book        *session.Session
 	Recover     bool
@@ -72,9 +76,25 @@ type Runner interface {
 type Service interface {
 	StartSession(input StartInput, seed ...session.Event) (Conversation, error)
 	ResumeSession(sessionID string) (Conversation, error)
+	OpenSession(sessionID string) (Conversation, error)
 	GetSession(sessionID string) (Conversation, error)
 	CloseSession(sessionID string) error
 	RegisterRunner(runner Runner) (func(), error)
+}
+
+// OpenSession 取已经运行的会话；若它只是历史账本，则恢复它后返回。
+func (r *registry) OpenSession(sessionID string) (Conversation, error) {
+	r.mu.Lock()
+	conversation, running := r.sessions[sessionID]
+	opening := r.opening[sessionID]
+	r.mu.Unlock()
+	if running {
+		return conversation, nil
+	}
+	if opening {
+		return nil, fmt.Errorf("会话 %s 正在准备，稍后再取", sessionID)
+	}
+	return r.ResumeSession(sessionID)
 }
 
 // registry 只管会话运行时；项目和模式分别由自己的插件保存。
@@ -86,12 +106,13 @@ type registry struct {
 	presets     presets.Service
 	environment environment.Provider
 	tools       *tools.Registry
+	llm         *llm.Service
 	runner      Runner
 	sessions    map[string]Conversation
 	opening     map[string]bool
 }
 
-func newRegistry(app *core.App, books *session.Store, projectService projects.Service, presetService presets.Service, provider environment.Provider, toolsReg *tools.Registry) *registry {
+func newRegistry(app *core.App, books *session.Store, projectService projects.Service, presetService presets.Service, provider environment.Provider, toolsReg *tools.Registry, llmService *llm.Service) *registry {
 	return &registry{
 		app:         app,
 		books:       books,
@@ -99,6 +120,7 @@ func newRegistry(app *core.App, books *session.Store, projectService projects.Se
 		presets:     presetService,
 		environment: provider,
 		tools:       toolsReg,
+		llm:         llmService,
 		sessions:    make(map[string]Conversation),
 		opening:     make(map[string]bool),
 	}
@@ -144,13 +166,23 @@ func (r *registry) StartSession(input StartInput, seed ...session.Event) (Conver
 	if preset.Archived {
 		return nil, fmt.Errorf("Agent 模式 %s 已归档，不能开新会话", preset.ID)
 	}
-	err = presets.ValidateRunnable(preset)
+	err = presets.Validate(preset)
 	if err != nil {
 		return nil, err
 	}
 	err = r.tools.CheckAllowed(preset.Tools)
 	if err != nil {
 		return nil, fmt.Errorf("Agent 模式 %s 的工具不完整：%w", preset.ID, err)
+	}
+	if input.Model.Provider == "" && input.Model.Model == "" && input.Model.Thinking == "" {
+		input.Model, err = r.llm.DefaultSelection()
+		if err != nil {
+			return nil, err
+		}
+	}
+	err = r.llm.Validate(input.Model)
+	if err != nil {
+		return nil, err
 	}
 	sessionID, err := generateSessionID()
 	if err != nil {
@@ -169,7 +201,7 @@ func (r *registry) StartSession(input StartInput, seed ...session.Event) (Conver
 		PresetID:       preset.ID,
 		PresetRevision: preset.Revision,
 	}
-	conversation, err := r.openNew(runner, project, preset, header, seed)
+	conversation, err := r.openNew(runner, project, preset, input.Model, header, seed)
 	if err != nil {
 		r.cancelReservation(sessionID, nil)
 		return nil, err
@@ -179,7 +211,7 @@ func (r *registry) StartSession(input StartInput, seed ...session.Event) (Conver
 	return conversation, nil
 }
 
-func (r *registry) openNew(runner Runner, project projects.Project, preset presets.Revision, header session.Header, seed []session.Event) (PreparedConversation, error) {
+func (r *registry) openNew(runner Runner, project projects.Project, preset presets.Revision, model llm.Selection, header session.Header, seed []session.Event) (PreparedConversation, error) {
 	scope, err := r.mountScope(header.ID, header.ProjectRoot, preset.Tools)
 	if err != nil {
 		return nil, err
@@ -189,7 +221,13 @@ func (r *registry) openNew(runner Runner, project projects.Project, preset prese
 		r.cancelReservation(header.ID, scope)
 		return nil, err
 	}
-	conversation, err := r.prepare(runner, project, preset, scope, book, len(seed) > 0)
+	_, err = book.RecordModelSelection(session.ModelSelectedData{Provider: model.Provider, Model: model.Model, Thinking: model.Thinking})
+	if err != nil {
+		_ = r.books.Release(header.ID)
+		r.cancelReservation(header.ID, scope)
+		return nil, fmt.Errorf("会话 %s 记初始模型失败：%w", header.ID, err)
+	}
+	conversation, err := r.prepare(runner, project, preset, model, scope, book, len(seed) > 0)
 	if err != nil {
 		_ = r.books.Release(header.ID)
 		r.cancelReservation(header.ID, scope)
@@ -210,7 +248,7 @@ func (r *registry) ResumeSession(sessionID string) (Conversation, error) {
 		_ = r.books.Release(sessionID)
 		return nil, fmt.Errorf("会话 %s 的 Agent 模式版本不存在：%w", sessionID, err)
 	}
-	err = presets.ValidateRunnable(preset)
+	err = presets.Validate(preset)
 	if err != nil {
 		_ = r.books.Release(sessionID)
 		return nil, err
@@ -232,7 +270,18 @@ func (r *registry) ResumeSession(sessionID string) (Conversation, error) {
 		return nil, err
 	}
 	project := projects.Project{ID: header.ProjectID, Root: header.ProjectRoot}
-	conversation, err := r.prepare(runner, project, preset, scope, book, true)
+	model := llm.Selection{}
+	selected, found := book.LastModelSelection()
+	if found {
+		model = llm.Selection{Provider: selected.Provider, Model: selected.Model, Thinking: selected.Thinking}
+		err = r.llm.Validate(model)
+		if err != nil {
+			_ = r.books.Release(sessionID)
+			r.cancelReservation(sessionID, scope)
+			return nil, fmt.Errorf("会话 %s 的模型已不可用：%w", sessionID, err)
+		}
+	}
+	conversation, err := r.prepare(runner, project, preset, model, scope, book, true)
 	if err != nil {
 		_ = r.books.Release(sessionID)
 		r.cancelReservation(sessionID, scope)
@@ -258,12 +307,13 @@ func (r *registry) mountScope(sessionID string, root string, allowed []string) (
 	return scope, nil
 }
 
-func (r *registry) prepare(runner Runner, project projects.Project, preset presets.Revision, scope *core.App, book *session.Session, recover bool) (PreparedConversation, error) {
+func (r *registry) prepare(runner Runner, project projects.Project, preset presets.Revision, model llm.Selection, scope *core.App, book *session.Session, recover bool) (PreparedConversation, error) {
 	sessionID := book.ID()
 	input := RunInput{
 		SessionID: sessionID,
 		Project:   project,
 		Preset:    preset,
+		Model:     model,
 		Scope:     scope,
 		Book:      book,
 		Recover:   recover,

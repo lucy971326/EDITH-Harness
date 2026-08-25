@@ -36,11 +36,14 @@ func (a *adapter) Name() string {
 	return "deepseek"
 }
 
-// ProviderInfo 返回创建 Agent 时可选的 DeepSeek 思考档位。
+// ProviderInfo 返回 DeepSeek 已适配模型及其思考档位。
 func (a *adapter) ProviderInfo() llm.ProviderInfo {
 	return llm.ProviderInfo{
-		Name:           a.Name(),
-		ThinkingLevels: []string{"off", "high", "max"},
+		Name: a.Name(),
+		Models: []llm.ModelInfo{
+			{ID: "deepseek-v4-flash", ThinkingLevels: []string{"off", "low", "high", "max"}},
+			{ID: "deepseek-v4-pro", ThinkingLevels: []string{"off", "high", "max"}},
+		},
 	}
 }
 
@@ -132,10 +135,10 @@ type toolCall struct {
 
 func validateThinking(thinking string) error {
 	switch thinking {
-	case "off", "high", "max":
+	case "off", "low", "high", "max":
 		return nil
 	default:
-		return llm.NewError("deepseek", llm.ErrBadRequest, "thinking 只支持 off、high 或 max")
+		return llm.NewError("deepseek", llm.ErrBadRequest, "thinking 只支持 off、low、high 或 max")
 	}
 }
 

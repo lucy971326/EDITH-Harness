@@ -23,29 +23,51 @@ import (
 // Roster 是测试用门面，让旧测试通过公开 agents.Service 进入系统。
 type Roster = testRoster
 type ProfileStore = presets.Store
-type AgentProfile = presets.Preset
+type AgentProfile struct {
+	ID           string
+	Provider     string
+	Model        string
+	Thinking     string
+	SystemPrompt string
+	Tools        []string
+	Archived     bool
+}
 
 type testRoster struct {
 	agents.Service
+	mu        sync.Mutex
 	projects  projects.Service
 	presets   presets.Service
 	books     *session.Store
 	projectID string
 	toolsReg  *tools.Registry
+	profiles  map[string]llm.Selection
 }
 
-func cloneProfile(profile AgentProfile) AgentProfile {
+func cloneProfile(profile presets.Revision) presets.Revision {
 	copied := profile
 	copied.Tools = append([]string(nil), profile.Tools...)
 	return copied
 }
 
 func (r *testRoster) CreateAgent(profile AgentProfile) error {
-	return r.presets.Create(profile)
+	err := r.presets.Create(presets.Preset{ID: profile.ID, SystemPrompt: profile.SystemPrompt, Tools: profile.Tools, Archived: profile.Archived})
+	if err == nil {
+		r.mu.Lock()
+		r.profiles[profile.ID] = llm.Selection{Provider: profile.Provider, Model: profile.Model, Thinking: profile.Thinking}
+		r.mu.Unlock()
+	}
+	return err
 }
 
 func (r *testRoster) UpdateAgent(profile AgentProfile) error {
-	return r.presets.Update(profile)
+	err := r.presets.Update(presets.Preset{ID: profile.ID, SystemPrompt: profile.SystemPrompt, Tools: profile.Tools, Archived: profile.Archived})
+	if err == nil {
+		r.mu.Lock()
+		r.profiles[profile.ID] = llm.Selection{Provider: profile.Provider, Model: profile.Model, Thinking: profile.Thinking}
+		r.mu.Unlock()
+	}
+	return err
 }
 
 func (r *testRoster) ArchiveAgent(id string) error {
@@ -53,7 +75,13 @@ func (r *testRoster) ArchiveAgent(id string) error {
 }
 
 func (r *testRoster) StartSession(presetID string, title string, seed ...session.Event) (agents.Conversation, error) {
-	return r.Service.StartSession(agents.StartInput{ProjectID: r.projectID, PresetID: presetID, Title: title}, seed...)
+	r.mu.Lock()
+	selection := r.profiles[presetID]
+	r.mu.Unlock()
+	if selection.Provider == "" {
+		selection = llm.Selection{Provider: "剧本", Model: "test-model", Thinking: "off"}
+	}
+	return r.Service.StartSession(agents.StartInput{ProjectID: r.projectID, PresetID: presetID, Title: title, Model: selection}, seed...)
 }
 
 func (r *testRoster) ResumeSession(idOrTitle string) (agents.Conversation, error) {
@@ -165,19 +193,19 @@ type blockingProfileStore struct {
 	release chan struct{}
 }
 
-func (s *blockingProfileStore) Create(profile AgentProfile) error {
+func (s *blockingProfileStore) Create(profile presets.Revision) error {
 	return s.base.Create(profile)
 }
 
-func (s *blockingProfileStore) Get(id string) (AgentProfile, error) {
+func (s *blockingProfileStore) Get(id string) (presets.Revision, error) {
 	return s.base.Get(id)
 }
 
-func (s *blockingProfileStore) GetRevision(id string, number int) (AgentProfile, error) {
+func (s *blockingProfileStore) GetRevision(id string, number int) (presets.Revision, error) {
 	return s.base.GetRevision(id, number)
 }
 
-func (s *blockingProfileStore) List() ([]AgentProfile, error) {
+func (s *blockingProfileStore) List() ([]presets.Revision, error) {
 	return s.base.List()
 }
 
@@ -185,7 +213,7 @@ func (s *blockingProfileStore) Archive(id string) error {
 	return s.base.Archive(id)
 }
 
-func (s *blockingProfileStore) Update(profile AgentProfile) error {
+func (s *blockingProfileStore) Update(profile presets.Revision) error {
 	close(s.entered)
 	<-s.release
 	return s.base.Update(profile)
@@ -194,24 +222,24 @@ func (s *blockingProfileStore) Update(profile AgentProfile) error {
 // memoryProfileStore 是测试专用的档案库，语义与真正持久化档案库一致。
 type memoryProfileStore struct {
 	mu       sync.Mutex
-	profiles map[string][]AgentProfile
+	profiles map[string][]presets.Revision
 }
 
 func newMemoryProfileStore() *memoryProfileStore {
-	return &memoryProfileStore{profiles: make(map[string][]AgentProfile)}
+	return &memoryProfileStore{profiles: make(map[string][]presets.Revision)}
 }
 
-func (s *memoryProfileStore) Create(profile AgentProfile) error {
+func (s *memoryProfileStore) Create(profile presets.Revision) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if len(s.profiles[profile.ID]) > 0 {
 		return fmt.Errorf("agent %s 已存在", profile.ID)
 	}
-	s.profiles[profile.ID] = []AgentProfile{cloneProfile(profile)}
+	s.profiles[profile.ID] = []presets.Revision{cloneProfile(profile)}
 	return nil
 }
 
-func (s *memoryProfileStore) Update(profile AgentProfile) error {
+func (s *memoryProfileStore) Update(profile presets.Revision) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	versions := s.profiles[profile.ID]
@@ -226,30 +254,30 @@ func (s *memoryProfileStore) Update(profile AgentProfile) error {
 	return nil
 }
 
-func (s *memoryProfileStore) Get(id string) (AgentProfile, error) {
+func (s *memoryProfileStore) Get(id string) (presets.Revision, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	versions := s.profiles[id]
 	if len(versions) == 0 {
-		return AgentProfile{}, fmt.Errorf("agent %s 不存在", id)
+		return presets.Revision{}, fmt.Errorf("agent %s 不存在", id)
 	}
 	return cloneProfile(versions[len(versions)-1]), nil
 }
 
-func (s *memoryProfileStore) GetRevision(id string, number int) (AgentProfile, error) {
+func (s *memoryProfileStore) GetRevision(id string, number int) (presets.Revision, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	versions := s.profiles[id]
 	if number < 1 || number > len(versions) {
-		return AgentProfile{}, fmt.Errorf("agent %s 的版本 %d 不存在", id, number)
+		return presets.Revision{}, fmt.Errorf("agent %s 的版本 %d 不存在", id, number)
 	}
 	return cloneProfile(versions[number-1]), nil
 }
 
-func (s *memoryProfileStore) List() ([]AgentProfile, error) {
+func (s *memoryProfileStore) List() ([]presets.Revision, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	profiles := make([]AgentProfile, 0, len(s.profiles))
+	profiles := make([]presets.Revision, 0, len(s.profiles))
 	for _, versions := range s.profiles {
 		profiles = append(profiles, cloneProfile(versions[len(versions)-1]))
 	}
@@ -390,7 +418,7 @@ func newTestStackWithStores(t *testing.T, journal session.Journal, profiles Prof
 	if err != nil {
 		t.Fatalf("取项目管理入口失败：%v", err)
 	}
-	project, err := projectService.Create("测试项目", t.TempDir())
+	project, err := projectService.Create(t.TempDir())
 	if err != nil {
 		t.Fatalf("创建测试项目失败：%v", err)
 	}
@@ -417,6 +445,7 @@ func newTestStackWithStores(t *testing.T, journal session.Journal, profiles Prof
 		books:     books,
 		projectID: project.ID,
 		toolsReg:  registry,
+		profiles:  make(map[string]llm.Selection),
 	}
 
 	return app, roster, adapter, registry
@@ -557,8 +586,36 @@ func TestUpdateAndStartSessionCannotMixTwoProfileVersions(t *testing.T) {
 		t.Fatal(err)
 	}
 	conversation.WaitIdle()
-	if adapter.sawRequests()[0].Model != "new-model" {
-		t.Fatalf("会话该只看到写完后的新档案：%+v", adapter.sawRequests()[0])
+	if adapter.sawRequests()[0].Model != "old-model" {
+		t.Fatalf("更新模式不能暗中改会话模型：%+v", adapter.sawRequests()[0])
+	}
+}
+
+func TestConversationRecordsSelectedModelSeparatelyFromPreset(t *testing.T) {
+	_, roster, adapter, _ := newTestStack(t, scriptCall{reply: llm.Reply{Text: "好", StopReason: "stop"}})
+	err := roster.CreateAgent(AgentProfile{ID: "极简", Provider: "剧本", Model: "旧模型", Thinking: "off"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation, err := roster.StartSession("极简", "模型独立")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = conversation.SelectModel(llm.Selection{Provider: "剧本", Model: "新模型", Thinking: "off"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = conversation.SubmitFollowup("你好")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation.WaitIdle()
+	if adapter.sawRequests()[0].Model != "新模型" {
+		t.Fatalf("模型切换没有用于下一轮：%+v", adapter.sawRequests()[0])
+	}
+	selected, found := conversation.Book().LastModelSelection()
+	if !found || selected.Model != "新模型" {
+		t.Fatalf("账本没有记住最后模型：%+v found=%v", selected, found)
 	}
 }
 
@@ -761,7 +818,7 @@ func TestHappyTurnFullLedger(t *testing.T) {
 	events := agent.Book().Events()
 	got := kinds(events)
 	want := []string{
-		session.KindDeliver, session.KindClaim, session.KindUserMessage,
+		session.KindModelSelected, session.KindDeliver, session.KindClaim, session.KindUserMessage,
 		session.KindTurnStart, session.KindStepStart, session.KindSnapshot,
 		session.KindChunk, session.KindChunk, session.KindAssistantFinal,
 		session.KindStepEnd, session.KindTurnEnd,

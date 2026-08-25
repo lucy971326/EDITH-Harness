@@ -588,7 +588,7 @@
       <div>
         <p class="eyebrow">edith-harness · Current Architecture</p>
         <h1>整体结构</h1>
-        <p class="subtitle">已实现：Project → Session → Agent 模式、模式版本锁定、每会话独立执行环境、DeepSeek SDK、文件工具和崩溃恢复。TUI 已暂停，下一阶段接 Web。</p>
+        <p class="subtitle">已实现：Project → Session → Agent 模式、模式版本锁定、每会话独立执行环境、DeepSeek SDK、文件工具、崩溃恢复和本机 Web UI。TUI 已暂停。</p>
       </div>
     </header>
 
@@ -629,8 +629,8 @@
           <article class="map-node map-card" id="module-llm" data-module="llm" tabindex="0">
             <div class="module-kicker">基础能力插件</div>
             <h2>llm</h2>
-            <p>提供统一模型入口；真正的模型适配器登记到它的插座排。</p>
-            <div class="chips"><span class="chip">Service</span><span class="chip">Adapter</span><span class="chip">Stream</span></div>
+            <p>提供统一模型入口；适配器登记到插座排，并声明自己可选的模型和思考档位。</p>
+            <div class="chips"><span class="chip">Service</span><span class="chip">Adapter</span><span class="chip">模型目录</span><span class="chip">Stream</span></div>
           </article>
 
           <article class="map-node map-card" id="module-tools" data-module="tools" tabindex="0">
@@ -650,7 +650,7 @@
           <article class="map-node map-card" id="module-presets" data-module="presets" tabindex="0">
             <div class="module-kicker">Agent 模式插件</div>
             <h2>presets</h2>
-            <p>保存模型、人设和工具白名单；每次修改都新增不可变版本。</p>
+            <p>保存人设和工具白名单；模型属于会话，每次修改都新增不可变版本。</p>
             <div class="chips"><span class="chip">Preset</span><span class="chip">Revision</span><span class="chip">GetRevision</span></div>
           </article>
 
@@ -658,7 +658,7 @@
             <div class="module-kicker">运行时管理插件</div>
             <h2>agents</h2>
             <p>按 Session 封面组装项目、模式版本和专属能力空间，再把活交给 Runner。</p>
-            <div class="chips"><span class="chip">StartSession</span><span class="chip">ResumeSession</span><span class="chip">Scope</span></div>
+            <div class="chips"><span class="chip">StartSession</span><span class="chip">OpenSession</span><span class="chip">Scope</span></div>
           </article>
 
           <article class="map-node map-card" id="module-loop" data-module="loop" tabindex="0">
@@ -680,10 +680,10 @@
           </article>
 
           <article class="map-node map-card" id="module-ui" data-module="ui" tabindex="0">
-            <div class="module-kicker">UI 插件 · 当前暂停</div>
-            <h2>Web UI · 下一章</h2>
-            <p>旧 Bubble Tea 原型已归档；下一阶段由 Web 领取 projects、presets 和 agents。</p>
-            <div class="chips"><span class="chip">templ</span><span class="chip">HTMX</span><span class="chip">尚未实现</span></div>
+            <div class="module-kicker">UI 插件 · 当前默认界面</div>
+            <h2>Web UI</h2>
+            <p>本机网页工作台领取 projects、presets、sessions、agents、llm 和 tools；模型在输入框独立选择并入账；它不直接调用 loop。</p>
+            <div class="chips"><span class="chip">templ</span><span class="chip">HTMX</span><span class="chip">Tailwind</span><span class="chip">SSE</span><span class="chip">目录选择</span></div>
           </article>
 
           <article class="map-node map-card" id="module-chat" data-module="chat" tabindex="0">
@@ -751,6 +751,7 @@
                   <div class="method-list">
                     <p><code>Create</code><span>新开会话账本</span></p>
                     <p><code>Open</code><span>打开旧账本</span></p>
+                    <p><code>Read</code><span>只读旧账，不启动运行</span></p>
                     <p><code>Get</code><span>取已打开的账</span></p>
                     <p><code>Release</code><span>写完并从内存放下</span></p>
                     <p><code>ListHeaders</code><span>列会话目录</span></p>
@@ -760,7 +761,8 @@
                   <code>llm</code><span>*llm.Service · 模型插座排</span>
                   <div class="method-list">
                     <p><code>Register</code><span>接入一家模型</span></p>
-                    <p><code>Providers</code><span>列已接入服务商</span></p>
+                    <p><code>Providers</code><span>列服务商、模型和档位</span></p>
+                    <p><code>ValidateSelection</code><span>验三者是不是有效组合</span></p>
                     <p><code>Stream</code><span>边收字边请求模型</span></p>
                     <p><code>Complete</code><span>只要最终回答</span></p>
                   </div>
@@ -770,6 +772,7 @@
                   <div class="method-list">
                     <p><code>StartSession</code><span>组装并启动新会话</span></p>
                     <p><code>ResumeSession</code><span>按封面恢复旧会话</span></p>
+                    <p><code>OpenSession</code><span>取运行会话或恢复历史</span></p>
                     <p><code>GetSession</code><span>取正在运行的会话</span></p>
                     <p><code>CloseSession</code><span>停掉一段会话</span></p>
                     <p><code>RegisterRunner</code><span>登记谁能跑会话</span></p>
@@ -862,16 +865,16 @@
 
       <section class="tui-map" aria-label="Web UI 下一阶段接线">
         <div class="tui-map-head">
-          <h2>Web UI 下一章：页面各部位要拿什么</h2>
-          <p>下面是已确定的接线，不代表 Web 已实现。</p>
+          <h2>Web UI：页面各部位拿什么</h2>
+          <p>已经实现：浏览历史只读账本；发送时才通过 agents 启动或恢复运行。</p>
         </div>
         <div class="tui-layout">
           <div class="tui-column">
             <article class="tui-part">
               <span class="tui-label">左侧导航</span>
               <h3>项目 → 会话</h3>
-              <p>只从 <code>projects</code> 取项目和该项目的会话。</p>
-              <div class="tui-methods"><span>List</span><span>ListSessions</span><span>Get</span></div>
+              <p>添加时后端弹系统选目录框，目录名自动成为项目名；列表只从 <code>projects</code> 取项目和会话。</p>
+              <div class="tui-methods"><span>Pick directory</span><span>Create(root)</span><span>ListSessions</span></div>
             </article>
             <article class="tui-part">
               <span class="tui-label">新会话草稿</span>
@@ -882,8 +885,8 @@
           </div>
 
           <article class="tui-center">
-            <span class="tui-label">下一个 UI 插件</span>
-            <h3>Web · templ + HTMX</h3>
+            <span class="tui-label">当前 UI 插件</span>
+            <h3>Web · templ + HTMX + Tailwind</h3>
             <p>页面只负责展示和用户操作；项目、模式、会话运行仍由各自插件负责。</p>
             <div class="tui-route">Project → Session + Preset<br>首次发送 → agents.StartSession</div>
           </article>
@@ -892,14 +895,14 @@
             <article class="tui-part">
               <span class="tui-label">中间聊天区</span>
               <h3>账本事实</h3>
-              <p>首屏读 <code>Book().Events()</code>；运行中听 <code>session/appended</code>。</p>
-              <div class="tui-methods"><span>Events</span><span>viewport</span><span>Tool 过程</span></div>
+              <p>首屏读 <code>sessions.Read</code>；运行中听 <code>session/appended</code> 再经 SSE 局部刷新。</p>
+              <div class="tui-methods"><span>Read</span><span>SSE</span><span>Tool 过程</span></div>
             </article>
             <article class="tui-part">
               <span class="tui-label">底部输入区</span>
               <h3>发消息和取消</h3>
-              <p>第一次发送先让 <code>agents</code> 建运行体；之后只操作 <code>Conversation</code>。</p>
-              <div class="tui-methods"><span>SubmitFollowup</span><span>Cancel</span><span>Close</span></div>
+              <p>第一次发送让 <code>agents</code> 建运行体；旧会话先 <code>OpenSession</code>，再操作 Conversation。</p>
+              <div class="tui-methods"><span>OpenSession</span><span>SubmitFollowup</span><span>Cancel</span></div>
             </article>
           </div>
         </div>
@@ -927,12 +930,12 @@
       session: {
         title: "session · 账本",
         path: "session/plugin.go → store.go → session.go",
-        text: "必装插件。它领取 Journal，创建 Store 并登记 sessions。v3 封面写 ProjectID、ProjectRoot、PresetID 和 PresetRevision；模型历史、恢复和审计都从同一本账出发。"
+        text: "必装插件。它领取 Journal，创建 Store 并登记 sessions。v4 封面写 ProjectID、ProjectRoot、PresetID 和 PresetRevision；model/selected 记录当前模型，恢复和审计都从同一本账出发。"
       },
       llm: {
         title: "llm · 模型入口",
         path: "llm/plugin.go → service.go → types.go",
-        text: "登记 llm 能力，按每份 Request 明确写的 Provider 路由，不猜默认模型。DeepSeek 插件已用官方 OpenAI Go SDK 接入：可见文字流给 UI，隐藏 Thinking 入账并在下一步还给 DeepSeek。"
+        text: "登记 llm 能力，按每份 Request 明确写的 Provider 路由，不猜默认模型。每个适配器同时声明可选的模型和对应思考档位；所有 Agent 模式共享这份目录，Web 在会话输入框选择并由 Validate 复核。DeepSeek 插件已用官方 OpenAI Go SDK 接入。"
       },
       tools: {
         title: "tools · 模型工具入口",
@@ -947,7 +950,7 @@
       presets: {
         title: "presets · Agent 模式",
         path: "presets/plugin.go → service.go → persistence/presetjson/",
-        text: "Preset 保存 Provider、Model、Thinking、人设和工具白名单。修改时只追加新版本，旧会话永远能取回自己锁定的那一版。"
+        text: "Preset 只保存人设和工具白名单。修改时只追加新版本，旧会话永远能取回自己锁定的那一版；模型不再绑在模式上。"
       },
       agents: {
         title: "agents · 运行时组装",
@@ -975,9 +978,9 @@
         text: "localenv 全局只登记 environment.Provider。agents 每启动一段会话，才按 ProjectRoot 把 files、process 和 shell 挂到该会话的 Scope；关会话时收掉它的进程树。"
       },
       ui: {
-        title: "UI · TUI 已暂停",
-        path: "uiplugins/terminal/plugin.go + reference/terminal-v1/",
-        text: "旧 Bubble Tea 原型已完整归档，不再编译；terminal 现在只会清楚提示暂停。下一阶段写 Web UI，领取 projects、presets 和 agents，不越过内核。"
+        title: "UI · 本机 Web 工作台",
+        path: "uiplugins/web/plugin.go → server.go → views.templ",
+        text: "Web 领取 projects、presets、sessions、agents、llm、tools，页面只读账本或调用 agents；loop 仍由 agents 经 Runner 调用。侧栏永久提供新会话和添加项目；模型由输入框选择，model/selected 入账，账本更新经非阻塞 SSE 刷新。"
       }
     };
 
