@@ -20,6 +20,7 @@ import (
 
 	"github.com/a-h/templ"
 	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
 
 	"harness/agents"
 	"harness/llm"
@@ -32,7 +33,9 @@ import (
 //go:embed static/*
 var staticFiles embed.FS
 
-var markdown = goldmark.New()
+var markdown = goldmark.New(
+	goldmark.WithExtensions(extension.GFM),
+)
 
 // service 把领域能力组合成一个只监听本机的网页入口。
 type service struct {
@@ -123,6 +126,8 @@ func (s *service) routes() http.Handler {
 	mux.HandleFunc("POST /messages", s.handleSubmitMessage)
 	mux.HandleFunc("POST /sessions/model", s.handleSelectModel)
 	mux.HandleFunc("POST /sessions/cancel", s.handleCancelSession)
+	mux.HandleFunc("GET /fragments/chat-log", s.handleChatLogFragment)
+	mux.HandleFunc("GET /fragments/composer", s.handleComposerFragment)
 	mux.HandleFunc("GET /events", s.handleEvents)
 	return s.sameOriginWrites(mux)
 }
@@ -137,16 +142,22 @@ func (s *service) handleCancelSession(writer http.ResponseWriter, request *http.
 	sessionID := request.Form.Get("session_id")
 	conversation, err := s.agents.GetSession(sessionID)
 	if err != nil {
-		s.respondMessageError(writer, request, projectID, sessionID, "当前会话没有在运行")
+		data, dataErr := s.pageData(projectID, sessionID, "", "当前会话没有在运行")
+		if dataErr != nil {
+			http.Error(writer, dataErr.Error(), http.StatusInternalServerError)
+			return
+		}
+		render(writer, request, MessageBox(data))
 		return
 	}
 	conversation.Cancel()
+	conversation.WaitIdle()
 	data, err := s.pageData(projectID, sessionID, "", "")
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	render(writer, request, ChatPanel(data))
+	render(writer, request, MessageBox(data))
 }
 
 func (s *service) sameOriginWrites(next http.Handler) http.Handler {
@@ -188,6 +199,24 @@ func (s *service) handleChatFragment(writer http.ResponseWriter, request *http.R
 		return
 	}
 	render(writer, request, ChatPanel(data))
+}
+
+func (s *service) handleChatLogFragment(writer http.ResponseWriter, request *http.Request) {
+	data, err := s.pageData(request.URL.Query().Get("project"), request.URL.Query().Get("session"), request.URL.Query().Get("draft"), "")
+	if err != nil {
+		http.Error(writer, err.Error(), http.StatusBadRequest)
+		return
+	}
+	render(writer, request, ChatLog(data.Chat))
+}
+
+func (s *service) handleComposerFragment(writer http.ResponseWriter, request *http.Request) {
+	data, err := s.pageData(request.URL.Query().Get("project"), request.URL.Query().Get("session"), request.URL.Query().Get("draft"), "")
+	if err != nil {
+		http.Error(writer, err.Error(), http.StatusBadRequest)
+		return
+	}
+	render(writer, request, MessageBox(data))
 }
 
 func (s *service) handlePickProject(writer http.ResponseWriter, request *http.Request) {
@@ -381,6 +410,7 @@ func (s *service) handleSubmitMessage(writer http.ResponseWriter, request *http.
 		http.Error(writer, dataErr.Error(), http.StatusInternalServerError)
 		return
 	}
+	data.Busy = true
 	render(writer, request, ChatPanel(data))
 }
 
@@ -405,6 +435,15 @@ func (s *service) handleSelectModel(writer http.ResponseWriter, request *http.Re
 		}
 	}
 	if err != nil {
+		if request.Header.Get("HX-Target") == "model-picker" {
+			data, dataErr := s.pageData(projectID, sessionID, draft, err.Error())
+			if dataErr != nil {
+				http.Error(writer, dataErr.Error(), http.StatusInternalServerError)
+				return
+			}
+			render(writer, request, ModelPicker(data))
+			return
+		}
 		s.respondMessageError(writer, request, projectID, sessionID, err.Error())
 		return
 	}
@@ -417,6 +456,10 @@ func (s *service) handleSelectModel(writer http.ResponseWriter, request *http.Re
 	data, err := s.pageData(projectID, sessionID, draft, "")
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if request.Header.Get("HX-Target") == "model-picker" {
+		render(writer, request, ModelPicker(data))
 		return
 	}
 	render(writer, request, ChatPanel(data))
@@ -461,11 +504,16 @@ func (s *service) handleEvents(writer http.ResponseWriter, request *http.Request
 	flusher.Flush()
 	for {
 		select {
-		case _, open := <-updates:
+		case notice, open := <-updates:
 			if !open {
 				return
 			}
-			fmt.Fprint(writer, "event: refresh\ndata: now\n\n")
+			if notice.Chat {
+				fmt.Fprint(writer, "event: refresh\ndata: now\n\n")
+			}
+			if notice.Composer {
+				fmt.Fprint(writer, "event: composer\ndata: now\n\n")
+			}
 			flusher.Flush()
 		case <-request.Context().Done():
 			return
@@ -545,6 +593,11 @@ func (s *service) pageData(projectID string, sessionID string, draft string, mes
 	data.Header = header
 	data.HasSession = true
 	data.Chat = projectEvents(events)
+	conversation, stateErr := s.agents.GetSession(sessionID)
+	if stateErr == nil {
+		state := conversation.State()
+		data.Busy = state == "busy"
+	}
 	if selected, found := latestModelSelection(events); found {
 		data.SelectedModel = selected
 	}
@@ -598,6 +651,7 @@ func presetFromForm(request *http.Request) (presets.Preset, error) {
 func (s *service) parseSelectionFromForm(form url.Values, fallback llm.Selection) (llm.Selection, error) {
 	modelKey := form.Get("model_id")
 	thinking := strings.TrimSpace(form.Get("thinking"))
+	_, thinkingProvided := form["thinking"]
 
 	var provider, model string
 	if modelKey != "" {
@@ -612,10 +666,15 @@ func (s *service) parseSelectionFromForm(form url.Values, fallback llm.Selection
 	}
 
 	if provider != "" && model != "" {
-		if thinking == "" && provider == fallback.Provider && model == fallback.Model {
+		sameModel := provider == fallback.Provider && model == fallback.Model
+		if !thinkingProvided && sameModel {
 			thinking = fallback.Thinking
+			thinkingProvided = true
 		}
-		resolvedThinking, err := s.resolveThinking(provider, model, thinking)
+		if thinkingProvided && thinking == "" && !sameModel {
+			thinkingProvided = false
+		}
+		resolvedThinking, err := s.resolveThinking(provider, model, thinking, thinkingProvided)
 		if err != nil {
 			return llm.Selection{}, err
 		}
@@ -634,13 +693,13 @@ func (s *service) parseSelectionFromForm(form url.Values, fallback llm.Selection
 	if raw := form.Get("model_selection"); raw != "" {
 		return s.parseSelection(raw)
 	}
-	if fallback.Provider != "" && fallback.Model != "" && fallback.Thinking != "" {
+	if fallback.Provider != "" && fallback.Model != "" {
 		return fallback, nil
 	}
 	return s.llm.DefaultSelection()
 }
 
-func (s *service) resolveThinking(providerName string, modelID string, preferredThinking string) (string, error) {
+func (s *service) resolveThinking(providerName string, modelID string, preferredThinking string, thinkingProvided bool) (string, error) {
 	for _, provider := range s.llm.Providers() {
 		if provider.Name != providerName {
 			continue
@@ -649,13 +708,25 @@ func (s *service) resolveThinking(providerName string, modelID string, preferred
 			if model.ID != modelID {
 				continue
 			}
-			if len(model.ThinkingLevels) == 0 {
-				return "", fmt.Errorf("模型 %s 没有可用的思考档位", modelID)
+			if preferredThinking == "" {
+				if model.SupportsProviderDefault {
+					return "", nil
+				}
+				if thinkingProvided {
+					return "", fmt.Errorf("模型 %s 不支持服务商默认思考档位", modelID)
+				}
+				if len(model.ThinkingLevels) == 0 {
+					return "", fmt.Errorf("模型 %s 没有可用的思考档位", modelID)
+				}
+				return model.ThinkingLevels[0], nil
 			}
 			for _, level := range model.ThinkingLevels {
 				if level == preferredThinking {
 					return level, nil
 				}
+			}
+			if len(model.ThinkingLevels) == 0 {
+				return "", fmt.Errorf("模型 %s 没有可用的思考档位", modelID)
 			}
 			return model.ThinkingLevels[0], nil
 		}
@@ -688,7 +759,7 @@ func (s *service) currentOrProjectModel(projectID string, sessionID string) llm.
 
 func (s *service) parseSelection(value string) (llm.Selection, error) {
 	parts := strings.Split(value, "\x1f")
-	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
+	if len(parts) != 3 || parts[0] == "" || parts[1] == "" {
 		return llm.Selection{}, fmt.Errorf("请选择一个完整模型")
 	}
 	selection := llm.Selection{Provider: parts[0], Model: parts[1], Thinking: parts[2]}

@@ -21,14 +21,17 @@ type Adapter interface {
 
 // ModelInfo 是服务商声明的一个可选模型及其能力。
 type ModelInfo struct {
-	ID             string   // 发请求时使用的模型标识
-	ThinkingLevels []string // 这个模型支持的思考档位
+	ID                      string   // 发请求时使用的模型标识
+	Name                    string   // 界面展示名称；空时退回 ID
+	ThinkingLevels          []string // 这个模型支持的思考档位
+	SupportsProviderDefault bool     // 是否允许把思考档位交给服务商自行决定
 }
 
 // ProviderInfo 是界面可展示的一家模型服务商及其模型目录。
 type ProviderInfo struct {
-	Name   string      // 插座上的服务商名
-	Models []ModelInfo // 已适配且可让用户选择的模型
+	Name        string      // 插座上的服务商名
+	DisplayName string      // 界面展示名称；空时退回 Name
+	Models      []ModelInfo // 已适配且可让用户选择的模型
 }
 
 // ProviderCatalog 是适配器提供给界面的模型目录。
@@ -41,14 +44,14 @@ type ProviderCatalog interface {
 type Selection struct {
 	Provider string // 服务商插座名
 	Model    string // 服务商内的模型标识
-	Thinking string // 该模型支持的思考档位
+	Thinking string // 该模型支持的思考档位；空值表示使用服务商默认
 }
 
 // Request 是一次模型请求的全部输入。
 type Request struct {
 	Provider    string            // 服务商名，如 "deepseek"；必须明确，不猜默认插座
 	Model       string            // 服务商内的型号名，如 "deepseek-chat"
-	Thinking    string            // 思考强度：由服务商插件解释，DeepSeek 只认 off/high/max
+	Thinking    string            // 思考强度：由服务商插件解释，空值表示使用服务商默认
 	Messages    []chat.Message    // 完整对话历史（system 消息也在里面，各服务商自己认领）
 	Tools       []chat.ToolSchema // 可用的工具说明书，空 = 这次不许调工具
 	MaxTokens   int               // 回复上限，0 = 用服务商默认

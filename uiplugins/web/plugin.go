@@ -53,13 +53,16 @@ func (Plugin) Start(app *core.App) error {
 	app.Subscribe(session.EventAppended, func(payload any) {
 		appended, ok := payload.(session.Appended)
 		if ok {
-			updates.Publish(appended.SessionID)
+			updates.Publish(appended.SessionID, updateNotice{
+				Chat:     true,
+				Composer: appended.Event.Kind == session.KindTurnStart || appended.Event.Kind == session.KindTurnEnd,
+			})
 		}
 	})
 	app.Subscribe(agents.EventConversationError, func(payload any) {
 		failed, ok := payload.(agents.ConversationError)
 		if ok {
-			updates.Publish(failed.SessionID)
+			updates.Publish(failed.SessionID, updateNotice{Chat: true, Composer: true})
 		}
 	})
 	app.RegisterService("ui", service)

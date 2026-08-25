@@ -92,7 +92,7 @@ flowchart TD
 - 工具还没开跑：记成 `skipped`。
 - 工具已经开跑，但没有拿到结果：账上不写假结果；重启恢复时补“结果不明”。
 
-`WaitIdle` 会一直等到搬运工真正干完，并且待办队列已经清空。`State` 只对外报告 `idle` 或 `busy`。
+`WaitIdle` 会一直等到搬运工真正干完，并且待办队列已经清空。`State` 对外报告 `idle`、`starting` 或 `busy`。
 
 ## 崩溃后怎么恢复
 

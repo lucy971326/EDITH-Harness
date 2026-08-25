@@ -1,6 +1,9 @@
 package web
 
-import "harness/presets"
+import (
+	"harness/llm"
+	"harness/presets"
+)
 
 
 templ Page(data PageData) {
@@ -12,7 +15,7 @@ templ Page(data PageData) {
 			<title>edith-harness</title>
 			<link rel="stylesheet" href="/assets/site.css"/>
 			<script defer src="/assets/htmx.min.js"></script>
-			<script defer src="/assets/app.js"></script>
+			<script defer src="/assets/app.js?v=2"></script>
 		</head>
 		<body data-session={ data.Header.ID } data-project={ data.Project.ID }>
 			<div class="app-shell">
@@ -25,19 +28,22 @@ templ Page(data PageData) {
 
 templ Sidebar(data PageData) {
 	<aside class="sidebar">
-		<a class="brand" href="/">edith<span>·</span>harness</a>
-		<a class="new-chat" href={ newChatURL(data) }>＋ 新会话</a>
-		<div class="side-label"><span>工作区</span>@ProjectPickerButton("project-add")</div>
+		<div class="sidebar-brand-row">
+			<a class="brand" href="/"><span class="brand-mark" aria-hidden="true">◒</span><span class="brand-name">edith<span>·</span>harness</span></a>
+			<button class="sidebar-collapse" type="button" data-sidebar-toggle aria-label="收起侧边栏" aria-expanded="true">‹</button>
+		</div>
+		<a class="new-chat" href={ newChatURL(data) }><span class="nav-icon" aria-hidden="true">＋</span><span>新会话</span></a>
+		<div class="side-label"><span>工作区</span><div class="workspace-actions">@ProjectPickerIcon()</div></div>
 		<nav class="project-list project-tree">
 			for _, tree := range data.ProjectTrees {
-				<section class="project-branch"><a class={ projectClass(tree.Project.ID, data.Project.ID) } href={ templ.URL("/?project=" + tree.Project.ID + "&draft=1") }><span class="folder">□</span>{ tree.Project.Name }</a>
+				<section class="project-branch" data-project-branch data-project-id={ tree.Project.ID }><a class={ projectClass(tree.Project.ID, data.Project.ID) } data-project-toggle aria-expanded="true" href={ templ.URL("/?project=" + tree.Project.ID + "&draft=1") }><span class="folder" aria-hidden="true">▱</span><span class="nav-label">{ tree.Project.Name }</span></a>
 					for _, header := range tree.Sessions {
-						<a class={ sessionClass(header.ID, data.Header.ID) } href={ templ.URL("/?project=" + tree.Project.ID + "&session=" + header.ID) }>{ header.Title }</a>
+						<a class={ sessionClass(header.ID, data.Header.ID) } href={ templ.URL("/?project=" + tree.Project.ID + "&session=" + header.ID) }><span class="nav-label">{ header.Title }</span></a>
 					}
 				</section>
 			}
 		</nav>
-		<div class="side-bottom"><a href="/presets">◇ Agent 模式</a><button class="plain-button" type="button" data-theme-toggle>◐ 主题</button></div>
+		<div class="side-bottom"><a href="/presets"><span class="nav-icon" aria-hidden="true">◇</span><span class="nav-label">Agent 模式</span></a><button class="plain-button" type="button" data-theme-toggle><span class="nav-icon" aria-hidden="true">◐</span><span class="nav-label">主题</span></button></div>
 	</aside>
 }
 
@@ -46,7 +52,19 @@ templ ChatPanel(data PageData) {
 		if !data.HasProject {
 			<div class="empty-state"><p class="eyebrow">edith-harness</p><h1>先添加一个项目</h1><p>选择一个本机工作目录；目录名就是项目名，每个项目下面有自己的会话。</p>@ProjectPickerButton("primary-link")</div>
 		} else if data.HasSession {
-			<header class="chat-header"><div><p class="eyebrow">{ data.Project.Name }</p><h1>{ data.Header.Title }</h1></div><span class="locked-preset">{ data.SelectedPreset.ID } · v{ fmtInt(data.Header.PresetRevision) }</span></header>
+			<div class="chat-topbar">
+				<header class="chat-header">
+					<div class="chat-heading">
+						<p class="eyebrow">{ data.Project.Name }</p>
+						<div class="chat-title-row"><h1>{ data.Header.Title }</h1><span class="chat-mode"><span class="chat-mode-dot" aria-hidden="true"></span>{ data.SelectedPreset.ID }</span></div>
+					</div>
+					<span class="chat-header-mark" aria-hidden="true">•••</span>
+				</header>
+				<nav class="session-tabs" aria-label="会话视图">
+					<button class="session-tab active" type="button" aria-current="page">对话</button>
+					<button class="session-tab" type="button" disabled title="轨迹视图将在后续版本开放">轨迹</button>
+				</nav>
+			</div>
 			@ChatLog(data.Chat)
 			@MessageBox(data)
 		} else if data.Draft {
@@ -59,7 +77,7 @@ templ ChatPanel(data PageData) {
 }
 
 templ ChatLog(items []ChatItem) {
-	<div class="chat-log">
+	<div id="chat-log" class="chat-log">
 		for _, item := range items {
 			if item.Kind == "user" {
 				<article class="message user-message"><p>{ item.Text }</p></article>
@@ -72,7 +90,7 @@ templ ChatLog(items []ChatItem) {
 					}
 				</details>
 			} else {
-				<article class="message assistant-message">
+				<article class="message assistant-message markdown-body">
 					if item.Kind == "assistant interrupted" {
 						<span class="interrupted">已中断</span>
 					}
@@ -84,43 +102,43 @@ templ ChatLog(items []ChatItem) {
 }
 
 	templ MessageBox(data PageData) {
-	<div class="composer-wrap">
+	<div id="composer" class="composer-wrap">
 			if data.Error != "" {
 				<p class="form-error">{ data.Error }</p>
 			}
 		if !data.HasPreset {
 			<p class="form-error">还没有可用的 Agent 模式。<a href="/presets/new">先创建一个</a></p>
 		} else {
-			if data.HasSession {
-				<form id="model-state" hx-post="/sessions/model" hx-target="#chat-panel" hx-swap="outerHTML"><input type="hidden" name="project_id" value={ data.Project.ID }/><input type="hidden" name="session_id" value={ data.Header.ID }/></form>
-			} else {
-				<form id="model-state" hx-post="/sessions/model" hx-target="#chat-panel" hx-swap="outerHTML"><input type="hidden" name="project_id" value={ data.Project.ID }/><input type="hidden" name="draft" value="1"/></form>
-			}
-			<form class="composer" hx-post="/messages" hx-target="#chat-panel" hx-swap="outerHTML"><input type="hidden" name="project_id" value={ data.Project.ID }/>
-				if data.HasSession {
-					<input type="hidden" name="session_id" value={ data.Header.ID }/>
-				} else {
+			<form class="composer" hx-post="/messages" hx-target="#chat-panel" hx-swap="outerHTML">
+				if !data.HasSession {
 					<label class="preset-picker">Agent 模式<select name="preset_id">
 						for _, preset := range activePresets(data.Presets) {
 							<option value={ preset.ID } selected?={ preset.ID == data.SelectedPreset.ID }>{ preset.ID }</option>
 						}
 					</select></label>
 				}
-				<input id="composer-model-id" type="hidden" name="model_id" value={ currentModelBaseKey(data.SelectedModel) }/>
-				<input id="composer-thinking" type="hidden" name="thinking" value={ data.SelectedModel.Thinking }/>
-				<textarea name="text" rows="3" placeholder="说点什么…"></textarea>
-				<div class="composer-footer">
-					if data.HasSession {
-						<span>{ data.SelectedPreset.ID } · 已锁定</span>
-					} else {
-						<span>首条消息会创建会话</span>
+			<textarea name="text" rows="1" data-autogrow placeholder="说点什么…"></textarea>
+				<div class={ composerFooterClass(data.HasSession) }>
+					if !data.HasSession {
+						<span class="composer-hint">首条消息会创建会话</span>
 					}
 					<div class="composer-actions">
-						@ModelPicker(data, true)
-						if data.HasSession {
-							<button class="cancel-button" type="button" hx-post={ "/sessions/cancel?project_id=" + data.Project.ID + "&session_id=" + data.Header.ID } hx-target="#chat-panel" hx-swap="outerHTML">取消</button>
+						<div id="model-state" hx-post="/sessions/model" hx-trigger="model-change" hx-include="#model-state input" hx-target="#model-picker" hx-swap="outerHTML" hx-sync="this:queue last">
+							<input type="hidden" name="project_id" value={ data.Project.ID }/>
+							if data.HasSession {
+								<input type="hidden" name="session_id" value={ data.Header.ID }/>
+							} else {
+								<input type="hidden" name="draft" value="1"/>
+							}
+							<input type="hidden" name="model_id" value={ currentModelBaseKey(data.SelectedModel) }/>
+							<input type="hidden" name="thinking" value={ data.SelectedModel.Thinking }/>
+							@ModelPicker(data)
+						</div>
+						if data.Busy {
+							<button class="send-button is-cancel" type="button" aria-label="取消" data-cancel-session hx-post={ "/sessions/cancel?project_id=" + data.Project.ID + "&session_id=" + data.Header.ID } hx-target="#composer" hx-swap="outerHTML">取消</button>
+						} else {
+							<button class="send-button" type="submit" aria-label="发送"><span aria-hidden="true">↑</span></button>
 						}
-						<button class="send-button" type="submit">发送 ↑</button>
 					</div>
 				</div>
 			</form>
@@ -128,22 +146,54 @@ templ ChatLog(items []ChatItem) {
 	</div>
 }
 
-templ ModelPicker(data PageData, commit bool) {
-	<div class="model-picker-group">
-		<select class="model-picker model-select" name="model_id" form="model-state" hx-post="/sessions/model" hx-trigger="change" hx-include="#model-state, .model-select, .thinking-select" hx-target="#chat-panel" hx-swap="outerHTML" data-model-copy="composer-model-id">
-			for _, provider := range data.Providers {
-				<optgroup label={ provider.Name }>
-					for _, model := range provider.Models {
-						<option value={ modelBaseKey(provider.Name, model.ID) } selected?={ data.SelectedModel.Provider == provider.Name && data.SelectedModel.Model == model.ID }>{ model.ID }</option>
+
+templ ModelPicker(data PageData) {
+	<div id="model-picker" class="model-picker" data-selected-provider={ data.SelectedModel.Provider } data-selected-model={ data.SelectedModel.Model } data-selected-thinking={ data.SelectedModel.Thinking }>
+		if data.Error != "" {
+			<p class="model-picker-error">{ data.Error }</p>
+		}
+		<button class="model-picker-trigger" type="button" data-model-picker-toggle aria-haspopup="menu" aria-expanded="false">
+			<span class="model-picker-model">{ modelDisplayName(data.Providers, data.SelectedModel) }</span>
+			<span class="model-picker-thinking">{ thinkingLabel(data.SelectedModel.Thinking) }</span>
+			<span class="model-picker-chevron" aria-hidden="true">⌄</span>
+		</button>
+		<div class="model-picker-menu" role="menu" aria-label="模型与推理等级" hidden>
+			<div class="model-picker-pane" data-picker-pane="root">
+				<button class="model-picker-cell" type="button" role="menuitem" data-picker-pane-button="model"><span>模型</span><span class="model-picker-cell-value">{ modelDisplayName(data.Providers, data.SelectedModel) }　›</span></button>
+				<button class="model-picker-cell" type="button" role="menuitem" data-picker-pane-button="thinking"><span>推理等级</span><span class="model-picker-cell-value">{ thinkingLabel(data.SelectedModel.Thinking) }　›</span></button>
+			</div>
+			<div class="model-picker-pane" data-picker-pane="model" hidden>
+				<button class="model-picker-back" type="button" data-picker-back>‹ 返回</button>
+				<div class="model-picker-options">
+					for _, provider := range data.Providers {
+						<section class="model-picker-group" role="group" aria-label={ providerDisplayName(provider) }>
+							<div class="model-picker-group-title">{ providerDisplayName(provider) }</div>
+							for _, model := range provider.Models {
+								<button class="model-picker-option" type="button" role="menuitemradio" aria-checked={ boolString(selectedModelOption(data.SelectedModel, provider.Name, model.ID)) } data-model-option data-model-provider={ provider.Name } data-model-name={ model.ID }>
+									<span>{ modelDisplayName(data.Providers, llm.Selection{Provider: provider.Name, Model: model.ID}) }</span>
+									if selectedModelOption(data.SelectedModel, provider.Name, model.ID) {
+										<span class="model-picker-check" aria-hidden="true">✓</span>
+									}
+								</button>
+							}
+						</section>
 					}
-				</optgroup>
-			}
-		</select>
-		<select class="model-picker thinking-select" name="thinking" form="model-state" hx-post="/sessions/model" hx-trigger="change" hx-include="#model-state, .model-select, .thinking-select" hx-target="#chat-panel" hx-swap="outerHTML" data-model-copy="composer-thinking">
-			for _, level := range currentModelThinkingLevels(data.Providers, data.SelectedModel) {
-				<option value={ level } selected?={ data.SelectedModel.Thinking == level }>{ level }</option>
-			}
-		</select>
+				</div>
+			</div>
+			<div class="model-picker-pane" data-picker-pane="thinking" hidden>
+				<button class="model-picker-back" type="button" data-picker-back>‹ 返回</button>
+				<div class="model-picker-options">
+					for _, choice := range thinkingChoices(data.Providers, data.SelectedModel) {
+						<button class="model-picker-option" type="button" role="menuitemradio" aria-checked={ boolString(selectedThinkingOption(data.SelectedModel, choice.Value)) } data-thinking-option data-thinking={ choice.Value }>
+							<span>{ choice.Label }</span>
+							if selectedThinkingOption(data.SelectedModel, choice.Value) {
+								<span class="model-picker-check" aria-hidden="true">✓</span>
+							}
+						</button>
+					}
+				</div>
+			</div>
+		</div>
 	</div>
 }
 
@@ -151,9 +201,13 @@ templ ProjectPickerButton(className string) {
 	<form class="project-picker" method="post" action="/projects/pick"><button class={ className } type="submit">＋ 添加项目</button></form>
 }
 
+templ ProjectPickerIcon() {
+	<form class="project-picker" method="post" action="/projects/pick"><button class="project-add" type="submit" aria-label="添加项目" title="添加项目">＋</button></form>
+}
+
 templ PresetListPage(data PresetPageData) {
 	<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Agent 模式 · edith-harness</title><link rel="stylesheet" href="/assets/site.css"/></head>
-	<body><main class="form-page wide-page"><a class="brand" href="/">edith<span>·</span>harness</a><section class="form-card"><div class="page-title"><div><p class="eyebrow">Agent 模式</p><h1>模式管理</h1><p>模式只定义人设和允许工具；模型由每段会话自己选择。</p></div><a class="send-button" href="/presets/new">＋ 新模式</a></div>
+	<body><main class="form-page wide-page"><a class="brand" href="/">edith<span>·</span>harness</a><section class="form-card"><div class="page-title"><div><p class="eyebrow">Agent 模式</p><h1>模式管理</h1><p>模式只定义人设和允许工具；模型由每段会话自己选择。</p></div><a class="send-button" href="/presets/new" aria-label="新建模式" title="新建模式">+</a></div>
 		if data.Error != "" {
 			<p class="form-error">{ data.Error }</p>
 		}

@@ -25,16 +25,17 @@ type Conversation struct {
 	inbox     *inbox
 	driver    *driver
 
-	mu          sync.Mutex
-	cond        *sync.Cond // 闲了广播一声，等闲的人全醒
-	working     bool       // 搬运工已经接活，可能刚把队列领空、还没正式开轮
-	busy        bool       // 正在跑一轮；State 对外只报这个
-	stepCtx     context.Context
-	stepStop    context.CancelFunc
-	close       func() error
-	reportError func(error)
-	closeErr    error
-	closeOnce   sync.Once
+	mu              sync.Mutex
+	cond            *sync.Cond // 闲了广播一声，等闲的人全醒
+	working         bool       // 搬运工已经接活，可能刚把队列领空、还没正式开轮
+	busy            bool       // 正在跑一轮；State 对外报告正式运行
+	stepCtx         context.Context
+	stepStop        context.CancelFunc
+	cancelRequested bool
+	close           func() error
+	reportError     func(error)
+	closeErr        error
+	closeOnce       sync.Once
 }
 
 func newConversation(sessionID string, scope *core.App, book *session.Session, llmSvc *llm.Service, toolsReg *tools.Registry, preset presets.Revision, model llm.Selection, reportError func(error)) *Conversation {
@@ -93,13 +94,16 @@ func (a *Conversation) SessionID() string {
 	return a.sessionID
 }
 
-// State 返回 "idle"（闲）或 "busy"（忙）。
+// State 返回 "idle"（闲）、"starting"（准备中）或 "busy"（运行中）。
 func (a *Conversation) State() string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
 	if a.busy {
 		return "busy"
+	}
+	if a.working {
+		return "starting"
 	}
 	return "idle"
 }
@@ -120,6 +124,9 @@ func (a *Conversation) WaitIdle() {
 func (a *Conversation) Cancel() {
 	a.mu.Lock()
 	stop := a.stepStop
+	if stop == nil && (a.working || a.busy) {
+		a.cancelRequested = true
+	}
 	a.mu.Unlock()
 	if stop != nil {
 		stop()
@@ -129,7 +136,7 @@ func (a *Conversation) Cancel() {
 // SubmitFollowup 投一条开新轮的消息：忙时排队，本轮正常结束后才开新轮。
 func (a *Conversation) SubmitFollowup(text string) error {
 	a.mu.Lock()
-	ready := a.config.Provider != "" && a.config.Model != "" && a.config.Thinking != ""
+	ready := a.config.Provider != "" && a.config.Model != ""
 	a.mu.Unlock()
 	if !ready {
 		return fmt.Errorf("请先选择模型")
@@ -187,10 +194,22 @@ func (a *Conversation) claimAsUserMessage(item delivery) error {
 func (a *Conversation) stepContext() context.Context {
 	ctx, stop := context.WithCancel(context.Background())
 	a.mu.Lock()
+	cancelBeforeStart := a.cancelRequested
+	a.cancelRequested = false
 	a.stepCtx = ctx
 	a.stepStop = stop
 	a.mu.Unlock()
+	if cancelBeforeStart {
+		stop()
+	}
 	return ctx
+}
+
+func (a *Conversation) clearStepContext() {
+	a.mu.Lock()
+	a.stepCtx = nil
+	a.stepStop = nil
+	a.mu.Unlock()
 }
 
 // markWorking 先占住待办，防止队列刚领空时 WaitIdle 误判已经干完。
@@ -224,5 +243,6 @@ func (a *Conversation) markIdle() {
 
 	a.working = false
 	a.busy = false
+	a.cancelRequested = false
 	a.cond.Broadcast()
 }

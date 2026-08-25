@@ -161,7 +161,7 @@ func (s *service) RememberPreset(id string, presetID string) error {
 
 // RememberModel 记住项目上次成功使用的模型组合。
 func (s *service) RememberModel(id string, selection llm.Selection) error {
-	if selection.Provider == "" || selection.Model == "" || selection.Thinking == "" {
+	if selection.Provider == "" || selection.Model == "" {
 		return fmt.Errorf("模型选择不完整")
 	}
 	s.mu.Lock()

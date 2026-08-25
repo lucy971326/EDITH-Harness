@@ -76,6 +76,12 @@ func (s *Service) ValidateSelection(provider string, model string, thinking stri
 		if candidate.ID != model {
 			continue
 		}
+		if thinking == "" {
+			if candidate.SupportsProviderDefault {
+				return nil
+			}
+			return fmt.Errorf("模型 %s 不支持服务商默认思考档位", model)
+		}
 		for _, level := range candidate.ThinkingLevels {
 			if level == thinking {
 				return nil
@@ -95,10 +101,14 @@ func (s *Service) Validate(selection Selection) error {
 func (s *Service) DefaultSelection() (Selection, error) {
 	for _, provider := range s.Providers() {
 		for _, model := range provider.Models {
-			if len(model.ThinkingLevels) == 0 {
+			if len(model.ThinkingLevels) == 0 && !model.SupportsProviderDefault {
 				continue
 			}
-			return Selection{Provider: provider.Name, Model: model.ID, Thinking: model.ThinkingLevels[0]}, nil
+			thinking := ""
+			if len(model.ThinkingLevels) > 0 {
+				thinking = model.ThinkingLevels[0]
+			}
+			return Selection{Provider: provider.Name, Model: model.ID, Thinking: thinking}, nil
 		}
 	}
 	return Selection{}, fmt.Errorf("没有已安装且声明模型目录的服务商")
@@ -116,9 +126,6 @@ func (s *Service) Stream(ctx context.Context, req Request, onDelta func(chat.Del
 	}
 	if req.Model == "" {
 		return Reply{}, NewError(req.Provider, ErrBadRequest, "模型请求缺少 model")
-	}
-	if req.Thinking == "" {
-		return Reply{}, NewError(req.Provider, ErrBadRequest, "模型请求缺少 thinking")
 	}
 	err := s.ValidateSelection(req.Provider, req.Model, req.Thinking)
 	if err != nil {

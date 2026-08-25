@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/url"
 	"sort"
-	"strconv"
 
 	"github.com/a-h/templ"
 
@@ -29,6 +28,7 @@ type PageData struct {
 	SelectedModel  llm.Selection
 	HasProject     bool
 	HasSession     bool
+	Busy           bool
 	HasPreset      bool
 	Draft          bool
 	Error          string
@@ -191,10 +191,6 @@ func newChatURL(data PageData) templ.SafeURL {
 	return templ.URL("/?draft=1")
 }
 
-func fmtInt(value int) string {
-	return strconv.Itoa(value)
-}
-
 func presetAction(id string) string {
 	if id == "" {
 		return "/presets"
@@ -215,6 +211,13 @@ func presetHasTool(preset presets.Preset, name string) bool {
 	return false
 }
 
+func composerFooterClass(hasSession bool) string {
+	if hasSession {
+		return "composer-footer session-composer-footer"
+	}
+	return "composer-footer"
+}
+
 func modelBaseKey(provider string, modelID string) string {
 	return provider + "\x1f" + modelID
 }
@@ -223,7 +226,12 @@ func currentModelBaseKey(selection llm.Selection) string {
 	return modelBaseKey(selection.Provider, selection.Model)
 }
 
-func currentModelThinkingLevels(providers []llm.ProviderInfo, selection llm.Selection) []string {
+type thinkingChoice struct {
+	Value string
+	Label string
+}
+
+func selectedModelInfo(providers []llm.ProviderInfo, selection llm.Selection) (llm.ModelInfo, bool) {
 	for _, provider := range providers {
 		if provider.Name != selection.Provider {
 			continue
@@ -232,55 +240,73 @@ func currentModelThinkingLevels(providers []llm.ProviderInfo, selection llm.Sele
 			if model.ID != selection.Model {
 				continue
 			}
-			return model.ThinkingLevels
+			return model, true
 		}
 	}
-	if selection.Thinking != "" {
-		return []string{selection.Thinking}
-	}
-	return nil
+	return llm.ModelInfo{}, false
 }
 
-func selectedProvider(providers []llm.ProviderInfo, selected string) llm.ProviderInfo {
-	for _, provider := range providers {
-		if provider.Name == selected {
-			return provider
-		}
+func providerDisplayName(provider llm.ProviderInfo) string {
+	if provider.DisplayName != "" {
+		return provider.DisplayName
 	}
-	if len(providers) == 0 {
-		return llm.ProviderInfo{}
-	}
-	return providers[0]
+	return provider.Name
 }
 
-func selectedModel(provider llm.ProviderInfo, selected string) llm.ModelInfo {
-	for _, model := range provider.Models {
-		if model.ID == selected {
-			return model
-		}
+func modelDisplayName(providers []llm.ProviderInfo, selection llm.Selection) string {
+	model, found := selectedModelInfo(providers, selection)
+	if found && model.Name != "" {
+		return model.Name
 	}
-	if len(provider.Models) == 0 {
-		return llm.ModelInfo{}
+	if selection.Model != "" {
+		return selection.Model
 	}
-	return provider.Models[0]
+	return "选择模型"
 }
 
-func selectedThinking(model llm.ModelInfo, selected string) string {
+func thinkingLabel(value string) string {
+	switch value {
+	case "":
+		return "Default"
+	case "off":
+		return "Off"
+	case "low":
+		return "Low"
+	case "high":
+		return "High"
+	case "max":
+		return "Max"
+	default:
+		return value
+	}
+}
+
+func thinkingChoices(providers []llm.ProviderInfo, selection llm.Selection) []thinkingChoice {
+	model, found := selectedModelInfo(providers, selection)
+	if !found {
+		return nil
+	}
+	choices := make([]thinkingChoice, 0, len(model.ThinkingLevels)+1)
+	if model.SupportsProviderDefault {
+		choices = append(choices, thinkingChoice{Label: "Default"})
+	}
 	for _, level := range model.ThinkingLevels {
-		if level == selected {
-			return level
-		}
+		choices = append(choices, thinkingChoice{Value: level, Label: thinkingLabel(level)})
 	}
-	if len(model.ThinkingLevels) == 0 {
-		return ""
-	}
-	return model.ThinkingLevels[0]
+	return choices
 }
 
-func selectionKey(selection llm.Selection) string {
-	return selection.Provider + "\x1f" + selection.Model + "\x1f" + selection.Thinking
+func selectedModelOption(selection llm.Selection, providerName string, modelID string) bool {
+	return selection.Provider == providerName && selection.Model == modelID
 }
 
-func selectionLabel(selection llm.Selection) string {
-	return selection.Provider + " · " + selection.Model + " · " + selection.Thinking
+func selectedThinkingOption(selection llm.Selection, value string) bool {
+	return selection.Thinking == value
+}
+
+func boolString(value bool) string {
+	if value {
+		return "true"
+	}
+	return "false"
 }

@@ -134,14 +134,24 @@ func (s *fakeAgentService) RegisterRunner(runner agents.Runner) (func(), error) 
 }
 
 type fakeConversation struct {
-	id        string
-	submitted string
+	id          string
+	submitted   string
+	state       string
+	cancelCalls int
 }
 
-func (c *fakeConversation) SessionID() string                { return c.id }
-func (*fakeConversation) State() string                      { return "idle" }
-func (*fakeConversation) WaitIdle()                          {}
-func (*fakeConversation) Cancel()                            {}
+func (c *fakeConversation) SessionID() string { return c.id }
+func (c *fakeConversation) State() string {
+	if c.state == "" {
+		return "idle"
+	}
+	return c.state
+}
+func (*fakeConversation) WaitIdle() {}
+func (c *fakeConversation) Cancel() {
+	c.cancelCalls++
+	c.state = "idle"
+}
 func (c *fakeConversation) SubmitFollowup(text string) error { c.submitted = text; return nil }
 func (*fakeConversation) Steer(text string) error            { return nil }
 func (*fakeConversation) InjectMemo(text string) error       { return nil }
@@ -157,7 +167,7 @@ func (webCatalogAdapter) ProviderInfo() llm.ProviderInfo {
 	return llm.ProviderInfo{
 		Name: "fake",
 		Models: []llm.ModelInfo{
-			{ID: "fake-fast", ThinkingLevels: []string{"off", "high"}},
+			{ID: "fake-fast", ThinkingLevels: []string{"off", "high"}, SupportsProviderDefault: true},
 			{ID: "fake-pro", ThinkingLevels: []string{"off", "max"}},
 		},
 	}
@@ -324,11 +334,106 @@ func TestChatModelPickerComesFromProviderCatalog(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := writer.Body.String()
-	if !strings.Contains(body, `<optgroup label="fake">`) || !strings.Contains(body, "fake-fast") || !strings.Contains(body, "fake-pro") {
+	if !strings.Contains(body, `class="model-picker-group-title">fake</div>`) || !strings.Contains(body, "fake-fast") || !strings.Contains(body, "fake-pro") {
 		t.Fatalf("模型菜单应来自适配器目录且按分组展示：%s", body)
 	}
-	if !strings.Contains(body, "thinking-select") || !strings.Contains(body, "off") || !strings.Contains(body, "high") {
-		t.Fatalf("思考档位应作为独立选择框展示：%s", body)
+	if !strings.Contains(body, `data-thinking-option`) || !strings.Contains(body, ">Off<") || !strings.Contains(body, ">High<") {
+		t.Fatalf("思考档位应来自当前模型能力：%s", body)
+	}
+	if !strings.Contains(body, ">Default<") {
+		t.Fatalf("支持服务商默认的模型应展示 Default：%s", body)
+	}
+	if strings.Contains(body, `data-thinking="max"`) {
+		t.Fatalf("当前 fake-fast 不应展示 fake-pro 专属的 max 档位：%s", body)
+	}
+}
+
+func TestSessionHeaderKeepsModeAndReservesTrajectoryTab(t *testing.T) {
+	service, projectService, presetService, books, _ := newWebService(t)
+	project, err := projectService.Create(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = presetService.Create(presets.Preset{ID: "模式"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = books.Create(session.Header{
+		ID:             "session-ui",
+		Title:          "一个会话",
+		CreatedAt:      time.Now(),
+		ProjectID:      project.ID,
+		ProjectRoot:    project.Root,
+		PresetID:       "模式",
+		PresetRevision: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = books.Release("session-ui")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := service.pageData(project.ID, "session-ui", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer := httptest.NewRecorder()
+	err = ChatPanel(data).Render(context.Background(), writer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := writer.Body.String()
+	if !strings.Contains(body, `class="chat-mode"`) || !strings.Contains(body, ">模式</span>") {
+		t.Fatalf("会话标题区应展示当前模式：%s", body)
+	}
+	if !strings.Contains(body, ">对话</button>") || !strings.Contains(body, ">轨迹</button>") {
+		t.Fatalf("会话标题区应预留对话和轨迹入口：%s", body)
+	}
+	if strings.Contains(body, "locked-preset") || strings.Contains(body, "已锁定") || strings.Contains(body, "Session log") {
+		t.Fatalf("会话页不应重复展示锁定文案或 Session log：%s", body)
+	}
+}
+
+func TestThinkingChoicesFollowSelectedModel(t *testing.T) {
+	service, projectService, presetService, _, _ := newWebService(t)
+	project, err := projectService.Create(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = presetService.Create(presets.Preset{ID: "模式"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := service.pageData(project.ID, "", "1", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	choices := thinkingChoices(data.Providers, llm.Selection{Provider: "fake", Model: "fake-pro"})
+	if len(choices) != 2 || choices[0].Value != "off" || choices[1].Value != "max" {
+		t.Fatalf("fake-pro 的档位必须独立于 fake-fast：%+v", choices)
+	}
+}
+
+func TestSelectProviderDefaultStoresEmptyThinking(t *testing.T) {
+	service, projectService, _, _, _ := newWebService(t)
+	project, err := projectService.Create(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/sessions/model", strings.NewReader("project_id="+project.ID+"&draft=1&model_id="+url.QueryEscape("fake\x1ffake-fast")+"&thinking="))
+	request.Header.Set("HX-Request", "true")
+	request.Header.Set("HX-Target", "model-picker")
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	writer := httptest.NewRecorder()
+	service.handleSelectModel(writer, request)
+	if writer.Code != http.StatusOK {
+		t.Fatalf("选择 Default 失败，实际状态 %d：%s", writer.Code, writer.Body.String())
+	}
+	stored, err := projectService.Get(project.ID)
+	if err != nil || stored.LastModel.Thinking != "" {
+		t.Fatalf("Default 应以空 thinking 记住：%+v err=%v", stored.LastModel, err)
 	}
 }
 
@@ -428,15 +533,28 @@ func TestSlowUpdateSubscriberDoesNotBlockPublish(t *testing.T) {
 	hub := newUpdateHub()
 	updates, unregister := hub.Subscribe("s1")
 	defer unregister()
-	hub.Publish("s1")
+	hub.Publish("s1", updateNotice{Chat: true})
 	done := make(chan struct{})
-	go func() { hub.Publish("s1"); close(done) }()
+	go func() { hub.Publish("s1", updateNotice{Chat: true}); close(done) }()
 	select {
 	case <-done:
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("慢客户端不该卡住账本广播")
 	}
 	<-updates
+}
+
+func TestUpdateNoticeMergesChatAndComposerRefreshes(t *testing.T) {
+	hub := newUpdateHub()
+	updates, unregister := hub.Subscribe("s1")
+	defer unregister()
+
+	hub.Publish("s1", updateNotice{Chat: true})
+	hub.Publish("s1", updateNotice{Composer: true})
+	notice := <-updates
+	if !notice.Chat || !notice.Composer {
+		t.Fatalf("合并通知不能丢掉输入区刷新：%+v", notice)
+	}
 }
 
 func TestCrossOriginWriteRejected(t *testing.T) {
@@ -448,6 +566,83 @@ func TestCrossOriginWriteRejected(t *testing.T) {
 	service.routes().ServeHTTP(writer, request)
 	if writer.Code != http.StatusForbidden {
 		t.Fatalf("跨源写请求应拒绝，实际 %d", writer.Code)
+	}
+}
+
+func TestRenderMarkdownUsesGFMAndEscapesRawHTML(t *testing.T) {
+	rendered := renderMarkdown("# 标题\n\n- 条目\n\n| 名称 | 值 |\n| --- | --- |\n| alpha | beta |\n\n<script>alert(1)</script>")
+	if !strings.Contains(rendered, "<h1>标题</h1>") || !strings.Contains(rendered, "<table>") {
+		t.Fatalf("Markdown 应支持标题和 GFM 表格：%s", rendered)
+	}
+	if strings.Contains(rendered, "<script>") || !strings.Contains(rendered, "raw HTML omitted") {
+		t.Fatalf("Markdown 不应直接输出原始 HTML：%s", rendered)
+	}
+}
+
+func TestBusyComposerUsesOneCancelButton(t *testing.T) {
+	data := PageData{
+		Project:        projects.Project{ID: "project-1"},
+		Header:         session.Header{ID: "session-1"},
+		SelectedPreset: presets.Preset{ID: "模式"},
+		SelectedModel:  llm.Selection{Provider: "fake", Model: "fake-fast"},
+		HasProject:     true,
+		HasSession:     true,
+		HasPreset:      true,
+		Busy:           true,
+	}
+	writer := httptest.NewRecorder()
+	err := MessageBox(data).Render(context.Background(), writer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := writer.Body.String()
+	if !strings.Contains(body, `id="composer"`) || !strings.Contains(body, `class="send-button is-cancel"`) || !strings.Contains(body, `aria-label="取消"`) {
+		t.Fatalf("忙碌时应显示合并后的取消按钮：%s", body)
+	}
+	if !strings.Contains(body, `hx-target="#composer"`) {
+		t.Fatalf("取消请求只能刷新输入区：%s", body)
+	}
+	if strings.Contains(body, `type="submit"`) || strings.Contains(body, "cancel-button") {
+		t.Fatalf("忙碌时不应同时存在发送按钮或独立取消按钮：%s", body)
+	}
+}
+
+func TestCancelRouteStopsConversationAndRendersSendButton(t *testing.T) {
+	service, projectService, presetService, books, agentService := newWebService(t)
+	project, err := projectService.Create(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = presetService.Create(presets.Preset{ID: "模式"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = books.Create(session.Header{
+		ID:             "session-cancel",
+		Title:          "取消测试",
+		CreatedAt:      time.Now(),
+		ProjectID:      project.ID,
+		ProjectRoot:    project.Root,
+		PresetID:       "模式",
+		PresetRevision: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	agentService.conversation.state = "busy"
+	body := "project_id=" + url.QueryEscape(project.ID) + "&session_id=session-cancel"
+	request := httptest.NewRequest(http.MethodPost, "/sessions/cancel", strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	writer := httptest.NewRecorder()
+	service.handleCancelSession(writer, request)
+	if agentService.conversation.cancelCalls != 1 {
+		t.Fatalf("取消请求应调用会话取消：calls=%d", agentService.conversation.cancelCalls)
+	}
+	if strings.Contains(writer.Body.String(), `class="send-button is-cancel"`) {
+		t.Fatalf("取消完成后不应继续显示取消按钮：%s", writer.Body.String())
+	}
+	if !strings.Contains(writer.Body.String(), `id="composer"`) || strings.Contains(writer.Body.String(), `id="chat-panel"`) {
+		t.Fatalf("取消响应只能返回输入区：%s", writer.Body.String())
 	}
 }
 

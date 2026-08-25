@@ -39,10 +39,21 @@ func (a *adapter) Name() string {
 // ProviderInfo 返回 DeepSeek 已适配模型及其思考档位。
 func (a *adapter) ProviderInfo() llm.ProviderInfo {
 	return llm.ProviderInfo{
-		Name: a.Name(),
+		Name:        a.Name(),
+		DisplayName: "DeepSeek",
 		Models: []llm.ModelInfo{
-			{ID: "deepseek-v4-flash", ThinkingLevels: []string{"off", "low", "high", "max"}},
-			{ID: "deepseek-v4-pro", ThinkingLevels: []string{"off", "high", "max"}},
+			{
+				ID:                      "deepseek-v4-flash",
+				Name:                    "DeepSeek V4 Flash",
+				ThinkingLevels:          []string{"off", "low", "high", "max"},
+				SupportsProviderDefault: true,
+			},
+			{
+				ID:                      "deepseek-v4-pro",
+				Name:                    "DeepSeek V4 Pro",
+				ThinkingLevels:          []string{"off", "high", "max"},
+				SupportsProviderDefault: true,
+			},
 		},
 	}
 }
@@ -135,7 +146,7 @@ type toolCall struct {
 
 func validateThinking(thinking string) error {
 	switch thinking {
-	case "off", "low", "high", "max":
+	case "", "off", "low", "high", "max":
 		return nil
 	default:
 		return llm.NewError("deepseek", llm.ErrBadRequest, "thinking 只支持 off、low、high 或 max")
@@ -169,13 +180,15 @@ func buildParams(req llm.Request) (openai.ChatCompletionNewParams, error) {
 	if req.Temperature != 0 {
 		params.Temperature = openai.Float(req.Temperature)
 	}
-	thinking := map[string]any{"type": "disabled"}
-	extraFields := map[string]any{"thinking": thinking}
-	if req.Thinking != "off" {
-		thinking["type"] = "enabled"
-		extraFields["reasoning_effort"] = req.Thinking
+	if req.Thinking != "" {
+		thinking := map[string]any{"type": "disabled"}
+		extraFields := map[string]any{"thinking": thinking}
+		if req.Thinking != "off" {
+			thinking["type"] = "enabled"
+			extraFields["reasoning_effort"] = req.Thinking
+		}
+		params.SetExtraFields(extraFields)
 	}
-	params.SetExtraFields(extraFields)
 	return params, nil
 }
 

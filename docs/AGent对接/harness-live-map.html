@@ -629,7 +629,7 @@
           <article class="map-node map-card" id="module-llm" data-module="llm" tabindex="0">
             <div class="module-kicker">基础能力插件</div>
             <h2>llm</h2>
-            <p>提供统一模型入口；适配器登记到插座排，并声明所有 Agent 模式都可选的模型和思考档位。</p>
+            <p>提供统一模型入口；适配器登记到插座排，并按模型分别声明可选的思考档位及是否支持服务商默认。</p>
             <div class="chips"><span class="chip">Service</span><span class="chip">Adapter</span><span class="chip">模型目录</span><span class="chip">Stream</span></div>
           </article>
 
@@ -682,7 +682,7 @@
           <article class="map-node map-card" id="module-ui" data-module="ui" tabindex="0">
             <div class="module-kicker">UI 插件 · 当前默认界面</div>
             <h2>Web UI</h2>
-            <p>本机网页工作台领取 projects、presets、sessions、agents、llm 和 tools；模型在输入框独立选择并入账；它不直接调用 loop。</p>
+            <p>本机网页工作台领取 projects、presets、sessions、agents、llm 和 tools；会话标题区展示当前模式并预留“对话 / 轨迹”导航，模型与推理等级在组合选择器中独立选择并入账；轨迹内容尚未实现，Web 不直接调用 loop。</p>
             <div class="chips"><span class="chip">templ</span><span class="chip">HTMX</span><span class="chip">Tailwind</span><span class="chip">SSE</span><span class="chip">目录选择</span></div>
           </article>
 
@@ -937,7 +937,7 @@
       llm: {
         title: "llm · 模型入口",
         path: "llm/plugin.go → service.go → types.go",
-        text: "登记 llm 能力，按每份 Request 明确写的 Provider 路由，不猜默认模型。每个适配器同时声明可选的模型和对应思考档位；所有 Agent 模式共享这份目录，Web 在会话输入框选择并由 Validate 复核。DeepSeek 插件已用官方 OpenAI Go SDK 接入。"
+        text: "登记 llm 能力，按每份 Request 明确写的 Provider 路由，不猜默认模型。每个适配器分别声明模型、模型自己的思考档位和服务商默认能力；所有 Agent 模式共享这份目录，Web 在组合选择器中选择并由 Validate 复核。DeepSeek 插件已用官方 OpenAI Go SDK 接入。"
       },
       tools: {
         title: "tools · 模型工具入口",
@@ -982,7 +982,7 @@
       ui: {
         title: "UI · 本机 Web 工作台",
         path: "uiplugins/web/plugin.go → server.go → views.templ",
-        text: "Web 领取 projects、presets、sessions、agents、llm、tools，页面只读账本或调用 agents；loop 仍由 agents 经 Runner 调用。侧栏永久提供新会话和添加项目；模型由输入框选择，model/selected 入账，账本更新经非阻塞 SSE 刷新。"
+        text: "Web 领取 projects、presets、sessions、agents、llm、tools，页面只读账本或调用 agents；loop 仍由 agents 经 Runner 调用。侧栏永久提供新会话和添加项目；会话标题区展示模式并预留对话/轨迹导航，模型与推理等级由组合选择器选择，model/selected 入账，账本更新经非阻塞 SSE 刷新。"
       }
     };
 

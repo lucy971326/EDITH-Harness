@@ -104,17 +104,18 @@ func (d *driver) runTurn(first delivery, extraSteerings []delivery) {
 		_ = a.claimAsUserMessage(steering)
 	}
 
+	a.markBusy()
 	_, err = a.book.RecordTurnStart()
 	if err != nil {
+		a.markTurnDone()
 		log.Printf("loop: 开轮记账失败，这轮不跑：%v", err)
 		a.report(err)
 		return
 	}
 
-	a.markBusy()
 	defer func() {
-		_, _ = a.book.RecordTurnEnd()
 		a.markTurnDone()
+		_, _ = a.book.RecordTurnEnd()
 	}()
 
 	for {
@@ -182,6 +183,7 @@ func (d *driver) runStep() (bool, error) {
 	var chunkSeqs []int
 	chunkText := &strings.Builder{}
 	ctx := a.stepContext()
+	defer a.clearStepContext()
 	reply, err := a.llmSvc.Stream(ctx, request, func(delta chat.Delta) {
 		event, chunkErr := a.book.RecordChunk(delta.Text)
 		if chunkErr != nil {

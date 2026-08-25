@@ -1228,6 +1228,19 @@ func TestCancelFinalizesPartialReply(t *testing.T) {
 	}
 }
 
+func TestCancelBeforeStepContextCancelsNextStep(t *testing.T) {
+	agent := &Conversation{working: true}
+	if agent.State() != "starting" {
+		t.Fatalf("接活但尚未开步时应报告 starting：got %s", agent.State())
+	}
+	agent.Cancel()
+	ctx := agent.stepContext()
+	defer agent.clearStepContext()
+	if ctx.Err() != context.Canceled {
+		t.Fatalf("步骤上下文应继承提前到达的取消请求：err=%v", ctx.Err())
+	}
+}
+
 func TestCancelWithRunningToolLeavesUnknown(t *testing.T) {
 	_, roster, _, registry := newTestStack(t,
 		scriptCall{deltas: []string{"我调工具"}, reply: llm.Reply{

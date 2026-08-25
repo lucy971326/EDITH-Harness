@@ -122,6 +122,36 @@ func TestAdapterSendsThinkingAndReadsStream(t *testing.T) {
 	}
 }
 
+func TestAdapterSendsMaxThinking(t *testing.T) {
+	var body map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		data, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = json.Unmarshal(data, &body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		writer.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(writer, "data: [DONE]\n\n")
+	}))
+	defer server.Close()
+
+	adapter := newAdapter("test-key", server.URL)
+	_, err := adapter.Stream(context.Background(), llm.Request{Model: "deepseek-v4-flash", Thinking: "max"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body["reasoning_effort"] != "max" {
+		t.Fatalf("max 必须透传为 reasoning_effort=max：%v", body)
+	}
+	thinking, ok := body["thinking"].(map[string]any)
+	if !ok || thinking["type"] != "enabled" {
+		t.Fatalf("max 必须同时开启 thinking：%v", body)
+	}
+}
+
 func TestAdapterRejectsUnknownThinking(t *testing.T) {
 	adapter := newAdapter("test-key", "http://127.0.0.1")
 	_, err := adapter.Stream(context.Background(), llm.Request{Thinking: "medium"}, nil)
