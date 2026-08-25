@@ -588,7 +588,7 @@
       <div>
         <p class="eyebrow">edith-harness · Current Architecture</p>
         <h1>整体结构</h1>
-        <p class="subtitle">已实现：Project → Session → Agent 模式、模式版本锁定、每会话独立执行环境、DeepSeek SDK、文件工具、崩溃恢复和本机 Web UI。TUI 已暂停。</p>
+        <p class="subtitle">已实现：Project → Session → Agent 模式、模式版本锁定、会话模型切换入账、每会话独立执行环境、DeepSeek SDK、文件工具、崩溃恢复和本机 Web UI。TUI 已暂停。</p>
       </div>
     </header>
 
@@ -629,7 +629,7 @@
           <article class="map-node map-card" id="module-llm" data-module="llm" tabindex="0">
             <div class="module-kicker">基础能力插件</div>
             <h2>llm</h2>
-            <p>提供统一模型入口；适配器登记到插座排，并声明自己可选的模型和思考档位。</p>
+            <p>提供统一模型入口；适配器登记到插座排，并声明所有 Agent 模式都可选的模型和思考档位。</p>
             <div class="chips"><span class="chip">Service</span><span class="chip">Adapter</span><span class="chip">模型目录</span><span class="chip">Stream</span></div>
           </article>
 
@@ -644,7 +644,7 @@
             <div class="module-kicker">项目目录插件</div>
             <h2>projects</h2>
             <p>一个 Project 对应一个工作目录；按 ProjectID 列出自己的会话。</p>
-            <div class="chips"><span class="chip">Create</span><span class="chip">ListSessions</span><span class="chip">RememberPreset</span></div>
+            <div class="chips"><span class="chip">Create</span><span class="chip">ListSessions</span><span class="chip">RememberPreset</span><span class="chip">RememberModel</span></div>
           </article>
 
           <article class="map-node map-card" id="module-presets" data-module="presets" tabindex="0">
@@ -657,7 +657,7 @@
           <article class="map-node map-card" id="module-agents" data-module="agents" tabindex="0">
             <div class="module-kicker">运行时管理插件</div>
             <h2>agents</h2>
-            <p>按 Session 封面组装项目、模式版本和专属能力空间，再把活交给 Runner。</p>
+            <p>按 Session 封面组装项目、模式版本和专属能力空间，再把当前模型选择交给 Runner。</p>
             <div class="chips"><span class="chip">StartSession</span><span class="chip">OpenSession</span><span class="chip">Scope</span></div>
           </article>
 
@@ -784,6 +784,7 @@
                     <p><code>Create / Get / List</code><span>管项目</span></p>
                     <p><code>ListSessions</code><span>列某项目的会话</span></p>
                     <p><code>RememberPreset</code><span>记住上次成功模式</span></p>
+                    <p><code>RememberModel</code><span>记住上次模型选择</span></p>
                     <p><code>Archive / Restore</code><span>收起或恢复项目</span></p>
                   </div>
                 </div>
@@ -849,10 +850,11 @@
 
           <aside class="map-node scope-card" id="agent-scope" data-module="runtime-shape" tabindex="0">
             <strong>Session · Runtime Agent</strong><span class="done-tag">一会话一运行体</span>
-            <p>会话封面锁定 Project 和 Preset 版本；恢复时仍用当时的模式，不被后续修改偷换。</p>
+            <p>会话封面锁定 Project 和 Preset 版本；当前模型独立写进账本，空闲时可以切换。</p>
             <div class="agent-route">
               <div><span>ProjectRoot</span><code>/work/demo</code></div>
               <div><span>Preset</span><code>coder @ revision 3</code></div>
+              <div><span>Model</span><code>deepseek / v4 / high</code></div>
               <div><span>Runtime ID</span><code>Session ID</code></div>
             </div>
             <div class="session-stack">
@@ -878,9 +880,9 @@
             </article>
             <article class="tui-part">
               <span class="tui-label">新会话草稿</span>
-              <h3>先选模式，发送时才建会话</h3>
-              <p><code>presets</code> 列模式；未发送的空草稿不写账本。</p>
-              <div class="tui-methods"><span>presets.List</span><span>LastPresetID</span></div>
+              <h3>先选模式和模型，发送时才建会话</h3>
+              <p><code>presets</code> 列模式，<code>llm</code> 列全部模型；优先沿用项目上次模型。未发送的空草稿不写账本。</p>
+              <div class="tui-methods"><span>presets.List</span><span>LastPresetID</span><span>LastModel</span><span>llm.Providers</span></div>
             </article>
           </div>
 
@@ -888,7 +890,7 @@
             <span class="tui-label">当前 UI 插件</span>
             <h3>Web · templ + HTMX + Tailwind</h3>
             <p>页面只负责展示和用户操作；项目、模式、会话运行仍由各自插件负责。</p>
-            <div class="tui-route">Project → Session + Preset<br>首次发送 → agents.StartSession</div>
+            <div class="tui-route">Project → Session + Preset + Model<br>首次发送 → agents.StartSession</div>
           </article>
 
           <div class="tui-column">
@@ -900,9 +902,9 @@
             </article>
             <article class="tui-part">
               <span class="tui-label">底部输入区</span>
-              <h3>发消息和取消</h3>
-              <p>第一次发送让 <code>agents</code> 建运行体；旧会话先 <code>OpenSession</code>，再操作 Conversation。</p>
-              <div class="tui-methods"><span>OpenSession</span><span>SubmitFollowup</span><span>Cancel</span></div>
+              <h3>发消息、换模型和取消</h3>
+              <p>第一次发送让 <code>agents</code> 建运行体；旧会话先 <code>OpenSession</code>，空闲时可通过 Conversation 换下一轮模型。</p>
+              <div class="tui-methods"><span>OpenSession</span><span>SelectModel</span><span>SubmitFollowup</span><span>Cancel</span></div>
             </article>
           </div>
         </div>
@@ -945,7 +947,7 @@
       projects: {
         title: "projects · 项目目录",
         path: "projects/plugin.go → service.go → persistence/projectjson/",
-        text: "Project 绑定一个真实工作目录，负责创建、改名、归档和按项目列会话。它还记住该项目上次成功使用的 Preset。"
+        text: "Project 绑定一个真实工作目录，负责创建、改名、归档和按项目列会话。它还分别记住该项目上次成功使用的 Preset 和模型选择，给新草稿当默认值。"
       },
       presets: {
         title: "presets · Agent 模式",
@@ -955,12 +957,12 @@
       agents: {
         title: "agents · 运行时组装",
         path: "agents/plugin.go → service.go",
-        text: "agents 不再保存长期档案。它按会话封面取项目和精确 Preset 版本，挂载一份会话专属环境，再交给 Runner。"
+        text: "agents 不再保存长期档案。它按会话封面取项目和精确 Preset 版本，挂载一份会话专属环境，并把当前模型选择交给 Runner。"
       },
       "runtime-shape": {
         title: "Session 就是一个 Runtime Agent",
         path: "session/types.go → agents/service.go → loop/agent.go",
-        text: "长期配置属于 Preset，目录属于 Project；两者在 Session 中锁定后才组成一个运行中的 Agent。因此一个项目的不同会话可以自由选不同模式。"
+        text: "长期配置属于 Preset，目录属于 Project；两者在 Session 中锁定后才组成一个运行中的 Agent。模型选择不属于 Preset：它由会话账本记录，空闲时可切换。因此一个项目的不同会话能自由选不同模式和模型。"
       },
       loop: {
         title: "loop · 对话搬运工（调整后）",
