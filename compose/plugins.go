@@ -11,7 +11,10 @@ import (
 	"harness/localenv"
 	"harness/loop"
 	"harness/persistence/jsonl"
-	"harness/persistence/profilejson"
+	"harness/persistence/presetjson"
+	"harness/persistence/projectjson"
+	"harness/presets"
+	"harness/projects"
 	"harness/session"
 	filetools "harness/toolplugins/files"
 	"harness/tools"
@@ -20,7 +23,8 @@ import (
 
 // pluginSelection 放本次启动选中的大零件；固定插座不交给配置选择。
 type pluginSelection struct {
-	profileStore core.Plugin
+	projectStore core.Plugin
+	presetStore  core.Plugin
 	journal      core.Plugin
 	llmAdapters  []core.Plugin
 	environment  core.Plugin
@@ -29,14 +33,21 @@ type pluginSelection struct {
 	ui           core.Plugin
 }
 
-func selectPlugins(config Config, home string, workspace string) (pluginSelection, error) {
+func selectPlugins(config Config, home string) (pluginSelection, error) {
 	var selected pluginSelection
 
-	switch config.Plugins.ProfileStore {
-	case "profilejson":
-		selected.profileStore = profilejson.Plugin{Root: filepath.Join(home, "agents")}
+	switch config.Plugins.ProjectStore {
+	case "projectjson":
+		selected.projectStore = projectjson.Plugin{Root: filepath.Join(home, "projects")}
 	default:
-		return pluginSelection{}, fmt.Errorf("未知的 plugins.profile_store：%s", config.Plugins.ProfileStore)
+		return pluginSelection{}, fmt.Errorf("未知的 plugins.project_store：%s", config.Plugins.ProjectStore)
+	}
+
+	switch config.Plugins.PresetStore {
+	case "presetjson":
+		selected.presetStore = presetjson.Plugin{Root: filepath.Join(home, "presets")}
+	default:
+		return pluginSelection{}, fmt.Errorf("未知的 plugins.preset_store：%s", config.Plugins.PresetStore)
 	}
 
 	switch config.Plugins.Journal {
@@ -67,7 +78,7 @@ func selectPlugins(config Config, home string, workspace string) (pluginSelectio
 
 	switch config.Plugins.Environment {
 	case "localenv":
-		selected.environment = localenv.Plugin{Root: workspace}
+		selected.environment = localenv.Plugin{}
 	default:
 		return pluginSelection{}, fmt.Errorf("未知的 plugins.environment：%s", config.Plugins.Environment)
 	}
@@ -100,7 +111,8 @@ func selectPlugins(config Config, home string, workspace string) (pluginSelectio
 
 func (p pluginSelection) ordered() []core.Plugin {
 	plugins := []core.Plugin{
-		p.profileStore,
+		p.projectStore,
+		p.presetStore,
 		p.journal,
 		session.Plugin{},
 		llm.Plugin{},
@@ -108,6 +120,6 @@ func (p pluginSelection) ordered() []core.Plugin {
 	plugins = append(plugins, p.llmAdapters...)
 	plugins = append(plugins, tools.Plugin{}, p.environment)
 	plugins = append(plugins, p.toolPlugins...)
-	plugins = append(plugins, agents.Plugin{}, p.runner, p.ui)
+	plugins = append(plugins, projects.Plugin{}, presets.Plugin{}, agents.Plugin{}, p.runner, p.ui)
 	return plugins
 }

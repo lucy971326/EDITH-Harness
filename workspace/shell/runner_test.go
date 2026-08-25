@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"harness/core"
+	"harness/environment"
 	"harness/localenv"
 	"harness/workspace/process"
 	"harness/workspace/shell"
@@ -15,16 +16,27 @@ import (
 func newTestRunner(t *testing.T, limit int) (shell.Runner, *core.App) {
 	t.Helper()
 	app := core.New()
-	err := app.Install(localenv.Plugin{Root: t.TempDir(), OutputLimit: limit})
+	err := app.Install(localenv.Plugin{OutputLimit: limit})
 	if err != nil {
 		t.Fatal(err)
 	}
-	runner, err := shell.Get(app)
+	provider, err := environment.Get(app)
 	if err != nil {
 		app.Close()
 		t.Fatal(err)
 	}
-	return runner, app
+	scope := app.ForChild("测试会话")
+	err = provider.Mount(scope, t.TempDir())
+	if err != nil {
+		app.Close()
+		t.Fatal(err)
+	}
+	runner, err := shell.Get(scope)
+	if err != nil {
+		app.Close()
+		t.Fatal(err)
+	}
+	return runner, scope
 }
 
 func TestRunnerReturnsOutputAndExitCode(t *testing.T) {

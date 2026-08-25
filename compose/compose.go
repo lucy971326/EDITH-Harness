@@ -11,34 +11,21 @@ import (
 
 // Runtime 是一次已经组装好的 edith-harness 运行时。
 type Runtime struct {
-	App       *core.App // 已按依赖顺序装好的公共场地
-	Home      string    // 用户私有目录
-	Workspace string    // 调用方明确给出的工作目录
+	App  *core.App // 已按依赖顺序装好的公共场地
+	Home string    // 用户私有目录
 }
 
 // Open 读取用户配置并组装完整运行时。首次调用会写无密钥模板后返回错误。
-func Open(home string, workspace string) (*Runtime, error) {
+func Open(home string) (*Runtime, error) {
 	absoluteHome, err := privateDirectory(home, "用户目录")
 	if err != nil {
 		return nil, err
 	}
-	absoluteWorkspace, err := filepath.Abs(workspace)
-	if err != nil {
-		return nil, fmt.Errorf("解析工作目录失败：%w", err)
-	}
-	info, err := os.Stat(absoluteWorkspace)
-	if err != nil {
-		return nil, fmt.Errorf("打开工作目录失败：%w", err)
-	}
-	if !info.IsDir() {
-		return nil, fmt.Errorf("工作目录 %s 不是目录", absoluteWorkspace)
-	}
-
 	config, err := loadConfig(absoluteHome)
 	if err != nil {
 		return nil, err
 	}
-	plugins, err := selectPlugins(config, absoluteHome, absoluteWorkspace)
+	plugins, err := selectPlugins(config, absoluteHome)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +35,7 @@ func Open(home string, workspace string) (*Runtime, error) {
 		app.Close()
 		return nil, err
 	}
-	return &Runtime{App: app, Home: absoluteHome, Workspace: absoluteWorkspace}, nil
+	return &Runtime{App: app, Home: absoluteHome}, nil
 }
 
 func privateDirectory(path string, label string) (string, error) {

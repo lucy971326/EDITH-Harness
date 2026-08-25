@@ -118,7 +118,7 @@
     .architecture-map {
       position: relative;
       width: 2380px;
-      height: 2000px;
+      height: 2260px;
       background-color: #fbfcfe;
       background-image:
         linear-gradient(#edf1f6 1px, transparent 1px),
@@ -207,12 +207,14 @@
     #module-llm { left: 80px; top: 950px; --accent: var(--llm); --accent-border: #d7caed; --accent-bg: #f3effa; }
     #module-tools { left: 80px; top: 1300px; --accent: var(--tools); --accent-border: #ecd1b7; --accent-bg: #fbf2e9; }
     #app-pillar { left: 520px; top: 250px; }
-    #module-agents { left: 1780px; top: 250px; --accent: var(--agents); --accent-border: #b9ddd8; --accent-bg: #eaf7f5; }
-    #module-loop { left: 1780px; top: 610px; --accent: var(--loop); --accent-border: #c8dfc2; --accent-bg: #eef7ec; }
-    #module-localenv { left: 1780px; top: 970px; --accent: var(--env); --accent-border: #e3c2bb; --accent-bg: #faf0ee; }
-    #module-ui { left: 1780px; top: 1330px; --accent: var(--ui); --accent-border: #dfc5dc; --accent-bg: #fbf0fa; }
-    #agent-scope { left: 1740px; top: 1670px; }
-    #module-chat { left: 845px; top: 1800px; --accent: var(--chat); --accent-border: #cbd5df; --accent-bg: #f0f3f6; }
+    #module-projects { left: 1780px; top: 230px; --accent: var(--startup); --accent-border: #c4d5ee; --accent-bg: #edf4fe; }
+    #module-presets { left: 1780px; top: 510px; --accent: var(--llm); --accent-border: #d7caed; --accent-bg: #f3effa; }
+    #module-agents { left: 1780px; top: 790px; --accent: var(--agents); --accent-border: #b9ddd8; --accent-bg: #eaf7f5; }
+    #module-loop { left: 1780px; top: 1070px; --accent: var(--loop); --accent-border: #c8dfc2; --accent-bg: #eef7ec; }
+    #module-localenv { left: 1780px; top: 1350px; --accent: var(--env); --accent-border: #e3c2bb; --accent-bg: #faf0ee; }
+    #module-ui { left: 1780px; top: 1630px; --accent: var(--ui); --accent-border: #dfc5dc; --accent-bg: #fbf0fa; }
+    #agent-scope { left: 1740px; top: 1900px; }
+    #module-chat { left: 845px; top: 2050px; --accent: var(--chat); --accent-border: #cbd5df; --accent-bg: #f0f3f6; }
     #module-startup { left: 850px; top: 35px; width: 470px; --accent: var(--startup); --accent-border: #c4d5ee; --accent-bg: #edf4fe; }
 
     .app-pillar {
@@ -490,8 +492,9 @@
         "startup startup startup startup"
         "jsonl session llm tools"
         "app app app app"
-        "agents loop localenv ui"
-        "agent agent chat chat";
+        "projects presets agents loop"
+        "localenv ui agent agent"
+        "chat chat chat chat";
       gap: 24px;
       width: 100%;
       height: auto;
@@ -507,6 +510,8 @@
     #module-session,
     #module-llm,
     #module-tools,
+    #module-projects,
+    #module-presets,
     #module-agents,
     #module-loop,
     #module-localenv,
@@ -529,6 +534,8 @@
     #module-llm { grid-area: llm; }
     #module-tools { grid-area: tools; }
     #app-pillar { grid-area: app; }
+    #module-projects { grid-area: projects; }
+    #module-presets { grid-area: presets; }
     #module-agents { grid-area: agents; }
     #module-loop { grid-area: loop; }
     #module-localenv { grid-area: localenv; }
@@ -547,6 +554,7 @@
           "jsonl session"
           "llm tools"
           "app app"
+          "projects presets"
           "agents loop"
           "localenv ui"
           "agent chat";
@@ -562,7 +570,7 @@
         grid-template-columns: 1fr;
         grid-template-areas:
           "startup" "jsonl" "session" "llm" "tools" "app"
-          "agents" "loop" "localenv" "ui" "agent" "chat";
+          "projects" "presets" "agents" "loop" "localenv" "ui" "agent" "chat";
         padding: 16px;
       }
       .capability-list.services,
@@ -580,7 +588,7 @@
       <div>
         <p class="eyebrow">edith-harness · Current Architecture</p>
         <h1>整体结构</h1>
-        <p class="subtitle">已实现：YAML 装机清单、Bubble Tea TUI、显式模型归属、DeepSeek SDK、文件工具、多会话和配置导出。页面按普通文档上下滚动。</p>
+        <p class="subtitle">已实现：Project → Session → Agent 模式、模式版本锁定、每会话独立执行环境、DeepSeek SDK、文件工具和崩溃恢复。TUI 已暂停，下一阶段接 Web。</p>
       </div>
     </header>
 
@@ -607,8 +615,8 @@
           <article class="map-node map-card" id="module-jsonl" data-module="jsonl" tabindex="0">
             <div class="module-kicker">持久化插件 · 先安装</div>
             <h2>persistence</h2>
-            <p>jsonl 保存聊天账；profilejson 保存长期 Agent 档案。</p>
-            <div class="chips"><span class="chip">Journal</span><span class="chip">Agent profiles</span><span class="chip">fsync</span></div>
+            <p>jsonl 保存聊天账；projectjson 保存项目；presetjson 永久保留模式版本。</p>
+            <div class="chips"><span class="chip">Journal</span><span class="chip">Projects</span><span class="chip">Preset revisions</span></div>
           </article>
 
           <article class="map-node map-card" id="module-startup" data-module="startup" tabindex="0">
@@ -632,11 +640,25 @@
             <div class="chips"><span class="chip">Registry</span><span class="chip">Pipeline</span><span class="chip">write_file</span></div>
           </article>
 
+          <article class="map-node map-card" id="module-projects" data-module="projects" tabindex="0">
+            <div class="module-kicker">项目目录插件</div>
+            <h2>projects</h2>
+            <p>一个 Project 对应一个工作目录；按 ProjectID 列出自己的会话。</p>
+            <div class="chips"><span class="chip">Create</span><span class="chip">ListSessions</span><span class="chip">RememberPreset</span></div>
+          </article>
+
+          <article class="map-node map-card" id="module-presets" data-module="presets" tabindex="0">
+            <div class="module-kicker">Agent 模式插件</div>
+            <h2>presets</h2>
+            <p>保存模型、人设和工具白名单；每次修改都新增不可变版本。</p>
+            <div class="chips"><span class="chip">Preset</span><span class="chip">Revision</span><span class="chip">GetRevision</span></div>
+          </article>
+
           <article class="map-node map-card" id="module-agents" data-module="agents" tabindex="0">
-            <div class="module-kicker">Agent 管理插件 · 对外唯一入口</div>
+            <div class="module-kicker">运行时管理插件</div>
             <h2>agents</h2>
-            <p>管长期小红档案和会话；自己不跑对话，把活交给已登记的 Runner。</p>
-            <div class="chips"><span class="chip">AgentProfile</span><span class="chip">Service</span><span class="chip">Provider + Model + Thinking</span></div>
+            <p>按 Session 封面组装项目、模式版本和专属能力空间，再把活交给 Runner。</p>
+            <div class="chips"><span class="chip">StartSession</span><span class="chip">ResumeSession</span><span class="chip">Scope</span></div>
           </article>
 
           <article class="map-node map-card" id="module-loop" data-module="loop" tabindex="0">
@@ -647,9 +669,9 @@
           </article>
 
           <article class="map-node map-card" id="module-localenv" data-module="localenv" tabindex="0">
-            <div class="module-kicker">底层执行环境 · 不是模型工具</div>
+            <div class="module-kicker">每会话执行环境 · 不是模型工具</div>
             <h2>localenv</h2>
-            <p>一次装上同根目录的三块能力，禁止拆开换。</p>
+            <p>agents 启动会话时按 ProjectRoot 挂载，同一进程中的多个项目互不串目录。</p>
             <div class="env-stack">
               <div><strong>files.Store</strong><span>读 / 写 / 列</span></div>
               <div><strong>process.Spawner</strong><span>长期进程</span></div>
@@ -658,10 +680,10 @@
           </article>
 
           <article class="map-node map-card" id="module-ui" data-module="ui" tabindex="0">
-            <div class="module-kicker">UI 插件 · 当前是 terminal TUI</div>
-            <h2>terminal TUI</h2>
-            <p>左侧管选择，中间显示账本，底部接收输入；不直接认识 loop。</p>
-            <div class="chips"><span class="chip">Bubble Tea</span><span class="chip">agents</span><span class="chip">llm / tools</span><span class="chip">session events</span></div>
+            <div class="module-kicker">UI 插件 · 当前暂停</div>
+            <h2>Web UI · 下一章</h2>
+            <p>旧 Bubble Tea 原型已归档；下一阶段由 Web 领取 projects、presets 和 agents。</p>
+            <div class="chips"><span class="chip">templ</span><span class="chip">HTMX</span><span class="chip">尚未实现</span></div>
           </article>
 
           <article class="map-node map-card" id="module-chat" data-module="chat" tabindex="0">
@@ -706,14 +728,22 @@
                     <p><code>ListHeaders</code><span>列所有账本封面</span></p>
                   </div>
                 </div>
-                <div class="capability" id="cap-profiles">
-                  <code>agent-profiles</code><span>agents.ProfileStore · 小红档案柜</span>
+                <div class="capability" id="cap-project-store">
+                  <code>project-store</code><span>projects.Store · 项目存放处</span>
                   <div class="method-list">
-                    <p><code>Create</code><span>存新小红</span></p>
-                    <p><code>Update</code><span>改小红档案</span></p>
-                    <p><code>Get</code><span>取一份档案</span></p>
-                    <p><code>List</code><span>列全部档案</span></p>
-                    <p><code>Archive</code><span>归档小红</span></p>
+                    <p><code>Create</code><span>存新项目</span></p>
+                    <p><code>Get</code><span>按 ID 取项目</span></p>
+                    <p><code>List</code><span>列全部项目</span></p>
+                    <p><code>Update</code><span>写回项目状态</span></p>
+                  </div>
+                </div>
+                <div class="capability" id="cap-preset-store">
+                  <code>preset-store</code><span>presets.Store · 模式版本库</span>
+                  <div class="method-list">
+                    <p><code>Create</code><span>存入第一版</span></p>
+                    <p><code>AppendRevision</code><span>追加新版本</span></p>
+                    <p><code>GetRevision</code><span>取指定历史版本</span></p>
+                    <p><code>List</code><span>列全部模式</span></p>
                   </div>
                 </div>
                 <div class="capability" id="cap-sessions">
@@ -736,15 +766,37 @@
                   </div>
                 </div>
                 <div class="capability" id="cap-agents">
-                  <code>agents</code><span>agents.Service · 小红管理入口</span>
+                  <code>agents</code><span>agents.Service · 会话运行入口</span>
                   <div class="method-list">
-                    <p><code>CreateAgent</code><span>新建小红</span></p>
-                    <p><code>UpdateAgent</code><span>修改档案</span></p>
-                    <p><code>ListAgents</code><span>列小红</span></p>
-                    <p><code>StartSession</code><span>新开会话</span></p>
-                    <p><code>ResumeSession</code><span>恢复旧会话</span></p>
-                    <p><code>ListSessions</code><span>列某小红的会话</span></p>
-                    <p><code>CloseSession</code><span>关一段会话</span></p>
+                    <p><code>StartSession</code><span>组装并启动新会话</span></p>
+                    <p><code>ResumeSession</code><span>按封面恢复旧会话</span></p>
+                    <p><code>GetSession</code><span>取正在运行的会话</span></p>
+                    <p><code>CloseSession</code><span>停掉一段会话</span></p>
+                    <p><code>RegisterRunner</code><span>登记谁能跑会话</span></p>
+                  </div>
+                </div>
+                <div class="capability" id="cap-projects">
+                  <code>projects</code><span>projects.Service · 项目入口</span>
+                  <div class="method-list">
+                    <p><code>Create / Get / List</code><span>管项目</span></p>
+                    <p><code>ListSessions</code><span>列某项目的会话</span></p>
+                    <p><code>RememberPreset</code><span>记住上次成功模式</span></p>
+                    <p><code>Archive / Restore</code><span>收起或恢复项目</span></p>
+                  </div>
+                </div>
+                <div class="capability" id="cap-presets">
+                  <code>presets</code><span>presets.Service · Agent 模式入口</span>
+                  <div class="method-list">
+                    <p><code>Create / Update</code><span>新建或追加模式版本</span></p>
+                    <p><code>Get</code><span>取当前版本</span></p>
+                    <p><code>GetRevision</code><span>取历史版本</span></p>
+                    <p><code>List / Archive</code><span>列出或归档模式</span></p>
+                  </div>
+                </div>
+                <div class="capability" id="cap-environment">
+                  <code>environment</code><span>environment.Provider · 执行环境装配器</span>
+                  <div class="method-list">
+                    <p><code>Mount</code><span>按项目目录挂载会话环境</span></p>
                   </div>
                 </div>
                 <div class="capability" id="cap-ui">
@@ -786,67 +838,67 @@
 
             <div class="rack">
               <div class="rack-title">④ 共同规则</div>
-              <div class="core-summary">Agent / Session 作用域、四种事件执行方式，以及 Install 启动 / Close 倒序收摊，都由 App 统一负责。</div>
+              <div class="core-summary">全局作用域 + 每会话作用域、四种事件执行方式，以及 Install 启动 / Close 倒序收摊，都由 App 统一负责。</div>
             </div>
 
             <div class="lifecycle"><span>Install：按顺序启动</span><span>Close：倒序收摊</span></div>
           </section>
 
-          <aside class="map-node scope-card" id="agent-scope" data-module="agent-shape" tabindex="0">
-            <strong>Agent A · 长期小红</strong><span class="done-tag">模型归属 · 已实现</span>
-            <p>档案管“是谁、用哪家模型、哪个型号、思考强度”；它能开很多独立会话。</p>
+          <aside class="map-node scope-card" id="agent-scope" data-module="runtime-shape" tabindex="0">
+            <strong>Session · Runtime Agent</strong><span class="done-tag">一会话一运行体</span>
+            <p>会话封面锁定 Project 和 Preset 版本；恢复时仍用当时的模式，不被后续修改偷换。</p>
             <div class="agent-route">
-              <div><span>Provider</span><code>deepseek</code></div>
-              <div><span>Model</span><code>deepseek-chat</code></div>
-              <div><span>Thinking</span><code>off / high / max</code></div>
+              <div><span>ProjectRoot</span><code>/work/demo</code></div>
+              <div><span>Preset</span><code>coder @ revision 3</code></div>
+              <div><span>Runtime ID</span><code>Session ID</code></div>
             </div>
             <div class="session-stack">
-              <div><strong>Session 1</strong><span>独立聊天账本</span></div>
-              <div><strong>Session 2</strong><span>另一段独立聊天</span></div>
+              <div><strong>Session Scope</strong><span>files / process / shell</span></div>
+              <div><strong>Session Book</strong><span>独立聊天账本</span></div>
             </div>
           </aside>
         </div>
       </div>
 
-      <section class="tui-map" aria-label="TUI 使用的能力">
+      <section class="tui-map" aria-label="Web UI 下一阶段接线">
         <div class="tui-map-head">
-          <h2>TUI 工作台：每个部位拿什么能力</h2>
-          <p>它只是界面，不接管账本，也不直接调用 loop。</p>
+          <h2>Web UI 下一章：页面各部位要拿什么</h2>
+          <p>下面是已确定的接线，不代表 Web 已实现。</p>
         </div>
         <div class="tui-layout">
           <div class="tui-column">
             <article class="tui-part">
               <span class="tui-label">左侧导航</span>
-              <h3>Agent / 会话列表</h3>
-              <p>从 <code>agents</code> 读取档案和会话目录。</p>
-              <div class="tui-methods"><span>ListAgents</span><span>ListSessions</span><span>GetAgent</span></div>
+              <h3>项目 → 会话</h3>
+              <p>只从 <code>projects</code> 取项目和该项目的会话。</p>
+              <div class="tui-methods"><span>List</span><span>ListSessions</span><span>Get</span></div>
             </article>
             <article class="tui-part">
-              <span class="tui-label">新建 Agent</span>
-              <h3>填写模型和工具</h3>
-              <p><code>llm</code> 给服务商，<code>tools</code> 给工具名，最后交给 <code>agents</code> 保存。</p>
-              <div class="tui-methods"><span>Providers</span><span>Names</span><span>CreateAgent</span></div>
+              <span class="tui-label">新会话草稿</span>
+              <h3>先选模式，发送时才建会话</h3>
+              <p><code>presets</code> 列模式；未发送的空草稿不写账本。</p>
+              <div class="tui-methods"><span>presets.List</span><span>LastPresetID</span></div>
             </article>
           </div>
 
           <article class="tui-center">
-            <span class="tui-label">当前 UI 插件</span>
-            <h3>terminal TUI</h3>
-            <p>Bubble Tea 只维护当前画面状态：焦点、列表、滚动位置、输入框和帮助弹窗。</p>
-            <div class="tui-route">ui.Run → agents → Conversation<br>session/appended → 历史投影 → 画面</div>
+            <span class="tui-label">下一个 UI 插件</span>
+            <h3>Web · templ + HTMX</h3>
+            <p>页面只负责展示和用户操作；项目、模式、会话运行仍由各自插件负责。</p>
+            <div class="tui-route">Project → Session + Preset<br>首次发送 → agents.StartSession</div>
           </article>
 
           <div class="tui-column">
             <article class="tui-part">
               <span class="tui-label">中间聊天区</span>
-              <h3>历史和实时过程</h3>
-              <p>历史读 <code>Conversation.Book().Events()</code>；新事件听 <code>session/appended</code>。</p>
+              <h3>账本事实</h3>
+              <p>首屏读 <code>Book().Events()</code>；运行中听 <code>session/appended</code>。</p>
               <div class="tui-methods"><span>Events</span><span>viewport</span><span>Tool 过程</span></div>
             </article>
             <article class="tui-part">
               <span class="tui-label">底部输入区</span>
               <h3>发消息和取消</h3>
-              <p>输入框把动作交给 <code>Conversation</code>，不会越过 <code>agents</code> 去找 loop。</p>
+              <p>第一次发送先让 <code>agents</code> 建运行体；之后只操作 <code>Conversation</code>。</p>
               <div class="tui-methods"><span>SubmitFollowup</span><span>Cancel</span><span>Close</span></div>
             </article>
           </div>
@@ -863,19 +915,19 @@
   <script>
     const modules = {
       jsonl: {
-        title: "persistence · 两种保存物",
-        path: "persistence/jsonl/ + persistence/profilejson/",
-        text: "jsonl 直接登记 journal，保存每段聊天发生了什么；profilejson 直接登记 agent-profiles，保存小红是谁、用什么模型、人设和工具名。edith-harness 的私有目录是 ~/.harness：config.yaml、agents/、sessions/ 都在这里。"
+        title: "persistence · 三类存储",
+        path: "persistence/jsonl/ + persistence/projectjson/ + persistence/presetjson/",
+        text: "jsonl 保存聊天账本；projectjson 保存项目；presetjson 按版本保存 Agent 模式。私有数据在 ~/.harness 的 projects/、presets/、sessions/ 中。"
       },
       startup: {
         title: "edith-harness + compose · 启动与总装",
         path: "cmd/edith-harness/main.go → compose/config.go → plugins.go → compose.go",
-        text: "main 找到 ~/.harness 和当前工作目录。普通启动时，config.yaml 选择档案存储、账本、模型适配器、执行环境、工具插件、Runner 和 UI；compose 把名字换成已编进程序的插件，再按固定顺序安装，最后 main 只领取 ui 并运行。传入 --dump-config 时只读取、校验并输出 YAML，不安装 App。session、llm、tools、agents 四个插座自动安装。"
+        text: "main 只找 ~/.harness，不再把启动目录当项目。config v2 选择项目存储、模式存储、账本、模型、环境、工具、Runner 和 UI；compose 按固定顺序安装。projects、presets、session、llm、tools、agents 都是固定插座。"
       },
       session: {
         title: "session · 账本",
         path: "session/plugin.go → store.go → session.go",
-        text: "必装插件。它直接按 \"journal\" 领取 Journal，创建 Store 并登记 \"sessions\"。每本账封面写清 SessionID 属于哪个 AgentID；模型历史、恢复和审计都从同一本账出发。"
+        text: "必装插件。它领取 Journal，创建 Store 并登记 sessions。v3 封面写 ProjectID、ProjectRoot、PresetID 和 PresetRevision；模型历史、恢复和审计都从同一本账出发。"
       },
       llm: {
         title: "llm · 模型入口",
@@ -887,19 +939,29 @@
         path: "tools/plugin.go → registry.go → pipeline.go",
         text: "这是模型唯一认识的工具入口。具体工具先把自己登记进 Registry，模型才能在菜单上看到它；调用后再走固定流程执行和记账。当前的 toolplugins/files 已登记 write_file。"
       },
-      agents: {
-        title: "agents · 小红管理处",
-        path: "agents/plugin.go → service.go → profile.go",
-        text: "它是外界唯一需要认识的 Agent 入口：存取长期小红档案、创建或恢复多段会话、查找运行中的会话。档案明确保存 Provider（哪家）、Model（型号）和 Thinking；旧档案可读但缺字段时不能开会话，更新后即可修复。"
+      projects: {
+        title: "projects · 项目目录",
+        path: "projects/plugin.go → service.go → persistence/projectjson/",
+        text: "Project 绑定一个真实工作目录，负责创建、改名、归档和按项目列会话。它还记住该项目上次成功使用的 Preset。"
       },
-      "agent-shape": {
-        title: "长期 Agent 和多段 Session",
-        path: "agents/profile.go → agents/service.go → loop/agent.go",
-        text: "Agent 是长期的小红：人设、工具名单、Provider、Model 和 Thinking 都放在档案里。Session 是它开的每个独立聊天窗口：各自有账本、收件箱、取消和恢复状态，彼此不串。"
+      presets: {
+        title: "presets · Agent 模式",
+        path: "presets/plugin.go → service.go → persistence/presetjson/",
+        text: "Preset 保存 Provider、Model、Thinking、人设和工具白名单。修改时只追加新版本，旧会话永远能取回自己锁定的那一版。"
+      },
+      agents: {
+        title: "agents · 运行时组装",
+        path: "agents/plugin.go → service.go",
+        text: "agents 不再保存长期档案。它按会话封面取项目和精确 Preset 版本，挂载一份会话专属环境，再交给 Runner。"
+      },
+      "runtime-shape": {
+        title: "Session 就是一个 Runtime Agent",
+        path: "session/types.go → agents/service.go → loop/agent.go",
+        text: "长期配置属于 Preset，目录属于 Project；两者在 Session 中锁定后才组成一个运行中的 Agent。因此一个项目的不同会话可以自由选不同模式。"
       },
       loop: {
         title: "loop · 对话搬运工（调整后）",
-        path: "loop/plugin.go → runner.go → conversation.go → driver.go",
+        path: "loop/plugin.go → runner.go → agent.go → driver.go",
         text: "它领取 llm、tools，并用 RegisterRunner 向 agents 登记自己是 Runner。agents 让它跑某段会话时，它才创建 Conversation；每段会话各有 Driver、收件箱、取消和账本。它不再自己管理小红档案，也不再对外暴露 agents。"
       },
       chat: {
@@ -910,31 +972,37 @@
       localenv: {
         title: "localenv · 本地执行环境",
         path: "localenv/plugin.go → localenv/files.go + localenv/process.go + workspace/shell/runner.go",
-        text: "这一个插件同时登记 files、process 和 shell，三者共用同一个根目录。它们是未来具体工具背后的手脚，不会直接出现在模型的工具菜单里。App 关闭时，process 会收掉整棵进程树。"
+        text: "localenv 全局只登记 environment.Provider。agents 每启动一段会话，才按 ProjectRoot 把 files、process 和 shell 挂到该会话的 Scope；关会话时收掉它的进程树。"
       },
       ui: {
-        title: "terminal TUI · 当前终端前端",
-        path: "uiplugins/terminal/plugin.go → tui.go → helpers.go",
-        text: "它是一个可选的大零件，当前由 YAML 选 terminal。Bubble Tea 只负责画面和按键；它从 agents 读取小红与会话，从 llm 和 tools 读取新建 Agent 所需的清单，把消息交给 Conversation。历史来自 Book().Events()，实时过程来自 session/appended 事件；它不直接认识 loop。"
+        title: "UI · TUI 已暂停",
+        path: "uiplugins/terminal/plugin.go + reference/terminal-v1/",
+        text: "旧 Bubble Tea 原型已完整归档，不再编译；terminal 现在只会清楚提示暂停。下一阶段写 Web UI，领取 projects、presets 和 agents，不越过内核。"
       }
     };
 
     const connections = [
       ["module-startup", "app-pillar", "#3e6fb4", "按 YAML 清单组装"],
       ["module-jsonl", "cap-journal", "#6c8e51", "放入"],
-      ["module-jsonl", "cap-profiles", "#6c8e51", "放入"],
+      ["module-jsonl", "cap-project-store", "#6c8e51", "放入"],
+      ["module-jsonl", "cap-preset-store", "#6c8e51", "放入"],
       ["cap-journal", "module-session", "#6c8e51", "领取"],
       ["module-session", "cap-sessions", "#149782", "放入"],
       ["module-llm", "cap-llm", "#8058c7", "放入"],
       ["module-tools", "cap-tools", "#d67824", "放入"],
-      ["cap-profiles", "module-agents", "#247c72", "领取"],
+      ["cap-project-store", "module-projects", "#247c72", "领取"],
+      ["module-projects", "cap-projects", "#247c72", "放入"],
+      ["cap-preset-store", "module-presets", "#247c72", "领取"],
+      ["module-presets", "cap-presets", "#247c72", "放入"],
       ["module-agents", "cap-agents", "#247c72", "放入"],
       ["module-loop", "module-agents", "#247c72", "RegisterRunner"],
-      ["module-localenv", "cap-files", "#b25442", "成套放入"],
+      ["module-localenv", "cap-environment", "#b25442", "放入"],
+      ["cap-projects", "module-agents", "#247c72", "领取项目"],
+      ["cap-presets", "module-agents", "#247c72", "领取版本"],
+      ["cap-environment", "module-agents", "#b25442", "挂载环境"],
       ["module-ui", "cap-ui", "#9a5b95", "放入"],
-      ["cap-agents", "module-ui", "#9a5b95", "管理会话"],
-      ["module-agents", "agent-scope", "#247c72", "长期档案"],
-      ["app-pillar", "agent-scope", "#3977e8", "会话作用域"],
+      ["module-agents", "agent-scope", "#247c72", "组装运行体"],
+      ["app-pillar", "agent-scope", "#3977e8", "Session Scope"],
       ["module-chat", "app-pillar", "#60758a", "共用"]
     ];
 

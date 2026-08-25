@@ -30,25 +30,33 @@ func (st *Store) RegisterKind(kind string, skipIfUnknown bool) error {
 	return st.formats.register(kind, skipIfUnknown)
 }
 
-// Create 开一本新账。agentID 和 profileRevision 标明它属于谁；带 seed
-// 就是重放一份旧账（重建内存态，逐笔写盘，不广播）。
-func (st *Store) Create(id string, agentID string, profileRevision int, seed ...Event) (*Session, error) {
+// Create 按封面开一本新账；带 seed 就重放旧账，不广播。
+func (st *Store) Create(header Header, seed ...Event) (*Session, error) {
 	st.mu.Lock()
 	defer st.mu.Unlock()
-	if agentID == "" {
-		return nil, fmt.Errorf("账本 %s 没写所属 agent", id)
+	if header.ID == "" {
+		return nil, fmt.Errorf("账本号不能为空")
 	}
-	if profileRevision < 1 {
-		return nil, fmt.Errorf("账本 %s 的 agent 档案版本必须从 1 起", id)
+	if header.Title == "" {
+		return nil, fmt.Errorf("账本 %s 没写标题", header.ID)
 	}
+	if header.ProjectID == "" || header.ProjectRoot == "" {
+		return nil, fmt.Errorf("账本 %s 没写完整的项目归属", header.ID)
+	}
+	if header.PresetID == "" || header.PresetRevision < 1 {
+		return nil, fmt.Errorf("账本 %s 没写完整的 Agent 模式版本", header.ID)
+	}
+	if header.CreatedAt.IsZero() {
+		return nil, fmt.Errorf("账本 %s 没写创建时间", header.ID)
+	}
+	header.FormatVersion = 3
 
-	_, exists := st.sessions[id]
+	_, exists := st.sessions[header.ID]
 	if exists {
-		return nil, fmt.Errorf("账本 %s 已经开过了", id)
+		return nil, fmt.Errorf("账本 %s 已经开过了", header.ID)
 	}
 
-	header := Header{FormatVersion: 2, ID: id, AgentID: agentID, ProfileRevision: profileRevision}
-	err := st.journal.Create(id, header)
+	err := st.journal.Create(header.ID, header)
 	if err != nil {
 		return nil, err
 	}
@@ -57,10 +65,10 @@ func (st *Store) Create(id string, agentID string, profileRevision int, seed ...
 
 	err = s.replay(seed)
 	if err != nil {
-		return nil, fmt.Errorf("账本 %s 的旧账重放失败：%w", id, err)
+		return nil, fmt.Errorf("账本 %s 的旧账重放失败：%w", header.ID, err)
 	}
 
-	st.sessions[id] = s
+	st.sessions[header.ID] = s
 	return s, nil
 }
 
@@ -77,14 +85,14 @@ func (st *Store) Open(id string) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	if header.FormatVersion != 2 {
-		return nil, fmt.Errorf("账本 %s 的格式版本是 %d，当前只认识 2；旧账需要迁移后才能打开", id, header.FormatVersion)
+	if header.FormatVersion != 3 {
+		return nil, fmt.Errorf("账本 %s 的格式版本是 %d，当前只认识 3", id, header.FormatVersion)
 	}
 	if header.ID != id {
 		return nil, fmt.Errorf("要打开账本 %s，读到的却是 %s", id, header.ID)
 	}
-	if header.AgentID == "" || header.ProfileRevision < 1 {
-		return nil, fmt.Errorf("账本 %s 没有完整的 agent 归属信息，需要迁移后才能打开", id)
+	if header.Title == "" || header.CreatedAt.IsZero() || header.ProjectID == "" || header.ProjectRoot == "" || header.PresetID == "" || header.PresetRevision < 1 {
+		return nil, fmt.Errorf("账本 %s 的封面信息不完整", id)
 	}
 
 	s := newSession(header, st.journal, st.broadcaster, st.formats)

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"harness/core"
+	"harness/environment"
 	"harness/localenv"
 	"harness/tools"
 )
@@ -18,7 +19,7 @@ func TestPluginRegistersWriteFile(t *testing.T) {
 	t.Cleanup(app.Close)
 
 	err := app.Install(
-		localenv.Plugin{Root: root},
+		localenv.Plugin{},
 		tools.Plugin{},
 		Plugin{},
 	)
@@ -34,8 +35,18 @@ func TestPluginRegistersWriteFile(t *testing.T) {
 	if !exists {
 		t.Fatal("write_file 应登记进 tools")
 	}
+	provider, err := environment.Get(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope := app.ForChild("测试会话")
+	t.Cleanup(scope.Close)
+	err = provider.Mount(scope, root)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	output, err := tool.Execute(context.Background(), json.RawMessage(`{"path":"notes/hello.txt","content":"你好"}`))
+	output, err := tool.Execute(context.Background(), scope, json.RawMessage(`{"path":"notes/hello.txt","content":"你好"}`))
 	if err != nil {
 		t.Fatalf("调用 write_file 失败：%v", err)
 	}
@@ -52,12 +63,66 @@ func TestPluginRegistersWriteFile(t *testing.T) {
 	}
 }
 
-func TestPluginRequiresFiles(t *testing.T) {
+func TestWriteFileUsesEachSessionEnvironment(t *testing.T) {
+	firstRoot := t.TempDir()
+	secondRoot := t.TempDir()
+	app := core.New()
+	t.Cleanup(app.Close)
+	err := app.Install(localenv.Plugin{}, tools.Plugin{}, Plugin{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := environment.Get(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstScope := app.ForChild("会话一")
+	secondScope := app.ForChild("会话二")
+	t.Cleanup(firstScope.Close)
+	t.Cleanup(secondScope.Close)
+	err = provider.Mount(firstScope, firstRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = provider.Mount(secondScope, secondRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := tools.Get(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tool, exists := registry.Lookup("write_file", "")
+	if !exists {
+		t.Fatal("write_file 没登记")
+	}
+	_, err = tool.Execute(context.Background(), firstScope, json.RawMessage(`{"path":"owner.txt","content":"项目一"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = tool.Execute(context.Background(), secondScope, json.RawMessage(`{"path":"owner.txt","content":"项目二"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := os.ReadFile(filepath.Join(firstRoot, "owner.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := os.ReadFile(filepath.Join(secondRoot, "owner.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(first) != "项目一" || string(second) != "项目二" {
+		t.Fatalf("两个会话写串目录：%q / %q", first, second)
+	}
+}
+
+func TestPluginRequiresTools(t *testing.T) {
 	app := core.New()
 	t.Cleanup(app.Close)
 
-	err := app.Install(tools.Plugin{}, Plugin{})
+	err := app.Install(Plugin{})
 	if err == nil {
-		t.Fatal("没有 files 能力时应启动失败")
+		t.Fatal("没有 tools 能力时应启动失败")
 	}
 }

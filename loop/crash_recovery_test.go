@@ -16,8 +16,12 @@ import (
 	"harness/chat"
 	"harness/core"
 	"harness/llm"
+	"harness/localenv"
 	"harness/persistence/jsonl"
-	"harness/persistence/profilejson"
+	"harness/persistence/presetjson"
+	"harness/persistence/projectjson"
+	"harness/presets"
+	"harness/projects"
 	"harness/session"
 	"harness/tools"
 )
@@ -66,7 +70,7 @@ func TestCrashRecoveryHelper(t *testing.T) {
 
 	app, roster, _ := newCrashStack(t, root)
 	_ = app
-	err := roster.CreateAgent(agents.AgentProfile{
+	err := roster.CreateAgent(AgentProfile{
 		ID:       crashAgentID,
 		Provider: "crash-test",
 		Model:    "test-model",
@@ -102,7 +106,7 @@ func TestCrashRecoveryHelper(t *testing.T) {
 	case "torn-tail":
 		_, err = book.RecordUserMessage("完整的一笔")
 		if err == nil {
-			err = appendTornTail(root)
+			err = appendTornTail(root, book.ID())
 		}
 	default:
 		t.Fatalf("不认识的崩溃场景：%s", scenario)
@@ -124,11 +128,11 @@ func TestCrashRecoveryHelper(t *testing.T) {
 func TestCrashRecoveryAcrossRealJSONL(t *testing.T) {
 	cases := []struct {
 		name   string
-		verify func(*testing.T, agents.Service, *crashAdapter, string)
+		verify func(*testing.T, *testRoster, *crashAdapter, string)
 	}{
 		{
 			name: "delivery",
-			verify: func(t *testing.T, roster agents.Service, adapter *crashAdapter, root string) {
+			verify: func(t *testing.T, roster *testRoster, adapter *crashAdapter, root string) {
 				conversation, err := roster.ResumeSession(crashSessionID)
 				if err != nil {
 					t.Fatal(err)
@@ -144,7 +148,7 @@ func TestCrashRecoveryAcrossRealJSONL(t *testing.T) {
 		},
 		{
 			name: "model-window",
-			verify: func(t *testing.T, roster agents.Service, adapter *crashAdapter, root string) {
+			verify: func(t *testing.T, roster *testRoster, adapter *crashAdapter, root string) {
 				conversation, err := roster.ResumeSession(crashSessionID)
 				if err != nil {
 					t.Fatal(err)
@@ -161,7 +165,7 @@ func TestCrashRecoveryAcrossRealJSONL(t *testing.T) {
 		},
 		{
 			name: "unstarted-tool",
-			verify: func(t *testing.T, roster agents.Service, adapter *crashAdapter, root string) {
+			verify: func(t *testing.T, roster *testRoster, adapter *crashAdapter, root string) {
 				conversation, err := roster.ResumeSession(crashSessionID)
 				if err != nil {
 					t.Fatal(err)
@@ -174,7 +178,7 @@ func TestCrashRecoveryAcrossRealJSONL(t *testing.T) {
 		},
 		{
 			name: "started-tool",
-			verify: func(t *testing.T, roster agents.Service, adapter *crashAdapter, root string) {
+			verify: func(t *testing.T, roster *testRoster, adapter *crashAdapter, root string) {
 				conversation, err := roster.ResumeSession(crashSessionID)
 				if err != nil {
 					t.Fatal(err)
@@ -192,7 +196,7 @@ func TestCrashRecoveryAcrossRealJSONL(t *testing.T) {
 		},
 		{
 			name: "torn-tail",
-			verify: func(t *testing.T, roster agents.Service, adapter *crashAdapter, root string) {
+			verify: func(t *testing.T, roster *testRoster, adapter *crashAdapter, root string) {
 				conversation, err := roster.ResumeSession(crashSessionID)
 				if err != nil {
 					t.Fatal(err)
@@ -200,7 +204,7 @@ func TestCrashRecoveryAcrossRealJSONL(t *testing.T) {
 				if !historyContains(conversation.Book().ModelHistory(), "完整的一笔") {
 					t.Fatalf("修尾后完整事件不该丢：%+v", conversation.Book().ModelHistory())
 				}
-				data, err := os.ReadFile(crashBookPath(root))
+				data, err := os.ReadFile(crashBookPath(root, conversation.SessionID()))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -224,15 +228,24 @@ func TestCrashRecoveryAcrossRealJSONL(t *testing.T) {
 	}
 }
 
-func newCrashStack(t *testing.T, root string) (*core.App, agents.Service, *crashAdapter) {
+func newCrashStack(t *testing.T, root string) (*core.App, *testRoster, *crashAdapter) {
 	t.Helper()
 	app := core.New()
-	err := app.Install(
-		profilejson.Plugin{Root: filepath.Join(root, "agents")},
+	workspaceRoot := filepath.Join(root, "workspace")
+	err := os.MkdirAll(workspaceRoot, 0o755)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = app.Install(
+		projectjson.Plugin{Root: filepath.Join(root, "projects")},
+		presetjson.Plugin{Root: filepath.Join(root, "presets")},
 		jsonl.Plugin{Root: filepath.Join(root, "sessions")},
 		session.Plugin{},
 		llm.Plugin{},
 		tools.Plugin{},
+		localenv.Plugin{},
+		projects.Plugin{},
+		presets.Plugin{},
 		agents.Plugin{},
 		Plugin{},
 	)
@@ -248,9 +261,46 @@ func newCrashStack(t *testing.T, root string) (*core.App, agents.Service, *crash
 	if err != nil {
 		t.Fatal(err)
 	}
-	roster, err := agents.Get(app)
+	service, err := agents.Get(app)
 	if err != nil {
 		t.Fatal(err)
+	}
+	projectService, err := projects.Get(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed, err := projectService.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var project projects.Project
+	if len(listed) == 0 {
+		project, err = projectService.Create("崩溃测试", workspaceRoot)
+		if err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		project = listed[0]
+	}
+	presetService, err := presets.Get(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	books, err := session.Get(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := tools.Get(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roster := &testRoster{
+		Service:   service,
+		projects:  projectService,
+		presets:   presetService,
+		books:     books,
+		projectID: project.ID,
+		toolsReg:  registry,
 	}
 	return app, roster, adapter
 }
@@ -300,8 +350,8 @@ func recordCrashToolCall(book *session.Session, started bool) error {
 	return err
 }
 
-func appendTornTail(root string) error {
-	file, err := os.OpenFile(crashBookPath(root), os.O_WRONLY|os.O_APPEND, 0)
+func appendTornTail(root string, sessionID string) error {
+	file, err := os.OpenFile(crashBookPath(root, sessionID), os.O_WRONLY|os.O_APPEND, 0)
 	if err != nil {
 		return err
 	}
@@ -313,8 +363,8 @@ func appendTornTail(root string) error {
 	return err
 }
 
-func crashBookPath(root string) string {
-	name := base64.RawURLEncoding.EncodeToString([]byte(crashSessionID))
+func crashBookPath(root string, sessionID string) string {
+	name := base64.RawURLEncoding.EncodeToString([]byte(sessionID))
 	return filepath.Join(root, "sessions", name+".jsonl")
 }
 

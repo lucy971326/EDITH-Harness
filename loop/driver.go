@@ -158,7 +158,7 @@ func (d *driver) runStep() (bool, error) {
 		Model:    a.config.Model,
 		Thinking: a.config.Thinking,
 		Messages: buildMessages(a.config.SystemPrompt, memos, a.book.ModelHistory()),
-		Tools:    a.toolsReg.Schemas(a.agentID),
+		Tools:    a.toolsReg.Schemas(a.sessionID),
 	}
 	snapshot, err := json.Marshal(request)
 	if err != nil {
@@ -223,7 +223,7 @@ func (d *driver) runStep() (bool, error) {
 			ID:       call.ID,
 			Name:     call.Name,
 			Argument: call.Argument,
-			Agent:    a.agentID,
+			ScopeID:  a.sessionID,
 		})
 		if result.Status == tools.ResultUnknown {
 			return false, fmt.Errorf("工具 %s 已开跑但结果不明，收轮待恢复", call.Name)

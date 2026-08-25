@@ -4,9 +4,9 @@ import (
 	"context"
 	"sync"
 
-	"harness/agents"
 	"harness/core"
 	"harness/llm"
+	"harness/presets"
 	"harness/session"
 	"harness/tools"
 )
@@ -15,13 +15,12 @@ import (
 // 三种塞消息：SubmitFollowup 开新轮；Steer 中途捎话（忙时下一步生效，闲时就是新轮）；
 // InjectMemo 塞小抄（不吵醒，下次问模型时拼进上下文）。
 type Conversation struct {
-	agentID   string
 	sessionID string
 	scope     *core.App // 专属子作用域：控制位、审批人、遮蔽工具都挂这
 	book      *session.Session
 	llmSvc    *llm.Service
 	toolsReg  *tools.Registry
-	config    AgentConfig
+	config    RunConfig
 	inbox     *inbox
 	driver    *driver
 
@@ -37,19 +36,18 @@ type Conversation struct {
 	closeOnce   sync.Once
 }
 
-func newConversation(agentID string, sessionID string, scope *core.App, book *session.Session, llmSvc *llm.Service, toolsReg *tools.Registry, profile agents.AgentProfile, reportError func(error)) *Conversation {
+func newConversation(sessionID string, scope *core.App, book *session.Session, llmSvc *llm.Service, toolsReg *tools.Registry, preset presets.Revision, reportError func(error)) *Conversation {
 	conversation := &Conversation{
-		agentID:   agentID,
 		sessionID: sessionID,
 		scope:     scope,
 		book:      book,
 		llmSvc:    llmSvc,
 		toolsReg:  toolsReg,
-		config: AgentConfig{
-			Provider:     profile.Provider,
-			Model:        profile.Model,
-			Thinking:     profile.Thinking,
-			SystemPrompt: profile.SystemPrompt,
+		config: RunConfig{
+			Provider:     preset.Provider,
+			Model:        preset.Model,
+			Thinking:     preset.Thinking,
+			SystemPrompt: preset.SystemPrompt,
 		},
 		inbox:       newInbox(),
 		reportError: reportError,
@@ -59,8 +57,8 @@ func newConversation(agentID string, sessionID string, scope *core.App, book *se
 	return conversation
 }
 
-// AgentConfig 是一次会话运行时从 Agent 档案取出的模型配置。
-type AgentConfig struct {
+// RunConfig 是一次会话从锁定模式版本取出的模型配置。
+type RunConfig struct {
 	Provider     string
 	Model        string
 	Thinking     string
@@ -87,11 +85,6 @@ func (a *Conversation) report(cause error) {
 		return
 	}
 	a.reportError(cause)
-}
-
-// AgentID 返回这段会话属于哪个长期 Agent。
-func (a *Conversation) AgentID() string {
-	return a.agentID
 }
 
 // SessionID 返回这段会话自己的账本号。

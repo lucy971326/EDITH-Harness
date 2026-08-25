@@ -2,12 +2,12 @@ package core
 
 import "testing"
 
-func TestForAgentInheritsParentServices(t *testing.T) {
+func TestForChildInheritsParentServices(t *testing.T) {
 	root := New()
 	t.Cleanup(root.Close)
 	root.RegisterService("tools", &fakeRegistry{})
 
-	agent := root.ForAgent("小红")
+	agent := root.ForChild("小红")
 
 	_, err := Resolve[*fakeRegistry](agent, "tools")
 	if err != nil {
@@ -20,7 +20,7 @@ func TestChildServiceShadowsParent(t *testing.T) {
 	t.Cleanup(root.Close)
 	root.RegisterService("tools", &fakeRegistry{})
 
-	agent := root.ForAgent("小红")
+	agent := root.ForChild("小红")
 	sandbox := &fakeRegistry{}
 	agent.RegisterService("tools", sandbox)
 
@@ -47,7 +47,7 @@ func TestRestrictBlocksInheritedButNotOwn(t *testing.T) {
 	root.RegisterService("tools", &fakeRegistry{})
 	root.RegisterService("llm", &fakeRegistry{})
 
-	agent := root.ForAgent("小红")
+	agent := root.ForChild("小红")
 	agent.Restrict("tools")
 
 	_, err := Resolve[*fakeRegistry](agent, "tools")
@@ -78,9 +78,9 @@ func TestRestrictDoesNotAffectSiblingAgents(t *testing.T) {
 	t.Cleanup(root.Close)
 	root.RegisterService("tools", &fakeRegistry{})
 
-	小红 := root.ForAgent("小红")
+	小红 := root.ForChild("小红")
 	小红.Restrict("tools")
-	小刚 := root.ForAgent("小刚")
+	小刚 := root.ForChild("小刚")
 
 	_, err := Resolve[*fakeRegistry](小刚, "tools")
 	if err != nil {
@@ -93,8 +93,8 @@ func TestGrandchildInheritsThroughChain(t *testing.T) {
 	t.Cleanup(root.Close)
 	root.RegisterService("llm", &fakeRegistry{})
 
-	agent := root.ForAgent("小红")
-	session := agent.ForAgent("小红的会话")
+	agent := root.ForChild("小红")
+	session := agent.ForChild("小红的会话")
 
 	_, err := Resolve[*fakeRegistry](session, "llm")
 	if err != nil {
@@ -105,7 +105,7 @@ func TestGrandchildInheritsThroughChain(t *testing.T) {
 func TestBroadcastBubblesUpToParentListeners(t *testing.T) {
 	root := New()
 	t.Cleanup(root.Close)
-	agent := root.ForAgent("小红")
+	agent := root.ForChild("小红")
 
 	var order []string
 	agent.Subscribe("记账", func(payload any) { order = append(order, "子的观察者") })
@@ -121,7 +121,7 @@ func TestBroadcastBubblesUpToParentListeners(t *testing.T) {
 func TestParentBroadcastDoesNotReachChildListeners(t *testing.T) {
 	root := New()
 	t.Cleanup(root.Close)
-	agent := root.ForAgent("小红")
+	agent := root.ForChild("小红")
 
 	childHeard := false
 	agent.Subscribe("记账", func(payload any) { childHeard = true })
@@ -138,7 +138,7 @@ func TestChildCloseDropsItsServicesAndListeners(t *testing.T) {
 	t.Cleanup(root.Close)
 	root.RegisterService("tools", &fakeRegistry{})
 
-	agent := root.ForAgent("小红")
+	agent := root.ForChild("小红")
 	agent.RegisterService("私有能力", &fakeRegistry{})
 
 	childHeard := false
@@ -169,7 +169,7 @@ func TestChildCloseDropsItsServicesAndListeners(t *testing.T) {
 func TestChildCloseRunsItsOwnCleanups(t *testing.T) {
 	root := New()
 	t.Cleanup(root.Close)
-	agent := root.ForAgent("小红")
+	agent := root.ForChild("小红")
 
 	var order []string
 	agent.OnCleanup(func() { order = append(order, "子的收摊") })

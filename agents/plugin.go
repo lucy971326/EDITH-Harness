@@ -4,6 +4,9 @@ import (
 	"fmt"
 
 	"harness/core"
+	"harness/environment"
+	"harness/presets"
+	"harness/projects"
 	"harness/session"
 	"harness/tools"
 )
@@ -16,7 +19,7 @@ func (Plugin) Name() string {
 	return "agents"
 }
 
-// Start 领取档案、账本和工具登记处，再登记 Agent 管理能力。
+// Start 领取会话运行所需能力，再登记运行时管理入口。
 func (Plugin) Start(app *core.App) error {
 	store, err := session.Get(app)
 	if err != nil {
@@ -26,11 +29,19 @@ func (Plugin) Start(app *core.App) error {
 	if err != nil {
 		return fmt.Errorf("agents 要先有工具登记处（tools）：%w", err)
 	}
-	profiles, err := core.Resolve[ProfileStore](app, "agent-profiles")
+	projectService, err := projects.Get(app)
 	if err != nil {
-		return fmt.Errorf("agents 要先有 Agent 档案库（agent-profiles）：%w", err)
+		return fmt.Errorf("agents 要先有项目管理处（projects）：%w", err)
 	}
-	service := newRegistry(app, store, profiles, toolsReg)
+	presetService, err := presets.Get(app)
+	if err != nil {
+		return fmt.Errorf("agents 要先有模式管理处（presets）：%w", err)
+	}
+	provider, err := environment.Get(app)
+	if err != nil {
+		return fmt.Errorf("agents 要先有执行环境（environment）：%w", err)
+	}
+	service := newRegistry(app, store, projectService, presetService, provider, toolsReg)
 	app.RegisterService("agents", service)
 	app.OnCleanup(service.CloseAll)
 	return nil

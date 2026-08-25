@@ -9,7 +9,7 @@ import (
 )
 
 // App 是公共场地：服务表 + 事件订阅表 + 清理栈。
-// 可以派生子作用域（ForAgent）：子继承父的服务、事件上浮，Close 后整批消失。
+// 可以派生子作用域：子继承父的服务、事件上浮，Close 后整批消失。
 type App struct {
 	mu          sync.Mutex            // 保护下面几张表
 	services    map[string]any        // 能力名 -> 能力对象；根表只在启动期动
@@ -19,7 +19,7 @@ type App struct {
 	restricted  map[string]bool       // 被裁的能力名；只挡继承，挡不住自己注册的
 	cleanups    []func()              // 收摊函数栈，Close 时逆序执行
 	parent      *App                  // 父作用域；nil 即全局根
-	agentName   string                // 这个作用域属于哪个 agent，诊断用
+	scopeName   string                // 子作用域的诊断名
 	warn        func(message string)  // 崩溃告警出口，默认 log，测试可替换
 	closed      bool                  // 保证 Close 只生效一次
 }

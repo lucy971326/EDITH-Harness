@@ -2,274 +2,327 @@ package agents
 
 import (
 	"fmt"
-	"strings"
+	"sort"
 	"sync"
 	"testing"
 
 	"harness/core"
+	"harness/environment"
+	"harness/presets"
+	"harness/projects"
 	"harness/session"
 	"harness/tools"
 )
 
-type memoryProfileStore struct {
+type projectMemoryStore struct {
+	mu    sync.Mutex
+	items map[string]projects.Project
+}
+
+func newProjectMemoryStore() *projectMemoryStore {
+	return &projectMemoryStore{items: make(map[string]projects.Project)}
+}
+
+func (s *projectMemoryStore) Create(project projects.Project) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.items[project.ID]; exists {
+		return fmt.Errorf("项目已存在")
+	}
+	s.items[project.ID] = project
+	return nil
+}
+
+func (s *projectMemoryStore) Get(id string) (projects.Project, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	project, exists := s.items[id]
+	if !exists {
+		return projects.Project{}, fmt.Errorf("项目不存在")
+	}
+	return project, nil
+}
+
+func (s *projectMemoryStore) List() ([]projects.Project, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	listed := make([]projects.Project, 0, len(s.items))
+	for _, project := range s.items {
+		listed = append(listed, project)
+	}
+	return listed, nil
+}
+
+func (s *projectMemoryStore) Update(project projects.Project) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.items[project.ID] = project
+	return nil
+}
+
+type presetMemoryStore struct {
 	mu       sync.Mutex
-	profiles map[string]AgentProfile
+	versions map[string][]presets.Revision
 }
 
-func newMemoryProfileStore() *memoryProfileStore {
-	return &memoryProfileStore{profiles: make(map[string]AgentProfile)}
+func newPresetMemoryStore() *presetMemoryStore {
+	return &presetMemoryStore{versions: make(map[string][]presets.Revision)}
 }
 
-func (s *memoryProfileStore) Create(profile AgentProfile) error {
+func (s *presetMemoryStore) Create(revision presets.Revision) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, exists := s.profiles[profile.ID]; exists {
-		return fmt.Errorf("agent %s 已存在", profile.ID)
+	if len(s.versions[revision.ID]) > 0 {
+		return fmt.Errorf("模式已存在")
 	}
-	s.profiles[profile.ID] = cloneProfile(profile)
+	s.versions[revision.ID] = []presets.Revision{revision}
 	return nil
 }
 
-func (s *memoryProfileStore) Update(profile AgentProfile) error {
+func (s *presetMemoryStore) Update(revision presets.Revision) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	old, exists := s.profiles[profile.ID]
-	if !exists {
-		return fmt.Errorf("agent %s 不存在", profile.ID)
-	}
-	if profile.Revision != old.Revision+1 {
-		return fmt.Errorf("agent %s 版本不连续", profile.ID)
-	}
-	s.profiles[profile.ID] = cloneProfile(profile)
+	s.versions[revision.ID] = append(s.versions[revision.ID], revision)
 	return nil
 }
 
-func (s *memoryProfileStore) Get(id string) (AgentProfile, error) {
+func (s *presetMemoryStore) Get(id string) (presets.Revision, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	profile, exists := s.profiles[id]
-	if !exists {
-		return AgentProfile{}, fmt.Errorf("agent %s 不存在", id)
+	versions := s.versions[id]
+	if len(versions) == 0 {
+		return presets.Revision{}, fmt.Errorf("模式不存在")
 	}
-	return cloneProfile(profile), nil
+	return versions[len(versions)-1], nil
 }
 
-func (s *memoryProfileStore) List() ([]AgentProfile, error) {
+func (s *presetMemoryStore) GetRevision(id string, number int) (presets.Revision, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	profiles := make([]AgentProfile, 0, len(s.profiles))
-	for _, profile := range s.profiles {
-		profiles = append(profiles, cloneProfile(profile))
+	versions := s.versions[id]
+	if number < 1 || number > len(versions) {
+		return presets.Revision{}, fmt.Errorf("版本不存在")
 	}
-	return profiles, nil
+	return versions[number-1], nil
 }
 
-func (s *memoryProfileStore) Archive(id string) error {
+func (s *presetMemoryStore) List() ([]presets.Revision, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	profile, exists := s.profiles[id]
-	if !exists {
-		return fmt.Errorf("agent %s 不存在", id)
+	listed := make([]presets.Revision, 0, len(s.versions))
+	for _, versions := range s.versions {
+		listed = append(listed, versions[len(versions)-1])
 	}
-	profile.Archived = true
-	profile.Revision++
-	s.profiles[id] = profile
+	sort.Slice(listed, func(i int, j int) bool { return listed[i].ID < listed[j].ID })
+	return listed, nil
+}
+
+func (s *presetMemoryStore) Archive(id string) error {
+	current, err := s.Get(id)
+	if err != nil {
+		return err
+	}
+	current.Revision++
+	current.Archived = true
+	return s.Update(current)
+}
+
+type fakeEnvironment struct{}
+
+func (fakeEnvironment) Mount(scope *core.App, root string) error {
+	scope.RegisterService("test-root", root)
 	return nil
 }
 
-type memoryProfilePlugin struct{ store ProfileStore }
-
-func (memoryProfilePlugin) Name() string { return "test-memory-profiles" }
-
-func (p memoryProfilePlugin) Start(app *core.App) error {
-	app.RegisterService("agent-profiles", p.store)
-	return nil
+type failingEnvironment struct {
+	closed bool
 }
 
-type memoryJournalPlugin struct{ journal session.Journal }
-
-func (memoryJournalPlugin) Name() string { return "test-memory-journal" }
-
-func (p memoryJournalPlugin) Start(app *core.App) error {
-	app.RegisterService("journal", p.journal)
-	return nil
+func (e *failingEnvironment) Mount(scope *core.App, root string) error {
+	scope.OnCleanup(func() {
+		e.closed = true
+	})
+	return fmt.Errorf("环境坏了")
 }
 
 type fakeRunner struct {
-	input RunInput
+	mu     sync.Mutex
+	inputs []RunInput
 }
 
 func (r *fakeRunner) Prepare(input RunInput) (PreparedConversation, error) {
-	r.input = input
+	r.mu.Lock()
+	r.inputs = append(r.inputs, input)
+	r.mu.Unlock()
 	return &fakeConversation{input: input}, nil
 }
 
+func (r *fakeRunner) lastInput() RunInput {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.inputs[len(r.inputs)-1]
+}
+
 type fakeConversation struct {
-	input   RunInput
-	started bool
+	input RunInput
 }
 
-func (c *fakeConversation) AgentID() string             { return c.input.AgentID }
-func (c *fakeConversation) SessionID() string           { return c.input.SessionID }
-func (c *fakeConversation) State() string               { return "idle" }
-func (c *fakeConversation) WaitIdle()                   {}
-func (c *fakeConversation) Cancel()                     {}
-func (c *fakeConversation) SubmitFollowup(string) error { return nil }
-func (c *fakeConversation) Steer(string) error          { return nil }
-func (c *fakeConversation) InjectMemo(string) error     { return nil }
-func (c *fakeConversation) Book() *session.Session      { return c.input.Book }
-func (c *fakeConversation) Close() error                { return c.input.Close() }
-func (c *fakeConversation) Start()                      { c.started = true }
+func (*fakeConversation) Start()                           {}
+func (c *fakeConversation) SessionID() string              { return c.input.SessionID }
+func (*fakeConversation) State() string                    { return "idle" }
+func (*fakeConversation) WaitIdle()                        {}
+func (*fakeConversation) Cancel()                          {}
+func (*fakeConversation) SubmitFollowup(text string) error { return nil }
+func (*fakeConversation) Steer(text string) error          { return nil }
+func (*fakeConversation) InjectMemo(text string) error     { return nil }
+func (c *fakeConversation) Book() *session.Session         { return c.input.Book }
+func (c *fakeConversation) Close() error                   { return c.input.Close() }
 
-func TestAgentsUsesRegisteredRunner(t *testing.T) {
+type silentBroadcaster struct{}
+
+func (silentBroadcaster) Broadcast(name string, payload any) {}
+
+func newTestRegistry(t *testing.T) (*registry, projects.Service, presets.Service, *fakeRunner) {
+	t.Helper()
 	app := core.New()
 	t.Cleanup(app.Close)
-	err := app.Install(
-		memoryProfilePlugin{store: newMemoryProfileStore()},
-		memoryJournalPlugin{journal: session.NewMemoryJournal()},
-		session.Plugin{},
-		tools.Plugin{},
-		Plugin{},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	service, err := Get(app)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = service.CreateAgent(AgentProfile{ID: "小红", Provider: "test", Model: "m", Thinking: "off"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = service.StartSession("小红", "会话一")
-	if err == nil {
-		t.Fatal("没装 Runner 时不该能开会话")
-	}
-
+	books := session.NewStore(session.NewMemoryJournal(), silentBroadcaster{})
+	projectService := projects.New(newProjectMemoryStore(), books)
+	presetService := presets.New(newPresetMemoryStore())
+	toolsReg := tools.NewRegistry()
+	registry := newRegistry(app, books, projectService, presetService, environment.Provider(fakeEnvironment{}), toolsReg)
 	runner := &fakeRunner{}
-	unregister, err := service.RegisterRunner(runner)
+	_, err := registry.RegisterRunner(runner)
 	if err != nil {
 		t.Fatal(err)
 	}
-	conversation, err := service.StartSession("小红", "会话一")
+	return registry, projectService, presetService, runner
+}
+
+func TestSessionOwnsProjectPresetAndOpaqueID(t *testing.T) {
+	registry, projectService, presetService, runner := newTestRegistry(t)
+	project, err := projectService.Create("测试项目", t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if runner.input.AgentID != "小红" || runner.input.SessionID != "会话一" {
-		t.Fatalf("Runner 收到的会话不对：%+v", runner.input)
+	err = presetService.Create(presets.Preset{ID: "极简", Provider: "fake", Model: "m1", Thinking: "off"})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !conversation.(*fakeConversation).started {
-		t.Fatal("登记完成后才该启动会话")
+
+	conversation, err := registry.StartSession(StartInput{ProjectID: project.ID, PresetID: "极简", Title: "同名会话"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	header := conversation.Book().Header()
+	if header.ID == header.Title || header.Title != "同名会话" {
+		t.Fatalf("内部身份和标题没有分开：%+v", header)
+	}
+	if header.ProjectID != project.ID || header.PresetID != "极简" || header.PresetRevision != 1 {
+		t.Fatalf("封面没有锁住项目和模式：%+v", header)
+	}
+	root, err := core.Resolve[string](runner.lastInput().Scope, "test-root")
+	if err != nil || root != project.Root {
+		t.Fatalf("会话没有挂到项目根目录：root=%q err=%v", root, err)
+	}
+	listed, err := projectService.ListSessions(project.ID)
+	if err != nil || len(listed) != 1 || listed[0].ID != header.ID {
+		t.Fatalf("项目没有领到自己的会话：%+v err=%v", listed, err)
 	}
 	err = conversation.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = service.GetSession("会话一")
+}
+
+func TestResumeUsesLockedPresetRevision(t *testing.T) {
+	registry, projectService, presetService, runner := newTestRegistry(t)
+	project, err := projectService.Create("测试项目", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = presetService.Create(presets.Preset{ID: "编程", Provider: "fake", Model: "old", Thinking: "off"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation, err := registry.StartSession(StartInput{ProjectID: project.ID, PresetID: "编程", Title: "历史"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionID := conversation.SessionID()
+	err = conversation.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = presetService.Update(presets.Preset{ID: "编程", Provider: "fake", Model: "new"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resumed, err := registry.ResumeSession(sessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runner.lastInput().Preset.Revision != 1 || runner.lastInput().Preset.Model != "old" {
+		t.Fatalf("恢复时没有使用锁定版本：%+v", runner.lastInput().Preset)
+	}
+	_ = resumed.Close()
+}
+
+func TestConversationInterfaceDoesNotDependOnLoop(t *testing.T) {
+	registry, projectService, presetService, _ := newTestRegistry(t)
+	project, err := projectService.Create("测试项目", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = presetService.Create(presets.Preset{ID: "假模式", Provider: "fake", Model: "fake", Thinking: "off"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation, err := registry.StartSession(StartInput{ProjectID: project.ID, PresetID: "假模式", Title: "假 Runner"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = conversation.SubmitFollowup("你好")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation.Cancel()
+	conversation.WaitIdle()
+	_ = conversation.Close()
+}
+
+func TestMountFailurePublishesNoSessionAndClosesScope(t *testing.T) {
+	registry, projectService, presetService, runner := newTestRegistry(t)
+	project, err := projectService.Create("测试项目", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = presetService.Create(presets.Preset{ID: "假模式", Provider: "fake", Model: "fake", Thinking: "off"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := &failingEnvironment{}
+	registry.environment = provider
+
+	_, err = registry.StartSession(StartInput{ProjectID: project.ID, PresetID: "假模式", Title: "不会成功"})
 	if err == nil {
-		t.Fatal("关闭后不该还能取到会话")
+		t.Fatal("环境挂载失败后会话却成功了")
 	}
-	unregister()
-}
-
-func TestOldProfileNeedsUpdateBeforeStarting(t *testing.T) {
-	profiles := newMemoryProfileStore()
-	err := profiles.Create(AgentProfile{ID: "旧小红", Revision: 1})
+	if !provider.closed {
+		t.Fatal("环境挂载失败后没有关闭会话作用域")
+	}
+	if len(registry.sessions) != 0 || len(registry.opening) != 0 {
+		t.Fatalf("失败会话泄漏到运行表：sessions=%d opening=%d", len(registry.sessions), len(registry.opening))
+	}
+	if len(runner.inputs) != 0 {
+		t.Fatal("环境挂载失败后不应交给 Runner")
+	}
+	headers, err := registry.books.ListHeaders()
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := core.New()
-	t.Cleanup(app.Close)
-	err = app.Install(
-		memoryProfilePlugin{store: profiles},
-		memoryJournalPlugin{journal: session.NewMemoryJournal()},
-		session.Plugin{},
-		tools.Plugin{},
-		Plugin{},
-	)
-	if err != nil {
-		t.Fatal(err)
+	if len(headers) != 0 {
+		t.Fatal("环境挂载失败后不应创建账本")
 	}
-	service, err := Get(app)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = service.RegisterRunner(&fakeRunner{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = service.StartSession("旧小红", "旧会话")
-	if err == nil || !strings.Contains(err.Error(), "provider") {
-		t.Fatalf("旧档案缺模型归属应明确拒绝：%v", err)
-	}
-	err = service.UpdateAgent(AgentProfile{ID: "旧小红", Provider: "test", Model: "m", Thinking: "off"})
-	if err != nil {
-		t.Fatalf("更新补齐模型归属失败：%v", err)
-	}
-	conversation, err := service.StartSession("旧小红", "新会话")
-	if err != nil {
-		t.Fatalf("补齐后应能开会话：%v", err)
-	}
-	err = conversation.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestListsAgentsAndTheirSessions(t *testing.T) {
-	app := core.New()
-	t.Cleanup(app.Close)
-	err := app.Install(
-		memoryProfilePlugin{store: newMemoryProfileStore()},
-		memoryJournalPlugin{journal: session.NewMemoryJournal()},
-		session.Plugin{},
-		tools.Plugin{},
-		Plugin{},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	service, err := Get(app)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = service.RegisterRunner(&fakeRunner{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, id := range []string{"小乙", "小甲"} {
-		err = service.CreateAgent(AgentProfile{ID: id, Provider: "test", Model: "m", Thinking: "off"})
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	first, err := service.StartSession("小甲", "会话二")
-	if err != nil {
-		t.Fatal(err)
-	}
-	second, err := service.StartSession("小甲", "会话一")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	profiles, err := service.ListAgents()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(profiles) != 2 || profiles[0].ID != "小乙" || profiles[1].ID != "小甲" {
-		t.Fatalf("Agent 列表应稳定排序：%+v", profiles)
-	}
-	sessions, err := service.ListSessions("小甲")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(sessions) != 2 || sessions[0].ID != "会话一" || sessions[1].ID != "会话二" {
-		t.Fatalf("会话列表应只包含小甲且按号排序：%+v", sessions)
-	}
-	if !sessions[0].Open || !sessions[1].Open {
-		t.Fatalf("刚开的会话应标记为打开：%+v", sessions)
-	}
-	_ = first.Close()
-	_ = second.Close()
 }

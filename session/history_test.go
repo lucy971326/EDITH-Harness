@@ -169,7 +169,7 @@ func TestReplayRebuildsIdenticalHistory(t *testing.T) {
 	store, s, _ := newTestStore(t)
 	recordScript(t, s)
 
-	replayed, err := store.Create("重放的账", "测试 Agent", 1, s.Events()...)
+	replayed, err := store.Create(validHeader("重放的账"), s.Events()...)
 	if err != nil {
 		t.Fatalf("重放失败：%v", err)
 	}
@@ -185,7 +185,7 @@ func TestReplayRebuildsIdenticalHistory(t *testing.T) {
 func TestOpenRestoresExistingBook(t *testing.T) {
 	journal := NewMemoryJournal()
 	firstStore := NewStore(journal, &recordingBroadcaster{})
-	first, err := firstStore.Create("旧账", "测试 Agent", 1)
+	first, err := firstStore.Create(validHeader("旧账"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +203,7 @@ func TestOpenRestoresExistingBook(t *testing.T) {
 		t.Fatal("打开旧账后，模型历史也该一模一样")
 	}
 
-	_, err = secondStore.Create("旧账", "测试 Agent", 1)
+	_, err = secondStore.Create(validHeader("旧账"))
 	if err == nil {
 		t.Fatal("已经打开的账本不能再当新账创建")
 	}
@@ -229,7 +229,7 @@ func TestReplayRejectsBrokenSeq(t *testing.T) {
 		{Kind: KindUserMessage, Seq: 1, Data: []byte(`{"Text":"你好"}`)},
 		{Kind: KindUserMessage, Seq: 3, Data: []byte(`{"Text":"编号跳了"}`)},
 	}
-	_, err := store.Create("断号的账", "测试 Agent", 1, seed...)
+	_, err := store.Create(validHeader("断号的账"), seed...)
 	if err == nil {
 		t.Fatal("编号断了的重放该被拒绝")
 	}
@@ -242,7 +242,7 @@ func TestReplayRejectsUnknownRequiredKind(t *testing.T) {
 		{Kind: KindUserMessage, Seq: 1, Data: []byte(`{"Text":"你好"}`)},
 		{Kind: "ghost/critical", Seq: 2, Data: []byte(`{"x":1}`), SkipIfUnknown: false},
 	}
-	_, err := store.Create("带幽灵的账", "测试 Agent", 1, seed...)
+	_, err := store.Create(validHeader("带幽灵的账"), seed...)
 	if err == nil {
 		t.Fatal("不认识且必需的事件该让整本账拒读")
 	}
@@ -256,7 +256,7 @@ func TestReplaySkipsUnknownOptionalKind(t *testing.T) {
 		{Kind: "ghost/note", Seq: 2, Data: []byte(`{"x":1}`), SkipIfUnknown: true},
 		{Kind: KindUserMessage, Seq: 3, Data: []byte(`{"Text":"还在"}`)},
 	}
-	s, err := store.Create("带过客的账", "测试 Agent", 1, seed...)
+	s, err := store.Create(validHeader("带过客的账"), seed...)
 	if err != nil {
 		t.Fatalf("可跳过的事件不该挡住重放：%v", err)
 	}
@@ -391,7 +391,7 @@ func TestHistoryMergesFinalThinkingAndToolCall(t *testing.T) {
 	if history[1].Role != "tool" || history[1].Result.CallID != "call-1" {
 		t.Fatalf("工具结果没有排在合成助手消息后：%+v", history[1])
 	}
-	opened, err := store.Create("重放思考", "测试 Agent", 1, book.Events()...)
+	opened, err := store.Create(validHeader("重放思考"), book.Events()...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -439,7 +439,7 @@ func TestOldSessionWithoutThinkingStillOpens(t *testing.T) {
 		{Kind: KindUserMessage, Seq: 1, Data: json.RawMessage(`{"Text":"旧问题"}`)},
 		{Kind: KindAssistantFinal, Seq: 2, Data: json.RawMessage(`{"Text":"旧回复"}`)},
 	}
-	book, err := store.Create("旧 Thinking", "测试 Agent", 1, seed...)
+	book, err := store.Create(validHeader("旧 Thinking"), seed...)
 	if err != nil {
 		t.Fatalf("旧账缺 Thinking 仍应兼容：%v", err)
 	}

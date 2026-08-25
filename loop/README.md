@@ -8,12 +8,13 @@
 
 ## 整体心智模型
 
-一个 Agent 是长期保存的“人设档案”；它可以同时有很多段会话。每段会话各有收件箱、账本和一个搬运工，所以不会串台；同一段会话里的事情仍按顺序处理。
+长期的“模型 + 人设 + 工具”现在叫 Preset（Agent 模式）。每段 Session 选一个 Project 和某个 Preset 版本，两者锁定后才组成一个运行中的 Agent。一个 Session 就是一个 Runtime Agent，ID 也相同。
 
 ```mermaid
 flowchart LR
-    Caller["UI / 调用方"] --> Agents["agents<br/>小红管理处"]
-    Agents --> Profile["Agent 档案<br/>模型 / 人设 / 工具名"]
+    Caller["UI / 调用方"] --> Agents["agents<br/>运行时组装"]
+    Project["Project<br/>工作目录"] --> Agents
+    Preset["Preset 版本<br/>模型 / 人设 / 工具名"] --> Agents
     Agents --> Conversation["Conversation<br/>一段会话的对外门面"]
 
     subgraph OneSession["一段会话"]
@@ -29,14 +30,15 @@ flowchart LR
 
 可以这样记：
 
-- `Agent 档案`：长期保存的小红，记住模型、人设和允许用的工具名。
+- `Project`：这段会话在哪个工作目录中干活。
+- `Preset`：可复用的 Agent 模式；会话锁定其中一版。
 - `Conversation`：一个聊天窗口，外面的人只跟它说话。
 - `inbox`：收件箱，消息先放这里排队。
 - `driver`：唯一搬运工，负责不断领活和干活。
 - `session`：账本，发生过什么都以它为准。
 - `llm`：模型入口。
 - `tools`：工具执行入口。
-- `agents`：小红管理处，负责管理 Agent 档案，并创建、恢复和关闭会话。
+- `agents`：运行时组装处，负责创建、恢复和关闭会话。
 - `loop`：实现 `Runner` 合同，专心跑一段会话。
 
 ## 三种消息有什么区别
@@ -112,21 +114,16 @@ flowchart TD
 
 ```go
 func submit(app *core.App) error {
-    service, err := agents.Get(app)
+    runtime, err := agents.Get(app)
     if err != nil {
         return err
     }
 
-    err = service.CreateAgent(agents.AgentProfile{
-        ID:           "assistant",
-        Model:        "model-name",
-        SystemPrompt: "你是一个助手",
+    conversation, err := runtime.StartSession(agents.StartInput{
+        ProjectID: "project-id",
+        PresetID:  "assistant",
+        Title:     "新会话",
     })
-    if err != nil {
-        return err
-    }
-
-    conversation, err := service.StartSession("assistant", "chat-001")
     if err != nil {
         return err
     }
@@ -142,11 +139,11 @@ func submit(app *core.App) error {
 
 `loop.Plugin` 启动时需要三样东西已经装好：
 
-- `"agents"`：Agent 管理处；
+- `"agents"`：会话运行管理处；
 - `"llm"`：模型入口；
 - `"tools"`：工具登记处。
 
-启动后它向 `agents` 登记自己是 `Runner`。UI 和其他模块只通过 `agents` 管小红，不必知道搬运工内部怎么实现。
+启动后它向 `agents` 登记自己是 `Runner`。UI 通过 `projects` 管项目、`presets` 管模式、`agents` 开或恢复会话，不必知道 loop 内部怎么实现。
 
 ## 读代码的顺序
 

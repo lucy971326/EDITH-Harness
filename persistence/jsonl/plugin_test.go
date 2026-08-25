@@ -2,6 +2,7 @@ package jsonl
 
 import (
 	"testing"
+	"time"
 
 	"harness/core"
 	"harness/session"
@@ -22,7 +23,15 @@ func TestPluginProvidesJournalForSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	book, err := store.Create("插件账", "测试 Agent", 1)
+	book, err := store.Create(session.Header{
+		ID:             "插件账",
+		Title:          "插件账",
+		CreatedAt:      time.Unix(1, 0),
+		ProjectID:      "测试项目",
+		ProjectRoot:    root,
+		PresetID:       "测试模式",
+		PresetRevision: 1,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

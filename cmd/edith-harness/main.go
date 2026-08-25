@@ -35,12 +35,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "读取用户目录失败：", err)
 		os.Exit(1)
 	}
-	workspace, err := os.Getwd()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "读取工作目录失败：", err)
-		os.Exit(1)
-	}
-	runtime, err := compose.Open(filepath.Join(userHome, ".harness"), workspace)
+	runtime, err := compose.Open(filepath.Join(userHome, ".harness"))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

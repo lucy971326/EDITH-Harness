@@ -33,7 +33,7 @@ func (noApprover) Approve(call Call) Decision {
 func echoTool() Tool {
 	return Tool{
 		Schema: chatSchema("echo", "回显一句话"),
-		Execute: func(ctx context.Context, arguments json.RawMessage) (string, error) {
+		Execute: func(ctx context.Context, scope *core.App, arguments json.RawMessage) (string, error) {
 			var args struct {
 				Text string
 			}
@@ -60,7 +60,15 @@ func newTestApp(t *testing.T) (*core.App, *Registry, *session.Session) {
 	app.RegisterService("tools", registry)
 
 	store := session.NewStore(session.NewMemoryJournal(), silentBroadcaster{})
-	book, err := store.Create("测试账", "测试 Agent", 1)
+	book, err := store.Create(session.Header{
+		ID:             "测试账",
+		Title:          "测试账",
+		CreatedAt:      time.Unix(1, 0),
+		ProjectID:      "测试项目",
+		ProjectRoot:    "/tmp/测试项目",
+		PresetID:       "测试模式",
+		PresetRevision: 1,
+	})
 	if err != nil {
 		t.Fatalf("开账失败：%v", err)
 	}
@@ -194,10 +202,10 @@ func TestAskWithApproverAnswerExecutes(t *testing.T) {
 	}
 
 	// 换个人答"不"：子作用域用自己的审批人遮蔽全局的。
-	agent := app.ForAgent("小红")
+	agent := app.ForChild("小红")
 	agent.RegisterService("approval", noApprover{})
 	result = registry.ExecuteCall(context.Background(), agent, book,
-		Call{ID: "c2", Name: "echo", Argument: json.RawMessage(`{}`), Agent: "小红"})
+		Call{ID: "c2", Name: "echo", Argument: json.RawMessage(`{}`), ScopeID: "小红"})
 	if result.Status != session.ResultSkipped || result.Output != "人说不" {
 		t.Fatalf("人拒了该拒：got %+v", result)
 	}
@@ -207,7 +215,7 @@ func TestToolPanicBecomesFailedResult(t *testing.T) {
 	app, registry, book := newTestApp(t)
 	err := registry.Register(Tool{
 		Schema: chatSchema("bomb", "会炸的工具"),
-		Execute: func(ctx context.Context, arguments json.RawMessage) (string, error) {
+		Execute: func(ctx context.Context, scope *core.App, arguments json.RawMessage) (string, error) {
 			panic("炸了")
 		},
 	})
@@ -232,7 +240,7 @@ func TestExecuteErrorBecomesFailedResult(t *testing.T) {
 	app, registry, book := newTestApp(t)
 	err := registry.Register(Tool{
 		Schema: chatSchema("broken", "必失败的工具"),
-		Execute: func(ctx context.Context, arguments json.RawMessage) (string, error) {
+		Execute: func(ctx context.Context, scope *core.App, arguments json.RawMessage) (string, error) {
 			return "", errors.New("磁盘满")
 		},
 	})
@@ -284,7 +292,7 @@ func TestAroundChainCanRetry(t *testing.T) {
 	attempts := 0
 	err := registry.Register(Tool{
 		Schema: chatSchema("flaky", "第一次必失败的工具"),
-		Execute: func(ctx context.Context, arguments json.RawMessage) (string, error) {
+		Execute: func(ctx context.Context, scope *core.App, arguments json.RawMessage) (string, error) {
 			attempts++
 			if attempts == 1 {
 				return "", errors.New("抖了一下")
@@ -340,7 +348,7 @@ func TestCancelAfterStartLeavesUnknown(t *testing.T) {
 	app, registry, book := newTestApp(t)
 	err := registry.Register(Tool{
 		Schema: chatSchema("slow", "慢工具"),
-		Execute: func(ctx context.Context, arguments json.RawMessage) (string, error) {
+		Execute: func(ctx context.Context, scope *core.App, arguments json.RawMessage) (string, error) {
 			select {
 			case <-ctx.Done():
 				return "干了一半断了", ctx.Err()
@@ -376,16 +384,16 @@ func TestRegistryShadowingPerAgent(t *testing.T) {
 
 	err := registry.Register(Tool{
 		Schema: chatSchema("bash", "普通 bash"),
-		Execute: func(ctx context.Context, arguments json.RawMessage) (string, error) {
+		Execute: func(ctx context.Context, scope *core.App, arguments json.RawMessage) (string, error) {
 			return "普通", nil
 		},
 	})
 	if err != nil {
 		t.Fatalf("登记失败：%v", err)
 	}
-	err = registry.RegisterFor("小红", Tool{
+	err = registry.RegisterForScope("小红", Tool{
 		Schema: chatSchema("bash", "沙箱 bash"),
-		Execute: func(ctx context.Context, arguments json.RawMessage) (string, error) {
+		Execute: func(ctx context.Context, scope *core.App, arguments json.RawMessage) (string, error) {
 			return "沙箱", nil
 		},
 	})
@@ -397,12 +405,12 @@ func TestRegistryShadowingPerAgent(t *testing.T) {
 	t.Cleanup(app.Close)
 
 	small := registry.ExecuteCall(context.Background(), app, book,
-		Call{ID: "c1", Name: "bash", Argument: json.RawMessage(`{}`), Agent: "小红"})
+		Call{ID: "c1", Name: "bash", Argument: json.RawMessage(`{}`), ScopeID: "小红"})
 	if small.Output != "沙箱" {
 		t.Fatalf("小红该拿到沙箱版：got %q", small.Output)
 	}
 	other := registry.ExecuteCall(context.Background(), app, book,
-		Call{ID: "c2", Name: "bash", Argument: json.RawMessage(`{}`), Agent: "小刚"})
+		Call{ID: "c2", Name: "bash", Argument: json.RawMessage(`{}`), ScopeID: "小刚"})
 	if other.Output != "普通" {
 		t.Fatalf("小刚该落到全局版：got %q", other.Output)
 	}
@@ -423,9 +431,9 @@ func TestScopedChainRootOutsideChild(t *testing.T) {
 		return next(c)
 	})
 
-	agent := app.ForAgent("小红")
+	agent := app.ForChild("小红")
 	result := registry.ExecuteCall(context.Background(), agent, book,
-		Call{ID: "c1", Name: "echo", Argument: json.RawMessage(`{}`), Agent: "小红"})
+		Call{ID: "c1", Name: "echo", Argument: json.RawMessage(`{}`), ScopeID: "小红"})
 
 	if result.Status != session.ResultSkipped || result.Output != "全局守卫拒绝" {
 		t.Fatalf("root 的守卫该管到子作用域：got %+v", result)
@@ -444,14 +452,14 @@ func TestScopedChainChildLayerInsideRoot(t *testing.T) {
 		order = append(order, "root 检查")
 		return next(p)
 	})
-	agent := app.ForAgent("小红")
+	agent := app.ForChild("小红")
 	core.Intercept[PreCall, Decision](agent, PreExecute, func(p PreCall, next func(PreCall) Decision) Decision {
 		order = append(order, "agent 检查")
 		return next(p)
 	})
 
 	registry.ExecuteCall(context.Background(), agent, book,
-		Call{ID: "c1", Name: "echo", Argument: json.RawMessage(`{"Text":"好"}`), Agent: "小红"})
+		Call{ID: "c1", Name: "echo", Argument: json.RawMessage(`{"Text":"好"}`), ScopeID: "小红"})
 
 	if len(order) != 2 || order[0] != "root 检查" || order[1] != "agent 检查" {
 		t.Fatalf("全局该在外层先跑，agent 定制在内层：got %v", order)
@@ -480,9 +488,9 @@ func TestSchemasRespectShadowing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("登记失败：%v", err)
 	}
-	err = registry.RegisterFor("小红", Tool{
+	err = registry.RegisterForScope("小红", Tool{
 		Schema:  chatSchema("todo", "小红的待办"),
-		Execute: func(ctx context.Context, arguments json.RawMessage) (string, error) { return "", nil },
+		Execute: func(ctx context.Context, scope *core.App, arguments json.RawMessage) (string, error) { return "", nil },
 	})
 	if err != nil {
 		t.Fatalf("登记失败：%v", err)

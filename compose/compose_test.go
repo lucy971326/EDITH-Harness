@@ -14,8 +14,7 @@ import (
 
 func TestOpenWritesPrivateTemplateThenStops(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "home")
-	workspace := t.TempDir()
-	_, err := Open(home, workspace)
+	_, err := Open(home)
 	if err == nil {
 		t.Fatal("首次没有配置应写模板后停止")
 	}
@@ -34,19 +33,15 @@ func TestOpenWritesPrivateTemplateThenStops(t *testing.T) {
 	assertPrivate(t, path, 0o600)
 }
 
-func TestOpenBuildsWithExplicitWorkspace(t *testing.T) {
+func TestOpenBuildsKernelWithoutImplicitProject(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "home")
-	workspace := t.TempDir()
 	writeConfig(t, home, validConfig())
 
-	runtime, err := Open(home, workspace)
+	runtime, err := Open(home)
 	if err != nil {
 		t.Fatalf("组装失败：%v", err)
 	}
 	t.Cleanup(runtime.App.Close)
-	if runtime.Workspace != workspace {
-		t.Fatalf("工作目录不对：%q", runtime.Workspace)
-	}
 	if runtime.Home != home {
 		t.Fatalf("用户目录不对：%q", runtime.Home)
 	}
@@ -61,17 +56,17 @@ func TestOpenBuildsWithExplicitWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("完整组装应带终端 UI：%v", err)
 	}
-	assertPrivate(t, filepath.Join(home, "agents"), 0o700)
+	assertPrivate(t, filepath.Join(home, "projects"), 0o700)
+	assertPrivate(t, filepath.Join(home, "presets"), 0o700)
 	assertPrivate(t, filepath.Join(home, "sessions"), 0o700)
 }
 
 func TestOpenAllowsNoToolPlugins(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "home")
-	workspace := t.TempDir()
 	config := strings.Replace(validConfig(), "tool_plugins:\n    - files", "tool_plugins: []", 1)
 	writeConfig(t, home, config)
 
-	runtime, err := Open(home, workspace)
+	runtime, err := Open(home)
 	if err != nil {
 		t.Fatalf("空工具列表也应能组装：%v", err)
 	}
@@ -108,11 +103,11 @@ func TestDumpConfigRoundTrips(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	firstSelection, err := selectPlugins(firstConfig, firstHome, "/workspace")
+	firstSelection, err := selectPlugins(firstConfig, firstHome)
 	if err != nil {
 		t.Fatal(err)
 	}
-	secondSelection, err := selectPlugins(secondConfig, secondHome, "/workspace")
+	secondSelection, err := selectPlugins(secondConfig, secondHome)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,9 +133,9 @@ func TestOpenRejectsBadConfig(t *testing.T) {
 		{
 			name: "错误版本",
 			change: func(config string) string {
-				return strings.Replace(config, "version: 1", "version: 2", 1)
+				return strings.Replace(config, "version: 2", "version: 1", 1)
 			},
-			want: "版本必须是 1",
+			want: "版本必须是 2",
 		},
 		{
 			name: "未知字段",
@@ -150,11 +145,18 @@ func TestOpenRejectsBadConfig(t *testing.T) {
 			want: "配置不是合法 YAML",
 		},
 		{
-			name: "未知档案存储",
+			name: "未知项目存储",
 			change: func(config string) string {
-				return strings.Replace(config, "profile_store: profilejson", "profile_store: sqlite", 1)
+				return strings.Replace(config, "project_store: projectjson", "project_store: sqlite", 1)
 			},
-			want: "未知的 plugins.profile_store：sqlite",
+			want: "未知的 plugins.project_store：sqlite",
+		},
+		{
+			name: "未知模式存储",
+			change: func(config string) string {
+				return strings.Replace(config, "preset_store: presetjson", "preset_store: sqlite", 1)
+			},
+			want: "未知的 plugins.preset_store：sqlite",
 		},
 		{
 			name: "未知账本",
@@ -229,7 +231,7 @@ func TestOpenRejectsBadConfig(t *testing.T) {
 		{
 			name: "多份 YAML 文档",
 			change: func(config string) string {
-				return config + "---\nversion: 1\n"
+				return config + "---\nversion: 2\n"
 			},
 			want: "配置只能有一份 YAML 文档",
 		},
@@ -245,10 +247,9 @@ func TestOpenRejectsBadConfig(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			home := filepath.Join(t.TempDir(), "home")
-			workspace := t.TempDir()
 			writeConfig(t, home, test.change(validConfig()))
 
-			_, err := Open(home, workspace)
+			_, err := Open(home)
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("错误应包含 %q，实际是 %v", test.want, err)
 			}
@@ -258,9 +259,10 @@ func TestOpenRejectsBadConfig(t *testing.T) {
 
 func TestSelectedPluginsKeepFixedOrder(t *testing.T) {
 	config := Config{
-		Version: 1,
+		Version: 2,
 		Plugins: PluginConfig{
-			ProfileStore: "profilejson",
+			ProjectStore: "projectjson",
+			PresetStore:  "presetjson",
 			Journal:      "jsonl",
 			LLMAdapters:  []string{"deepseek"},
 			Environment:  "localenv",
@@ -272,7 +274,7 @@ func TestSelectedPluginsKeepFixedOrder(t *testing.T) {
 			APIKey: "test-key",
 		}},
 	}
-	selected, err := selectPlugins(config, "/private/home", "/workspace")
+	selected, err := selectPlugins(config, "/private/home")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +283,8 @@ func TestSelectedPluginsKeepFixedOrder(t *testing.T) {
 		names = append(names, plugin.Name())
 	}
 	want := []string{
-		"persistence-profilejson",
+		"persistence-projectjson",
+		"persistence-presetjson",
 		"persistence-jsonl",
 		"session",
 		"llm",
@@ -289,6 +292,8 @@ func TestSelectedPluginsKeepFixedOrder(t *testing.T) {
 		"tools",
 		"localenv",
 		"tool-files",
+		"projects",
+		"presets",
 		"agents",
 		"loop",
 		"ui-terminal",

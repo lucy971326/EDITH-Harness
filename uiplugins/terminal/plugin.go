@@ -1,49 +1,29 @@
-// Package terminal 提供最小的交互式终端界面插件。
+// Package terminal 保留暂停中的终端 UI 插件入口。
 package terminal
 
 import (
+	"context"
 	"fmt"
-	"io"
-	"os"
 
-	"harness/agents"
 	"harness/core"
-	"harness/llm"
-	"harness/tools"
 )
 
-// Plugin 把终端界面登记为当前 ui；测试可替换输入输出。
-type Plugin struct {
-	Input  io.Reader
-	Output io.Writer
-}
+// Plugin 登记暂停提示，避免旧 TUI 继续依赖已经移除的架构。
+type Plugin struct{}
 
 // Name 返回插件名。
 func (Plugin) Name() string {
 	return "ui-terminal"
 }
 
-// Start 领取管理、模型和工具能力，再登记终端界面启动入口。
-func (p Plugin) Start(app *core.App) error {
-	roster, err := agents.Get(app)
-	if err != nil {
-		return fmt.Errorf("terminal UI 要先有 Agent 管理处（agents）：%w", err)
-	}
-	models, err := llm.Get(app)
-	if err != nil {
-		return fmt.Errorf("terminal UI 要先有模型插座（llm）：%w", err)
-	}
-	registry, err := tools.Get(app)
-	if err != nil {
-		return fmt.Errorf("terminal UI 要先有工具登记处（tools）：%w", err)
-	}
-	if p.Input == nil {
-		p.Input = os.Stdin
-	}
-	if p.Output == nil {
-		p.Output = os.Stdout
-	}
-	service := newTUIService(app, roster, models, registry, p.Input, p.Output)
-	app.RegisterService("ui", service)
+// Start 登记暂停中的终端入口。
+func (Plugin) Start(app *core.App) error {
+	app.RegisterService("ui", pausedService{})
 	return nil
+}
+
+type pausedService struct{}
+
+func (pausedService) Run(context.Context) error {
+	return fmt.Errorf("TUI 已暂停；下一阶段将接入 Web UI")
 }

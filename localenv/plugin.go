@@ -3,37 +3,47 @@ package localenv
 
 import (
 	"harness/core"
+	"harness/environment"
 	"harness/workspace/shell"
 )
 
-// Plugin 组合一套同根目录的本地执行环境。
+// Plugin 登记按项目根目录创建本地执行环境的能力。
 type Plugin struct {
-	Root        string // files 和 process 共用的工作目录
-	OutputLimit int    // shell 的 stdout/stderr 各自保留上限；<=0 用默认值
+	OutputLimit int // shell 的 stdout/stderr 各自保留上限；<=0 用默认值
 }
 
 func (Plugin) Name() string { return "localenv" }
 
-// Start 一次登记 files、process、shell；任何一块失败都不留半套环境。
+// Start 登记本地环境提供者；真正的执行能力在会话启动时挂载。
 func (p Plugin) Start(app *core.App) error {
-	fileStore, err := newFileStore(p.Root)
+	app.RegisterService("environment", environment.Provider(&provider{outputLimit: p.OutputLimit}))
+	return nil
+}
+
+type provider struct {
+	outputLimit int
+}
+
+// Mount 给一个会话挂载同根的 files、process 和 shell；作用域关闭时收掉进程树。
+func (p *provider) Mount(scope *core.App, root string) error {
+	fileStore, err := newFileStore(root)
 	if err != nil {
 		return err
 	}
-	spawner, err := newSpawner(p.Root)
+	spawner, err := newSpawner(root)
 	if err != nil {
 		return err
 	}
-	runner, err := shell.New(spawner, p.OutputLimit)
+	runner, err := shell.New(spawner, p.outputLimit)
 	if err != nil {
 		_ = spawner.Close()
 		return err
 	}
 
-	app.RegisterService("files", fileStore)
-	app.RegisterService("process", spawner)
-	app.RegisterService("shell", runner)
-	app.OnCleanup(func() {
+	scope.RegisterService("files", fileStore)
+	scope.RegisterService("process", spawner)
+	scope.RegisterService("shell", runner)
+	scope.OnCleanup(func() {
 		_ = spawner.Close()
 	})
 	return nil

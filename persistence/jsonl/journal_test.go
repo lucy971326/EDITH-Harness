@@ -81,7 +81,7 @@ func TestListHeadersReadsOnlyBookCovers(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, id := range []string{"会话二", "会话一"} {
-		header := session.Header{FormatVersion: 2, ID: id, AgentID: "小红", ProfileRevision: 1}
+		header := session.Header{FormatVersion: 3, ID: id, ProjectID: "项目", PresetID: "模式", PresetRevision: 1}
 		err = journal.Create(id, header)
 		if err != nil {
 			t.Fatal(err)

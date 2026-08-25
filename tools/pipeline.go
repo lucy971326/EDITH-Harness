@@ -54,7 +54,7 @@ func (r *Registry) ExecuteCall(ctx context.Context, app *core.App, book *session
 		return final
 	}
 
-	tool, found := r.Lookup(call.Name, call.Agent)
+	tool, found := r.Lookup(call.Name, call.ScopeID)
 	if !found {
 		return finish(session.ResultFailed, "没有 "+call.Name+" 这个工具")
 	}
@@ -95,7 +95,7 @@ func (r *Registry) ExecuteCall(ctx context.Context, app *core.App, book *session
 
 	// ⑥ 环绕链：超时、重试挂这；本体在链尾，中间件可以包着它做文章。
 	outcome := runScopedChain(app, Execute, call, func(c Call) Outcome {
-		output, err := tool.Execute(ctx, c.Argument)
+		output, err := tool.Execute(ctx, app, c.Argument)
 		return Outcome{Output: output, Err: err}
 	})
 
@@ -133,7 +133,7 @@ func (r *Registry) recordFinal(book *session.Session, call Call, final Result, r
 }
 
 // runScopedChain 沿作用域链聚合一条链：父层在外、子层在内、本体在最里。
-// 全局插件挂 root 的链，管得住每个 agent；agent 自己的定制永远在更内层。
+// 全局插件挂 root 的链，管得住每段会话；会话定制永远在更内层。
 func runScopedChain[P, R any](app *core.App, name string, payload P, body func(P) R) R {
 	if app == nil {
 		return body(payload)

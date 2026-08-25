@@ -51,6 +51,18 @@ type failingJournal struct {
 	fail  bool
 }
 
+func validHeader(id string) Header {
+	return Header{
+		ID:             id,
+		Title:          id,
+		CreatedAt:      time.Unix(1, 0),
+		ProjectID:      "测试项目",
+		ProjectRoot:    "/tmp/测试项目",
+		PresetID:       "测试模式",
+		PresetRevision: 1,
+	}
+}
+
 func (j *failingJournal) Create(id string, header Header) error {
 	return j.inner.Create(id, header)
 }
@@ -80,7 +92,7 @@ func newTestStore(t *testing.T) (*Store, *Session, *recordingBroadcaster) {
 	broadcaster := &recordingBroadcaster{}
 	store := NewStore(NewMemoryJournal(), broadcaster)
 
-	s, err := store.Create("测试账", "测试 Agent", 1)
+	s, err := store.Create(validHeader("测试账"))
 	if err != nil {
 		t.Fatalf("开账失败：%v", err)
 	}
@@ -156,7 +168,7 @@ func TestFailedAppendLeavesNoTrace(t *testing.T) {
 	journal := &failingJournal{inner: NewMemoryJournal()}
 	store := NewStore(journal, broadcaster)
 
-	s, err := store.Create("会失败的账", "测试 Agent", 1)
+	s, err := store.Create(validHeader("会失败的账"))
 	if err != nil {
 		t.Fatalf("开账失败：%v", err)
 	}

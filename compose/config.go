@@ -13,10 +13,11 @@ import (
 
 const defaultDeepSeekBaseURL = "https://api.deepseek.com"
 
-const configTemplate = `version: 1
+const configTemplate = `version: 2
 
 plugins:
-  profile_store: profilejson
+  project_store: projectjson
+  preset_store: presetjson
   journal: jsonl
   llm_adapters:
     - deepseek
@@ -41,7 +42,8 @@ type Config struct {
 
 // PluginConfig 记录本次启动选择的可替换大零件。
 type PluginConfig struct {
-	ProfileStore string   `yaml:"profile_store"`
+	ProjectStore string   `yaml:"project_store"`
+	PresetStore  string   `yaml:"preset_store"`
 	Journal      string   `yaml:"journal"`
 	LLMAdapters  []string `yaml:"llm_adapters"`
 	Environment  string   `yaml:"environment"`
@@ -110,7 +112,7 @@ func DumpConfig(home string, output io.Writer) error {
 	if err != nil {
 		return err
 	}
-	_, err = selectPlugins(config, absoluteHome, ".")
+	_, err = selectPlugins(config, absoluteHome)
 	if err != nil {
 		return fmt.Errorf("配置不能组装：%w", err)
 	}
@@ -127,11 +129,14 @@ func DumpConfig(home string, output io.Writer) error {
 }
 
 func validateConfig(config Config) error {
-	if config.Version != 1 {
-		return fmt.Errorf("配置版本必须是 1")
+	if config.Version != 2 {
+		return fmt.Errorf("配置版本必须是 2")
 	}
-	if config.Plugins.ProfileStore == "" {
-		return fmt.Errorf("配置缺少 plugins.profile_store")
+	if config.Plugins.ProjectStore == "" {
+		return fmt.Errorf("配置缺少 plugins.project_store")
+	}
+	if config.Plugins.PresetStore == "" {
+		return fmt.Errorf("配置缺少 plugins.preset_store")
 	}
 	if config.Plugins.Journal == "" {
 		return fmt.Errorf("配置缺少 plugins.journal")

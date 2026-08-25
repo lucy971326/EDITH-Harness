@@ -14,8 +14,12 @@ import (
 	"harness/chat"
 	"harness/core"
 	"harness/llm"
+	"harness/localenv"
 	"harness/loop"
-	"harness/persistence/profilejson"
+	"harness/persistence/presetjson"
+	"harness/persistence/projectjson"
+	"harness/presets"
+	"harness/projects"
 	"harness/session"
 	"harness/tools"
 )
@@ -240,12 +244,16 @@ func TestLoopSendsThinkingWithAssistantToolCallOnSecondRequest(t *testing.T) {
 	app := core.New()
 	t.Cleanup(app.Close)
 	err := app.Install(
-		profilejson.Plugin{Root: t.TempDir()},
+		projectjson.Plugin{Root: t.TempDir()},
+		presetjson.Plugin{Root: t.TempDir()},
 		testJournalPlugin{journal: session.NewMemoryJournal()},
 		session.Plugin{},
 		llm.Plugin{},
 		Plugin{APIKey: "test-key", BaseURL: server.URL},
 		tools.Plugin{},
+		localenv.Plugin{},
+		projects.Plugin{},
+		presets.Plugin{},
 		agents.Plugin{},
 		loop.Plugin{},
 	)
@@ -258,18 +266,26 @@ func TestLoopSendsThinkingWithAssistantToolCallOnSecondRequest(t *testing.T) {
 	}
 	err = registry.Register(tools.Tool{
 		Schema: chat.ToolSchema{Name: "echo", Parameters: []byte(`{"type":"object"}`)},
-		Execute: func(ctx context.Context, argument json.RawMessage) (string, error) {
+		Execute: func(ctx context.Context, scope *core.App, argument json.RawMessage) (string, error) {
 			return string(argument), nil
 		},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	service, err := agents.Get(app)
+	projectService, err := projects.Get(app)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = service.CreateAgent(agents.AgentProfile{
+	project, err := projectService.Create("测试项目", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	presetService, err := presets.Get(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = presetService.Create(presets.Preset{
 		ID:       "小红",
 		Provider: "deepseek",
 		Model:    "deepseek-reasoner",
@@ -279,7 +295,11 @@ func TestLoopSendsThinkingWithAssistantToolCallOnSecondRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	conversation, err := service.StartSession("小红", "会话一")
+	service, err := agents.Get(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation, err := service.StartSession(agents.StartInput{ProjectID: project.ID, PresetID: "小红", Title: "会话一"})
 	if err != nil {
 		t.Fatal(err)
 	}
