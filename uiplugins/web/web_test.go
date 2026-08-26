@@ -154,7 +154,6 @@ func (c *fakeConversation) Cancel() {
 }
 func (c *fakeConversation) SubmitFollowup(text string) error { c.submitted = text; return nil }
 func (*fakeConversation) Steer(text string) error            { return nil }
-func (*fakeConversation) InjectMemo(text string) error       { return nil }
 func (*fakeConversation) SelectModel(llm.Selection) error    { return nil }
 func (*fakeConversation) Book() *session.Session             { return nil }
 func (*fakeConversation) Close() error                       { return nil }

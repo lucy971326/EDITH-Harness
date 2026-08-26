@@ -46,13 +46,8 @@ func (Plugin) Start(app *core.App) error {
 	if err != nil {
 		return fmt.Errorf("agents 要先有模型插座（llm）：%w", err)
 	}
-	service := newRegistry(app, store, projectService, presetService, provider, toolsReg, llmService)
+	service := newConversationManager(app, store, projectService, presetService, provider, toolsReg, llmService)
 	app.RegisterService("agents", service)
 	app.OnCleanup(service.CloseAll)
 	return nil
-}
-
-// Get 从 App 取 Agent 管理入口。
-func Get(app *core.App) (Service, error) {
-	return core.Resolve[Service](app, "agents")
 }

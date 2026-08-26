@@ -14,7 +14,6 @@ import (
 const (
 	TargetNextTurn = "next-turn" // 开新轮（正常的新问题）
 	TargetNextStep = "next-step" // 进当前轮的下一步（中途捎话）
-	TargetMemo     = "context"   // 塞小抄：不吵醒、不占待办，下次问模型时拼进上下文
 )
 
 // delivery 是收件箱里的一份投递。
@@ -23,14 +22,13 @@ type delivery struct {
 	Text string
 }
 
-// inbox 是收件箱：三条待办队列 + 一个唤醒铃。
+// inbox 是收件箱：两条待办队列 + 一个唤醒铃。
 // 每一份投递都先落账再入队，崩溃不丢；领出时再落一笔领出账——两条账分开，
 // 恢复时只重放"投递了没领出"的，绝不把用户消息弄成两份。
 type inbox struct {
 	mu       sync.Mutex
 	nextTurn []delivery
 	nextStep []delivery
-	memos    []delivery
 	wake     chan struct{} // 唤醒铃：有活可干时响一声
 	nextID   int
 }
@@ -58,8 +56,6 @@ func (b *inbox) deliver(book *session.Session, target string, text string, ring 
 		b.nextTurn = append(b.nextTurn, item)
 	case TargetNextStep:
 		b.nextStep = append(b.nextStep, item)
-	case TargetMemo:
-		b.memos = append(b.memos, item)
 	default:
 		b.mu.Unlock()
 		return fmt.Errorf("投递目标不认识：%s", target)
@@ -88,16 +84,6 @@ func (b *inbox) takeNextStep() []delivery {
 	return taken
 }
 
-// takeMemos 领走全部小抄。
-func (b *inbox) takeMemos() []delivery {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	taken := b.memos
-	b.memos = nil
-	return taken
-}
-
 // restore 恢复时把一份旧投递放回队列（账上有 deliver 无 claim 的那些）。
 func (b *inbox) restore(item delivery, target string) {
 	b.mu.Lock()
@@ -108,8 +94,6 @@ func (b *inbox) restore(item delivery, target string) {
 		b.nextTurn = append(b.nextTurn, item)
 	case TargetNextStep:
 		b.nextStep = append(b.nextStep, item)
-	case TargetMemo:
-		b.memos = append(b.memos, item)
 	}
 }
 

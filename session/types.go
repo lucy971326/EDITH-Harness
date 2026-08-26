@@ -86,7 +86,7 @@ type ToolResultData struct {
 type DeliverData struct {
 	ID     string // 这份投递的编号，领出时对账
 	Text   string
-	Target string // 给谁："next-turn" 开新轮 / "next-step" 进当前轮下一步 / "context" 塞小抄不吵醒
+	Target string // 给谁："next-turn" 开新轮 / "next-step" 进当前轮下一步
 }
 
 type ClaimData struct {

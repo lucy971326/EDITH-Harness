@@ -177,7 +177,6 @@ func (*fakeConversation) WaitIdle()                        {}
 func (*fakeConversation) Cancel()                          {}
 func (*fakeConversation) SubmitFollowup(text string) error { return nil }
 func (*fakeConversation) Steer(text string) error          { return nil }
-func (*fakeConversation) InjectMemo(text string) error     { return nil }
 func (*fakeConversation) SelectModel(llm.Selection) error  { return nil }
 func (c *fakeConversation) Book() *session.Session         { return c.input.Book }
 func (c *fakeConversation) Close() error                   { return c.input.Close() }
@@ -186,7 +185,7 @@ type silentBroadcaster struct{}
 
 func (silentBroadcaster) Broadcast(name string, payload any) {}
 
-func newTestRegistry(t *testing.T) (*registry, projects.Service, presets.Service, *fakeRunner) {
+func newTestConversationManager(t *testing.T) (*conversationManager, projects.Service, presets.Service, *fakeRunner) {
 	t.Helper()
 	app := core.New()
 	t.Cleanup(app.Close)
@@ -199,13 +198,13 @@ func newTestRegistry(t *testing.T) (*registry, projects.Service, presets.Service
 	if err != nil {
 		t.Fatal(err)
 	}
-	registry := newRegistry(app, books, projectService, presetService, environment.Provider(fakeEnvironment{}), toolsReg, llmService)
+	manager := newConversationManager(app, books, projectService, presetService, environment.Provider(fakeEnvironment{}), toolsReg, llmService)
 	runner := &fakeRunner{}
-	_, err = registry.RegisterRunner(runner)
+	_, err = manager.RegisterRunner(runner)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return registry, projectService, presetService, runner
+	return manager, projectService, presetService, runner
 }
 
 type testAdapter struct{}
@@ -221,7 +220,7 @@ func (testAdapter) ProviderInfo() llm.ProviderInfo {
 }
 
 func TestSessionOwnsProjectPresetAndOpaqueID(t *testing.T) {
-	registry, projectService, presetService, runner := newTestRegistry(t)
+	manager, projectService, presetService, runner := newTestConversationManager(t)
 	project, err := projectService.Create(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -231,7 +230,7 @@ func TestSessionOwnsProjectPresetAndOpaqueID(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	conversation, err := registry.StartSession(StartInput{ProjectID: project.ID, PresetID: "极简", Title: "同名会话"})
+	conversation, err := manager.StartSession(StartInput{ProjectID: project.ID, PresetID: "极简", Title: "同名会话"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,7 +256,7 @@ func TestSessionOwnsProjectPresetAndOpaqueID(t *testing.T) {
 }
 
 func TestResumeUsesLockedPresetRevision(t *testing.T) {
-	registry, projectService, presetService, runner := newTestRegistry(t)
+	manager, projectService, presetService, runner := newTestConversationManager(t)
 	project, err := projectService.Create(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -266,7 +265,7 @@ func TestResumeUsesLockedPresetRevision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	conversation, err := registry.StartSession(StartInput{ProjectID: project.ID, PresetID: "编程", Title: "历史"})
+	conversation, err := manager.StartSession(StartInput{ProjectID: project.ID, PresetID: "编程", Title: "历史"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -280,7 +279,7 @@ func TestResumeUsesLockedPresetRevision(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resumed, err := registry.ResumeSession(sessionID)
+	resumed, err := manager.ResumeSession(sessionID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,7 +290,7 @@ func TestResumeUsesLockedPresetRevision(t *testing.T) {
 }
 
 func TestOpenSessionUsesRunningConversationOrRestoresHistory(t *testing.T) {
-	registry, projectService, presetService, runner := newTestRegistry(t)
+	manager, projectService, presetService, runner := newTestConversationManager(t)
 	project, err := projectService.Create(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -300,11 +299,11 @@ func TestOpenSessionUsesRunningConversationOrRestoresHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	started, err := registry.StartSession(StartInput{ProjectID: project.ID, PresetID: "模式", Title: "历史"})
+	started, err := manager.StartSession(StartInput{ProjectID: project.ID, PresetID: "模式", Title: "历史"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	opened, err := registry.OpenSession(started.SessionID())
+	opened, err := manager.OpenSession(started.SessionID())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,7 +314,7 @@ func TestOpenSessionUsesRunningConversationOrRestoresHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = registry.OpenSession(started.SessionID())
+	_, err = manager.OpenSession(started.SessionID())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -325,7 +324,7 @@ func TestOpenSessionUsesRunningConversationOrRestoresHistory(t *testing.T) {
 }
 
 func TestConversationInterfaceDoesNotDependOnLoop(t *testing.T) {
-	registry, projectService, presetService, _ := newTestRegistry(t)
+	manager, projectService, presetService, _ := newTestConversationManager(t)
 	project, err := projectService.Create(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -334,7 +333,7 @@ func TestConversationInterfaceDoesNotDependOnLoop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	conversation, err := registry.StartSession(StartInput{ProjectID: project.ID, PresetID: "假模式", Title: "假 Runner"})
+	conversation, err := manager.StartSession(StartInput{ProjectID: project.ID, PresetID: "假模式", Title: "假 Runner"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -348,7 +347,7 @@ func TestConversationInterfaceDoesNotDependOnLoop(t *testing.T) {
 }
 
 func TestMountFailurePublishesNoSessionAndClosesScope(t *testing.T) {
-	registry, projectService, presetService, runner := newTestRegistry(t)
+	manager, projectService, presetService, runner := newTestConversationManager(t)
 	project, err := projectService.Create(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -358,22 +357,22 @@ func TestMountFailurePublishesNoSessionAndClosesScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	provider := &failingEnvironment{}
-	registry.environment = provider
+	manager.environment = provider
 
-	_, err = registry.StartSession(StartInput{ProjectID: project.ID, PresetID: "假模式", Title: "不会成功"})
+	_, err = manager.StartSession(StartInput{ProjectID: project.ID, PresetID: "假模式", Title: "不会成功"})
 	if err == nil {
 		t.Fatal("环境挂载失败后会话却成功了")
 	}
 	if !provider.closed {
 		t.Fatal("环境挂载失败后没有关闭会话作用域")
 	}
-	if len(registry.sessions) != 0 || len(registry.opening) != 0 {
-		t.Fatalf("失败会话泄漏到运行表：sessions=%d opening=%d", len(registry.sessions), len(registry.opening))
+	if len(manager.sessions) != 0 || len(manager.opening) != 0 {
+		t.Fatalf("失败会话泄漏到运行表：sessions=%d opening=%d", len(manager.sessions), len(manager.opening))
 	}
 	if len(runner.inputs) != 0 {
 		t.Fatal("环境挂载失败后不应交给 Runner")
 	}
-	headers, err := registry.books.ListHeaders()
+	headers, err := manager.books.ListHeaders()
 	if err != nil {
 		t.Fatal(err)
 	}

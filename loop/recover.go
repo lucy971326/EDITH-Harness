@@ -9,9 +9,9 @@ import (
 	"harness/tools"
 )
 
-// recoverFromLedger 拿旧账重建 agent：找回没领的待办、补齐悬空的账。
+// recoverFromLedger 拿旧账重建 conversation：找回没领的待办、补齐悬空的账。
 // 原则：账说什么就是什么，绝不猜、绝不自动重跑可能已有副作用的工具。
-func recoverFromLedger(agent *Conversation, seed []session.Event) error {
+func recoverFromLedger(conversation *Conversation, seed []session.Event) error {
 	var (
 		delivered        = make(map[string]session.Event) // 投递了、还没领出的
 		calls            = make(map[string]bool)          // 要调了、还没回话的调用
@@ -30,7 +30,7 @@ func recoverFromLedger(agent *Conversation, seed []session.Event) error {
 			if err != nil {
 				return fmt.Errorf("第 %d 笔投递解不开：%w", event.Seq, err)
 			}
-			agent.inbox.rememberDeliveryID(data.ID)
+			conversation.inbox.rememberDeliveryID(data.ID)
 			delivered[data.ID] = event
 		case session.KindClaim:
 			var data session.ClaimData
@@ -88,7 +88,7 @@ func recoverFromLedger(agent *Conversation, seed []session.Event) error {
 	for callID := range calls {
 		if started[callID] {
 			// 副作用可能已发生：说不知道，让模型自己裁决。
-			err := tools.RecoverDangling(agent.book, callID, tools.ResultUnknown,
+			err := tools.RecoverDangling(conversation.book, callID, tools.ResultUnknown,
 				"这个操作断在半路，结果不明：副作用可能已发生也可能没发生。你自己判断要不要重做；拿不准就先问我。")
 			if err != nil {
 				return err
@@ -96,7 +96,7 @@ func recoverFromLedger(agent *Conversation, seed []session.Event) error {
 			continue
 		}
 		// 没开跑就是没开跑：放心跳过，模型可重试。
-		err := tools.RecoverDangling(agent.book, callID, session.ResultSkipped,
+		err := tools.RecoverDangling(conversation.book, callID, session.ResultSkipped,
 			"断在开跑前，什么都没发生，可以直接重试。")
 		if err != nil {
 			return err
@@ -105,7 +105,7 @@ func recoverFromLedger(agent *Conversation, seed []session.Event) error {
 
 	// 悬空的半句话：固化成被打断的定稿——只落一条，字一个不丢。
 	if len(pendingChunkSeqs) > 0 {
-		_, err := agent.book.RecordAssistantFinal(session.AssistantFinalData{
+		_, err := conversation.book.RecordAssistantFinal(session.AssistantFinalData{
 			Text:        pendingChunkText.String(),
 			Interrupted: true,
 		}, pendingChunkSeqs)
@@ -116,13 +116,13 @@ func recoverFromLedger(agent *Conversation, seed []session.Event) error {
 
 	// 悬空的步和轮：补上收口。
 	if openStep {
-		_, err := agent.book.RecordStepEnd()
+		_, err := conversation.book.RecordStepEnd()
 		if err != nil {
 			return err
 		}
 	}
 	if openTurn {
-		_, err := agent.book.RecordTurnEnd()
+		_, err := conversation.book.RecordTurnEnd()
 		if err != nil {
 			return err
 		}
@@ -139,13 +139,13 @@ func recoverFromLedger(agent *Conversation, seed []session.Event) error {
 			return err
 		}
 		if _, waiting := delivered[data.ID]; waiting {
-			agent.inbox.restore(delivery{ID: data.ID, Text: data.Text}, data.Target)
+			conversation.inbox.restore(delivery{ID: data.ID, Text: data.Text}, data.Target)
 		}
 	}
 
 	// 有找回的待办就唤醒接着干，没有就安安静静待命。
-	if agent.inbox.pending() {
-		agent.inbox.ring()
+	if conversation.inbox.pending() {
+		conversation.inbox.ring()
 	}
 	return nil
 }
