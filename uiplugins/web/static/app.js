@@ -41,12 +41,70 @@
   function bindComposer() {
     document.querySelectorAll("[data-autogrow]").forEach((textarea) => {
       resizeComposer(textarea);
+      syncCommandMenu(textarea);
     });
+  }
+
+  function commandQuery(value) {
+    const line = value.replace(/^\s+/, "");
+    if (!line.startsWith("/")) return null;
+    const rest = line.slice(1);
+    if (/[\t\n\r ]/.test(rest)) return null;
+    return rest.toLowerCase();
+  }
+
+  function syncCommandMenu(textarea) {
+    if (!(textarea instanceof HTMLTextAreaElement)) return;
+    const menu = textarea.closest(".composer") && textarea.closest(".composer").querySelector("[data-command-menu]");
+    if (!menu) return;
+    const query = commandQuery(textarea.value);
+    if (query === null) {
+      menu.hidden = true;
+      return;
+    }
+    const items = menu.querySelectorAll("[data-command-name]");
+    let visible = 0;
+    items.forEach((item) => {
+      const name = (item.getAttribute("data-command-name") || "").toLowerCase();
+      const description = (item.getAttribute("data-command-description") || "").toLowerCase();
+      const match = name.startsWith(query) || (query !== "" && description.includes(query));
+      item.hidden = !match;
+      if (match) visible += 1;
+    });
+    const none = menu.querySelector("[data-command-none]");
+    if (none) none.hidden = visible !== 0;
+    menu.hidden = false;
   }
 
   document.addEventListener("input", (event) => {
     const target = event.target instanceof Element ? event.target.closest("[data-autogrow]") : null;
     resizeComposer(target);
+    if (target) syncCommandMenu(target);
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    const textarea = event.target instanceof Element ? event.target.closest("[data-autogrow]") : null;
+    const menu = textarea && textarea.closest(".composer") && textarea.closest(".composer").querySelector("[data-command-menu]");
+    if (!menu || menu.hidden) return;
+    menu.hidden = true;
+    event.preventDefault();
+  });
+
+  document.addEventListener("click", (event) => {
+    const item = event.target instanceof Element ? event.target.closest("[data-command-name]") : null;
+    if (!item || !item.closest("[data-command-menu]")) return;
+    const form = item.closest(".composer");
+    const textarea = form && form.querySelector("textarea[name=text]");
+    if (!textarea) return;
+    const name = item.getAttribute("data-command-name") || "";
+    const hint = item.getAttribute("data-command-hint") || "";
+    textarea.value = hint ? `/${name} ` : `/${name}`;
+    resizeComposer(textarea);
+    textarea.focus();
+    const menu = form.querySelector("[data-command-menu]");
+    if (menu) menu.hidden = true;
+    event.preventDefault();
   });
 
   function readCollapsedProjects() {

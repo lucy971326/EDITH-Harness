@@ -14,26 +14,32 @@ import (
 // Conversation 是一段会话的门面：UI 和外部服务只跟它说话，门后的搬运工长什么样不用管。
 // 两种塞消息：SubmitFollowup 开新轮；Steer 中途捎话（忙时下一步生效，闲时就是新轮）。
 type Conversation struct {
+
+	// 1. 身份和资源
 	sessionID string
 	scope     *core.App // 专属子作用域：控制位、审批人、遮蔽工具都挂这
 	book      *session.Session
 	llmSvc    *llm.Service
 	toolsReg  *tools.Registry
 	config    RunConfig
-	inbox     *inbox
-	driver    *driver
+	// 2.收消息干活
+	inbox  *inbox  // 用户新消息放这里排队
+	driver *driver // 专属搬运工goroutine,按顺序那消息跑LLM/Tool
 
-	mu              sync.Mutex
-	cond            *sync.Cond // 闲了广播一声，等闲的人全醒
-	working         bool       // 搬运工已经接活，可能刚把队列领空、还没正式开轮
-	busy            bool       // 正在跑一轮；State 对外报告正式运行
-	stepCtx         context.Context
-	stepStop        context.CancelFunc
+	mu   sync.Mutex
+	cond *sync.Cond // 闲了广播一声，等闲的人全醒
+	// 3.状态与取消
+	working         bool               // 搬运工已经接活，可能刚把队列领空、还没正式开轮
+	busy            bool               // 正在跑一轮；State 对外报告正式运行
+	stepCtx         context.Context    // 当前这一步的Go Context
+	stepStop        context.CancelFunc // 取消当前这一步的按钮
 	cancelRequested bool
-	close           func() error
-	reportError     func(error)
-	closeErr        error
-	closeOnce       sync.Once
+
+	// 4.收尾
+	close       func() error
+	reportError func(error)
+	closeErr    error
+	closeOnce   sync.Once
 }
 
 func newConversation(sessionID string, scope *core.App, book *session.Session, llmSvc *llm.Service, toolsReg *tools.Registry, preset presets.Revision, model llm.Selection, reportError func(error)) *Conversation {

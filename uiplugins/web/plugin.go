@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"harness/agents"
+	"harness/commands"
 	"harness/core"
 	"harness/llm"
 	"harness/presets"
@@ -47,9 +48,13 @@ func (Plugin) Start(app *core.App) error {
 	if err != nil {
 		return fmt.Errorf("Web UI 要先有工具登记处（tools）：%w", err)
 	}
+	commandService, err := commands.Get(app)
+	if err != nil {
+		return fmt.Errorf("Web UI 要先有命令登记处（commands）：%w", err)
+	}
 
 	updates := newUpdateHub()
-	service := newService(projectService, presetService, books, agentService, llmService, toolRegistry, updates, newNativeDirectoryPicker())
+	service := newService(projectService, presetService, books, agentService, llmService, toolRegistry, commandService, updates, newNativeDirectoryPicker())
 	app.Subscribe(session.EventAppended, func(payload any) {
 		appended, ok := payload.(session.Appended)
 		if ok {

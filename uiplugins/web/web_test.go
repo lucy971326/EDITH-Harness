@@ -14,6 +14,7 @@ import (
 
 	"harness/agents"
 	"harness/chat"
+	"harness/commands"
 	"harness/llm"
 	"harness/presets"
 	"harness/projects"
@@ -199,7 +200,7 @@ func newWebService(t *testing.T) (*service, projects.Service, presets.Service, *
 	if err != nil {
 		t.Fatal(err)
 	}
-	return newService(projectService, presetService, books, agentService, llmService, tools.NewRegistry(), newUpdateHub(), picker), projectService, presetService, books, agentService
+	return newService(projectService, presetService, books, agentService, llmService, tools.NewRegistry(), commands.NewRegistry(), newUpdateHub(), picker), projectService, presetService, books, agentService
 }
 
 type silentWebBroadcaster struct{}
@@ -245,6 +246,92 @@ func TestReadOldSessionDoesNotOpenAgent(t *testing.T) {
 	data, err := service.pageData(project.ID, "old", "", "")
 	if err != nil || !data.HasSession || agentService.openCalls != 0 {
 		t.Fatalf("浏览旧账不该恢复 Agent：data=%+v err=%v open=%d", data.Header, err, agentService.openCalls)
+	}
+}
+
+func TestSlashCommandDoesNotStartChat(t *testing.T) {
+	service, projectService, presetService, _, agentService := newWebService(t)
+	project, err := projectService.Create(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = presetService.Create(presets.Preset{ID: "极简"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = service.commands.Register(commands.Command{
+		Name:        "ping",
+		Description: "探测",
+		Run: func(context.Context, commands.Invocation) commands.Result {
+			return commands.Result{Kind: commands.KindSuccess, Text: "pong"}
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/messages", strings.NewReader("project_id="+project.ID+"&preset_id=%E6%9E%81%E7%AE%80&text=%2Fping"))
+	request.Header.Set("HX-Request", "true")
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	writer := httptest.NewRecorder()
+	service.handleSubmitMessage(writer, request)
+	if writer.Code != http.StatusOK || agentService.startCalls != 0 || agentService.conversation.submitted != "" {
+		t.Fatalf("斜杠命令不该开会话：code=%d calls=%d text=%q", writer.Code, agentService.startCalls, agentService.conversation.submitted)
+	}
+	if !strings.Contains(writer.Body.String(), "pong") {
+		t.Fatalf("成功提示应出现：%s", writer.Body.String())
+	}
+}
+
+func TestUnknownSlashCommandDoesNotStartChat(t *testing.T) {
+	service, projectService, presetService, _, agentService := newWebService(t)
+	project, err := projectService.Create(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = presetService.Create(presets.Preset{ID: "极简"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/messages", strings.NewReader("project_id="+project.ID+"&preset_id=%E6%9E%81%E7%AE%80&text=%2Fnope"))
+	request.Header.Set("HX-Request", "true")
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	writer := httptest.NewRecorder()
+	service.handleSubmitMessage(writer, request)
+	if writer.Code != http.StatusOK || agentService.startCalls != 0 {
+		t.Fatalf("未知斜杠不该开会话：code=%d calls=%d", writer.Code, agentService.startCalls)
+	}
+	body := writer.Body.String()
+	if !strings.Contains(body, "没有这条命令") || !strings.Contains(body, "/nope") {
+		t.Fatalf("未知命令应报错并留在输入框：%s", body)
+	}
+}
+
+func TestCommandMenuListsRegisteredNames(t *testing.T) {
+	service, projectService, presetService, _, _ := newWebService(t)
+	project, err := projectService.Create(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = presetService.Create(presets.Preset{ID: "极简"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = service.commands.Register(commands.Command{
+		Name:        "ping",
+		Description: "探测",
+		Run: func(context.Context, commands.Invocation) commands.Result {
+			return commands.Result{Kind: commands.KindSuccess}
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := service.pageData(project.ID, "", "1", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data.Commands) != 1 || data.Commands[0].Name != "ping" {
+		t.Fatalf("草稿页应带命令名单：%+v", data.Commands)
 	}
 }
 

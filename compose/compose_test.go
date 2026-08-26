@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"harness/commands"
 	"harness/tools"
 	"harness/ui"
 )
@@ -51,6 +52,10 @@ func TestOpenBuildsKernelWithoutImplicitProject(t *testing.T) {
 	}
 	if _, exists := registry.Lookup("write_file", ""); !exists {
 		t.Fatal("完整组装应带 write_file")
+	}
+	_, err = commands.Get(runtime.App)
+	if err != nil {
+		t.Fatalf("完整组装应带命令登记处：%v", err)
 	}
 	_, err = ui.Get(runtime.App)
 	if err != nil {
@@ -290,6 +295,7 @@ func TestSelectedPluginsKeepFixedOrder(t *testing.T) {
 		"llm",
 		"llm-deepseek",
 		"tools",
+		"commands",
 		"localenv",
 		"tool-files",
 		"projects",

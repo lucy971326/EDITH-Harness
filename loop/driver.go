@@ -24,9 +24,10 @@ func newDriver(conversation *Conversation) *driver {
 
 // start 把搬运工放上线。
 func (d *driver) start() {
-	d.startOnce.Do(func() {
-		go d.run()
-	})
+	d.startOnce.Do(
+		func() {
+			go d.run()
+		})
 }
 
 // stopAndJoin 让搬运工下线并等他收工。

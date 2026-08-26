@@ -18,7 +18,7 @@ func (s *service) pageData(projectID string, sessionID string, draft string, mes
 	if err != nil {
 		return PageData{}, err
 	}
-	data := PageData{Projects: listedProjects, Error: message}
+	data := PageData{Projects: listedProjects, Error: message, Commands: s.commands.List()}
 	data.Providers = s.llm.Providers()
 	for _, project := range listedProjects {
 		if project.Archived {

@@ -15,7 +15,7 @@ templ Page(data PageData) {
 			<title>edith-harness</title>
 			<link rel="stylesheet" href="/assets/site.css"/>
 			<script defer src="/assets/htmx.min.js"></script>
-			<script defer src="/assets/app.js?v=3"></script>
+			<script defer src="/assets/app.js?v=4"></script>
 		</head>
 		<body data-session={ data.Header.ID } data-project={ data.Project.ID }>
 			<div class="app-shell">
@@ -103,6 +103,9 @@ templ ChatLog(items []ChatItem) {
 
 	templ MessageBox(data PageData) {
 	<div id="composer" class="composer-wrap">
+			if data.Notice != "" {
+				<p class="form-notice">{ data.Notice }</p>
+			}
 			if data.Error != "" {
 				<p class="form-error">{ data.Error }</p>
 			}
@@ -110,6 +113,7 @@ templ ChatLog(items []ChatItem) {
 			<p class="form-error">还没有可用的 Agent 模式。<a href="/presets/new">先创建一个</a></p>
 		} else {
 			<form class="composer" hx-post="/messages" hx-target="#chat-panel" hx-swap="outerHTML">
+				@CommandMenu(data)
 				if !data.HasSession {
 					<label class="preset-picker">Agent 模式<select name="preset_id">
 						for _, preset := range activePresets(data.Presets) {
@@ -117,7 +121,7 @@ templ ChatLog(items []ChatItem) {
 						}
 					</select></label>
 				}
-			<textarea name="text" rows="1" data-autogrow placeholder="说点什么…"></textarea>
+			<textarea name="text" rows="1" data-autogrow placeholder="说点什么…">{ data.DraftText }</textarea>
 				<div class={ composerFooterClass(data.HasSession) }>
 					if !data.HasSession {
 						<span class="composer-hint">首条消息会创建会话</span>
@@ -146,6 +150,21 @@ templ ChatLog(items []ChatItem) {
 	</div>
 }
 
+templ CommandMenu(data PageData) {
+	<div class="command-menu" data-command-menu hidden role="listbox" aria-label="命令">
+		if len(data.Commands) == 0 {
+			<p class="command-menu-empty">暂无命令</p>
+		} else {
+			<p class="command-menu-empty" data-command-none hidden>没有匹配的命令</p>
+			for _, command := range data.Commands {
+				<button class="command-menu-item" type="button" role="option" data-command-name={ command.Name } data-command-hint={ command.Hint } data-command-description={ command.Description }>
+					<span class="command-menu-name">/{ command.Name }</span>
+					<span class="command-menu-desc">{ command.Description }</span>
+				</button>
+			}
+		}
+	</div>
+}
 
 templ ModelPicker(data PageData) {
 	<div id="model-picker" class="model-picker" data-selected-provider={ data.SelectedModel.Provider } data-selected-model={ data.SelectedModel.Model } data-selected-thinking={ data.SelectedModel.Thinking }>

@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/json"
 
+	"harness/commands"
 	"harness/llm"
 	"harness/presets"
 	"harness/projects"
@@ -28,6 +29,9 @@ type PageData struct {
 	HasPreset      bool
 	Draft          bool
 	Error          string
+	Notice         string
+	DraftText      string
+	Commands       []commands.Descriptor
 }
 
 // ProjectTree 是侧栏里一个项目及其直属会话。

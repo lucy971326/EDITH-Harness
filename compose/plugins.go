@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"harness/agents"
+	"harness/commands"
 	"harness/core"
 	"harness/llm"
 	"harness/llmplugins/deepseek"
@@ -121,7 +122,7 @@ func (p pluginSelection) ordered() []core.Plugin {
 		llm.Plugin{},
 	}
 	plugins = append(plugins, p.llmAdapters...)
-	plugins = append(plugins, tools.Plugin{}, p.environment)
+	plugins = append(plugins, tools.Plugin{}, commands.Plugin{}, p.environment)
 	plugins = append(plugins, p.toolPlugins...)
 	plugins = append(plugins, projects.Plugin{}, presets.Plugin{}, agents.Plugin{}, p.runner, p.ui)
 	return plugins

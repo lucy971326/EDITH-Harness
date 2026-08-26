@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	"harness/agents"
+	"harness/commands"
 )
 
 func (s *service) handleHome(writer http.ResponseWriter, request *http.Request) {
@@ -56,14 +57,18 @@ func (s *service) handleSubmitMessage(writer http.ResponseWriter, request *http.
 	projectID := request.Form.Get("project_id")
 	sessionID := request.Form.Get("session_id")
 	presetID := request.Form.Get("preset_id")
+	if text == "" {
+		s.respondMessageError(writer, request, projectID, sessionID, "消息不能为空")
+		return
+	}
+	if commands.LooksLike(text) {
+		s.handleCommand(writer, request, projectID, sessionID, text)
+		return
+	}
 	fallback := s.currentOrProjectModel(projectID, sessionID)
 	selection, selectionErr := s.parseSelectionFromForm(request.Form, fallback)
 	if selectionErr != nil {
 		s.respondMessageError(writer, request, projectID, sessionID, selectionErr.Error())
-		return
-	}
-	if text == "" {
-		s.respondMessageError(writer, request, projectID, sessionID, "消息不能为空")
 		return
 	}
 
@@ -211,6 +216,34 @@ func (s *service) redirectAfterNewSession(writer http.ResponseWriter, request *h
 		return
 	}
 	http.Redirect(writer, request, target, http.StatusSeeOther)
+}
+
+func (s *service) handleCommand(writer http.ResponseWriter, request *http.Request, projectID string, sessionID string, text string) {
+	result, err := s.commands.Execute(request.Context(), sessionID, text)
+	if err != nil {
+		s.respondMessageError(writer, request, projectID, sessionID, err.Error())
+		return
+	}
+	draft := ""
+	if sessionID == "" {
+		draft = "1"
+	}
+	message := ""
+	draftText := ""
+	if result.Kind == commands.KindError {
+		message = result.Text
+		draftText = text
+	}
+	data, dataErr := s.pageData(projectID, sessionID, draft, message)
+	if dataErr != nil {
+		http.Error(writer, dataErr.Error(), http.StatusInternalServerError)
+		return
+	}
+	if result.Kind == commands.KindSuccess {
+		data.Notice = result.Text
+	}
+	data.DraftText = draftText
+	render(writer, request, ChatPanel(data))
 }
 
 func (s *service) respondMessageError(writer http.ResponseWriter, request *http.Request, projectID string, sessionID string, message string) {

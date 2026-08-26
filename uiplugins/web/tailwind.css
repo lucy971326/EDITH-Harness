@@ -29,6 +29,7 @@
   --harness-action-soft: #edf3ff;
   --harness-on-action: #ffffff;
   --harness-state-success: #159477;
+  --harness-state-success-soft: #e7f7f2;
   --harness-state-warning: #b66a09;
   --harness-state-warning-soft: #fff7e8;
   --harness-state-danger: #c33b43;
@@ -62,6 +63,7 @@ body[data-theme="dark"] {
   --harness-action-soft: #22365d;
   --harness-on-action: #111419;
   --harness-state-success: #48c5a6;
+  --harness-state-success-soft: #1d3a33;
   --harness-state-warning: #e4a847;
   --harness-state-warning-soft: #3d2f1b;
   --harness-state-danger: #ff8990;
@@ -183,7 +185,15 @@ body[data-theme="dark"] {
   .tool-card summary b { margin-left: auto; color: var(--harness-state-success); font-size: 11px; font-weight: 550; }
   .tool-card pre { max-height: 288px; margin: 0; padding: 13px 14px; overflow: auto; border-top: 1px solid var(--harness-border); color: var(--harness-text-secondary); background: var(--harness-surface-subtle); font-family: var(--font-mono); font-size: 12px; line-height: 1.65; }
   .composer-wrap { position: sticky; bottom: 0; z-index: 10; margin-top: auto; padding: 26px 0 24px; background: linear-gradient(to bottom, transparent, var(--harness-bg-page) 24%); }
-  .composer { padding: 10px 12px 9px; border: 1px solid var(--harness-border-strong); border-radius: 20px; background: color-mix(in srgb, var(--harness-surface) 96%, transparent); box-shadow: var(--harness-shadow-float); }
+  .composer { position: relative; padding: 10px 12px 9px; border: 1px solid var(--harness-border-strong); border-radius: 20px; background: color-mix(in srgb, var(--harness-surface) 96%, transparent); box-shadow: var(--harness-shadow-float); }
+  .command-menu { position: absolute; left: 10px; right: 10px; bottom: calc(100% + 8px); z-index: 20; max-height: 240px; overflow: auto; padding: 6px; border: 1px solid var(--harness-border); border-radius: var(--harness-radius-md); background: var(--harness-surface); box-shadow: var(--harness-shadow-float); }
+  .command-menu[hidden] { display: none; }
+  .command-menu-empty { margin: 0; padding: 10px 12px; color: var(--harness-text-secondary); font-size: 13px; }
+  .command-menu-item { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; width: 100%; padding: 8px 10px; border: 0; border-radius: var(--harness-radius-sm); color: var(--harness-text-primary); background: transparent; text-align: left; }
+  .command-menu-item:hover, .command-menu-item.is-active { background: var(--harness-action-soft); }
+  .command-menu-name { font-family: var(--font-mono); font-size: 13px; font-weight: 550; }
+  .command-menu-desc { overflow: hidden; color: var(--harness-text-secondary); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+  .form-notice { padding: 10px 12px; border-radius: var(--harness-radius-md); color: var(--harness-state-success); background: var(--harness-state-success-soft); font-size: 13px; }
   .composer textarea { display: block; width: 100%; min-height: 42px; max-height: 180px; padding: 8px 9px; resize: none; border: 0; outline: 0; color: var(--harness-text-primary); background: transparent; font-size: 15px; line-height: 1.6; }
   .composer textarea::placeholder { color: var(--harness-text-tertiary); }
   .composer-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 35px; padding: 4px 4px 0 9px; color: var(--harness-text-secondary); font-size: 12px; }

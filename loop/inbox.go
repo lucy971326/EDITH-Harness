@@ -27,8 +27,8 @@ type delivery struct {
 // 恢复时只重放"投递了没领出"的，绝不把用户消息弄成两份。
 type inbox struct {
 	mu       sync.Mutex
-	nextTurn []delivery
-	nextStep []delivery
+	nextTurn []delivery    // 开新轮
+	nextStep []delivery    // 进当前轮的下一步
 	wake     chan struct{} // 唤醒铃：有活可干时响一声
 	nextID   int
 }

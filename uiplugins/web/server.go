@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"harness/agents"
+	"harness/commands"
 	"harness/llm"
 	"harness/presets"
 	"harness/projects"
@@ -25,6 +26,7 @@ type service struct {
 	agents   agents.Service
 	llm      *llm.Service
 	tools    *tools.Registry
+	commands commands.Service
 	updates  *updateHub
 	picker   directoryPicker
 
@@ -32,7 +34,7 @@ type service struct {
 	server *http.Server
 }
 
-func newService(projectService projects.Service, presetService presets.Service, books *session.Store, agentService agents.Service, llmService *llm.Service, toolRegistry *tools.Registry, updates *updateHub, picker directoryPicker) *service {
+func newService(projectService projects.Service, presetService presets.Service, books *session.Store, agentService agents.Service, llmService *llm.Service, toolRegistry *tools.Registry, commandService commands.Service, updates *updateHub, picker directoryPicker) *service {
 	return &service{
 		projects: projectService,
 		presets:  presetService,
@@ -40,6 +42,7 @@ func newService(projectService projects.Service, presetService presets.Service, 
 		agents:   agentService,
 		llm:      llmService,
 		tools:    toolRegistry,
+		commands: commandService,
 		updates:  updates,
 		picker:   picker,
 	}
