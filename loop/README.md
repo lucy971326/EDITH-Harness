@@ -1,157 +1,19 @@
-# Loop 模块说明书
+# loop
 
-## 一句话理解
+一句话：**会话搬运工**，把一条用户消息跑成“问模型 → 调工具 → 再问模型”的完整回合。
 
-`loop` 是搬运工：**agents 把一段会话交给它后，它领消息、问模型、调用工具，再把工具结果交给模型，直到模型不再调用工具。**
-
-它不负责判断答案好不好，也不实现模型和工具。它只负责把 `session`、`llm`、`tools` 串起来，并保证每一步都有账可查。
-
-## 整体心智模型
-
-长期的“模型 + 人设 + 工具”现在叫 Preset（Agent 模式）。每段 Session 选一个 Project 和某个 Preset 版本，两者锁定后才组成一个运行中的 Agent。一个 Session 就是一个 Runtime Agent，ID 也相同。
-
-```mermaid
-flowchart LR
-    Caller["UI / 调用方"] --> Agents["agents<br/>运行时组装"]
-    Project["Project<br/>工作目录"] --> Agents
-    Preset["Preset 版本<br/>模型 / 人设 / 工具名"] --> Agents
-    Agents --> Conversation["Conversation<br/>一段会话的对外门面"]
-
-    subgraph OneSession["一段会话"]
-        Conversation --> Inbox["inbox<br/>收件箱"]
-        Inbox --> Driver["driver<br/>唯一搬运工"]
-        Driver <--> Book["session<br/>账本"]
-        Driver <--> Model["llm<br/>模型"]
-        Driver <--> Tools["tools<br/>工具"]
-    end
-
-    Driver --> Conversation
+```text
+agents 把 Conversation 交给 Runner
+                │
+                ▼
+               loop
+                │
+      inbox → driver → step
+                │       │
+             session   llm + tools
 ```
 
-可以这样记：
-
-- `Project`：这段会话在哪个工作目录中干活。
-- `Preset`：可复用的 Agent 模式；会话锁定其中一版。
-- `Conversation`：一个聊天窗口，外面的人只跟它说话。
-- `inbox`：收件箱，消息先放这里排队。
-- `driver`：唯一搬运工，负责不断领活和干活。
-- `session`：账本，发生过什么都以它为准。
-- `llm`：模型入口。
-- `tools`：工具执行入口。
-- `agents`：运行时组装处，负责创建、恢复和关闭会话。
-- `loop`：实现 `Runner` 合同，专心跑一段会话。
-
-## 三种消息有什么区别
-
-| 方法 | 用途 | Agent 忙时 | Agent 闲时 |
-|---|---|---|---|
-| `SubmitFollowup` | 开一个新问题 | 排队，当前轮结束后再办 | 立即开新一轮 |
-| `Steer` | 中途补一句或改方向 | 塞进当前轮的下一步 | 当作新一轮的开头 |
-| `InjectMemo` | 塞一张只给模型看的小抄 | 下次问模型时带上 | 不唤醒 Agent，等下次有正事再带上 |
-
-消息不是直接塞进内存就算完。顺序是：
-
-1. 先记 `inbox/deliver`；
-2. 记成功后才进收件箱；
-3. 搬运工领出时记 `inbox/claim`；
-4. 领出的普通消息才变成模型能看到的 `user/message`。
-
-因此进程突然退出后，只要账上有“投递”但没有“领出”，这条消息就能重新放回收件箱。
-
-## 一轮和一步
-
-- **一轮（turn）**：从处理一条新问题开始，到模型不再要求调用工具为止。
-- **一步（step）**：问模型一次，并处理这次回复里的全部工具调用。
-
-一轮里可能只有一步，也可能反复多步：
-
-```mermaid
-flowchart TD
-    Start["领出一条消息"] --> TurnStart["记：一轮开始"]
-    TurnStart --> StepStart["记：一步开始"]
-    StepStart --> Collect["领中途话和小抄"]
-    Collect --> Request["拼好模型请求<br/>并把原文记到账上"]
-    Request --> Flush["把之前攒的账写完"]
-    Flush --> LLM["问模型<br/>边收字边记"]
-    LLM --> Final["记回复定稿"]
-    Final --> Calls{"模型要求调用工具？"}
-    Calls -- "否" --> StepEnd["记：一步结束"]
-    StepEnd --> TurnEnd["记：一轮结束"]
-    Calls -- "是" --> Execute["逐个执行工具<br/>并记下结果"]
-    Execute --> NextStep["记：本步结束"]
-    NextStep --> StepStart
-```
-
-问模型前会先把已经攒下的账写完。这样即使下一秒进程消失，重启后也知道事情断在了哪里。
-
-## 取消时怎么处理
-
-`Cancel` 只取消当前正在跑的这一步，取消信号会传给模型请求和工具。
-
-- 模型已经吐出一部分文字：把收到的部分记成“被打断的回复”，不丢掉。
-- 工具还没开跑：记成 `skipped`。
-- 工具已经开跑，但没有拿到结果：账上不写假结果；重启恢复时补“结果不明”。
-
-`WaitIdle` 会一直等到搬运工真正干完，并且待办队列已经清空。`State` 对外报告 `idle`、`starting` 或 `busy`。
-
-## 崩溃后怎么恢复
-
-恢复只看旧账，不相信已经丢失的内存状态。
-
-| 旧账最后能证明什么 | 恢复动作 |
-|---|---|
-| 消息已投递、未领出 | 放回收件箱，继续处理 |
-| 有工具调用、没有开始记录 | 补 `skipped`，说明工具没开跑 |
-| 工具已开始、没有结果 | 补“结果不明”，禁止自动重跑 |
-| 模型留下几段文字、没有定稿 | 合成一条被打断的回复 |
-| 一步或一轮没有正常结束 | 补上结束记录 |
-
-最重要的一条：**可能已经产生副作用的工具，恢复后绝不自动重跑。** 例如邮件可能已经发出，再跑一次就会重复发送。
-
-## 对外入口
-
-通常只需要接触下面这些：
-
-```go
-func submit(app *core.App) error {
-    runtime, err := agents.Get(app)
-    if err != nil {
-        return err
-    }
-
-    conversation, err := runtime.StartSession(agents.StartInput{
-        ProjectID: "project-id",
-        PresetID:  "assistant",
-        Title:     "新会话",
-    })
-    if err != nil {
-        return err
-    }
-
-    err = conversation.SubmitFollowup("帮我处理这件事")
-    if err != nil {
-        return err
-    }
-    conversation.WaitIdle()
-    return nil
-}
-```
-
-`loop.Plugin` 启动时需要三样东西已经装好：
-
-- `"agents"`：会话运行管理处；
-- `"llm"`：模型入口；
-- `"tools"`：工具登记处。
-
-启动后它向 `agents` 登记自己是 `Runner`。UI 通过 `projects` 管项目、`presets` 管模式、`agents` 开或恢复会话，不必知道 loop 内部怎么实现。
-
-## 读代码的顺序
-
-1. `plugin.go`：loop 怎么登记成 Runner；
-2. `runner.go`：agents 如何把会话交给 loop；
-3. `agent.go`：一段会话对外有哪些操作；
-4. `inbox.go`：三种消息怎么排队；
-5. `driver.go`：主循环怎么跑；
-6. `recover.go`：重启后怎么收拾旧账。
-
-读完这六个文件，就能掌握整个 loop 模块。
+- 填充插槽：向 `agents` 登记 `Runner`；不提供新的全局服务。
+- `turn` 是一次用户问题；`step` 是一次 LLM 请求及其工具调用。
+- 每一步先记账、再请求；取消与崩溃恢复都以账本为准。
+- 先读：`plugin.go` → `runner.go` → `conversation.go` → `driver.go` → `step.go`。
