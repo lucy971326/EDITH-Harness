@@ -12,6 +12,7 @@ import (
 
 	"harness/agents"
 	"harness/chat"
+	"harness/config"
 	"harness/core"
 	"harness/llm"
 	"harness/localenv"
@@ -224,7 +225,12 @@ func TestPluginRegistersDeepSeek(t *testing.T) {
 	defer server.Close()
 	app := core.New()
 	t.Cleanup(app.Close)
-	err := app.Install(llm.Plugin{}, Plugin{APIKey: "test-key", BaseURL: server.URL})
+	config.InstallMemory(app, map[string]map[string]string{
+		"deepseek": {"base_url": server.URL},
+	}, map[string]map[string]string{
+		"deepseek": {"api_key": "test-key"},
+	})
+	err := app.Install(llm.Plugin{}, Plugin{})
 	if err != nil {
 		t.Fatalf("装插件失败：%v", err)
 	}
@@ -273,13 +279,18 @@ func TestLoopSendsThinkingWithAssistantToolCallOnSecondRequest(t *testing.T) {
 
 	app := core.New()
 	t.Cleanup(app.Close)
+	config.InstallMemory(app, map[string]map[string]string{
+		"deepseek": {"base_url": server.URL},
+	}, map[string]map[string]string{
+		"deepseek": {"api_key": "test-key"},
+	})
 	err := app.Install(
 		projectjson.Plugin{Root: t.TempDir()},
 		presetjson.Plugin{Root: t.TempDir()},
 		testJournalPlugin{journal: session.NewMemoryJournal()},
 		session.Plugin{},
 		llm.Plugin{},
-		Plugin{APIKey: "test-key", BaseURL: server.URL},
+		Plugin{},
 		tools.Plugin{},
 		localenv.Plugin{},
 		projects.Plugin{},

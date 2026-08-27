@@ -13,7 +13,7 @@ loop / Web UI
  DeepSeek API
 ```
 
-- 依赖能力：`"llm"`
-- 填充方式：登记名为 `"deepseek"` 的 Adapter。
+- 领取能力：`"llm"`、`"settings"`、`"credentials"`
+- 填充插槽：`llm` 的 Adapter；settings 上名为 `deepseek` 的抽屉
 - 负责模型目录、思考档位和流式响应翻译；不管会话流程。
 - 先读：`plugin.go` → `adapter.go`。

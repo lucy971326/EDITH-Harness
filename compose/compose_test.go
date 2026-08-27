@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"harness/commands"
+	cfg "harness/config"
 	"harness/tools"
 	"harness/ui"
 )
@@ -19,7 +20,7 @@ func TestOpenWritesPrivateTemplateThenStops(t *testing.T) {
 	if err == nil {
 		t.Fatal("首次没有配置应写模板后停止")
 	}
-	if !strings.Contains(err.Error(), "providers.deepseek.api_key") {
+	if !strings.Contains(err.Error(), "credentials.yaml") {
 		t.Fatalf("首次提示不清楚：%v", err)
 	}
 	path := filepath.Join(home, "config.yaml")
@@ -30,13 +31,22 @@ func TestOpenWritesPrivateTemplateThenStops(t *testing.T) {
 	if string(data) != configTemplate {
 		t.Fatalf("配置模板不精确：%s", data)
 	}
+	credPath := filepath.Join(home, "credentials.yaml")
+	cred, err := os.ReadFile(credPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(cred) != credentialsTemplate {
+		t.Fatalf("钥匙模板不精确：%s", cred)
+	}
 	assertPrivate(t, home, 0o700)
 	assertPrivate(t, path, 0o600)
+	assertPrivate(t, credPath, 0o600)
 }
 
 func TestOpenBuildsKernelWithoutImplicitProject(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "home")
-	writeConfig(t, home, validConfig())
+	writeHome(t, home, validConfig())
 
 	runtime, err := Open(home)
 	if err != nil {
@@ -57,6 +67,14 @@ func TestOpenBuildsKernelWithoutImplicitProject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("完整组装应带命令登记处：%v", err)
 	}
+	_, err = cfg.GetSettings(runtime.App)
+	if err != nil {
+		t.Fatalf("完整组装应带抽屉柜：%v", err)
+	}
+	_, err = cfg.GetCredentials(runtime.App)
+	if err != nil {
+		t.Fatalf("完整组装应带保险柜：%v", err)
+	}
 	_, err = ui.Get(runtime.App)
 	if err != nil {
 		t.Fatalf("完整组装应带终端 UI：%v", err)
@@ -66,10 +84,26 @@ func TestOpenBuildsKernelWithoutImplicitProject(t *testing.T) {
 	assertPrivate(t, filepath.Join(home, "sessions"), 0o700)
 }
 
+func TestOpenRejectsMissingDeepSeekKey(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "home")
+	writeConfig(t, home, validConfig())
+	err := os.WriteFile(filepath.Join(home, "credentials.yaml"), []byte("deepseek:\n  api_key: \"\"\n"), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = Open(home)
+	if err == nil || !strings.Contains(err.Error(), "缺少 DeepSeek 钥匙") {
+		t.Fatalf("空钥匙应拒绝：%v", err)
+	}
+	if strings.Contains(err.Error(), "sk-") || strings.Contains(err.Error(), "test-key") {
+		t.Fatalf("错误不能带密钥：%v", err)
+	}
+}
+
 func TestOpenAllowsNoToolPlugins(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "home")
 	config := strings.Replace(validConfig(), "tool_plugins:\n    - files", "tool_plugins: []", 1)
-	writeConfig(t, home, config)
+	writeHome(t, home, config)
 
 	runtime, err := Open(home)
 	if err != nil {
@@ -88,15 +122,18 @@ func TestOpenAllowsNoToolPlugins(t *testing.T) {
 func TestDumpConfigRoundTrips(t *testing.T) {
 	firstHome := filepath.Join(t.TempDir(), "first")
 	secondHome := filepath.Join(t.TempDir(), "second")
-	writeConfig(t, firstHome, validConfig())
+	writeHome(t, firstHome, validConfig())
 
 	var dumped bytes.Buffer
 	err := DumpConfig(firstHome, &dumped)
 	if err != nil {
 		t.Fatalf("导出配置失败：%v", err)
 	}
-	if !strings.Contains(dumped.String(), "api_key: test-key") {
-		t.Fatalf("导出配置应保留可重新组装所需的密钥：%s", dumped.String())
+	if !strings.Contains(dumped.String(), "base_url: https://api.deepseek.com") {
+		t.Fatalf("导出配置应保留抽屉里的网址：%s", dumped.String())
+	}
+	if strings.Contains(dumped.String(), "api_key") || strings.Contains(dumped.String(), "test-key") {
+		t.Fatalf("导出配置不能带钥匙：%s", dumped.String())
 	}
 	writeConfig(t, secondHome, dumped.String())
 
@@ -240,13 +277,6 @@ func TestOpenRejectsBadConfig(t *testing.T) {
 			},
 			want: "配置只能有一份 YAML 文档",
 		},
-		{
-			name: "缺少所选模型密钥",
-			change: func(config string) string {
-				return strings.Replace(config, `api_key: "test-key"`, `api_key: ""`, 1)
-			},
-			want: "配置缺少 providers.deepseek.api_key",
-		},
 	}
 
 	for _, test := range tests {
@@ -275,9 +305,6 @@ func TestSelectedPluginsKeepFixedOrder(t *testing.T) {
 			Runner:       "loop",
 			UI:           "web",
 		},
-		Providers: ProviderConfigs{DeepSeek: DeepSeekConfig{
-			APIKey: "test-key",
-		}},
 	}
 	selected, err := selectPlugins(config, "/private/home")
 	if err != nil {
@@ -288,6 +315,7 @@ func TestSelectedPluginsKeepFixedOrder(t *testing.T) {
 		names = append(names, plugin.Name())
 	}
 	want := []string{
+		"config",
 		"persistence-projectjson",
 		"persistence-presetjson",
 		"persistence-jsonl",
@@ -310,7 +338,20 @@ func TestSelectedPluginsKeepFixedOrder(t *testing.T) {
 }
 
 func validConfig() string {
-	return strings.Replace(configTemplate, `api_key: ""`, `api_key: "test-key"`, 1)
+	return configTemplate
+}
+
+func validCredentials() string {
+	return "deepseek:\n  api_key: test-key\n"
+}
+
+func writeHome(t *testing.T, home string, config string) {
+	t.Helper()
+	writeConfig(t, home, config)
+	err := os.WriteFile(filepath.Join(home, "credentials.yaml"), []byte(validCredentials()), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 func writeConfig(t *testing.T, home string, config string) {

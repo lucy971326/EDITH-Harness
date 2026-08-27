@@ -6,6 +6,7 @@ import (
 
 	"harness/agents"
 	"harness/commands"
+	cfg "harness/config"
 	"harness/core"
 	"harness/llm"
 	"harness/llmplugins/deepseek"
@@ -25,6 +26,7 @@ import (
 
 // pluginSelection 放本次启动选中的大零件；固定插座不交给配置选择。
 type pluginSelection struct {
+	home         string
 	projectStore core.Plugin
 	presetStore  core.Plugin
 	journal      core.Plugin
@@ -36,7 +38,7 @@ type pluginSelection struct {
 }
 
 func selectPlugins(config Config, home string) (pluginSelection, error) {
-	var selected pluginSelection
+	selected := pluginSelection{home: home}
 
 	switch config.Plugins.ProjectStore {
 	case "projectjson":
@@ -62,17 +64,7 @@ func selectPlugins(config Config, home string) (pluginSelection, error) {
 	for _, name := range config.Plugins.LLMAdapters {
 		switch name {
 		case "deepseek":
-			provider := config.Providers.DeepSeek
-			if provider.APIKey == "" {
-				return pluginSelection{}, fmt.Errorf("配置缺少 providers.deepseek.api_key")
-			}
-			if provider.BaseURL == "" {
-				provider.BaseURL = defaultDeepSeekBaseURL
-			}
-			selected.llmAdapters = append(selected.llmAdapters, deepseek.Plugin{
-				APIKey:  provider.APIKey,
-				BaseURL: provider.BaseURL,
-			})
+			selected.llmAdapters = append(selected.llmAdapters, deepseek.Plugin{})
 		default:
 			return pluginSelection{}, fmt.Errorf("未知的 plugins.llm_adapters：%s", name)
 		}
@@ -115,6 +107,7 @@ func selectPlugins(config Config, home string) (pluginSelection, error) {
 
 func (p pluginSelection) ordered() []core.Plugin {
 	plugins := []core.Plugin{
+		cfg.Plugin{Home: p.home},
 		p.projectStore,
 		p.presetStore,
 		p.journal,

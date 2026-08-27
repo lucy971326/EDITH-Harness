@@ -11,8 +11,6 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-const defaultDeepSeekBaseURL = "https://api.deepseek.com"
-
 const configTemplate = `version: 2
 
 plugins:
@@ -27,17 +25,20 @@ plugins:
   runner: loop
   ui: web
 
-providers:
+settings:
   deepseek:
-    api_key: ""
     base_url: https://api.deepseek.com
 `
 
-// Config 是 ~/.harness/config.yaml 的全部配置，不放工作目录和会话状态。
+const credentialsTemplate = `deepseek:
+  api_key: ""
+`
+
+// Config 是 ~/.harness/config.yaml 的组装名单和普通配置，不含钥匙。
 type Config struct {
-	Version   int             `yaml:"version"`
-	Plugins   PluginConfig    `yaml:"plugins"`
-	Providers ProviderConfigs `yaml:"providers"`
+	Version  int                          `yaml:"version"`
+	Plugins  PluginConfig                 `yaml:"plugins"`
+	Settings map[string]map[string]string `yaml:"settings"`
 }
 
 // PluginConfig 记录本次启动选择的可替换大零件。
@@ -52,26 +53,23 @@ type PluginConfig struct {
 	UI           string   `yaml:"ui"`
 }
 
-// ProviderConfigs 放按服务商划分的连接配置。
-type ProviderConfigs struct {
-	DeepSeek DeepSeekConfig `yaml:"deepseek"`
-}
-
-// DeepSeekConfig 是 DeepSeek 连接所需的用户配置。
-type DeepSeekConfig struct {
-	APIKey  string `yaml:"api_key"`
-	BaseURL string `yaml:"base_url"`
-}
-
 func loadConfig(home string) (Config, error) {
 	path := filepath.Join(home, "config.yaml")
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		err = writeTemplate(path)
+		err = writeTemplate(path, configTemplate)
 		if err != nil {
 			return Config{}, err
 		}
-		return Config{}, fmt.Errorf("已创建 %s；请填入 providers.deepseek.api_key 后重新运行", path)
+		credPath := filepath.Join(home, "credentials.yaml")
+		_, credStat := os.Stat(credPath)
+		if errors.Is(credStat, os.ErrNotExist) {
+			credErr := writeTemplate(credPath, credentialsTemplate)
+			if credErr != nil {
+				return Config{}, credErr
+			}
+		}
+		return Config{}, fmt.Errorf("已创建 %s；请在 credentials.yaml 填入钥匙后重新运行", path)
 	}
 	if err != nil {
 		return Config{}, fmt.Errorf("读取配置失败：%w", err)
@@ -181,12 +179,12 @@ func rejectDuplicates(field string, names []string) error {
 	return nil
 }
 
-func writeTemplate(path string) error {
+func writeTemplate(path string, content string) error {
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return fmt.Errorf("创建配置模板失败：%w", err)
 	}
-	_, err = file.WriteString(configTemplate)
+	_, err = file.WriteString(content)
 	if err == nil {
 		err = file.Sync()
 	}
