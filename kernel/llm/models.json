@@ -1,0 +1,46 @@
+{
+  "models": {
+    "deepseek/deepseek-v4-flash": {
+      "provider": "deepseek",
+      "id": "deepseek-v4-flash",
+      "reasoning": {
+        "off": {
+          "thinking": { "type": "disabled" }
+        },
+        "low": {
+          "thinking": { "type": "enabled" },
+          "reasoning_effort": "low"
+        },
+        "high": {
+          "thinking": { "type": "enabled" },
+          "reasoning_effort": "high"
+        },
+        "max": {
+          "thinking": { "type": "enabled" },
+          "reasoning_effort": "max"
+        }
+      }
+    },
+    "deepseek/deepseek-v4-pro": {
+      "provider": "deepseek",
+      "id": "deepseek-v4-pro",
+      "reasoning": {
+        "off": {
+          "thinking": { "type": "disabled" }
+        },
+        "low": {
+          "thinking": { "type": "enabled" },
+          "reasoning_effort": "low"
+        },
+        "high": {
+          "thinking": { "type": "enabled" },
+          "reasoning_effort": "high"
+        },
+        "max": {
+          "thinking": { "type": "enabled" },
+          "reasoning_effort": "max"
+        }
+      }
+    }
+  }
+}
