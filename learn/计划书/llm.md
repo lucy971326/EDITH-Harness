@@ -48,7 +48,7 @@ Stream
 | `responses` | 完整 `input[]`；**不传 `previous_response_id`** |
 | `messages` | 完整 `system + messages[]` |
 
-不保存 response ID，不让服务端续聊。响应中的协议私货可作为 Replay 留在本地账本；换模型时不重放不匹配的私货。
+不保存 response ID，不让服务端续聊。协议私货不写入账本；Adapter 每轮都从可见的本地历史重新翻译请求。
 
 ---
 
@@ -188,7 +188,7 @@ SDK 只是 Adapter 内部细节。SDK 已有的字段优先填强类型 Params�
 
 ---
 
-## 图片与 Replay
+## 图片
 
 `History()` 原样返回账本。Service 在发送前深拷贝并投影：
 
@@ -199,45 +199,32 @@ Vision=false  原位置换 text：「当前模型不支持图片查看」
 
 不回写账本，不读工作区路径，不把裁切结果存盘。
 
-Replay 必须带来源，因为允许换模型：
-
-```go
-type Replay struct {
-    Source string `json:"source"` // provider/model，如 deepseek/deepseek-chat
-    Data   []byte `json:"data"`
-}
-```
-
-Adapter 只重放 `Source == 当前模型` 的私货；换模型时靠账本中可见的 text / reasoning / tool-call 重新翻译历史。
-
 ---
 
 ## 服务与流形状
 
 ```go
 type Request struct {
-    System          string
-    Messages        []session.Message
-    ReasoningEffort string
+    System   string
+    Messages []session.Message
 }
 
 func (s *Service) Stream(
     ctx context.Context,
-    model string,
+    setup kinds.Setup,
     req Request,
 ) (<-chan Chunk, error)
 ```
 
-`System` 是 prompts 以后组装的本轮文本；不是 Setup 字段。
+`System` 是 prompts 以后组装的本轮文本；不是 Setup 字段。模型和思考档位只从传入的 Setup 快照读取。
 
 ```go
 type Chunk struct {
     Index  int
     Kind   string // reasoning | text | tool-call
     Delta  string
-    Tool   *session.ToolCall
-    Replay *session.Replay
-    Done   bool
+    Tool  *session.ToolCall
+    Done  bool
     Usage  *Usage
     Err    error
 }
@@ -280,6 +267,5 @@ func New(cfg Config, catalog Catalog, adapters map[string]Adapter) (*Service, er
 6. Vision 投影不改原 History；无 Vision 的请求不含 base64
 7. Adapter 收到完整历史；Responses 请求没有 `previous_response_id`
 8. 同 Index 的 Chunk 可交错；Done / Err 终态约束成立
-9. Replay JSON 往返仍在；来源不同不交给当前 Adapter
 
 过了才写第一个真实 `completions` Adapter。之后用同一契约补 `responses`、`messages`。

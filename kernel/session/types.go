@@ -25,12 +25,11 @@ type ToolCall struct {
 
 // Block 是一句消息里的一个有序内容块。
 type Block struct {
-	Kind   string    `json:"kind"`
-	Text   string    `json:"text,omitempty"`
-	Tool   *ToolCall `json:"tool,omitempty"`
-	Media  *Media    `json:"media,omitempty"`
-	Replay []byte    `json:"replay,omitempty"`
-	Error  string    `json:"error,omitempty"`
+	Kind  string    `json:"kind"`
+	Text  string    `json:"text,omitempty"`
+	Tool  *ToolCall `json:"tool,omitempty"`
+	Media *Media    `json:"media,omitempty"`
+	Error string    `json:"error,omitempty"`
 }
 
 // Message 是账本中的一个完整节点内容。

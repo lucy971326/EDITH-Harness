@@ -123,7 +123,6 @@ type Block struct {
     Text   string
     Tool   *ToolCall
     Media  *Media // 只有 image（以后 video）才有
-    Replay []byte // 适配器私货，前端不画
     Error  string // 流出错入账；空 = 正常
 }
 
@@ -240,7 +239,7 @@ n4  模型   「用方案 A」
   "body": {
     "role": "assistant",
     "blocks": [
-      { "kind": "reasoning", "text": "先看现在的登录实现", "replay": "适配器私货，前端不画" },
+      { "kind": "reasoning", "text": "先看现在的登录实现" },
       { "kind": "text",      "text": "我先读 Auth.go" },
       { "kind": "tool-call", "tool": { "id": "c1", "name": "read", "args": "{\"path\":\"Auth.go\"}" } }
     ]
