@@ -11,7 +11,7 @@ var (
 	_ kinds.Setups = (*jsonl)(nil)
 )
 
-// Plugin 把同一份 jsonl 挂成两把键：sessionPersistence 和 setups。
+// 活对象。把同一份 jsonl 挂成两把键：sessionPersistence 和 setups。
 type Plugin struct {
 	Dir string
 }

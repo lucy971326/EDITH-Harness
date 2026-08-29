@@ -10,7 +10,7 @@ import (
 	"harness/kernel/persist"
 )
 
-// Session 是一本对话账。nodes 和磁盘上的节点保持同一份追加顺序。
+// 活对象。一本对话账。nodes 和磁盘上的节点保持同一份追加顺序。
 type Session struct {
 	mu    sync.Mutex
 	id    string

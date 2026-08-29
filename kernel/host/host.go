@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// Host 是进程那张服务表。插件往上挂，别人 Resolve 取出。
+// 活对象。进程那张服务表。插件往上挂，别人 Resolve 取出。
 type Host struct {
 	services map[string]any
 	started  []Plugin

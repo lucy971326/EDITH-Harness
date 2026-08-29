@@ -9,6 +9,20 @@ import (
 	"harness/kernel/kinds"
 )
 
+// 活对象。用启动时读取的本机配置和模型定义发起模型调用。
+type Client struct {
+	config config
+	models map[string]model
+}
+
+func newClient(cfg config) (*Client, error) {
+	models, err := loadModels()
+	if err != nil {
+		return nil, err
+	}
+	return &Client{config: cfg, models: models}, nil
+}
+
 // Stream 根据 Setup 选择模型和思考档位，直接返回 goai 的流事件。
 func (c *Client) Stream(ctx context.Context, setup kinds.Setup, input Input) (<-chan provider.StreamChunk, error) {
 	definition, ok := c.models[setup.Model]

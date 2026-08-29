@@ -8,11 +8,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// config 是本机部署配置。API key 只放本地 YAML，不进 models.json。
+// 数据。本机部署配置。API key 只放本地 YAML，不进 models.json。
 type config struct {
 	Providers map[string]providerConfig `yaml:"providers"`
 }
 
+// 数据。一家 Provider 的本机密钥和地址。
 type providerConfig struct {
 	APIKey  string `yaml:"apiKey"`
 	BaseURL string `yaml:"baseURL"`

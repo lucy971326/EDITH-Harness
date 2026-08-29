@@ -260,12 +260,13 @@ func TestClose_clearsDirectRegister(t *testing.T) {
 	}
 }
 
+// 数据。测试里挂到 Host 上的一对名字和值。
 type pair struct {
 	name string
 	v    any
 }
 
-// stub 是测试用插件。log 为 nil 时不记顺序。
+// 活对象。测试用插件。log 为 nil 时不记顺序。
 type stub struct {
 	name          string
 	log           *[]string

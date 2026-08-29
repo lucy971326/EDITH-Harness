@@ -4,7 +4,7 @@ import "harness/kernel/host"
 
 var _ host.Plugin = (*Plugin)(nil)
 
-// Plugin 在启动时读取本机配置，构造并挂上 LLM Client。
+// 活对象。启动时读取本机配置，构造并挂上 LLM Client。
 type Plugin struct {
 	client *Client
 }

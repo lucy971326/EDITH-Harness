@@ -12,22 +12,25 @@ import (
 //go:embed models.json
 var modelsJSON []byte
 
+// 数据。models.json 的根对象。
 type modelFile struct {
 	Models map[string]model `json:"models"`
 }
 
+// 数据。一条模型定义。
 type model struct {
 	Provider  string                    `json:"provider"`
 	ID        string                    `json:"id"`
 	Reasoning map[string]map[string]any `json:"reasoning"`
 }
 
-func newClient(config config) (*Client, error) {
+func loadModels() (map[string]model, error) {
 	var file modelFile
-	if err := json.Unmarshal(modelsJSON, &file); err != nil {
+	err := json.Unmarshal(modelsJSON, &file)
+	if err != nil {
 		return nil, fmt.Errorf("llm: parse models.json: %w", err)
 	}
-	return &Client{config: config, models: file.Models}, nil
+	return file.Models, nil
 }
 
 func reasoningOptions(definition model, effort string) (map[string]any, error) {

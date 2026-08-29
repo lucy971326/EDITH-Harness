@@ -9,7 +9,7 @@ import (
 	"harness/kernel/persist"
 )
 
-// Store 是表上那份对话账。live 里是打开过的 Session。
+// 活对象。表上那份对话账。live 里是打开过的 Session。
 type Store struct {
 	persist persist.Persistence
 	mu      sync.Mutex
