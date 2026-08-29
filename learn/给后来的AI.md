@@ -13,13 +13,13 @@
 
 **进程是一张服务表。聊天是桌上的一摊产品，不是根。**
 
-能换的做成登记处，别人来填；不能换的做成一整份服务。一场对话是一次 `Runner.Run`：怎么想是 Kind（要编译），用户填的是 Spec（人设、工具名单、模型、工作区文件夹）。账本只记说过的话。屏幕听这一轮 Run，不听账本。插件要编译进去；配置只决定这次启不启动，不排顺序，不热加载新代码。
+能换的做成登记处，别人来填；不能换的做成一整份服务。一场对话是一次 `Runner.Send` / `Run`：怎么想是 Kind（要编译），这份对话怎么配是 Setup（人设、工具名单、模型、思考档位、工作区文件夹）。账本只记说过的话。屏幕听这一轮 `Emit`，不听账本。插件要编译进去；配置只决定这次启不启动，不排顺序，不热加载新代码。
 
 动手之前先问：这是桌上新的一摊，还是聊天里的一份数据、一种画法？工作区、自定义模式、轨迹页，全是聊天产品，不改内核形状。不要为了对齐 DSH 往内核加插槽。
 
 ```
 Host（桌子）
-  ├─ 聊天：Spec + Session + Runner.Run(sessionID) → Agent.Run → llm.Stream
+  ├─ 聊天：Setup + Session + Runner.Run(sessionID, 话, RunOptions) → Agent.Run → llm.Stream
   ├─ 狼人杀：验架构，v1 不实现。自己的棋盘，可以 Get Runner
   ├─ 多机器人：验架构，v1 不实现。自己的房间；每个机器人一本 session
   └─ 电影：验架构，v1 不实现。只占 HTTP，零依赖对话
@@ -36,11 +36,11 @@ Host（桌子）
 1. 参考 DSH / pi，**不照抄**。Go。静态编译。无动态插件。无热加载。无 AI 自改代码。
 2. **根是插件宿主，不是 Runner。** 聊天只是宿主里的一摊。电影播放器可以零依赖对话。
 3. 对话：`Runner.Run` → `Agent.Run` →（仅 LLM 类）`llm.Stream`。Runner 在 Agent 外面。换 loop = 换 Agent Kind，不是换 Runner。
-4. Agent 是一种程序，不是一场焊死的对话。session 在 `Run` 的参数上。
-5. 自定义：Kind（开发者代码，要编译）vs Spec（用户数据：人设、模型、已有工具名）。用户不热加载 Go。
-6. 提示词是登记处 `prompts`，只拼文本。系统提示词是来填槽的插件。人设是 Spec，每次 Assemble 现取。工具名单 `Get("tools")` 现取。不要代收 schema。
+4. Agent 是一种程序，不是一场焊死的对话。session 在 `Run` 的参数上。接着问 = 闲着再 `Run`（FollowUp）。还在转时插一句 = `Runner.Steer`。不要 `Chat.Followup`，不要 Inbox。
+5. 自定义：Kind（开发者代码，要编译）vs Setup（用户数据：人设、模型、思考档位、已有工具名）。用户不热加载 Go。Setup 随时可改；这一轮临时覆盖走 `RunOptions`，不回写。
+6. 提示词是登记处 `prompts`，只拼文本。系统提示词是来填槽的插件。人设是 Setup，每次 Assemble 现取。工具名单 `Get("tools")` 现取。不要代收 schema。
 7. Session **只记对话**，可以分叉。todo / 审批 / 游戏状态放插件自己的结构体。别往账本塞。
-8. 屏幕听这一轮 Run（回调；浏览器用 SSE）。不听账本。喇叭就这一个，插件不要各搞各的。
+8. 屏幕听这一轮 Run（`Emit`；浏览器用 SSE）。不听账本。喇叭就这一个，插件不要各搞各的。耐久事件先 `Append` 再给屏幕，失败则终止 Run。
 9. 前端：内核一份，表面按端 enable。Web 和 webview 同一套 templ；TUI 另画；ACP 是管子不是画面。HTML 壳 8 个洞（侧栏/浮层给桌上另一摊）。请求 POST，通知 SSE。v1 不用 WebSocket。
 10. 讲解用项目词：登记处 / 插槽 / 活对象。不要编「袋子」「缝」「椅子」。
 
