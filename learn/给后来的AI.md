@@ -19,7 +19,7 @@
 
 ```
 Host（桌子）
-  ├─ 聊天：Setup + Session + Runner.Run(sessionID, 话, RunOptions) → Agent.Run → llm.Stream
+  ├─ 聊天：Setup + Session + Runner.Run(sessionID, 话) → Agent.Run → llm.Stream
   ├─ 狼人杀：验架构，v1 不实现。自己的棋盘，可以 Get Runner
   ├─ 多机器人：验架构，v1 不实现。自己的房间；每个机器人一本 session
   └─ 电影：验架构，v1 不实现。只占 HTTP，零依赖对话
@@ -37,7 +37,7 @@ Host（桌子）
 2. **根是插件宿主，不是 Runner。** 聊天只是宿主里的一摊。电影播放器可以零依赖对话。
 3. 对话：`Runner.Run` → `Agent.Run` →（仅 LLM 类）`llm.Stream`。Runner 在 Agent 外面。换 loop = 换 Agent Kind，不是换 Runner。
 4. Agent 是一种程序，不是一场焊死的对话。session 在 `Run` 的参数上。接着问 = 闲着再 `Run`（FollowUp）。还在转时插一句 = `Runner.Steer`。不要 `Chat.Followup`，不要 Inbox。
-5. 自定义：Kind（开发者代码，要编译）vs Setup（用户数据：人设、模型、思考档位、已有工具名）。用户不热加载 Go。Setup 随时可改；这一轮临时覆盖走 `RunOptions`，不回写。
+5. 自定义：Kind（开发者代码，要编译）vs Setup（用户数据：人设、模型、思考档位、已有工具名）。用户不热加载 Go。Setup 是这本聊天配置的唯一事实来源；改完下一轮 `Run` 读取新快照。
 6. 提示词是登记处 `prompts`，只拼文本。系统提示词是来填槽的插件。人设是 Setup，每次 Assemble 现取。工具名单 `Get("tools")` 现取。不要代收 schema。
 7. Session **只记对话**，可以分叉。todo / 审批 / 游戏状态放插件自己的结构体。别往账本塞。
 8. 屏幕听这一轮 Run（`Emit`；浏览器用 SSE）。不听账本。喇叭就这一个，插件不要各搞各的。耐久事件先 `Append` 再给屏幕，失败则终止 Run。
