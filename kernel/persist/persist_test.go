@@ -1,0 +1,291 @@
+package persist
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"slices"
+	"testing"
+
+	"harness/kernel/host"
+	"harness/kernel/kinds"
+)
+
+func TestInstall_twoKeysSameStore(t *testing.T) {
+	h := host.New()
+	err := h.Install(&Plugin{Dir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	p, err := host.Resolve[Persistence](h, "sessionPersistence")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := host.Resolve[kinds.Setups](h, "setups")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	jp, ok := p.(*jsonl)
+	if !ok {
+		t.Fatalf("persistence is %T", p)
+	}
+	js, ok := s.(*jsonl)
+	if !ok {
+		t.Fatalf("setups is %T", s)
+	}
+	if jp != js {
+		t.Fatal("want the same store on both keys")
+	}
+}
+
+func TestAdd_thenLoad(t *testing.T) {
+	dir := t.TempDir()
+	s, err := openJSONL(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = s.Add("chat1", Node{
+		ID:     "n1",
+		Parent: "",
+		Body:   json.RawMessage(`{"text":"hi"}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tree, err := s.Load("chat1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tree.ID != "chat1" {
+		t.Fatalf("id = %q", tree.ID)
+	}
+	if len(tree.Nodes) != 1 {
+		t.Fatalf("nodes = %d, want 1", len(tree.Nodes))
+	}
+	if tree.Nodes[0].ID != "n1" {
+		t.Fatalf("node id = %q", tree.Nodes[0].ID)
+	}
+}
+
+func TestAdd_survivesReopen(t *testing.T) {
+	dir := t.TempDir()
+	s, err := openJSONL(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.Add("chat1", Node{ID: "n1", Body: json.RawMessage(`{}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	again, err := openJSONL(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree, err := again.Load("chat1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tree.Nodes) != 1 || tree.Nodes[0].ID != "n1" {
+		t.Fatalf("after reopen: %+v", tree.Nodes)
+	}
+}
+
+func TestAdd_fork(t *testing.T) {
+	s, err := openJSONL(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = s.Add("chat1", Node{ID: "root", Body: json.RawMessage(`{}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.Add("chat1", Node{ID: "a", Parent: "root", Body: json.RawMessage(`{}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.Add("chat1", Node{ID: "b", Parent: "root", Body: json.RawMessage(`{}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tree, err := s.Load("chat1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tree.Nodes) != 3 {
+		t.Fatalf("nodes = %d, want 3", len(tree.Nodes))
+	}
+
+	var kids []string
+	for _, n := range tree.Nodes {
+		if n.Parent == "root" {
+			kids = append(kids, n.ID)
+		}
+	}
+	slices.Sort(kids)
+	if !slices.Equal(kids, []string{"a", "b"}) {
+		t.Fatalf("kids = %v, want [a b]", kids)
+	}
+}
+
+func TestList(t *testing.T) {
+	s, err := openJSONL(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.Add("one", Node{ID: "n", Body: json.RawMessage(`{}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.Add("two", Node{ID: "n", Body: json.RawMessage(`{}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	list, err := s.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, m := range list {
+		ids = append(ids, m.ID)
+	}
+	slices.Sort(ids)
+	if !slices.Equal(ids, []string{"one", "two"}) {
+		t.Fatalf("list = %v", ids)
+	}
+}
+
+func TestSetup_putForDeepCopy(t *testing.T) {
+	s, err := openJSONL(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	in := kinds.Setup{
+		Kind:  "llm",
+		Model: "deepseek-v4",
+		Tools: []string{"bash", "read"},
+	}
+	err = s.Put("chat1", in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in.Tools[0] = "mutated-input"
+
+	got, err := s.For("chat1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Kind != "llm" || got.Model != "deepseek-v4" {
+		t.Fatalf("got %+v", got)
+	}
+	if !slices.Equal(got.Tools, []string{"bash", "read"}) {
+		t.Fatalf("tools after mutating input = %v", got.Tools)
+	}
+
+	got.Tools[0] = "mutated-copy"
+	again, err := s.For("chat1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(again.Tools, []string{"bash", "read"}) {
+		t.Fatalf("tools after mutating copy = %v", again.Tools)
+	}
+}
+
+func TestBadID(t *testing.T) {
+	s, err := openJSONL(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bads := []string{"", ".", "..", "a/b", `a\b`, "../x"}
+	for _, id := range bads {
+		err := s.Add(id, Node{ID: "n", Body: json.RawMessage(`{}`)})
+		if err == nil {
+			t.Fatalf("Add(%q): want error", id)
+		}
+		err = s.Put(id, kinds.Setup{})
+		if err == nil {
+			t.Fatalf("Put(%q): want error", id)
+		}
+	}
+
+	entries, err := os.ReadDir(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("wrote files for bad ids: %v", names(entries))
+	}
+}
+
+func TestSave_roundTrip(t *testing.T) {
+	s, err := openJSONL(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := &Tree{
+		ID: "chat1",
+		Nodes: []Node{
+			{ID: "n1", Body: json.RawMessage(`{"t":1}`)},
+			{ID: "n2", Parent: "n1", Body: json.RawMessage(`{"t":2}`)},
+		},
+	}
+	err = s.Save("chat1", want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Load("chat1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Nodes) != 2 {
+		t.Fatalf("nodes = %d", len(got.Nodes))
+	}
+	if got.Nodes[1].Parent != "n1" {
+		t.Fatalf("parent = %q", got.Nodes[1].Parent)
+	}
+}
+
+func TestAdd_emptyNodeID(t *testing.T) {
+	s, err := openJSONL(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.Add("chat1", Node{Body: json.RawMessage(`{}`)})
+	if err == nil {
+		t.Fatal("want error on empty node id")
+	}
+}
+
+func names(entries []os.DirEntry) []string {
+	out := make([]string, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, e.Name())
+	}
+	return out
+}
+
+func TestTreeFileName(t *testing.T) {
+	dir := t.TempDir()
+	s, err := openJSONL(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.Add("chat1", Node{ID: "n", Body: json.RawMessage(`{}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = os.Stat(filepath.Join(dir, "chat1.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+}
