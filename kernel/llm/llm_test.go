@@ -7,6 +7,7 @@ import (
 
 	"github.com/zendev-sh/goai/provider"
 
+	"harness/kernel/host"
 	"harness/kernel/session"
 )
 
@@ -16,13 +17,43 @@ func TestLoadConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	config, err := loadConfig(path)
+	config, err := readConfig(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := config.Providers["deepseek"]
 	if got.APIKey != "secret" || got.BaseURL != "https://example.com" {
 		t.Fatalf("provider = %#v", got)
+	}
+}
+
+func TestPluginStart(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.Mkdir(home+"/.harness", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(home+"/.harness/config.yaml", []byte("providers:\n  deepseek:\n    apiKey: test-key\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	h := host.NewHost()
+	plugin := &Plugin{}
+	if err := h.Install(plugin); err != nil {
+		t.Fatal(err)
+	}
+	client, err := host.Resolve[*Client](h, "llm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if client != plugin.client {
+		t.Fatal("registered client differs from plugin client")
+	}
+	if err := h.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if plugin.client != nil {
+		t.Fatal("client remains after close")
 	}
 }
 

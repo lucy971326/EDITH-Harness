@@ -74,9 +74,12 @@ google.Chat(...)
 
 ## 生命周期
 
+`llm.Plugin.Start` 在启动时读取 YAML、构造 Client，并将它注册为 Host 的 `"llm"` 服务。
+
 ```text
 models.json    编译进程序，启动后不变
-config.yaml    启动时读取一次
+config.yaml    Plugin.Start 时读取一次
+Client         Plugin.Close 时放掉
 模型实例       每次 Stream 时创建，不缓存
 ```
 
