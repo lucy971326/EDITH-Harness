@@ -12,7 +12,7 @@ import (
 )
 
 func TestInstall_twoKeysSameStore(t *testing.T) {
-	h := host.New()
+	h := host.NewHost()
 	err := h.Install(&Plugin{Dir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)

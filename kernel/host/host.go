@@ -11,8 +11,8 @@ type Host struct {
 	started  []Plugin
 }
 
-// New 造一张空桌子。
-func New() *Host {
+// NewHost 造一张空的进程服务表。
+func NewHost() *Host {
 	return &Host{
 		services: make(map[string]any),
 	}

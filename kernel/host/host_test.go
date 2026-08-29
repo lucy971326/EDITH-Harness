@@ -8,7 +8,7 @@ import (
 )
 
 func TestRegisterResolve(t *testing.T) {
-	h := New()
+	h := NewHost()
 	err := h.RegisterService("n", 7)
 	if err != nil {
 		t.Fatal(err)
@@ -24,7 +24,7 @@ func TestRegisterResolve(t *testing.T) {
 }
 
 func TestRegister_duplicate(t *testing.T) {
-	h := New()
+	h := NewHost()
 	err := h.RegisterService("n", 1)
 	if err != nil {
 		t.Fatal(err)
@@ -45,7 +45,7 @@ func TestRegister_duplicate(t *testing.T) {
 }
 
 func TestRegister_emptyName(t *testing.T) {
-	h := New()
+	h := NewHost()
 	err := h.RegisterService("", 1)
 	if err == nil {
 		t.Fatal("want error on empty name")
@@ -53,7 +53,7 @@ func TestRegister_emptyName(t *testing.T) {
 }
 
 func TestRegister_nil(t *testing.T) {
-	h := New()
+	h := NewHost()
 	err := h.RegisterService("n", nil)
 	if err == nil {
 		t.Fatal("want error on nil value")
@@ -61,7 +61,7 @@ func TestRegister_nil(t *testing.T) {
 }
 
 func TestResolve_missing(t *testing.T) {
-	h := New()
+	h := NewHost()
 	_, err := Resolve[int](h, "n")
 	if err == nil {
 		t.Fatal("want error when missing")
@@ -69,7 +69,7 @@ func TestResolve_missing(t *testing.T) {
 }
 
 func TestResolve_wrongType(t *testing.T) {
-	h := New()
+	h := NewHost()
 	err := h.RegisterService("n", 7)
 	if err != nil {
 		t.Fatal(err)
@@ -82,7 +82,7 @@ func TestResolve_wrongType(t *testing.T) {
 }
 
 func TestInstall_thenResolve(t *testing.T) {
-	h := New()
+	h := NewHost()
 	p := &stub{
 		name: "alpha",
 		hang: pair{"n", 7},
@@ -103,7 +103,7 @@ func TestInstall_thenResolve(t *testing.T) {
 }
 
 func TestInstall_nil(t *testing.T) {
-	h := New()
+	h := NewHost()
 	err := h.Install(nil)
 	if err == nil {
 		t.Fatal("want error on nil plugin")
@@ -111,7 +111,7 @@ func TestInstall_nil(t *testing.T) {
 }
 
 func TestInstall_failClosesAlreadyStarted(t *testing.T) {
-	h := New()
+	h := NewHost()
 	var order []string
 	a := &stub{name: "a", log: &order, hang: pair{"a", 1}}
 	b := &stub{name: "b", log: &order, startErr: errors.New("boom")}
@@ -143,7 +143,7 @@ func TestInstall_failClosesAlreadyStarted(t *testing.T) {
 }
 
 func TestInstall_failClearsPartialRegister(t *testing.T) {
-	h := New()
+	h := NewHost()
 	p := &stub{
 		name:          "bad",
 		hang:          pair{"x", 1},
@@ -163,7 +163,7 @@ func TestInstall_failClearsPartialRegister(t *testing.T) {
 }
 
 func TestClose_reverse(t *testing.T) {
-	h := New()
+	h := NewHost()
 	var order []string
 	err := h.Install(&stub{name: "a", log: &order})
 	if err != nil {
@@ -197,7 +197,7 @@ func TestClose_reverse(t *testing.T) {
 }
 
 func TestClose_collectsErrors(t *testing.T) {
-	h := New()
+	h := NewHost()
 	var order []string
 	err := h.Install(&stub{name: "a", log: &order, closeErr: errors.New("a-fail")})
 	if err != nil {
@@ -231,7 +231,7 @@ func TestClose_collectsErrors(t *testing.T) {
 }
 
 func TestClose_emptyAndTwice(t *testing.T) {
-	h := New()
+	h := NewHost()
 	err := h.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -243,7 +243,7 @@ func TestClose_emptyAndTwice(t *testing.T) {
 }
 
 func TestClose_clearsDirectRegister(t *testing.T) {
-	h := New()
+	h := NewHost()
 	err := h.RegisterService("n", 1)
 	if err != nil {
 		t.Fatal(err)

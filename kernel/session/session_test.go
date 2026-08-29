@@ -11,7 +11,7 @@ import (
 
 func newTestStore(t *testing.T) (*Store, persist.Persistence) {
 	t.Helper()
-	h := host.New()
+	h := host.NewHost()
 	err := h.Install(&persist.Plugin{Dir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
@@ -45,7 +45,7 @@ func TestCreateAppendHistory(t *testing.T) {
 
 func TestAppendSurvivesNewStore(t *testing.T) {
 	dir := t.TempDir()
-	h := host.New()
+	h := host.NewHost()
 	err := h.Install(&persist.Plugin{Dir: dir})
 	if err != nil {
 		t.Fatal(err)
@@ -156,7 +156,7 @@ func TestGetMissingReturnsError(t *testing.T) {
 }
 
 func TestInstallRegistersStore(t *testing.T) {
-	h := host.New()
+	h := host.NewHost()
 	err := h.Install(&persist.Plugin{Dir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
