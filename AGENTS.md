@@ -169,7 +169,7 @@ kernel/tools/
 填充者：
 
 ```
-plugins/bash/
+plugins/tools/bash/
   plugin.go    Resolve("tools")、Resolve("machine")，Register(bash)
   bash.go      Call 里 machine.Run
 ```
