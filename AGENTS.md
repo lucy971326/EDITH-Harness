@@ -14,7 +14,7 @@
 
 **进程是一张服务表。聊天是桌上的一摊产品，不是根。**
 
-能换的做成登记处，别人来填；不能换的做成一整份服务。一场对话是一次 `Runner.Send` / `Run`：怎么想是 Loop（要编译）；Agent 设置管 Kind、人设、工具名单；这份会话怎么配是 SessionSettings（AgentID、模型、思考档位、工作区文件夹）。账本只记说过的话。屏幕听这一轮 `Emit`，不听账本。插件要编译进去；配置只决定这次启不启动，不排顺序，不热加载新代码。
+能换的做成登记处，别人来填；不能换的做成一整份服务。一场对话是一次 `Runner.Send` / `Run`：怎么想是 Loop（要编译）；Agent 设置管 Kind、SystemPrompt、工具和 Skill 名单；这份会话怎么配是 SessionSettings（AgentID、模型、思考档位、工作区文件夹）。账本只记说过的话。屏幕听这一轮 `Emit`，不听账本。插件要编译进去；配置只决定这次启不启动，不排顺序，不热加载新代码。
 
 动手之前先问：这是桌上新的一摊，还是聊天里的一份数据、一种画法？工作区、自定义模式、轨迹页，全是聊天产品，不改内核形状。不要为了对齐 DSH 往内核加插槽。
 
@@ -34,8 +34,8 @@ Host（桌子）
 2. **根是插件宿主，不是 Runner。** 聊天只是宿主里的一摊。电影播放器可以零依赖对话。
 3. 对话：`Runner.Run` → `Loop.Run` →（仅 LLM 类）`llm.Stream`。Runner 在 Loop 外面。换 loop = 换 Agent Kind，不是换 Runner。
 4. Loop 是一种程序，不是一场焊死的对话。session 在 `Run` 的参数上。接着问 = 闲着再 `Run`（FollowUp）。还在转时插一句 = `Runner.Steer`。不要 `Chat.Followup`，不要 Inbox。
-5. 自定义：Loop / Kind（开发者代码，要编译）vs Agent 设置（用户数据：人设、已有工具名）vs SessionSettings（会话数据：AgentID、模型、思考档位、工作区）。用户不热加载 Go。Agent 设置和 SessionSettings 都是实时事实来源；Runner 每轮读取一次。
-6. 提示词是登记处 `prompts`，只拼文本。系统提示词是来填槽的插件。人设来自 Agent 设置，每次 Assemble 现取。工具名单 `Get("tools")` 现取。不要代收 schema。
+5. 自定义：Loop / Kind（开发者代码，要编译）vs Agent 设置（用户数据：SystemPrompt、已有 Tool / Skill 名）vs SessionSettings（会话数据：AgentID、模型、思考档位、工作区）。用户不热加载 Go。Agent 设置和 SessionSettings 都是实时事实来源；Runner 每轮读取一次。
+6. 系统提示词属于 Agent 设置。`agents.Prepare` 现取选中 Skill 的摘要和本轮工作区，拼成最终 System Prompt；Runner 只拿成品交给 Loop。工具说明只在 schema；不要代收 schema，也不要另设提示词登记处。
 7. Session **只记对话**，可以分叉。todo / 审批 / 游戏状态放插件自己的结构体。别往账本塞。
 8. 屏幕听这一轮 Run（`Emit`；浏览器用 SSE）。不听账本。喇叭就这一个，插件不要各搞各的。耐久事件先 `Append` 再给屏幕，失败则终止 Run。
 9. 前端：内核一份，表面按端 enable。Web 和 webview 同一套 templ；TUI 另画；ACP 是管子不是画面。HTML 壳 8 个洞（侧栏/浮层给桌上另一摊）。请求 POST，通知 SSE。v1 不用 WebSocket。
@@ -222,7 +222,6 @@ kernel/
   machine/           定义者，只放契约。不是 A。A 是提供者挂上之后表上那把键
   llm/               plugin.go + Client / models.json；直接调 goai
   tools/             空登记处 + Tool
-  prompts/           空登记处 + Part / Assemble
   loops/             空登记处 + Loop / Invocation / RunConfig
   agents/            Agent 设置服务
   runner/            整份 A；live
@@ -235,8 +234,7 @@ surface/
 plugins/
   machine-local/     本机。RegisterService("machine", …)
   machine-e2b/       E2B。同上
-  read/ write/ edit/ bash/   各填 tools；确有额外指导才填 prompts
-  prompt-harness/            填系统提示词那段
+  read/ write/ edit/ bash/   各填 tools
 ```
 
 `tui/`、`acp/` 后期真写再加目录，**不要先建空文件夹**。
@@ -246,13 +244,13 @@ plugins/
 ```yaml
 persist: jsonl
 machine: local
-enable: [web, read, write, edit, bash, prompt-harness]
+enable: [web, read, write, edit, bash]
 ```
 
 ```
 main:
   host.New()
-  必装：persist（挂 sessionPersistence + sessionSettings）→ session → llm → tools → prompts → loops → agents → runner → http → pages
+  必装：persist（挂 sessionPersistence + sessionSettings）→ session → llm → tools → loops → agents → runner → http → pages
   必装提供者：yaml machine 选出的那一个，在 tools 前面 Start
   再按 enable：plugins/* 、 surface/*
   Close 倒序
