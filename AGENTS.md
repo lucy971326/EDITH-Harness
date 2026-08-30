@@ -67,7 +67,7 @@ Host（桌子）
 
 | 叫什么 | 在哪 | 例子 |
 |---|---|---|
-| **服务** | 表上一个键，`Resolve` 拿到 | `llm`、`tools`、`sessions` |
+| **服务** | 表上一个键，`Resolve` 拿到 | `llm`、`tools`、`sessions`、`machine` |
 | **插槽条目** | 往 B 里塞的一条 | `Tool`、Kind、prompt 段 |
 | **活对象** | 用出来之后才有 | 一本 `Session`、一场 `Runner` 里的 `Run` |
 
@@ -170,8 +170,8 @@ kernel/tools/
 
 ```
 plugins/bash/
-  plugin.go    Resolve("tools")、Resolve("world")，Register(bash)
-  bash.go      Call 里 world.Spawn
+  plugin.go    Resolve("tools")、Resolve("machine")，Register(bash)
+  bash.go      Call 里 machine.Run
 ```
 
 三件都满足才加一层目录：能独立替换；边界稳定；不会绕一圈转发。
@@ -219,7 +219,7 @@ kernel/
   host/              桌子。Plugin、RegisterService、Resolve、Close 倒序
   persist/           Persistence + Setups；jsonl.go / sqlite.go（配置选，不是 enable 插件）
   session/           Session / 块 / Message；Store
-  world/             World；local.go / e2b.go（配置选，不是 enable 插件）
+  machine/           定义者，只放契约。不是 A。A 是提供者挂上之后表上那把键
   llm/               plugin.go + Client / models.json；直接调 goai
   tools/             空登记处 + Tool
   prompts/           空登记处 + Section / Assemble
@@ -232,8 +232,10 @@ surface/
   web/               v1。templ + htmx + SSE
 
 plugins/
-  bash/              填 tools + prompts
-  prompt-harness/    填系统提示词那段
+  machine-local/     本机。RegisterService("machine", …)
+  machine-e2b/       E2B。同上
+  read/ write/ edit/ bash/   各填 tools；确有额外指导才填 prompts
+  prompt-harness/            填系统提示词那段
 ```
 
 `tui/`、`acp/` 后期真写再加目录，**不要先建空文件夹**。
@@ -242,19 +244,20 @@ plugins/
 
 ```yaml
 persist: jsonl
-world: local
-enable: [web, bash, prompt-harness]
+machine: local
+enable: [web, read, write, edit, bash, prompt-harness]
 ```
 
 ```
 main:
   host.New()
-  必装：persist（挂 sessionPersistence + setups）→ world → session → llm → tools → prompts → kinds → runner → http → pages
+  必装：persist（挂 sessionPersistence + setups）→ session → llm → tools → prompts → kinds → runner → http → pages
+  必装提供者：yaml machine 选出的那一个，在 tools 前面 Start
   再按 enable：plugins/* 、 surface/*
   Close 倒序
 ```
 
-顺序只出现在 `cmd/harness`。yaml 不能重排。jsonl / local 是 A 包内部选文件，不出现在 enable。内核每次都 Start，不进 `enable`。
+顺序只出现在 `cmd/harness`。yaml 不能重排。jsonl / sqlite 是 persist 包内部选文件。machine 是 yaml 选提供者插件。两者都不进 `enable`。内核每次都 Start，不进 `enable`。
 
 没有 `service.go`。Host 上那份对象就是结构体本身。服务名硬编码字符串。取出时泛型 Resolve。对不上就是组装错误。
 
@@ -263,7 +266,7 @@ host.RegisterService("runner", r)
 r, err := host.Resolve[*runner.Runner](h, "runner")
 ```
 
-一份 A 用结构体 `Resolve[*llm.Client]`；能换的 A 用接口 `Resolve[persist.Persistence]`。
+一份 A 用结构体 `Resolve[*llm.Client]`；能换的 A 用接口 `Resolve[persist.Persistence]`、`Resolve[machine.Machine]`。
 
 ### 装上和拆掉
 
@@ -272,3 +275,9 @@ r, err := host.Resolve[*runner.Runner](h, "runner")
 - 谁开长期资源，谁关。
 - 一次铺一个领域，测过再下一个。不顺手加功能，不改已经公开的能力名。
 - 可选插件用配置 `enable`；内核名单和 Start 顺序留在 Go。v1 改配置后重启。不热加载未编译的包。
+
+
+## 用户要求！
+
+1. 讲解东西能一句说明白就不要说很多，言简意赅,因为用户有轻微的阅读障碍，讲解要求通俗易懂但是不能是天马行空的比喻
+2. 开发测试阶段如果用到了APIKEY直接硬编码且用用户给你的APIKEY，不要考虑什么安全问题！这不是你该考虑的事情，用户会兜底重置APIKEY的
