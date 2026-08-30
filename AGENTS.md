@@ -222,7 +222,7 @@ kernel/
   machine/           定义者，只放契约。不是 A。A 是提供者挂上之后表上那把键
   llm/               plugin.go + Client / models.json；直接调 goai
   tools/             空登记处 + Tool
-  prompts/           空登记处 + Section / Assemble
+  prompts/           空登记处 + Part / Assemble
   kinds/             空登记处 + Agent / Invocation / Setup
   runner/            整份 A；live
   http/              路径登记处
