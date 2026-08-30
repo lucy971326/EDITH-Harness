@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"harness/kernel/kinds"
+	"harness/kernel/session/settings"
 )
 
 // 活对象。挂在 Host 的 prompts 键上的提示词登记处。
@@ -53,7 +53,7 @@ func (r *Registry) Register(part Part) (func(), error) {
 }
 
 // Assemble 合并公共提示词和 Agent 本轮提示词，按 Order 稳定排序后拼接。
-func (r *Registry) Assemble(ctx context.Context, setup kinds.Setup, local ...Part) (string, error) {
+func (r *Registry) Assemble(ctx context.Context, config settings.SessionSettings, local ...Part) (string, error) {
 	err := ctx.Err()
 	if err != nil {
 		return "", err
@@ -91,7 +91,7 @@ func (r *Registry) Assemble(ctx context.Context, setup kinds.Setup, local ...Par
 			return "", err
 		}
 
-		value, renderErr := part.Render(ctx, setup)
+		value, renderErr := part.Render(ctx, config)
 		if err = ctx.Err(); err != nil {
 			return "", err
 		}

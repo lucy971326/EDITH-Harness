@@ -10,7 +10,7 @@ import (
 	"sync"
 )
 
-// 活对象。jsonl 账本和 Setup 的实现。
+// 活对象。jsonl 账本和 SessionSettings 的实现。
 type jsonl struct {
 	dir string
 	mu  sync.Mutex

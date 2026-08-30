@@ -4,18 +4,18 @@ package prompts
 import (
 	"context"
 
-	"harness/kernel/kinds"
+	"harness/kernel/session/settings"
 )
 
-// 数据。一段可按本轮 Setup 生成的提示词。
+// 数据。一段可按本轮 SessionSettings 生成的提示词。
 type Part struct {
 	Name   string
 	Order  int
-	Render func(context.Context, kinds.Setup) (string, error)
+	Render func(context.Context, settings.SessionSettings) (string, error)
 }
 
 // 契约。提示词登记处提供的操作。
 type Prompts interface {
 	Register(part Part) (unregister func(), err error)
-	Assemble(ctx context.Context, setup kinds.Setup, local ...Part) (string, error)
+	Assemble(ctx context.Context, config settings.SessionSettings, local ...Part) (string, error)
 }

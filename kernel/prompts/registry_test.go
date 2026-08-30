@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"harness/kernel/host"
-	"harness/kernel/kinds"
+	"harness/kernel/session/settings"
 )
 
 func TestRegistry_assemblesRegisteredAndLocalParts(t *testing.T) {
@@ -15,8 +15,8 @@ func TestRegistry_assemblesRegisteredAndLocalParts(t *testing.T) {
 	_, err := registry.Register(Part{
 		Name:  "style",
 		Order: 20,
-		Render: func(_ context.Context, setup kinds.Setup) (string, error) {
-			return "Style for " + setup.Kind, nil
+		Render: func(_ context.Context, config settings.SessionSettings) (string, error) {
+			return "Style for " + config.Model, nil
 		},
 	})
 	if err != nil {
@@ -27,31 +27,23 @@ func TestRegistry_assemblesRegisteredAndLocalParts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := registry.Assemble(context.Background(), kinds.Setup{
-		Kind:      "llm",
-		Persona:   "Go architect",
+	result, err := registry.Assemble(context.Background(), settings.SessionSettings{
+		Model:     "deepseek",
 		Workspace: "/workspace",
 	},
 		Part{
-			Name:  "persona",
+			Name:  "workspace",
 			Order: 30,
-			Render: func(_ context.Context, setup kinds.Setup) (string, error) {
-				return setup.Persona, nil
+			Render: func(_ context.Context, config settings.SessionSettings) (string, error) {
+				return config.Workspace, nil
 			},
 		},
 		textPart("empty", 40, "  "),
-		Part{
-			Name:  "workspace",
-			Order: 50,
-			Render: func(_ context.Context, setup kinds.Setup) (string, error) {
-				return setup.Workspace, nil
-			},
-		},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "Identity\n\nStyle for llm\n\nGo architect\n\n/workspace"
+	want := "Identity\n\nStyle for deepseek\n\n/workspace"
 	if result != want {
 		t.Fatalf("Assemble() = %q, want %q", result, want)
 	}
@@ -70,7 +62,7 @@ func TestRegistry_preservesOrderForEqualOrder(t *testing.T) {
 
 	result, err := registry.Assemble(
 		context.Background(),
-		kinds.Setup{},
+		settings.SessionSettings{},
 		textPart("third", 10, "third"),
 	)
 	if err != nil {
@@ -102,7 +94,7 @@ func TestRegistry_rejectsInvalidAndDuplicateParts(t *testing.T) {
 
 	_, err = registry.Assemble(
 		context.Background(),
-		kinds.Setup{},
+		settings.SessionSettings{},
 		textPart("same", 30, "local"),
 	)
 	if err == nil {
@@ -110,7 +102,7 @@ func TestRegistry_rejectsInvalidAndDuplicateParts(t *testing.T) {
 	}
 	_, err = registry.Assemble(
 		context.Background(),
-		kinds.Setup{},
+		settings.SessionSettings{},
 		textPart("local", 10, "one"),
 		textPart("local", 20, "two"),
 	)
@@ -125,7 +117,7 @@ func TestRegistry_returnsRenderErrorAndCancellation(t *testing.T) {
 	_, err := registry.Register(Part{
 		Name:  "broken",
 		Order: 10,
-		Render: func(context.Context, kinds.Setup) (string, error) {
+		Render: func(context.Context, settings.SessionSettings) (string, error) {
 			return "", wantErr
 		},
 	})
@@ -133,14 +125,14 @@ func TestRegistry_returnsRenderErrorAndCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = registry.Assemble(context.Background(), kinds.Setup{})
+	_, err = registry.Assemble(context.Background(), settings.SessionSettings{})
 	if !errors.Is(err, wantErr) || !strings.Contains(err.Error(), "broken") {
 		t.Fatalf("Assemble() error = %v, want wrapped render error", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err = registry.Assemble(ctx, kinds.Setup{})
+	_, err = registry.Assemble(ctx, settings.SessionSettings{})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("Assemble() error = %v, want context canceled", err)
 	}
@@ -155,7 +147,7 @@ func TestRegistry_unregisterIsIdempotent(t *testing.T) {
 	unregister()
 	unregister()
 
-	result, err := registry.Assemble(context.Background(), kinds.Setup{})
+	result, err := registry.Assemble(context.Background(), settings.SessionSettings{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +177,7 @@ func textPart(name string, order int, text string) Part {
 	return Part{
 		Name:  name,
 		Order: order,
-		Render: func(context.Context, kinds.Setup) (string, error) {
+		Render: func(context.Context, settings.SessionSettings) (string, error) {
 			return text, nil
 		},
 	}

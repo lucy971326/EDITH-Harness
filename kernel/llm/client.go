@@ -6,7 +6,7 @@ import (
 
 	"github.com/zendev-sh/goai/provider"
 
-	"harness/kernel/kinds"
+	"harness/kernel/session/settings"
 )
 
 // 活对象。用启动时读取的本机配置和模型定义发起模型调用。
@@ -23,11 +23,11 @@ func newClient(cfg config) (*Client, error) {
 	return &Client{config: cfg, models: models}, nil
 }
 
-// Stream 根据 Setup 选择模型和思考档位，直接返回 goai 的流事件。
-func (c *Client) Stream(ctx context.Context, setup kinds.Setup, input Input) (<-chan provider.StreamChunk, error) {
-	definition, ok := c.models[setup.Model]
+// Stream 根据 SessionSettings 选择模型和思考档位，直接返回 goai 的流事件。
+func (c *Client) Stream(ctx context.Context, config settings.SessionSettings, input Input) (<-chan provider.StreamChunk, error) {
+	definition, ok := c.models[config.Model]
 	if !ok {
-		return nil, fmt.Errorf("llm: unknown model %q", setup.Model)
+		return nil, fmt.Errorf("llm: unknown model %q", config.Model)
 	}
 	providerConfig, ok := c.config.Providers[definition.Provider]
 	if !ok {
@@ -41,7 +41,7 @@ func (c *Client) Stream(ctx context.Context, setup kinds.Setup, input Input) (<-
 	if err != nil {
 		return nil, err
 	}
-	options, err := reasoningOptions(definition, setup.ReasoningEffort)
+	options, err := reasoningOptions(definition, config.ReasoningEffort)
 	if err != nil {
 		return nil, err
 	}

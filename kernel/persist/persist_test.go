@@ -2,13 +2,14 @@ package persist
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
 	"testing"
 
 	"harness/kernel/host"
-	"harness/kernel/kinds"
+	"harness/kernel/session/settings"
 )
 
 func TestInstall_twoKeysSameStore(t *testing.T) {
@@ -22,7 +23,7 @@ func TestInstall_twoKeysSameStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := host.Resolve[kinds.Setups](h, "setups")
+	s, err := host.Resolve[settings.SessionSettingsStore](h, "sessionSettings")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +34,7 @@ func TestInstall_twoKeysSameStore(t *testing.T) {
 	}
 	js, ok := s.(*jsonl)
 	if !ok {
-		t.Fatalf("setups is %T", s)
+		t.Fatalf("session settings is %T", s)
 	}
 	if jp != js {
 		t.Fatal("want the same store on both keys")
@@ -162,41 +163,47 @@ func TestList(t *testing.T) {
 	}
 }
 
-func TestSetup_putForDeepCopy(t *testing.T) {
+func TestSessionSettings_putFor(t *testing.T) {
 	s, err := openJSONL(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	in := kinds.Setup{
-		Kind:  "llm",
-		Model: "deepseek-v4",
-		Tools: []string{"bash", "read"},
+	in := settings.SessionSettings{
+		AgentID:         "default",
+		Model:           "deepseek-v4",
+		ReasoningEffort: "high",
+		Workspace:       "/workspace",
 	}
 	err = s.Put("chat1", in)
 	if err != nil {
 		t.Fatal(err)
 	}
-	in.Tools[0] = "mutated-input"
-
 	got, err := s.For("chat1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Kind != "llm" || got.Model != "deepseek-v4" {
+	if got != in {
 		t.Fatalf("got %+v", got)
 	}
-	if !slices.Equal(got.Tools, []string{"bash", "read"}) {
-		t.Fatalf("tools after mutating input = %v", got.Tools)
+	if _, err := os.Stat(s.sessionSettingsFile("chat1")); err != nil {
+		t.Fatalf("session settings file: %v", err)
 	}
+}
 
-	got.Tools[0] = "mutated-copy"
-	again, err := s.For("chat1")
+func TestSessionSettings_doesNotReadOldSetupFile(t *testing.T) {
+	s, err := openJSONL(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(again.Tools, []string{"bash", "read"}) {
-		t.Fatalf("tools after mutating copy = %v", again.Tools)
+	err = os.WriteFile(filepath.Join(s.dir, "chat1.setup.json"), []byte(`{"model":"old"}`), 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = s.For("chat1")
+	if !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("For() error = %v, want not exist", err)
 	}
 }
 
@@ -212,7 +219,7 @@ func TestBadID(t *testing.T) {
 		if err == nil {
 			t.Fatalf("Add(%q): want error", id)
 		}
-		err = s.Put(id, kinds.Setup{})
+		err = s.Put(id, settings.SessionSettings{})
 		if err == nil {
 			t.Fatalf("Put(%q): want error", id)
 		}
