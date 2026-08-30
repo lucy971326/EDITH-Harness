@@ -5,8 +5,6 @@ import (
 	"harness/kernel/host"
 )
 
-var _ host.Plugin = (*Plugin)(nil)
-
 // 活对象。machine-local 插件自己的启动状态。
 type Plugin struct {
 	local *local

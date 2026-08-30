@@ -5,8 +5,6 @@ import (
 	"harness/kernel/persist"
 )
 
-var _ host.Plugin = (*Plugin)(nil)
-
 // 活对象。把 Session Store 挂到 Host 的 sessions 键。
 type Plugin struct {
 	store *Store

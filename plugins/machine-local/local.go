@@ -8,11 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-
-	"harness/kernel/machine"
 )
-
-var _ machine.Machine = (*local)(nil)
 
 // 活对象。挂在 Host 的 machine 键上的本机机器。
 type local struct {
