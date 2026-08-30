@@ -40,6 +40,14 @@ const (
 	EventMessage        EventKind = "message"
 )
 
+// 数据。一次检查点之后 Loop 是否还必然继续。
+type CheckpointPhase uint8
+
+const (
+	CheckpointContinue CheckpointPhase = iota
+	CheckpointFinal
+)
+
 // 数据。Runner 已准备好、交给 Loop 的本轮输入。
 type Invocation struct {
 	History      []session.Message
@@ -48,7 +56,7 @@ type Invocation struct {
 	ToolNames    []string
 	Workspace    string
 	Emit         func(context.Context, Event) error
-	Checkpoint   func(context.Context) ([]session.Message, error)
+	Checkpoint   func(context.Context, CheckpointPhase) ([]session.Message, error)
 }
 
 // 契约。一种已编译的运行范式。

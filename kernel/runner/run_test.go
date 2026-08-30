@@ -1,0 +1,354 @@
+package runner
+
+import (
+	"context"
+	"errors"
+	"os"
+	"strings"
+	"sync"
+	"testing"
+
+	"harness/kernel/agents"
+	"harness/kernel/agents/config"
+	"harness/kernel/events"
+	"harness/kernel/loops"
+	"harness/kernel/persist"
+	"harness/kernel/session"
+	"harness/kernel/session/settings"
+	"harness/kernel/skills"
+	"harness/kernel/tools"
+)
+
+type runnerTestLoop struct {
+	run func(context.Context, loops.Invocation) error
+}
+
+func (l *runnerTestLoop) Definition() loops.Definition {
+	return loops.Definition{Kind: "react", Description: "runner test loop"}
+}
+
+func (l *runnerTestLoop) Run(ctx context.Context, invocation loops.Invocation) error {
+	return l.run(ctx, invocation)
+}
+
+type memoryPersistence struct {
+	mu      sync.Mutex
+	trees   map[string][]persist.Node
+	addFail error
+}
+
+func newMemoryPersistence() *memoryPersistence {
+	return &memoryPersistence{trees: make(map[string][]persist.Node)}
+}
+
+func (p *memoryPersistence) Load(id string) (*persist.Tree, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	nodes, ok := p.trees[id]
+	if !ok {
+		return nil, os.ErrNotExist
+	}
+	return &persist.Tree{ID: id, Nodes: append([]persist.Node(nil), nodes...)}, nil
+}
+
+func (p *memoryPersistence) Save(id string, tree *persist.Tree) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.trees[id] = append([]persist.Node(nil), tree.Nodes...)
+	return nil
+}
+
+func (p *memoryPersistence) List() ([]persist.Meta, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	out := make([]persist.Meta, 0, len(p.trees))
+	for id := range p.trees {
+		out = append(out, persist.Meta{ID: id})
+	}
+	return out, nil
+}
+
+func (p *memoryPersistence) Add(id string, node persist.Node) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.addFail != nil {
+		return p.addFail
+	}
+	p.trees[id] = append(p.trees[id], node)
+	return nil
+}
+
+type memorySettings struct {
+	mu    sync.Mutex
+	value settings.SessionSettings
+	reads int
+}
+
+func (s *memorySettings) For(string) (settings.SessionSettings, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.reads++
+	return s.value, nil
+}
+
+func (s *memorySettings) Put(_ string, value settings.SessionSettings) error {
+	s.mu.Lock()
+	s.value = value
+	s.mu.Unlock()
+	return nil
+}
+
+func (s *memorySettings) readCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.reads
+}
+
+type emptyAgentStore struct{}
+
+func (emptyAgentStore) ListAgents() ([]config.Agent, error) { return nil, nil }
+func (emptyAgentStore) ForAgent(string) (config.Agent, error) {
+	return config.Agent{}, os.ErrNotExist
+}
+func (emptyAgentStore) PutAgent(config.Agent) error { return nil }
+func (emptyAgentStore) DeleteAgent(string) error    { return nil }
+
+type runnerFixture struct {
+	runner      *Runner
+	session     *session.Session
+	persistence *memoryPersistence
+	settings    *memorySettings
+	events      *events.Registry
+}
+
+func newRunnerFixture(t *testing.T, loop loops.Loop) runnerFixture {
+	t.Helper()
+	persistence := newMemoryPersistence()
+	sessions := session.NewStore(persistence)
+	sess, err := sessions.Create("session-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	settingsStore := &memorySettings{value: settings.SessionSettings{
+		AgentID:         agents.DefaultID,
+		Model:           "model-a",
+		ReasoningEffort: "high",
+		Workspace:       "/workspace/a",
+	}}
+	loopRegistry := loops.NewRegistry()
+	_, err = loopRegistry.Register(loop)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agentService, err := agents.NewService(
+		emptyAgentStore{},
+		loopRegistry,
+		tools.NewRegistry(),
+		skills.NewRegistry(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eventRegistry := events.NewRegistry()
+	r, err := NewRunner(sessions, settingsStore, agentService, loopRegistry, eventRegistry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return runnerFixture{
+		runner:      r,
+		session:     sess,
+		persistence: persistence,
+		settings:    settingsStore,
+		events:      eventRegistry,
+	}
+}
+
+func textInput(text string) session.UserMessage {
+	return session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: text}}}
+}
+
+func TestRunBuildsInvocationPersistsMessagesAndPublishesInOrder(t *testing.T) {
+	var gotInvocation loops.Invocation
+	loop := &runnerTestLoop{run: func(ctx context.Context, invocation loops.Invocation) error {
+		gotInvocation = invocation
+		err := invocation.Emit(ctx, loops.Event{Kind: loops.EventTextDelta, Text: "hello"})
+		if err != nil {
+			return err
+		}
+		assistant := session.Message{
+			Role:   session.RoleAssistant,
+			Blocks: []session.Block{{Kind: "text", Text: "hello"}},
+		}
+		err = invocation.Emit(ctx, loops.Event{Kind: loops.EventMessage, Message: &assistant})
+		if err != nil {
+			return err
+		}
+		toolResult := session.Message{
+			Role: session.RoleTool,
+			Blocks: []session.Block{{
+				Kind:   "tool-result",
+				Result: &session.ToolResult{ID: "call-1", Name: "read", Content: "done"},
+			}},
+		}
+		return invocation.Emit(ctx, loops.Event{Kind: loops.EventMessage, Message: &toolResult})
+	}}
+	fixture := newRunnerFixture(t, loop)
+
+	var kinds []loops.EventKind
+	var durableLengths []int
+	_, err := events.Subscribe(fixture.events, func(_ context.Context, event RunEvent) error {
+		if event.SessionID != "session-1" {
+			t.Fatalf("session id = %q", event.SessionID)
+		}
+		kinds = append(kinds, event.Event.Kind)
+		if event.Event.Kind == loops.EventMessage {
+			durableLengths = append(durableLengths, len(fixture.session.History()))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = fixture.runner.Run(context.Background(), "session-1", textInput("question"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if fixture.settings.readCount() != 1 {
+		t.Fatalf("settings reads = %d", fixture.settings.readCount())
+	}
+	if len(gotInvocation.History) != 1 || gotInvocation.History[0].Role != session.RoleUser {
+		t.Fatalf("initial history = %#v", gotInvocation.History)
+	}
+	if gotInvocation.LLMConfig.Model != "model-a" || gotInvocation.LLMConfig.ReasoningEffort != "high" {
+		t.Fatalf("llm config = %#v", gotInvocation.LLMConfig)
+	}
+	if gotInvocation.Workspace != "/workspace/a" {
+		t.Fatalf("workspace = %q", gotInvocation.Workspace)
+	}
+	if !strings.Contains(gotInvocation.SystemPrompt, "/workspace/a") {
+		t.Fatalf("system prompt = %q", gotInvocation.SystemPrompt)
+	}
+	wantKinds := []loops.EventKind{
+		loops.EventMessage,
+		loops.EventTextDelta,
+		loops.EventMessage,
+		loops.EventMessage,
+	}
+	if len(kinds) != len(wantKinds) {
+		t.Fatalf("event kinds = %v", kinds)
+	}
+	for i := range wantKinds {
+		if kinds[i] != wantKinds[i] {
+			t.Fatalf("event kinds = %v", kinds)
+		}
+	}
+	if len(durableLengths) != 3 || durableLengths[0] != 1 || durableLengths[1] != 2 || durableLengths[2] != 3 {
+		t.Fatalf("durable lengths = %v", durableLengths)
+	}
+	history := fixture.session.History()
+	if len(history) != 3 {
+		t.Fatalf("history length = %d", len(history))
+	}
+	if history[0].Role != session.RoleUser || history[1].Role != session.RoleAssistant || history[2].Role != session.RoleTool {
+		t.Fatalf("history roles = %v, %v, %v", history[0].Role, history[1].Role, history[2].Role)
+	}
+}
+
+func TestRunStopsAfterPublishedDurableMessageFails(t *testing.T) {
+	publishErr := errors.New("subscriber failed")
+	loop := &runnerTestLoop{run: func(ctx context.Context, invocation loops.Invocation) error {
+		assistant := session.Message{
+			Role:   session.RoleAssistant,
+			Blocks: []session.Block{{Kind: "text", Text: "answer"}},
+		}
+		return invocation.Emit(ctx, loops.Event{Kind: loops.EventMessage, Message: &assistant})
+	}}
+	fixture := newRunnerFixture(t, loop)
+	_, err := events.Subscribe(fixture.events, func(_ context.Context, event RunEvent) error {
+		if event.Event.Message != nil && event.Event.Message.Role == session.RoleAssistant {
+			return publishErr
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = fixture.runner.Run(context.Background(), "session-1", textInput("question"))
+	if !errors.Is(err, publishErr) {
+		t.Fatalf("error = %v", err)
+	}
+	history := fixture.session.History()
+	if len(history) != 2 || history[1].Role != session.RoleAssistant {
+		t.Fatalf("history = %#v", history)
+	}
+}
+
+func TestRunDoesNotPublishMessageThatFailedToAppend(t *testing.T) {
+	loopCalled := false
+	loop := &runnerTestLoop{run: func(context.Context, loops.Invocation) error {
+		loopCalled = true
+		return nil
+	}}
+	fixture := newRunnerFixture(t, loop)
+	appendErr := errors.New("disk failed")
+	fixture.persistence.addFail = appendErr
+	published := 0
+	_, err := events.Subscribe(fixture.events, func(context.Context, RunEvent) error {
+		published++
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = fixture.runner.Run(context.Background(), "session-1", textInput("question"))
+	if !errors.Is(err, appendErr) {
+		t.Fatalf("error = %v", err)
+	}
+	if published != 0 {
+		t.Fatalf("published = %d", published)
+	}
+	if loopCalled {
+		t.Fatal("loop was called")
+	}
+}
+
+func TestRunReadsNewSettingsOnlyOnTheNextRun(t *testing.T) {
+	var invocations []loops.Invocation
+	var fixture runnerFixture
+	loop := &runnerTestLoop{run: func(_ context.Context, invocation loops.Invocation) error {
+		invocations = append(invocations, invocation)
+		if len(invocations) == 1 {
+			return fixture.settings.Put("session-1", settings.SessionSettings{
+				AgentID:         agents.DefaultID,
+				Model:           "model-b",
+				ReasoningEffort: "low",
+				Workspace:       "/workspace/b",
+			})
+		}
+		return nil
+	}}
+	fixture = newRunnerFixture(t, loop)
+
+	err := fixture.runner.Run(context.Background(), "session-1", textInput("first"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = fixture.runner.Run(context.Background(), "session-1", textInput("second"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(invocations) != 2 {
+		t.Fatalf("invocations = %d", len(invocations))
+	}
+	if invocations[0].LLMConfig.Model != "model-a" || invocations[0].Workspace != "/workspace/a" {
+		t.Fatalf("first invocation = %#v", invocations[0])
+	}
+	if invocations[1].LLMConfig.Model != "model-b" || invocations[1].Workspace != "/workspace/b" {
+		t.Fatalf("second invocation = %#v", invocations[1])
+	}
+}

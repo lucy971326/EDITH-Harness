@@ -65,7 +65,7 @@ func TestReactRunsToolRoundTrip(t *testing.T) {
 	}
 
 	var events []loops.Event
-	checkpoints := 0
+	var checkpoints []loops.CheckpointPhase
 	err = loop.Run(t.Context(), loops.Invocation{
 		History: []session.Message{{
 			Role:   session.RoleUser,
@@ -82,8 +82,8 @@ func TestReactRunsToolRoundTrip(t *testing.T) {
 			events = append(events, event)
 			return nil
 		},
-		Checkpoint: func(context.Context) ([]session.Message, error) {
-			checkpoints++
+		Checkpoint: func(_ context.Context, phase loops.CheckpointPhase) ([]session.Message, error) {
+			checkpoints = append(checkpoints, phase)
 			return nil, nil
 		},
 	})
@@ -93,8 +93,9 @@ func TestReactRunsToolRoundTrip(t *testing.T) {
 	if gotWorkspace != "/workspace" {
 		t.Fatalf("workspace = %q", gotWorkspace)
 	}
-	if checkpoints != 2 {
-		t.Fatalf("checkpoints = %d, want 2", checkpoints)
+	wantCheckpoints := []loops.CheckpointPhase{loops.CheckpointContinue, loops.CheckpointFinal}
+	if !reflect.DeepEqual(checkpoints, wantCheckpoints) {
+		t.Fatalf("checkpoints = %v, want %v", checkpoints, wantCheckpoints)
 	}
 
 	wantKinds := []loops.EventKind{
@@ -271,7 +272,7 @@ func TestReactAddsCheckpointMessagesBeforeNextRequest(t *testing.T) {
 	loop, _ := installReact(t, server.URL)
 	checkpoint := 0
 	invocation := testInvocation(nil)
-	invocation.Checkpoint = func(context.Context) ([]session.Message, error) {
+	invocation.Checkpoint = func(context.Context, loops.CheckpointPhase) ([]session.Message, error) {
 		checkpoint++
 		if checkpoint == 1 {
 			return []session.Message{{Role: session.RoleUser, Blocks: []session.Block{{Kind: "text", Text: "steer"}}}}, nil
@@ -365,7 +366,7 @@ func testInvocation(toolNames []string) loops.Invocation {
 		Emit: func(context.Context, loops.Event) error {
 			return nil
 		},
-		Checkpoint: func(context.Context) ([]session.Message, error) {
+		Checkpoint: func(context.Context, loops.CheckpointPhase) ([]session.Message, error) {
 			return nil, nil
 		},
 	}

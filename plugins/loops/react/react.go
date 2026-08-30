@@ -61,7 +61,11 @@ func (l *reactLoop) Run(ctx context.Context, invocation loops.Invocation) error 
 			history = append(history, resultMessage)
 		}
 
-		steers, err := invocation.Checkpoint(ctx)
+		phase := loops.CheckpointContinue
+		if len(calls) == 0 {
+			phase = loops.CheckpointFinal
+		}
+		steers, err := invocation.Checkpoint(ctx, phase)
 		if err != nil {
 			return err
 		}
