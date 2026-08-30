@@ -14,13 +14,13 @@
 
 **进程是一张服务表。聊天是桌上的一摊产品，不是根。**
 
-能换的做成登记处，别人来填；不能换的做成一整份服务。一场对话是一次 `Runner.Send` / `Run`：怎么想是 Kind（要编译），这份对话怎么配是 Setup（人设、工具名单、模型、思考档位、工作区文件夹）。账本只记说过的话。屏幕听这一轮 `Emit`，不听账本。插件要编译进去；配置只决定这次启不启动，不排顺序，不热加载新代码。
+能换的做成登记处，别人来填；不能换的做成一整份服务。一场对话是一次 `Runner.Send` / `Run`：怎么想是 Loop（要编译）；Agent 设置管 Kind、人设、工具名单；这份会话怎么配是 SessionSettings（AgentID、模型、思考档位、工作区文件夹）。账本只记说过的话。屏幕听这一轮 `Emit`，不听账本。插件要编译进去；配置只决定这次启不启动，不排顺序，不热加载新代码。
 
 动手之前先问：这是桌上新的一摊，还是聊天里的一份数据、一种画法？工作区、自定义模式、轨迹页，全是聊天产品，不改内核形状。不要为了对齐 DSH 往内核加插槽。
 
 ```
 Host（桌子）
-  ├─ 聊天：Setup + Session + Runner.Run(sessionID, 话) → Agent.Run → llm.Stream
+  ├─ 聊天：SessionSettings + Session + Runner.Run(sessionID, 话) → Loop.Run → llm.Stream
   ├─ 狼人杀：验架构，v1 不实现。自己的棋盘，可以 Get Runner
   ├─ 多机器人：验架构，v1 不实现。自己的房间；每个机器人一本 session
   └─ 电影：验架构，v1 不实现。只占 HTTP，零依赖对话
@@ -32,10 +32,10 @@ Host（桌子）
 
 1. 参考 DSH / pi，**不照抄**。Go。静态编译。无动态插件。无热加载。无 AI 自改代码。
 2. **根是插件宿主，不是 Runner。** 聊天只是宿主里的一摊。电影播放器可以零依赖对话。
-3. 对话：`Runner.Run` → `Agent.Run` →（仅 LLM 类）`llm.Stream`。Runner 在 Agent 外面。换 loop = 换 Agent Kind，不是换 Runner。
-4. Agent 是一种程序，不是一场焊死的对话。session 在 `Run` 的参数上。接着问 = 闲着再 `Run`（FollowUp）。还在转时插一句 = `Runner.Steer`。不要 `Chat.Followup`，不要 Inbox。
-5. 自定义：Kind（开发者代码，要编译）vs Setup（用户数据：人设、模型、思考档位、已有工具名）。用户不热加载 Go。Setup 是这本聊天配置的唯一事实来源；改完下一轮 `Run` 读取新快照。
-6. 提示词是登记处 `prompts`，只拼文本。系统提示词是来填槽的插件。人设是 Setup，每次 Assemble 现取。工具名单 `Get("tools")` 现取。不要代收 schema。
+3. 对话：`Runner.Run` → `Loop.Run` →（仅 LLM 类）`llm.Stream`。Runner 在 Loop 外面。换 loop = 换 Agent Kind，不是换 Runner。
+4. Loop 是一种程序，不是一场焊死的对话。session 在 `Run` 的参数上。接着问 = 闲着再 `Run`（FollowUp）。还在转时插一句 = `Runner.Steer`。不要 `Chat.Followup`，不要 Inbox。
+5. 自定义：Loop / Kind（开发者代码，要编译）vs Agent 设置（用户数据：人设、已有工具名）vs SessionSettings（会话数据：AgentID、模型、思考档位、工作区）。用户不热加载 Go。Agent 设置和 SessionSettings 都是实时事实来源；Runner 每轮读取一次。
+6. 提示词是登记处 `prompts`，只拼文本。系统提示词是来填槽的插件。人设来自 Agent 设置，每次 Assemble 现取。工具名单 `Get("tools")` 现取。不要代收 schema。
 7. Session **只记对话**，可以分叉。todo / 审批 / 游戏状态放插件自己的结构体。别往账本塞。
 8. 屏幕听这一轮 Run（`Emit`；浏览器用 SSE）。不听账本。喇叭就这一个，插件不要各搞各的。耐久事件先 `Append` 再给屏幕，失败则终止 Run。
 9. 前端：内核一份，表面按端 enable。Web 和 webview 同一套 templ；TUI 另画；ACP 是管子不是画面。HTML 壳 8 个洞（侧栏/浮层给桌上另一摊）。请求 POST，通知 SSE。v1 不用 WebSocket。
@@ -88,7 +88,7 @@ Host（桌子）
 
 登记一种 Kind 再加一问：**`Run` 是否取尽 `Steers`？** 不取尽不准 Register。
 
-不是插件（比如 Setup）：它是什么、干什么、谁产生/谁用。先人话，再代码名。不把没做的说成已经有了。
+不是插件（比如 SessionSettings）：它是什么、干什么、谁产生/谁用。先人话，再代码名。不把没做的说成已经有了。
 
 ---
 
@@ -101,7 +101,7 @@ Host（桌子）
 三种名字，三个位置。**导出 ≠ 进 `types.go`。**
 
 ```
-数据     Message / Input / Setup / Node     别人要造、要读的形状
+数据     Message / Input / SessionSettings / Node     别人要造、要读的形状
 契约     Plugin / Persistence / Tool        别人要遵守或要填的口
 活对象   Host / Store / Session / Client    挂在 Host 上的那份东西
 ```
@@ -120,8 +120,8 @@ Host（桌子）
 // 数据。Runner 已准备好的本轮输入。
 type Input struct { ... }
 
-// 契约。按 session 读写 Setup。
-type Setups interface { ... }
+// 契约。按 session 读写 SessionSettings。
+type SessionSettingsStore interface { ... }
 
 // 活对象。挂在 Host 上的那份 LLM 客户端。
 type Client struct { ... }
@@ -131,7 +131,7 @@ type Client struct { ... }
 
 谁先说出这个词，类型就在谁那。别人 import，不要抄一份。
 
-类型跟定义者走：块在 `session`，goai 流事件留在 goai，Setup / Invocation 在 `kinds`。Setups 接口跟 Setup 走（kinds）；For/Put 的实现在 persist 包，Host 键是 `setups`。persist 可以 import kinds，只为存 Setup。`Persistence` 接口仍然只谈 Tree。
+类型跟定义者走：块在 `session`，goai 流事件留在 goai，SessionSettings / Invocation 在它们的定义包。SessionSettingsStore 契约跟 SessionSettings 走；For/Put 的实现在 persist 包，Host 键是 `sessionSettings`。persist 只为存 SessionSettings 而 import 定义者。`Persistence` 接口仍然只谈 Tree。
 
 #### 一个包怎么拆
 
@@ -217,13 +217,14 @@ cmd/harness/
 
 kernel/
   host/              桌子。Plugin、RegisterService、Resolve、Close 倒序
-  persist/           Persistence + Setups；jsonl.go / sqlite.go（配置选，不是 enable 插件）
+  persist/           Persistence + SessionSettingsStore；jsonl.go / sqlite.go（配置选，不是 enable 插件）
   session/           Session / 块 / Message；Store
   machine/           定义者，只放契约。不是 A。A 是提供者挂上之后表上那把键
   llm/               plugin.go + Client / models.json；直接调 goai
   tools/             空登记处 + Tool
   prompts/           空登记处 + Part / Assemble
-  kinds/             空登记处 + Agent / Invocation / Setup
+  loops/             空登记处 + Loop / Invocation / RunConfig
+  agents/            Agent 设置服务
   runner/            整份 A；live
   http/              路径登记处
   pages/             8 个洞
@@ -251,7 +252,7 @@ enable: [web, read, write, edit, bash, prompt-harness]
 ```
 main:
   host.New()
-  必装：persist（挂 sessionPersistence + setups）→ session → llm → tools → prompts → kinds → runner → http → pages
+  必装：persist（挂 sessionPersistence + sessionSettings）→ session → llm → tools → prompts → loops → agents → runner → http → pages
   必装提供者：yaml machine 选出的那一个，在 tools 前面 Start
   再按 enable：plugins/* 、 surface/*
   Close 倒序
