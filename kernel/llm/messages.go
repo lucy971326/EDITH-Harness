@@ -7,6 +7,7 @@ import (
 	"github.com/zendev-sh/goai/provider"
 
 	"harness/kernel/session"
+	"harness/kernel/tools"
 )
 
 func toProviderMessages(history []session.Message) ([]provider.Message, error) {
@@ -16,9 +17,12 @@ func toProviderMessages(history []session.Message) ([]provider.Message, error) {
 		if err != nil {
 			return nil, err
 		}
+		if message.Role == session.RoleTool && (len(message.Blocks) != 1 || message.Blocks[0].Kind != "tool-result") {
+			return nil, fmt.Errorf("llm: tool message needs exactly one tool-result block")
+		}
 		parts := make([]provider.Part, 0, len(message.Blocks))
 		for _, block := range message.Blocks {
-			part, err := toProviderPart(block)
+			part, err := toProviderPart(message.Role, block)
 			if err != nil {
 				return nil, err
 			}
@@ -38,13 +42,16 @@ func toProviderRole(role session.Role) (provider.Role, error) {
 	case session.RoleAssistant:
 		return provider.RoleAssistant, nil
 	case session.RoleTool:
-		return "", fmt.Errorf("llm: tool history is not implemented")
+		return provider.RoleTool, nil
 	default:
 		return "", fmt.Errorf("llm: unknown message role %q", role)
 	}
 }
 
-func toProviderPart(block session.Block) (provider.Part, error) {
+func toProviderPart(role session.Role, block session.Block) (provider.Part, error) {
+	if role == session.RoleTool && block.Kind != "tool-result" {
+		return provider.Part{}, fmt.Errorf("llm: tool message contains %q block", block.Kind)
+	}
 	switch block.Kind {
 	case "text":
 		return provider.Part{Type: provider.PartText, Text: block.Text}, nil
@@ -63,16 +70,38 @@ func toProviderPart(block session.Block) (provider.Part, error) {
 		if block.Tool == nil {
 			return provider.Part{}, fmt.Errorf("llm: tool-call block has no tool")
 		}
-		if !json.Valid([]byte(block.Tool.Args)) {
-			return provider.Part{}, fmt.Errorf("llm: tool-call %q has invalid JSON arguments", block.Tool.Name)
-		}
 		return provider.Part{
 			Type:       provider.PartToolCall,
 			ToolCallID: block.Tool.ID,
 			ToolName:   block.Tool.Name,
 			ToolInput:  json.RawMessage(block.Tool.Args),
 		}, nil
+	case "tool-result":
+		if role != session.RoleTool {
+			return provider.Part{}, fmt.Errorf("llm: tool-result block needs tool role")
+		}
+		if block.Result == nil || block.Result.ID == "" || block.Result.Name == "" {
+			return provider.Part{}, fmt.Errorf("llm: tool-result block needs id and name")
+		}
+		return provider.Part{
+			Type:       provider.PartToolResult,
+			ToolCallID: block.Result.ID,
+			ToolName:   block.Result.Name,
+			ToolOutput: block.Result.Content,
+		}, nil
 	default:
 		return provider.Part{}, fmt.Errorf("llm: unknown block kind %q", block.Kind)
 	}
+}
+
+func toProviderTools(definitions []tools.Definition) []provider.ToolDefinition {
+	out := make([]provider.ToolDefinition, 0, len(definitions))
+	for _, definition := range definitions {
+		out = append(out, provider.ToolDefinition{
+			Name:        definition.Name,
+			Description: definition.Description,
+			InputSchema: definition.InputSchema,
+		})
+	}
+	return out
 }

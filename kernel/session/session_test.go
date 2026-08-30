@@ -217,3 +217,22 @@ func TestImageNeedsMIMEAndData(t *testing.T) {
 		t.Fatal("want error on missing data")
 	}
 }
+
+func TestToolResultNeedsOnePairedBlock(t *testing.T) {
+	store, _ := newTestStore(t)
+	s, err := store.Create("chat1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	invalid := Message{Role: RoleTool, Blocks: []Block{{Kind: "text", Text: "result"}}}
+	if err := s.Append(invalid); err == nil {
+		t.Fatal("want malformed tool result error")
+	}
+	valid := Message{Role: RoleTool, Blocks: []Block{{
+		Kind:   "tool-result",
+		Result: &ToolResult{ID: "call_1", Name: "read", Content: "ok"},
+	}}}
+	if err := s.Append(valid); err != nil {
+		t.Fatal(err)
+	}
+}

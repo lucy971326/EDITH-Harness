@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"sync"
 
 	validator "github.com/santhosh-tekuri/jsonschema/v6"
@@ -13,6 +14,21 @@ import (
 type Registry struct {
 	mu      sync.RWMutex
 	entries map[string]entry
+}
+
+// List 按名称稳定列出当前全部工具定义。
+func (r *Registry) List() []Definition {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	out := make([]Definition, 0, len(r.entries))
+	for _, entry := range r.entries {
+		out = append(out, entry.tool.Definition())
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].Name < out[j].Name
+	})
+	return out
 }
 
 // 数据。一条登记工具及其已编译的校验规则。

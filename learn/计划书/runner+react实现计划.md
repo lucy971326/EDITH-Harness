@@ -17,7 +17,7 @@
 
 ## 2. loops、skills、agents
 
-- `loops`：登记 Loop，按 Kind 取出；定义本轮 `RunConfig`、`Invocation` 和事件出口。
+- `loops`：登记 Loop，按 Kind 取出；定义 `Invocation` 和事件出口。
 - `skills`：最小登记处，只提供 Skill 名和摘要。
 - `agents`：保存自建 Agent；提供默认 Agent；校验 Kind、Tool、Skill 名。
 - `agents.Prepare(AgentID, Workspace)`：按 Skill 名取最新摘要，拼出本轮最终 System Prompt。
@@ -27,8 +27,8 @@
 ## 3. events 与 Runner
 
 - `events`：最小通知登记处；不保存数据，不替代有返回值的服务。
-- Runner 每轮读取 SessionSettings 和 Agent，得到 `RunConfig`。
-- Runner 追加用户输入、读取 History、选择 Loop、准备模型和已授权 Tool 入口。
+- Runner 每轮读取 SessionSettings 和 Agent，得到本轮只读配置。
+- Runner 追加用户输入、读取 History、选择 Loop，并传入模型配置和 Tool 名单。
 - Runner 是唯一写账者：完整消息 Append 成功后，再发布 RunEvent。
 - 实现 Stop、Steer 的运行时队列和 Checkpoint；FollowUp 是 Run 结束后的下一次 Run。
 
@@ -37,12 +37,12 @@
 ## 4. 默认 react Loop
 
 - 插件填入 `loops` 的 `react` 条目。
-- Loop 只使用 Invocation；不 Resolve Host 服务。
+- 插件启动时 Resolve `llm`、`tools`；`Run` 只使用已取得的服务和 Invocation。
 - 文字和思考片段实时 Emit；完整 assistant / tool 消息交 Runner 落账。
-- 同一批 Tool 并行执行；结果按模型请求顺序交回模型。
+- Tool 默认按模型请求顺序执行；以后只有工具明确声明并发安全才并行。
 - 每次 assistant 回复及整批 Tool 完成后调用 Checkpoint；有 Steer 就继续，无 Tool 且无 Steer 就结束。
 
-验证：无 Tool 回复、并行多 Tool、单 Tool 失败、Steer、Stop 都有测试；`go test ./...` 通过。
+验证：无 Tool 回复、顺序多 Tool、越权 Tool、Steer、Stop 都有测试；`go test ./...` 通过。
 
 ## 提交方式
 

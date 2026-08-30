@@ -35,7 +35,7 @@ Host（桌子）
 3. 对话：`Runner.Run` → `Loop.Run` →（仅 LLM 类）`llm.Stream`。Runner 在 Loop 外面。换 loop = 换 Agent Kind，不是换 Runner。
 4. Loop 是一种程序，不是一场焊死的对话。session 在 `Run` 的参数上。接着问 = 闲着再 `Run`（FollowUp）。还在转时插一句 = `Runner.Steer`。不要 `Chat.Followup`，不要 Inbox。
 5. 自定义：Loop / Kind（开发者代码，要编译）vs Agent 设置（用户数据：SystemPrompt、已有 Tool / Skill 名）vs SessionSettings（会话数据：AgentID、模型、思考档位、工作区）。用户不热加载 Go。Agent 设置和 SessionSettings 都是实时事实来源；Runner 每轮读取一次。
-6. 系统提示词属于 Agent 设置。`agents.Prepare` 现取选中 Skill 的摘要和本轮工作区，拼成最终 System Prompt；Runner 只拿成品交给 Loop。工具说明只在 schema；不要代收 schema，也不要另设提示词登记处。
+6. 系统提示词属于 Agent 设置。`agents.Prepare` 现取选中 Skill 的摘要和本轮工作区，拼成最终 System Prompt；Runner 只拿成品交给 Loop。LLM 类 Loop 插件在 `Start` 时自己 Resolve `llm`、`tools`，运行时按本轮工具名单现取 schema。不要另设提示词登记处。
 7. Session **只记对话**，可以分叉。todo / 审批 / 游戏状态放插件自己的结构体。别往账本塞。
 8. 屏幕听这一轮 Run（`Emit`；浏览器用 SSE）。不听账本。喇叭就这一个，插件不要各搞各的。耐久事件先 `Append` 再给屏幕，失败则终止 Run。
 9. 前端：内核一份，表面按端 enable。Web 和 webview 同一套 templ；TUI 另画；ACP 是管子不是画面。HTML 壳 8 个洞（侧栏/浮层给桌上另一摊）。请求 POST，通知 SSE。v1 不用 WebSocket。
@@ -131,7 +131,7 @@ type Client struct { ... }
 
 谁先说出这个词，类型就在谁那。别人 import，不要抄一份。
 
-类型跟定义者走：块在 `session`，goai 流事件留在 goai，SessionSettings / Invocation 在它们的定义包。SessionSettingsStore 契约跟 SessionSettings 走；For/Put 的实现在 persist 包，Host 键是 `sessionSettings`。persist 只为存 SessionSettings 而 import 定义者。`Persistence` 接口仍然只谈 Tree。
+类型跟定义者走：块在 `session`，goai 流事件留在 goai，SessionSettings / Invocation 在它们的定义包。SessionSettingsStore 契约跟 SessionSettings 走；For/Put 的实现在 persist 包，Host 键是 `sessionSettings`。Agent 的纯数据与 Store 契约在 `agents/config`，persist 以 `agentStore` 挂同一份实现，避免 Agent 服务、Loop、Session、persist 的 Go import 环。`Persistence` 接口仍然只谈 Tree。
 
 #### 一个包怎么拆
 
@@ -217,12 +217,13 @@ cmd/harness/
 
 kernel/
   host/              桌子。Plugin、RegisterService、Resolve、Close 倒序
-  persist/           Persistence + SessionSettingsStore；jsonl.go / sqlite.go（配置选，不是 enable 插件）
+  persist/           Persistence + SessionSettingsStore + agents/config.Store；jsonl.go / sqlite.go（配置选，不是 enable 插件）
   session/           Session / 块 / Message；Store
   machine/           定义者，只放契约。不是 A。A 是提供者挂上之后表上那把键
   llm/               plugin.go + Client / models.json；直接调 goai
   tools/             空登记处 + Tool
-  loops/             空登记处 + Loop / Invocation / RunConfig
+  loops/             空登记处 + Loop / Invocation
+  skills/            空登记处 + Skill 摘要
   agents/            Agent 设置服务
   runner/            整份 A；live
   http/              路径登记处
@@ -234,7 +235,8 @@ surface/
 plugins/
   machine-local/     本机。RegisterService("machine", …)
   machine-e2b/       E2B。同上
-  read/ write/ edit/ bash/   各填 tools
+  loops/react/       必装默认 Loop；使用 llm、tools，填 loops
+  tools/read/ write/ edit/ bash/   各填 tools
 ```
 
 `tui/`、`acp/` 后期真写再加目录，**不要先建空文件夹**。
@@ -250,7 +252,7 @@ enable: [web, read, write, edit, bash]
 ```
 main:
   host.New()
-  必装：persist（挂 sessionPersistence + sessionSettings）→ session → llm → tools → loops → agents → runner → http → pages
+  必装：persist（挂 sessionPersistence + sessionSettings + agentStore）→ session → llm → tools → loops → react → skills → agents → runner → http → pages
   必装提供者：yaml machine 选出的那一个，在 tools 前面 Start
   再按 enable：plugins/* 、 surface/*
   Close 倒序

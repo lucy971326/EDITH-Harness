@@ -96,12 +96,22 @@ func (s *Session) Head() string {
 }
 
 func checkMessage(m Message) error {
+	if m.Role == RoleTool && (len(m.Blocks) != 1 || m.Blocks[0].Kind != "tool-result") {
+		return fmt.Errorf("session: tool message needs exactly one tool-result block")
+	}
 	for _, b := range m.Blocks {
-		if b.Kind != "image" {
-			continue
-		}
-		if b.Media == nil || b.Media.MIME == "" || b.Media.Data == "" {
-			return fmt.Errorf("session: image block needs mime and data")
+		switch b.Kind {
+		case "image":
+			if b.Media == nil || b.Media.MIME == "" || b.Media.Data == "" {
+				return fmt.Errorf("session: image block needs mime and data")
+			}
+		case "tool-result":
+			if m.Role != RoleTool {
+				return fmt.Errorf("session: tool-result block needs tool role")
+			}
+			if b.Result == nil || b.Result.ID == "" || b.Result.Name == "" {
+				return fmt.Errorf("session: tool-result block needs id and name")
+			}
 		}
 	}
 	return nil

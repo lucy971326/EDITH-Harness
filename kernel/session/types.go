@@ -23,13 +23,22 @@ type ToolCall struct {
 	Args string `json:"args"`
 }
 
+// 数据。一次工具调用交还给模型的结果。
+type ToolResult struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Content string `json:"content"`
+	IsError bool   `json:"isError,omitempty"`
+}
+
 // 数据。一句消息里的一个有序内容块。
 type Block struct {
-	Kind  string    `json:"kind"`
-	Text  string    `json:"text,omitempty"`
-	Tool  *ToolCall `json:"tool,omitempty"`
-	Media *Media    `json:"media,omitempty"`
-	Error string    `json:"error,omitempty"`
+	Kind   string      `json:"kind"`
+	Text   string      `json:"text,omitempty"`
+	Tool   *ToolCall   `json:"tool,omitempty"`
+	Result *ToolResult `json:"result,omitempty"`
+	Media  *Media      `json:"media,omitempty"`
+	Error  string      `json:"error,omitempty"`
 }
 
 // 数据。账本中的一个完整节点内容。

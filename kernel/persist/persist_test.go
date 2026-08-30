@@ -8,6 +8,7 @@ import (
 	"slices"
 	"testing"
 
+	"harness/kernel/agents/config"
 	"harness/kernel/host"
 	"harness/kernel/session/settings"
 )
@@ -38,6 +39,45 @@ func TestInstall_twoKeysSameStore(t *testing.T) {
 	}
 	if jp != js {
 		t.Fatal("want the same store on both keys")
+	}
+	agentStore, err := host.Resolve[config.Store](h, "agentStore")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ja, ok := agentStore.(*jsonl)
+	if !ok || ja != jp {
+		t.Fatal("want the same store on the agentStore key")
+	}
+}
+
+func TestAgentStore_roundTripListAndDelete(t *testing.T) {
+	s, err := openJSONL(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := config.Agent{ID: "coding", Name: "Coding", Kind: "react", Tools: []string{"bash"}}
+	if err := s.PutAgent(input); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.ForAgent("coding")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != input.ID || got.Name != input.Name || got.Kind != input.Kind || !slices.Equal(got.Tools, input.Tools) {
+		t.Fatalf("ForAgent() = %#v, want %#v", got, input)
+	}
+	list, err := s.ListAgents()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].ID != "coding" {
+		t.Fatalf("ListAgents() = %#v", list)
+	}
+	if err := s.DeleteAgent("coding"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ForAgent("coding"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("ForAgent() error = %v, want not exist", err)
 	}
 }
 

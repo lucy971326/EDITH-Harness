@@ -256,7 +256,14 @@ n4  模型   「用方案 A」
   "body": {
     "role": "tool",
     "blocks": [
-      { "kind": "text", "text": "package auth\nfunc Login() {...}" }
+      {
+        "kind": "tool-result",
+        "result": {
+          "id": "c1",
+          "name": "read",
+          "content": "package auth\nfunc Login() {...}"
+        }
+      }
     ]
   }
 }

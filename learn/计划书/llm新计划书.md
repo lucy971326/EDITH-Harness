@@ -95,4 +95,4 @@ Client         Plugin.Close 时放掉
 重试、fallback、热加载
 ```
 
-工具结果历史的本地形状尚未定；遇到已有 tool role 历史时当前明确报错，而不是猜测转换。
+Tool 消息使用单个 `tool-result` 块，按调用 ID 转为 goai 的 `PartToolResult`。

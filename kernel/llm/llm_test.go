@@ -92,6 +92,18 @@ func TestToProviderMessages(t *testing.T) {
 				{Kind: "tool-call", Tool: &session.ToolCall{ID: "call_1", Name: "search", Args: `{"q":"go"}`}},
 			},
 		},
+		{
+			Role: session.RoleTool,
+			Blocks: []session.Block{{
+				Kind: "tool-result",
+				Result: &session.ToolResult{
+					ID:      "call_1",
+					Name:    "search",
+					Content: "result",
+					IsError: true,
+				},
+			}},
+		},
 	}
 
 	got, err := toProviderMessages(history)
@@ -108,15 +120,40 @@ func TestToProviderMessages(t *testing.T) {
 			{Type: provider.PartText, Text: "answer"},
 			{Type: provider.PartToolCall, ToolCallID: "call_1", ToolName: "search", ToolInput: []byte(`{"q":"go"}`)},
 		}},
+		{Role: provider.RoleTool, Content: []provider.Part{
+			{Type: provider.PartToolResult, ToolCallID: "call_1", ToolName: "search", ToolOutput: "result"},
+		}},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("messages = %#v, want %#v", got, want)
 	}
 }
 
-func TestToolHistoryIsRejected(t *testing.T) {
-	_, err := toProviderMessages([]session.Message{{Role: session.RoleTool}})
-	if err == nil {
-		t.Fatal("want tool history error")
+func TestMalformedToolHistoryIsRejected(t *testing.T) {
+	cases := []session.Message{
+		{Role: session.RoleTool},
+		{Role: session.RoleTool, Blocks: []session.Block{{Kind: "text", Text: "missing call id"}}},
+	}
+	for _, message := range cases {
+		if _, err := toProviderMessages([]session.Message{message}); err == nil {
+			t.Fatal("want tool history error")
+		}
+	}
+}
+
+func TestToolCallWithInvalidArgumentsIsKeptForToolErrorRecovery(t *testing.T) {
+	history := []session.Message{{
+		Role: session.RoleAssistant,
+		Blocks: []session.Block{{
+			Kind: "tool-call",
+			Tool: &session.ToolCall{ID: "call_1", Name: "search", Args: "not-json"},
+		}},
+	}}
+	messages, err := toProviderMessages(history)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(messages[0].Content[0].ToolInput); got != "not-json" {
+		t.Fatalf("ToolInput = %q", got)
 	}
 }

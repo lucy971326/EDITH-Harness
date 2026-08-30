@@ -37,7 +37,7 @@ Runner 每轮组合 Agent 设置和 SessionSettings，得到本轮只读配置�
 
 ## 边界
 
-- Agent 设置负责准备本轮 System Prompt：自身文本 + 最新 Skills 摘要 + Workspace；Loop 只收 Runner 准备好的入口，不 Resolve 服务。
+- Agent 设置负责准备本轮 System Prompt：自身文本 + 最新 Skills 摘要 + Workspace；LLM 类 Loop 插件启动时自己 Resolve `llm`、`tools`，Runner 只传本轮数据。
 - Runner 是唯一写账者：先写初始用户输入，顺序消费 Loop 事件后写完整消息。
 - `Checkpoint` 是 Loop 与 Runner 的内部协作，不入账、不发 UI；它保证 Steer 不插进一组 Tool 调用中间。
 - FollowUp：当前 Run 结束后同一 Session 再开 Run。Steer：当前 Run 未结束时进入其队列。

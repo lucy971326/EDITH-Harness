@@ -140,6 +140,22 @@ func TestRegistry_unregisterIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestRegistry_listReturnsAllDefinitionsByName(t *testing.T) {
+	registry := NewRegistry()
+	for _, name := range []string{"write", "bash"} {
+		tool := New(name, name+" tool.", func(_ context.Context, _ Call, _ testArgs) (Result, error) {
+			return Result{}, nil
+		})
+		if _, err := registry.Register(tool); err != nil {
+			t.Fatal(err)
+		}
+	}
+	definitions := registry.List()
+	if len(definitions) != 2 || definitions[0].Name != "bash" || definitions[1].Name != "write" {
+		t.Fatalf("List() = %#v", definitions)
+	}
+}
+
 func TestTruncate(t *testing.T) {
 	head := TruncateHead(strings.Repeat("a", maxOutputBytes+1))
 	if !strings.HasSuffix(head, truncatedNotice) {
