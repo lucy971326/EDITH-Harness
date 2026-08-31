@@ -1,0 +1,442 @@
+<div id="harness-chat-prototype">
+  <style>
+    #harness-chat-prototype {
+      color-scheme: light dark;
+      width: 100%;
+      min-height: 680px;
+      overflow: hidden;
+      border: 1px solid light-dark(#dedbd4, #343432);
+      border-radius: 18px;
+      background: light-dark(#f8f7f3, #181817);
+      color: light-dark(#292824, #eeece6);
+      font: 14px/1.5 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    #harness-chat-prototype * { box-sizing: border-box; }
+    #harness-chat-prototype button,
+    #harness-chat-prototype textarea,
+    #harness-chat-prototype select,
+    #harness-chat-prototype input { font: inherit; }
+
+    #harness-chat-prototype .hp-shell {
+      display: grid;
+      grid-template-columns: 248px minmax(0, 1fr);
+      min-height: 680px;
+    }
+
+    #harness-chat-prototype .hp-sidebar {
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid light-dark(#e1ded7, #353532);
+      background: light-dark(#efeee9, #222220);
+      padding: 20px 14px;
+    }
+
+    #harness-chat-prototype .hp-sidebar-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 8px 18px;
+    }
+
+    #harness-chat-prototype .hp-sidebar-title {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: .04em;
+      color: light-dark(#64615a, #aaa79f);
+    }
+
+    #harness-chat-prototype .hp-icon-button {
+      display: grid;
+      width: 30px;
+      height: 30px;
+      place-items: center;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+      font-size: 22px;
+    }
+
+    #harness-chat-prototype .hp-icon-button:hover {
+      background: light-dark(#dfddd6, #30302d);
+    }
+
+    #harness-chat-prototype .hp-project { margin-bottom: 8px; }
+    #harness-chat-prototype .hp-project-name {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px;
+      font-weight: 650;
+    }
+
+    #harness-chat-prototype .hp-folder {
+      width: 15px;
+      height: 11px;
+      border: 1.5px solid currentColor;
+      border-radius: 3px;
+      opacity: .7;
+    }
+
+    #harness-chat-prototype .hp-session {
+      width: 100%;
+      margin: 2px 0;
+      padding: 9px 12px 9px 32px;
+      border: 0;
+      border-radius: 9px;
+      background: transparent;
+      color: light-dark(#5f5c55, #bdbab2);
+      text-align: left;
+      cursor: pointer;
+    }
+
+    #harness-chat-prototype .hp-session[aria-current="page"] {
+      background: light-dark(#dedcd5, #343431);
+      color: light-dark(#282722, #f2f0e9);
+    }
+
+    #harness-chat-prototype .hp-main {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      min-width: 0;
+      background: light-dark(#fbfaf7, #1b1b1a);
+    }
+
+    #harness-chat-prototype .hp-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      min-height: 66px;
+      padding: 12px 24px;
+      border-bottom: 1px solid light-dark(#e7e4dd, #333330);
+    }
+
+    #harness-chat-prototype .hp-heading { min-width: 0; }
+    #harness-chat-prototype .hp-heading strong { display: block; font-size: 15px; }
+    #harness-chat-prototype .hp-path {
+      overflow: hidden;
+      color: light-dark(#77736b, #a7a39b);
+      font-size: 12px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #harness-chat-prototype .hp-agent {
+      flex: 0 0 auto;
+      padding: 6px 10px;
+      border: 1px solid light-dark(#ddd9d1, #3b3b37);
+      border-radius: 8px;
+      color: light-dark(#55524c, #c2bfb7);
+      background: transparent;
+    }
+
+    #harness-chat-prototype .hp-history {
+      overflow: auto;
+      padding: 38px max(28px, calc((100% - 760px) / 2));
+    }
+
+    #harness-chat-prototype .hp-message { margin-bottom: 30px; }
+    #harness-chat-prototype .hp-role {
+      margin-bottom: 7px;
+      color: light-dark(#77736b, #a9a69e);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    #harness-chat-prototype .hp-message p { margin: 0; font-size: 15px; }
+    #harness-chat-prototype .hp-user p {
+      display: inline-block;
+      padding: 10px 13px;
+      border-radius: 12px;
+      background: light-dark(#eeece6, #292927);
+    }
+
+    #harness-chat-prototype .hp-tool {
+      margin-top: 14px;
+      overflow: hidden;
+      border: 1px solid light-dark(#ddd9d1, #3b3b37);
+      border-radius: 10px;
+      background: light-dark(#f4f2ed, #232321);
+    }
+
+    #harness-chat-prototype .hp-tool-head {
+      display: flex;
+      justify-content: space-between;
+      padding: 9px 12px;
+      border-bottom: 1px solid light-dark(#e1ded7, #373733);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    #harness-chat-prototype .hp-tool code {
+      display: block;
+      padding: 11px 12px;
+      color: light-dark(#55524c, #c7c3bb);
+      font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    #harness-chat-prototype .hp-compose-wrap {
+      padding: 0 max(24px, calc((100% - 800px) / 2)) 24px;
+    }
+
+    #harness-chat-prototype .hp-compose {
+      border: 1px solid light-dark(#d8d4cc, #44443f);
+      border-radius: 16px;
+      background: light-dark(#ffffff, #242422);
+      box-shadow: 0 8px 30px light-dark(rgba(55, 48, 34, .08), rgba(0, 0, 0, .18));
+    }
+
+    #harness-chat-prototype textarea {
+      display: block;
+      width: 100%;
+      min-height: 76px;
+      resize: none;
+      border: 0;
+      outline: 0;
+      padding: 15px 16px 8px;
+      background: transparent;
+      color: inherit;
+    }
+
+    #harness-chat-prototype .hp-compose-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px 10px;
+    }
+
+    #harness-chat-prototype select {
+      max-width: 160px;
+      border: 0;
+      border-radius: 7px;
+      outline: 0;
+      padding: 6px 8px;
+      background: transparent;
+      color: light-dark(#5b5851, #c5c2ba);
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    #harness-chat-prototype .hp-run-button {
+      min-width: 68px;
+      margin-left: auto;
+      border: 0;
+      border-radius: 9px;
+      padding: 8px 15px;
+      background: light-dark(#282722, #f0eee7);
+      color: light-dark(#fff, #22221f);
+      cursor: pointer;
+      font-weight: 700;
+    }
+
+    #harness-chat-prototype .hp-run-button[data-running="true"] {
+      background: light-dark(#b9433f, #d95b54);
+      color: #fff;
+    }
+
+    #harness-chat-prototype .hp-modal-backdrop {
+      position: absolute;
+      inset: 0;
+      display: none;
+      place-items: center;
+      padding: 24px;
+      background: rgba(15, 15, 14, .5);
+      z-index: 4;
+    }
+
+    #harness-chat-prototype .hp-modal-backdrop[data-open="true"] { display: grid; }
+    #harness-chat-prototype .hp-modal {
+      width: min(520px, 100%);
+      border: 1px solid light-dark(#d8d4cc, #44443f);
+      border-radius: 18px;
+      padding: 22px;
+      background: light-dark(#fff, #252523);
+      box-shadow: 0 24px 80px rgba(0, 0, 0, .28);
+    }
+
+    #harness-chat-prototype .hp-modal h2 { margin: 0 0 4px; font-size: 20px; }
+    #harness-chat-prototype .hp-modal p { margin: 0 0 18px; color: light-dark(#716d65, #aaa79f); }
+    #harness-chat-prototype .hp-modal label { display: block; margin-bottom: 7px; font-weight: 650; }
+    #harness-chat-prototype .hp-modal input {
+      width: 100%;
+      border: 1px solid light-dark(#d8d4cc, #44443f);
+      border-radius: 9px;
+      outline: 0;
+      padding: 10px 11px;
+      background: light-dark(#fbfaf7, #1c1c1a);
+      color: inherit;
+    }
+
+    #harness-chat-prototype .hp-modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 9px;
+      margin-top: 20px;
+    }
+
+    #harness-chat-prototype .hp-modal-actions button {
+      border: 1px solid light-dark(#d8d4cc, #44443f);
+      border-radius: 8px;
+      padding: 8px 13px;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+    }
+
+    #harness-chat-prototype .hp-modal-actions .hp-create {
+      border-color: transparent;
+      background: light-dark(#282722, #f0eee7);
+      color: light-dark(#fff, #22221f);
+    }
+
+    @media (max-width: 680px) {
+      #harness-chat-prototype .hp-shell { grid-template-columns: 1fr; }
+      #harness-chat-prototype .hp-sidebar { display: none; }
+      #harness-chat-prototype .hp-history { padding: 28px 20px; }
+      #harness-chat-prototype .hp-compose-wrap { padding: 0 14px 14px; }
+      #harness-chat-prototype .hp-agent { display: none; }
+    }
+  </style>
+
+  <div class="hp-shell">
+    <aside class="hp-sidebar" aria-label="项目与会话">
+      <div class="hp-sidebar-head">
+        <span class="hp-sidebar-title">项目</span>
+        <button class="hp-icon-button" type="button" data-open-project aria-label="新建项目">＋</button>
+      </div>
+
+      <div class="hp-project-list">
+        <section class="hp-project">
+          <div class="hp-project-name"><span class="hp-folder"></span>Harness</div>
+          <button class="hp-session" type="button" aria-current="page">abc123</button>
+          <button class="hp-session" type="button">def456</button>
+        </section>
+        <section class="hp-project">
+          <div class="hp-project-name"><span class="hp-folder"></span>LearnAI</div>
+          <button class="hp-session" type="button">ghi789</button>
+        </section>
+      </div>
+    </aside>
+
+    <main class="hp-main">
+      <header class="hp-header">
+        <div class="hp-heading">
+          <strong>Harness / abc123</strong>
+          <div class="hp-path">/Users/lucy/Documents/Projects/Harness</div>
+        </div>
+        <button class="hp-agent" type="button">Agent：Default</button>
+      </header>
+
+      <section class="hp-history" aria-label="对话历史" aria-live="polite">
+        <article class="hp-message hp-user">
+          <div class="hp-role">你</div>
+          <p>帮我看看这个项目的目录结构。</p>
+        </article>
+
+        <article class="hp-message">
+          <div class="hp-role">Harness</div>
+          <p>我先读取目录，再说明代码主干。</p>
+          <div class="hp-tool">
+            <div class="hp-tool-head"><span>bash</span><span>✓ 已完成</span></div>
+            <code>rg --files | sort</code>
+          </div>
+        </article>
+      </section>
+
+      <div class="hp-compose-wrap">
+        <div class="hp-compose">
+          <textarea aria-label="输入消息" placeholder="输入消息……"></textarea>
+          <div class="hp-compose-actions">
+            <select aria-label="模型">
+              <option>GPT-5.6</option>
+              <option>Claude Sonnet</option>
+            </select>
+            <select aria-label="思考档位">
+              <option>思考：高</option>
+              <option>思考：中</option>
+              <option>思考：低</option>
+            </select>
+            <button class="hp-run-button" type="button" data-running="false">发送</button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div class="hp-modal-backdrop" data-project-modal data-open="false">
+    <div class="hp-modal" role="dialog" aria-modal="true" aria-labelledby="hp-project-title">
+      <h2 id="hp-project-title">新建项目</h2>
+      <p>选择一个工作区目录，并创建第一本会话。</p>
+      <label for="hp-workspace">工作区目录</label>
+      <input id="hp-workspace" value="/Users/lucy/Documents/Projects/" />
+      <div class="hp-modal-actions">
+        <button type="button" data-close-project>取消</button>
+        <button class="hp-create" type="button" data-create-project>创建</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      const root = document.getElementById('harness-chat-prototype');
+      const runButton = root.querySelector('.hp-run-button');
+      const input = root.querySelector('textarea');
+      const history = root.querySelector('.hp-history');
+      const modal = root.querySelector('[data-project-modal]');
+
+      runButton.addEventListener('click', () => {
+        const running = runButton.dataset.running === 'true';
+        if (running) {
+          runButton.dataset.running = 'false';
+          runButton.textContent = '发送';
+          const pending = history.querySelector('[data-pending]');
+          if (pending) pending.querySelector('p').textContent = '已停止。';
+          return;
+        }
+
+        const text = input.value.trim();
+        if (!text) return;
+        const user = document.createElement('article');
+        user.className = 'hp-message hp-user';
+        const userRole = document.createElement('div');
+        userRole.className = 'hp-role';
+        userRole.textContent = '你';
+        const userText = document.createElement('p');
+        userText.textContent = text;
+        user.append(userRole, userText);
+
+        const assistant = document.createElement('article');
+        assistant.className = 'hp-message';
+        assistant.dataset.pending = 'true';
+        const assistantRole = document.createElement('div');
+        assistantRole.className = 'hp-role';
+        assistantRole.textContent = 'Harness';
+        const assistantText = document.createElement('p');
+        assistantText.textContent = '正在处理…';
+        assistant.append(assistantRole, assistantText);
+
+        history.append(user, assistant);
+        input.value = '';
+        runButton.dataset.running = 'true';
+        runButton.textContent = '停止';
+        history.scrollTop = history.scrollHeight;
+      });
+
+      root.querySelector('[data-open-project]').addEventListener('click', () => {
+        modal.dataset.open = 'true';
+      });
+      root.querySelector('[data-close-project]').addEventListener('click', () => {
+        modal.dataset.open = 'false';
+      });
+      root.querySelector('[data-create-project]').addEventListener('click', () => {
+        modal.dataset.open = 'false';
+      });
+      modal.addEventListener('click', (event) => {
+        if (event.target === modal) modal.dataset.open = 'false';
+      });
+    })();
+  </script>
+</div>
