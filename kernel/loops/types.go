@@ -67,7 +67,7 @@ type Loop interface {
 
 // 契约。Loop 登记处提供的操作。
 type Loops interface {
-	Register(loop Loop) (unregister func(), err error)
+	Register(loop Loop) error
 	Get(kind string) (Loop, error)
 	Definitions() []Definition
 }

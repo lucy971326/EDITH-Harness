@@ -17,34 +17,26 @@ func NewRegistry() *Registry {
 	return &Registry{entries: make(map[string]Loop)}
 }
 
-// Register 填入一种运行范式，并返回幂等注销函数。
-func (r *Registry) Register(loop Loop) (func(), error) {
+// Register 填入一种启动时固定的运行范式。
+func (r *Registry) Register(loop Loop) error {
 	if loop == nil {
-		return nil, fmt.Errorf("loops: register nil loop")
+		return fmt.Errorf("loops: register nil loop")
 	}
 	definition := loop.Definition()
 	if definition.Kind == "" {
-		return nil, fmt.Errorf("loops: register empty kind")
+		return fmt.Errorf("loops: register empty kind")
 	}
 	if definition.Description == "" {
-		return nil, fmt.Errorf("loops: register %q with empty description", definition.Kind)
+		return fmt.Errorf("loops: register %q with empty description", definition.Kind)
 	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, exists := r.entries[definition.Kind]; exists {
-		return nil, fmt.Errorf("loops: %q already registered", definition.Kind)
+		return fmt.Errorf("loops: %q already registered", definition.Kind)
 	}
 	r.entries[definition.Kind] = loop
-
-	var once sync.Once
-	return func() {
-		once.Do(func() {
-			r.mu.Lock()
-			defer r.mu.Unlock()
-			delete(r.entries, definition.Kind)
-		})
-	}, nil
+	return nil
 }
 
 // Get 按 Kind 取一种已登记的运行范式。

@@ -56,7 +56,7 @@ func TestReactRunsToolRoundTrip(t *testing.T) {
 
 	loop, toolRegistry := installReact(t, server.URL)
 	var gotWorkspace string
-	_, err := toolRegistry.Register(tools.New("echo", "Echo a value.", func(_ context.Context, call tools.Call, args echoArgs) (tools.Result, error) {
+	err := toolRegistry.Register(tools.New("echo", "Echo a value.", func(_ context.Context, call tools.Call, args echoArgs) (tools.Result, error) {
 		gotWorkspace = call.Workspace
 		return tools.Result{Content: args.Value}, nil
 	}))
@@ -154,7 +154,7 @@ func TestReactExecutesToolCallsInModelOrder(t *testing.T) {
 
 	loop, toolRegistry := installReact(t, server.URL)
 	var order []string
-	_, err := toolRegistry.Register(tools.New("echo", "Echo a value.", func(_ context.Context, _ tools.Call, args echoArgs) (tools.Result, error) {
+	err := toolRegistry.Register(tools.New("echo", "Echo a value.", func(_ context.Context, _ tools.Call, args echoArgs) (tools.Result, error) {
 		order = append(order, args.Value)
 		return tools.Result{Content: args.Value}, nil
 	}))
@@ -233,7 +233,7 @@ func TestReactReturnsMalformedToolArgumentsToModel(t *testing.T) {
 	defer server.Close()
 
 	loop, toolRegistry := installReact(t, server.URL)
-	_, err := toolRegistry.Register(tools.New("echo", "Echo a value.", func(_ context.Context, _ tools.Call, _ echoArgs) (tools.Result, error) {
+	err := toolRegistry.Register(tools.New("echo", "Echo a value.", func(_ context.Context, _ tools.Call, _ echoArgs) (tools.Result, error) {
 		return tools.Result{}, nil
 	}))
 	if err != nil {

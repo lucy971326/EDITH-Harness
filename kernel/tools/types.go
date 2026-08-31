@@ -29,7 +29,7 @@ type Result struct {
 
 // 契约。工具登记处提供的操作。
 type Tools interface {
-	Register(tool Tool) (unregister func(), err error)
+	Register(tool Tool) error
 	List() []Definition
 	Definitions(allow []string) ([]Definition, error)
 	Call(ctx context.Context, call Call) (Result, error)

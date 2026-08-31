@@ -136,7 +136,7 @@ func newRunnerFixture(t *testing.T, loop loops.Loop) runnerFixture {
 		Workspace:       "/workspace/a",
 	}}
 	loopRegistry := loops.NewRegistry()
-	_, err = loopRegistry.Register(loop)
+	err = loopRegistry.Register(loop)
 	if err != nil {
 		t.Fatal(err)
 	}

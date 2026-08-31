@@ -96,6 +96,16 @@ Host（桌子）
 
 ### 规范
 
+#### 结构体字段
+
+数据结构体按数据契约定义。有行为的活对象，字段只表达三类东西：
+
+1. **身份**：它是谁，例如 ID、名字、所属关系。
+2. **配置**：它怎么运行，例如 `Config`。
+3. **能力**：它靠什么做事，例如组合进来的服务、登记处、资源句柄。**字段即能力**，这也是 Go 组合的用法。
+
+每个字段都必须说清属于哪一类。实现状态只在确实支撑这份能力时保存；能交给局部变量或标准库的，就不自己保存。
+
 #### 类型放哪
 
 三种名字，三个位置。**导出 ≠ 进 `types.go`。**
@@ -140,7 +150,7 @@ type Client struct { ... }
 一个领域一份服务。服务里面按职责拆文件。**真能换的才做插槽**（B）。别把小能力都 `RegisterService`。
 
 ```
-Plugin    Name + Start + Close。Start 里挂上，Close 里拆
+Plugin    Name + Start + Close。Start 里挂上，Close 只关自己开的长期资源
 插槽      B 的 Register 口。不是第三种插件
 ```
 
@@ -198,7 +208,8 @@ kernel   不得 import plugins、surface
 
 - 标识符英文。注释中文。commit 双语。
 - 可读性优先，不炫技。
-- `err := f()` 和 `if err != nil` 分成两行。
+- 普通包只返回错误，不打日志。错误只在 main 等进程边界，或无法再返回错误的后台入口打印一次。
+- 生产与测试代码一律把 `err := f()` 和 `if err != nil` 分成两行。
 - 每包一个主要公开构造入口；构造只校验依赖和组装。
 - 不要没有主人的 `utils.go` / `helpers.go` / `common.go`。
 
@@ -271,9 +282,9 @@ r, err := host.Resolve[*runner.Runner](h, "runner")
 
 ### 装上和拆掉
 
-- B 的 `Register` 返回幂等 `unregister`。
+- 启动时固定填入的 B（tools / loops / skills / HTTP）只 `Register`，随 Host 整体消失。运行中会离场的订阅（events）才返回幂等 `unregister`。
 - `Install` 中途失败：已 Start 的倒序拆。
-- 谁开长期资源，谁关。
+- 谁开长期资源，谁关。谁启动 goroutine 或服务器，谁在 `Close` 中停止并等它退出。为此必需的等待状态属于这份能力，不算过度设计。
 - 一次铺一个领域，测过再下一个。不顺手加功能，不改已经公开的能力名。
 - 可选插件用配置 `enable`；内核名单和 Start 顺序留在 Go。v1 改配置后重启。不热加载未编译的包。
 

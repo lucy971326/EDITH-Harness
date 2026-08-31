@@ -9,7 +9,7 @@ type Skill struct {
 
 // 契约。Skill 摘要登记处提供的操作。
 type Skills interface {
-	Register(skill Skill) (unregister func(), err error)
+	Register(skill Skill) error
 	Get(names []string) ([]Skill, error)
 	List() []Skill
 }

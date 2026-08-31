@@ -143,7 +143,8 @@ func testService(t *testing.T) (*Service, *loops.Registry, *tools.Registry, *ski
 
 func registerLoop(t *testing.T, registry *loops.Registry, kind string) {
 	t.Helper()
-	if _, err := registry.Register(agentTestLoop{definition: loops.Definition{Kind: kind, Description: kind + " loop."}}); err != nil {
+	err := registry.Register(agentTestLoop{definition: loops.Definition{Kind: kind, Description: kind + " loop."}})
+	if err != nil {
 		t.Fatal(err)
 	}
 }
@@ -153,14 +154,16 @@ func registerTool(t *testing.T, registry *tools.Registry, name string) {
 	tool := tools.New(name, name+" tool.", func(context.Context, tools.Call, struct{}) (tools.Result, error) {
 		return tools.Result{}, nil
 	})
-	if _, err := registry.Register(tool); err != nil {
+	err := registry.Register(tool)
+	if err != nil {
 		t.Fatal(err)
 	}
 }
 
 func registerSkill(t *testing.T, registry *skills.Registry, name string, summary string) {
 	t.Helper()
-	if _, err := registry.Register(skills.Skill{Name: name, Summary: summary}); err != nil {
+	err := registry.Register(skills.Skill{Name: name, Summary: summary})
+	if err != nil {
 		t.Fatal(err)
 	}
 }

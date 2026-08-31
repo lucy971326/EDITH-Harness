@@ -17,30 +17,22 @@ func NewRegistry() *Registry {
 	return &Registry{entries: make(map[string]Skill)}
 }
 
-// Register 填入一个 Skill 摘要，并返回幂等注销函数。
-func (r *Registry) Register(skill Skill) (func(), error) {
+// Register 填入一个启动时固定的 Skill 摘要。
+func (r *Registry) Register(skill Skill) error {
 	if skill.Name == "" {
-		return nil, fmt.Errorf("skills: register empty name")
+		return fmt.Errorf("skills: register empty name")
 	}
 	if skill.Summary == "" {
-		return nil, fmt.Errorf("skills: register %q with empty summary", skill.Name)
+		return fmt.Errorf("skills: register %q with empty summary", skill.Name)
 	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, exists := r.entries[skill.Name]; exists {
-		return nil, fmt.Errorf("skills: %q already registered", skill.Name)
+		return fmt.Errorf("skills: %q already registered", skill.Name)
 	}
 	r.entries[skill.Name] = skill
-
-	var once sync.Once
-	return func() {
-		once.Do(func() {
-			r.mu.Lock()
-			defer r.mu.Unlock()
-			delete(r.entries, skill.Name)
-		})
-	}, nil
+	return nil
 }
 
 // Get 按 names 的顺序取出 Skill；缺失或重复名称都报错。

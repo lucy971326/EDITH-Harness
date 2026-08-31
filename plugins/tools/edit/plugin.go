@@ -7,10 +7,8 @@ import (
 	"harness/kernel/tools"
 )
 
-// 活对象。edit 插件自己的登记状态。
-type Plugin struct {
-	unregister func()
-}
+// 活对象。启动时填入 edit 工具。
+type Plugin struct{}
 
 // New 造 edit 工具插件。
 func New() *Plugin {
@@ -28,18 +26,13 @@ func (p *Plugin) Start(h *host.Host) error {
 	if err != nil {
 		return err
 	}
-	unregister, err := registry.Register(newTool(m))
+	err = registry.Register(newTool(m))
 	if err != nil {
 		return err
 	}
-	p.unregister = unregister
 	return nil
 }
 
 func (p *Plugin) Close() error {
-	if p.unregister != nil {
-		p.unregister()
-		p.unregister = nil
-	}
 	return nil
 }

@@ -8,7 +8,8 @@ func TestRegistry_getPreservesSelectionOrder(t *testing.T) {
 		{Name: "git", Summary: "Git workflow."},
 		{Name: "go", Summary: "Go workflow."},
 	} {
-		if _, err := registry.Register(skill); err != nil {
+		err := registry.Register(skill)
+		if err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -27,14 +28,17 @@ func TestRegistry_getPreservesSelectionOrder(t *testing.T) {
 
 func TestRegistry_rejectsInvalidDuplicateAndMissingSkills(t *testing.T) {
 	registry := NewRegistry()
-	if _, err := registry.Register(Skill{}); err == nil {
+	err := registry.Register(Skill{})
+	if err == nil {
 		t.Fatal("Register(empty) error = nil")
 	}
 	skill := Skill{Name: "git", Summary: "Git workflow."}
-	if _, err := registry.Register(skill); err != nil {
+	err = registry.Register(skill)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := registry.Register(skill); err == nil {
+	err = registry.Register(skill)
+	if err == nil {
 		t.Fatal("duplicate Register() error = nil")
 	}
 	if _, err := registry.Get([]string{"missing"}); err == nil {

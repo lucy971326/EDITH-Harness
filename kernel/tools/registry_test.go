@@ -20,7 +20,7 @@ func TestRegistry_generatesSchemaValidatesAndCalls(t *testing.T) {
 		got = args
 		return Result{Content: "ok"}, nil
 	})
-	_, err := registry.Register(tool)
+	err := registry.Register(tool)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestRegistry_rejectsInvalidOrUnauthorizedCall(t *testing.T) {
 		called = true
 		return Result{}, nil
 	})
-	_, err := registry.Register(tool)
+	err := registry.Register(tool)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestRegistry_convertsToolErrorAndPreservesCancellation(t *testing.T) {
 	tool := New("test", "Test tool.", func(_ context.Context, _ Call, _ testArgs) (Result, error) {
 		return Result{}, errors.New("failed")
 	})
-	_, err := registry.Register(tool)
+	err := registry.Register(tool)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,30 +123,14 @@ func TestRegistry_convertsToolErrorAndPreservesCancellation(t *testing.T) {
 	}
 }
 
-func TestRegistry_unregisterIsIdempotent(t *testing.T) {
-	registry := NewRegistry()
-	tool := New("test", "Test tool.", func(_ context.Context, _ Call, _ testArgs) (Result, error) {
-		return Result{}, nil
-	})
-	unregister, err := registry.Register(tool)
-	if err != nil {
-		t.Fatal(err)
-	}
-	unregister()
-	unregister()
-	_, err = registry.Definitions([]string{"test"})
-	if err == nil {
-		t.Fatal("Definitions error = nil, want missing tool error")
-	}
-}
-
 func TestRegistry_listReturnsAllDefinitionsByName(t *testing.T) {
 	registry := NewRegistry()
 	for _, name := range []string{"write", "bash"} {
 		tool := New(name, name+" tool.", func(_ context.Context, _ Call, _ testArgs) (Result, error) {
 			return Result{}, nil
 		})
-		if _, err := registry.Register(tool); err != nil {
+		err := registry.Register(tool)
+		if err != nil {
 			t.Fatal(err)
 		}
 	}

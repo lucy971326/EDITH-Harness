@@ -42,40 +42,32 @@ func NewRegistry() *Registry {
 	return &Registry{entries: make(map[string]entry)}
 }
 
-// Register 填入一条工具，并返回幂等注销函数。
-func (r *Registry) Register(tool Tool) (func(), error) {
+// Register 填入一条启动时固定的工具。
+func (r *Registry) Register(tool Tool) error {
 	if tool == nil {
-		return nil, fmt.Errorf("tools: register nil tool")
+		return fmt.Errorf("tools: register nil tool")
 	}
 
 	definition := tool.Definition()
 	if definition.Name == "" {
-		return nil, fmt.Errorf("tools: register empty name")
+		return fmt.Errorf("tools: register empty name")
 	}
 	if definition.Description == "" {
-		return nil, fmt.Errorf("tools: register %q with empty description", definition.Name)
+		return fmt.Errorf("tools: register %q with empty description", definition.Name)
 	}
 
 	schema, err := compileSchema(definition.Name, definition.InputSchema)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, exists := r.entries[definition.Name]; exists {
-		return nil, fmt.Errorf("tools: %q already registered", definition.Name)
+		return fmt.Errorf("tools: %q already registered", definition.Name)
 	}
 	r.entries[definition.Name] = entry{tool: tool, schema: schema}
-
-	var once sync.Once
-	return func() {
-		once.Do(func() {
-			r.mu.Lock()
-			defer r.mu.Unlock()
-			delete(r.entries, definition.Name)
-		})
-	}, nil
+	return nil
 }
 
 // Definitions 按 Allow 的顺序取出本轮可交给模型的工具定义。
