@@ -1,6 +1,6 @@
 package web
 
-templ Page(products []Product, currentID string, content templ.Component) {
+templ Page(products []Product, currentID string, navigation templ.Component, content templ.Component) {
 	<!DOCTYPE html>
 	<html lang="zh-CN">
 		<head>
@@ -38,13 +38,27 @@ templ Page(products []Product, currentID string, content templ.Component) {
 								</a>
 							}
 						</nav>
-						<div class="mt-auto border-t border-[var(--color-border)] pt-3 text-xs text-[var(--color-subtle)]">阶段 1 · Web 产品壳</div>
+						@ProductNavigation(navigation)
+						<div class="border-t border-[var(--color-border)] pt-3 text-xs text-[var(--color-subtle)]">阶段 2 · 项目与会话</div>
 					</aside>
-					@content
+					@Main(content)
 				</div>
 			</div>
 		</body>
 	</html>
+}
+
+templ ProductNavigation(content templ.Component) {
+	<div id="product-navigation" class="mt-4 min-h-0 flex-1 overflow-y-auto border-t border-[var(--color-border)] pt-3">
+		@content
+	</div>
+}
+
+templ ProductFragment(navigation templ.Component, content templ.Component) {
+	<div id="product-navigation" hx-swap-oob="outerHTML" class="mt-4 min-h-0 flex-1 overflow-y-auto border-t border-[var(--color-border)] pt-3">
+		@navigation
+	</div>
+	@Main(content)
 }
 
 templ Main(content templ.Component) {

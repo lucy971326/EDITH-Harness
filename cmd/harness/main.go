@@ -13,13 +13,16 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"harness/kernel/host"
+	"harness/kernel/persist"
+	"harness/kernel/session"
 	chatproduct "harness/plugins/products/chat"
 	"harness/surface/web"
 )
 
 // 数据。Config 是应用入口读取的静态组装配置。
 type Config struct {
-	Web web.Config `yaml:"web"`
+	DataDir string     `yaml:"dataDir"`
+	Web     web.Config `yaml:"web"`
 }
 
 func main() {
@@ -37,6 +40,14 @@ func run(configPath string) error {
 	}
 
 	h := host.NewHost()
+	err = h.Install(&persist.Plugin{Dir: config.DataDir})
+	if err != nil {
+		return err
+	}
+	err = h.Install(&session.Plugin{})
+	if err != nil {
+		return err
+	}
 	webPlugin := web.NewPlugin(config.Web)
 	err = h.Install(webPlugin)
 	if err != nil {

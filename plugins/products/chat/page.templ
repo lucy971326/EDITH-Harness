@@ -1,11 +1,19 @@
 package chat
 
-templ ChatPage() {
+templ ChatPage(data pageView) {
 	<div class="flex min-h-[calc(100vh-1rem)] flex-col">
 		<header class="flex h-16 items-center justify-between border-b border-[var(--color-border)] px-6">
 			<div>
-				<h1 class="text-sm font-semibold">新对话</h1>
-				<p class="mt-0.5 text-xs text-[var(--color-subtle)]">Chat 产品插件提供的页面</p>
+				if data.HasActive {
+					<h1 class="text-sm font-semibold">{ data.Selected.Title }</h1>
+				} else {
+					<h1 class="text-sm font-semibold">对话</h1>
+				}
+				if data.HasActive {
+					<p class="mt-0.5 text-xs text-[var(--color-subtle)]">{ data.Selected.CreatedAt.Format("2006-01-02 15:04") }</p>
+				} else {
+					<p class="mt-0.5 text-xs text-[var(--color-subtle)]">按工作区目录分组</p>
+				}
 			</div>
 			<div class="flex gap-5 text-sm">
 				<span class="border-b-2 border-[var(--color-accent)] pb-1 font-medium">对话</span>
@@ -15,8 +23,16 @@ templ ChatPage() {
 		<section class="flex flex-1 items-center justify-center px-6 pb-36">
 			<div class="max-w-md text-center">
 				<div class="mx-auto mb-4 grid size-11 place-items-center rounded-2xl bg-[var(--color-muted)] text-lg">H</div>
-				<h2 class="text-lg font-semibold">Web 产品壳已经就位</h2>
-				<p class="mt-2 text-sm leading-6 text-[var(--color-subtle)]">阶段 2 接入项目、会话列表和真实 Session 数据。</p>
+				if data.Error != "" {
+					<h2 class="text-lg font-semibold">无法创建项目</h2>
+					<p class="mt-2 text-sm leading-6 text-red-700">{ data.Error }</p>
+				} else if data.HasActive {
+					<h2 class="text-lg font-semibold">会话已经创建</h2>
+					<p class="mt-2 text-sm leading-6 text-[var(--color-subtle)]">真实消息发送将在阶段 3 接入。</p>
+				} else {
+					<h2 class="text-lg font-semibold">创建一个项目开始对话</h2>
+					<p class="mt-2 text-sm leading-6 text-[var(--color-subtle)]">项目会按工作区目录分组。</p>
+				}
 			</div>
 		</section>
 		<div class="pointer-events-none absolute bottom-6 left-1/2 w-[min(680px,calc(100%_-_3rem))] -translate-x-1/2">
@@ -31,4 +47,28 @@ templ ChatPage() {
 			</div>
 		</div>
 	</div>
+}
+
+templ ChatNavigation(data pageView) {
+	<div class="mb-3 flex items-center justify-between text-sm font-semibold">
+		<span>项目</span>
+		<form method="post" action="/chat/projects">
+			<button type="submit" aria-label="新建项目" class="rounded px-2 py-1 hover:bg-white">＋</button>
+		</form>
+	</div>
+	for _, project := range data.Projects {
+		<section class="mb-3">
+			<p class="truncate px-2 text-xs font-medium text-[var(--color-subtle)]" title={ project.Workspace }>{ project.Name }</p>
+			for _, item := range project.Sessions {
+				<a
+					href={ templ.SafeURL("/chat/" + item.ID) }
+					hx-get={ templ.URL("/chat/" + item.ID) }
+					hx-target="#main"
+					hx-swap="outerHTML"
+					hx-push-url="true"
+					class={ "mt-1 block truncate rounded px-2 py-1.5 text-sm hover:bg-white", templ.KV("bg-white font-medium", data.HasActive && data.Selected.ID == item.ID) }
+				>{ item.Title }</a>
+			}
+		</section>
+	}
 }

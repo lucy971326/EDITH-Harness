@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"time"
 
 	"harness/kernel/persist"
 )
@@ -33,14 +34,19 @@ func (s *Store) Create(id string) (*Session, error) {
 	if _, ok := s.live[id]; ok {
 		return nil, fmt.Errorf("session: %q already exists", id)
 	}
-	_, err := s.persist.Load(id)
+	_, err := s.persist.LoadMeta(id)
 	if err == nil {
 		return nil, fmt.Errorf("session: %q already exists", id)
 	}
 	if !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("session: create %q: %w", id, err)
 	}
-	// 空账没有文件；只有第一次 Append 才会落盘。
+	err = s.persist.SaveMeta(persist.Meta{ID: id, Title: "新对话", CreatedAt: time.Now().UTC()})
+	if err != nil {
+		return nil, fmt.Errorf("session: create %q: %w", id, err)
+	}
+
+	// 空账没有文件；元数据文件已经表明会话存在。
 	sess := &Session{id: id, disk: s.persist, nodes: make(map[string]persist.Node)}
 	s.live[id] = sess
 	return sess, nil
@@ -58,11 +64,19 @@ func (s *Store) Get(id string) (*Session, error) {
 	if sess, ok := s.live[id]; ok {
 		return sess, nil
 	}
-	tree, err := s.persist.Load(id)
+	_, err := s.persist.LoadMeta(id)
 	if err != nil {
 		return nil, fmt.Errorf("session: get %q: %w", id, err)
 	}
 	sess := &Session{id: id, disk: s.persist, nodes: make(map[string]persist.Node)}
+	tree, err := s.persist.Load(id)
+	if errors.Is(err, os.ErrNotExist) {
+		s.live[id] = sess
+		return sess, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("session: get %q: %w", id, err)
+	}
 	for _, node := range tree.Nodes {
 		sess.nodes[node.ID] = node
 		sess.head = node.ID
@@ -71,7 +85,62 @@ func (s *Store) Get(id string) (*Session, error) {
 	return sess, nil
 }
 
-// List 列出持久化服务知道的账本。
-func (s *Store) List() ([]persist.Meta, error) {
-	return s.persist.List()
+// List 列出持久化服务知道的会话。
+func (s *Store) List() ([]SessionMeta, error) {
+	metas, err := s.persist.List()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SessionMeta, 0, len(metas))
+	for _, meta := range metas {
+		out = append(out, SessionMeta{ID: meta.ID, Title: meta.Title, CreatedAt: meta.CreatedAt})
+	}
+	return out, nil
+}
+
+// Rename 修改一本会话的显示标题。
+func (s *Store) Rename(id string, title string) error {
+	if id == "" {
+		return fmt.Errorf("session: empty id")
+	}
+	if title == "" {
+		return fmt.Errorf("session: empty title")
+	}
+	meta, err := s.persist.LoadMeta(id)
+	if err != nil {
+		return fmt.Errorf("session: rename %q: %w", id, err)
+	}
+	meta.Title = title
+	err = s.persist.SaveMeta(meta)
+	if err != nil {
+		return fmt.Errorf("session: rename %q: %w", id, err)
+	}
+	return nil
+}
+
+// DiscardEmpty 删除刚创建、尚未写入账本的会话。
+func (s *Store) DiscardEmpty(id string) error {
+	if id == "" {
+		return fmt.Errorf("session: empty id")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	sess, ok := s.live[id]
+	if !ok {
+		return fmt.Errorf("session: %q is not live", id)
+	}
+	sess.mu.Lock()
+	empty := sess.head == ""
+	sess.mu.Unlock()
+	if !empty {
+		return fmt.Errorf("session: %q has messages", id)
+	}
+	err := s.persist.DeleteMeta(id)
+	if err != nil {
+		return fmt.Errorf("session: discard %q: %w", id, err)
+	}
+	delete(s.live, id)
+	return nil
 }

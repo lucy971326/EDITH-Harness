@@ -3,6 +3,8 @@ package session
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"os"
 	"testing"
 
 	"harness/kernel/host"
@@ -40,6 +42,55 @@ func TestCreateAppendHistory(t *testing.T) {
 	got := s.History()
 	if len(got) != 1 || got[0].Blocks[0].Text != "hi" {
 		t.Fatalf("history = %+v", got)
+	}
+}
+
+func TestEmptySessionSurvivesNewStoreAndList(t *testing.T) {
+	dir := t.TempDir()
+	h := host.NewHost()
+	err := h.Install(&persist.Plugin{Dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := host.Resolve[persist.Persistence](h, "sessionPersistence")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := NewStore(p)
+	_, err = first.Create("empty")
+	if err != nil {
+		t.Fatal(err)
+	}
+	again := NewStore(p)
+	loaded, err := again.Get("empty")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.History()) != 0 {
+		t.Fatalf("history = %#v", loaded.History())
+	}
+	list, err := again.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].ID != "empty" || list[0].Title != "新对话" || list[0].CreatedAt.IsZero() {
+		t.Fatalf("list = %#v", list)
+	}
+}
+
+func TestDiscardEmptyRemovesSessionMeta(t *testing.T) {
+	store, _ := newTestStore(t)
+	_, err := store.Create("empty")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = store.DiscardEmpty("empty")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = store.Get("empty")
+	if !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("Get() error = %v, want not exist", err)
 	}
 }
 

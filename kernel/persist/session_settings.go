@@ -49,9 +49,12 @@ func (s *jsonl) Put(sessionID string, in settings.SessionSettings) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	err = os.WriteFile(s.sessionSettingsFile(sessionID), b, 0o644)
+	path := s.sessionSettingsFile(sessionID)
+	tmp := path + ".tmp"
+	err = os.WriteFile(tmp, b, 0o644)
 	if err != nil {
+		_ = os.Remove(tmp)
 		return err
 	}
-	return nil
+	return os.Rename(tmp, path)
 }

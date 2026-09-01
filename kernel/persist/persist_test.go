@@ -6,7 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 
 	"harness/kernel/agents/config"
 	"harness/kernel/host"
@@ -180,11 +182,11 @@ func TestList(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = s.Add("one", Node{ID: "n", Body: json.RawMessage(`{}`)})
+	err = s.SaveMeta(Meta{ID: "one", Title: "One", CreatedAt: time.Now().UTC()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = s.Add("two", Node{ID: "n", Body: json.RawMessage(`{}`)})
+	err = s.SaveMeta(Meta{ID: "two", Title: "Two", CreatedAt: time.Now().UTC()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,6 +202,45 @@ func TestList(t *testing.T) {
 	slices.Sort(ids)
 	if !slices.Equal(ids, []string{"one", "two"}) {
 		t.Fatalf("list = %v", ids)
+	}
+}
+
+func TestMeta_roundTripWithoutLedger(t *testing.T) {
+	s, err := openJSONL(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Meta{ID: "empty", Title: "新对话", CreatedAt: time.Now().UTC().Round(0)}
+	err = s.SaveMeta(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.LoadMeta("empty")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("meta = %#v, want %#v", got, want)
+	}
+	_, err = s.Load("empty")
+	if !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("ledger error = %v, want not exist", err)
+	}
+}
+
+func TestListRejectsMetaWhoseIDDoesNotMatchFilename(t *testing.T) {
+	s, err := openJSONL(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := []byte(`{"id":"other","title":"新对话","createdAt":"2026-09-02T00:00:00Z"}`)
+	err = os.WriteFile(s.metaFile("expected"), body, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.List()
+	if err == nil || !strings.Contains(err.Error(), `has id "other"`) {
+		t.Fatalf("List() error = %v", err)
 	}
 }
 

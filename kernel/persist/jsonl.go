@@ -41,6 +41,10 @@ func (s *jsonl) treeFile(id string) string {
 	return filepath.Join(s.dir, id+".jsonl")
 }
 
+func (s *jsonl) metaFile(id string) string {
+	return filepath.Join(s.dir, id+".session.json")
+}
+
 func (s *jsonl) Load(id string) (*Tree, error) {
 	err := checkID(id)
 	if err != nil {
@@ -106,11 +110,75 @@ func (s *jsonl) Save(id string, tree *Tree) error {
 	return nil
 }
 
+func (s *jsonl) LoadMeta(id string) (Meta, error) {
+	err := checkID(id)
+	if err != nil {
+		return Meta{}, err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	body, err := os.ReadFile(s.metaFile(id))
+	if err != nil {
+		return Meta{}, err
+	}
+	var meta Meta
+	err = json.Unmarshal(body, &meta)
+	if err != nil {
+		return Meta{}, fmt.Errorf("persist: session meta %q: %w", id, err)
+	}
+	if meta.ID != id {
+		return Meta{}, fmt.Errorf("persist: session meta %q has id %q", id, meta.ID)
+	}
+	return meta, nil
+}
+
+func (s *jsonl) SaveMeta(meta Meta) error {
+	err := checkID(meta.ID)
+	if err != nil {
+		return err
+	}
+	if meta.Title == "" {
+		return fmt.Errorf("persist: session meta %q has empty title", meta.ID)
+	}
+	if meta.CreatedAt.IsZero() {
+		return fmt.Errorf("persist: session meta %q has empty created time", meta.ID)
+	}
+	body, err := json.Marshal(meta)
+	if err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	path := s.metaFile(meta.ID)
+	tmp := path + ".tmp"
+	err = os.WriteFile(tmp, body, 0o644)
+	if err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
+func (s *jsonl) DeleteMeta(id string) error {
+	err := checkID(id)
+	if err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return os.Remove(s.metaFile(id))
+}
+
 func (s *jsonl) List() ([]Meta, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	matches, err := filepath.Glob(filepath.Join(s.dir, "*.jsonl"))
+	matches, err := filepath.Glob(filepath.Join(s.dir, "*.session.json"))
 	if err != nil {
 		return nil, err
 	}
@@ -118,8 +186,24 @@ func (s *jsonl) List() ([]Meta, error) {
 	out := make([]Meta, 0, len(matches))
 	for _, path := range matches {
 		name := filepath.Base(path)
-		id := strings.TrimSuffix(name, ".jsonl")
-		out = append(out, Meta{ID: id})
+		expectedID := strings.TrimSuffix(name, ".session.json")
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		var meta Meta
+		err = json.Unmarshal(body, &meta)
+		if err != nil {
+			return nil, fmt.Errorf("persist: session meta %q: %w", filepath.Base(path), err)
+		}
+		err = checkID(meta.ID)
+		if err != nil {
+			return nil, err
+		}
+		if meta.ID != expectedID {
+			return nil, fmt.Errorf("persist: session meta %q has id %q", name, meta.ID)
+		}
+		out = append(out, meta)
 	}
 	return out, nil
 }

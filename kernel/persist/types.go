@@ -1,6 +1,9 @@
 package persist
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"time"
+)
 
 // 数据。账本里的一个节点。Body 是不拆的 JSON。
 type Node struct {
@@ -15,9 +18,11 @@ type Tree struct {
 	Nodes []Node
 }
 
-// 数据。列表里的一行。
+// 数据。一本会话的持久化元数据。元数据文件是会话存在的依据。
 type Meta struct {
-	ID string
+	ID        string    `json:"id"`
+	Title     string    `json:"title"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 // 契约。只负责账本字节。不认识 Append / History / Branch。
@@ -25,6 +30,9 @@ type Meta struct {
 type Persistence interface {
 	Load(id string) (*Tree, error)
 	Save(id string, tree *Tree) error
+	LoadMeta(id string) (Meta, error)
+	SaveMeta(meta Meta) error
+	DeleteMeta(id string) error
 	List() ([]Meta, error)
 	Add(id string, node Node) error
 }

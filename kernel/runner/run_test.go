@@ -34,11 +34,12 @@ func (l *runnerTestLoop) Run(ctx context.Context, invocation loops.Invocation) e
 type memoryPersistence struct {
 	mu      sync.Mutex
 	trees   map[string][]persist.Node
+	metas   map[string]persist.Meta
 	addFail error
 }
 
 func newMemoryPersistence() *memoryPersistence {
-	return &memoryPersistence{trees: make(map[string][]persist.Node)}
+	return &memoryPersistence{trees: make(map[string][]persist.Node), metas: make(map[string]persist.Meta)}
 }
 
 func (p *memoryPersistence) Load(id string) (*persist.Tree, error) {
@@ -58,12 +59,39 @@ func (p *memoryPersistence) Save(id string, tree *persist.Tree) error {
 	return nil
 }
 
+func (p *memoryPersistence) LoadMeta(id string) (persist.Meta, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	meta, ok := p.metas[id]
+	if !ok {
+		return persist.Meta{}, os.ErrNotExist
+	}
+	return meta, nil
+}
+
+func (p *memoryPersistence) SaveMeta(meta persist.Meta) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.metas[meta.ID] = meta
+	return nil
+}
+
+func (p *memoryPersistence) DeleteMeta(id string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if _, ok := p.metas[id]; !ok {
+		return os.ErrNotExist
+	}
+	delete(p.metas, id)
+	return nil
+}
+
 func (p *memoryPersistence) List() ([]persist.Meta, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	out := make([]persist.Meta, 0, len(p.trees))
-	for id := range p.trees {
-		out = append(out, persist.Meta{ID: id})
+	out := make([]persist.Meta, 0, len(p.metas))
+	for _, meta := range p.metas {
+		out = append(out, meta)
 	}
 	return out, nil
 }
