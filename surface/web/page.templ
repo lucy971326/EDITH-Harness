@@ -1,0 +1,54 @@
+package web
+
+templ Page(products []Product, currentID string, content templ.Component) {
+	<!DOCTYPE html>
+	<html lang="zh-CN">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>Harness</title>
+			<link rel="stylesheet" href="/static/site.css"/>
+			<script src="/static/htmx.min.js"></script>
+			<script src="/static/htmx-ext-sse.js"></script>
+		</head>
+		<body>
+			<div class="min-h-screen p-2">
+				<div class="flex min-h-[calc(100vh-1rem)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)]">
+					<aside class="flex w-[var(--sidebar-width)] shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-muted)] p-3">
+						<a href="/" class="mb-5 flex items-center gap-2 px-1 text-sm font-semibold no-underline text-[var(--color-text)]">
+							<span class="grid size-6 place-items-center rounded-md bg-[var(--color-accent)] text-xs text-white">H</span>
+							Harness
+						</a>
+						<nav aria-label="产品" class="space-y-1">
+							for _, product := range products {
+								<a
+									href={ templ.SafeURL(product.BasePath) }
+									hx-get={ templ.URL(product.BasePath) }
+									hx-target="#main"
+									hx-swap="outerHTML"
+									hx-push-url="true"
+									class={
+										"flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-2 text-sm no-underline",
+										templ.KV("bg-[var(--color-surface)] font-medium text-[var(--color-text)]", product.ID == currentID),
+										templ.KV("text-[var(--color-subtle)] hover:bg-[var(--color-surface)]", product.ID != currentID),
+									}
+								>
+									<span aria-hidden="true" class="w-4 text-center">{ product.Icon }</span>
+									{ product.Name }
+								</a>
+							}
+						</nav>
+						<div class="mt-auto border-t border-[var(--color-border)] pt-3 text-xs text-[var(--color-subtle)]">阶段 1 · Web 产品壳</div>
+					</aside>
+					@content
+				</div>
+			</div>
+		</body>
+	</html>
+}
+
+templ Main(content templ.Component) {
+	<main id="main" class="relative min-w-0 flex-1 bg-[var(--color-surface)]">
+		@content
+	</main>
+}

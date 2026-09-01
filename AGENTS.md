@@ -1,10 +1,10 @@
 # AGENTS.md
 
-压缩会话、换人、新开对话：先读这篇，再读 `STATUS.md`。方案细节：`learn/插件设计书.md`。Cordis 对照：`learn/项目心得.md`。不要先翻 DSH / pi 源码。`reference/` 只是别人怎么做，不是我们的方案。
+压缩会话、换人、新开对话：先读这篇，再读 `STATUS.md`。方案细节：`learn/插件设计书.md`。Cordis 对照：`learn/DSH项目心得.md`。不要先翻 DSH / pi 源码。`reference/` 只是别人怎么做，不是我们的方案。
 
 冲突：铁律以这篇为准，产品形状以设计书为准。
 
-`learn/项目心得.md` 默认不要改。用户叫写才写。
+`learn/DSH项目心得.md` 默认不要改。用户叫写才写。
 
 ---
 

@@ -1,0 +1,13 @@
+{
+  "name": "edith-harness",
+  "private": true,
+  "scripts": {
+    "web:build": "tailwindcss -i ./surface/web/assets/input.css -o ./surface/web/static/site.css --minify"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "4.3.3",
+    "htmx-ext-sse": "2.2.4",
+    "htmx.org": "2.0.10",
+    "tailwindcss": "4.3.3"
+  }
+}

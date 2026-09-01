@@ -1,0 +1,13 @@
+:root {
+  --color-canvas: #f5f4f0;
+  --color-surface: #fbfaf7;
+  --color-muted: #ebe9e3;
+  --color-border: #d8d5cd;
+  --color-text: #252522;
+  --color-subtle: #77756f;
+  --color-accent: #252522;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --sidebar-width: 232px;
+}

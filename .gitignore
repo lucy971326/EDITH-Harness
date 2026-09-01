@@ -1,5 +1,6 @@
-# 外部参考源码体积较大，换机时单独复制
-reference/
+# 外部参考源码体积较大，换机时单独复制；只提交模块边界。
+reference/*
+!reference/go.mod
 
 # Go
 *.test
