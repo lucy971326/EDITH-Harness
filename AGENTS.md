@@ -38,7 +38,7 @@ Host（桌子）
 6. 系统提示词属于 Agent 设置。`agents.Prepare` 现取选中 Skill 的摘要和本轮工作区，拼成最终 System Prompt；Runner 只拿成品交给 Loop。LLM 类 Loop 插件在 `Start` 时自己 Resolve `llm`、`tools`，运行时按本轮工具名单现取 schema。不要另设提示词登记处。
 7. Session **只记对话**，可以分叉。todo / 审批 / 游戏状态放插件自己的结构体。别往账本塞。
 8. 屏幕听这一轮 Run（`Emit`；浏览器用 SSE）。不听账本。喇叭就这一个，插件不要各搞各的。耐久事件先 `Append` 再给屏幕，失败则终止 Run。
-9. 前端：内核一份，表面按端 enable。Web 和 webview 同一套 templ；TUI 另画；ACP 是管子不是画面。HTML 壳 8 个洞（侧栏/浮层给桌上另一摊）。请求 POST，通知 SSE。v1 不用 WebSocket。
+9. 前端：内核一份，表面按端 enable。Web 和 webview 同一套 templ；TUI 另画；ACP 是管子不是画面。Web 内有产品、路由和少量页面插槽登记处；产品决定进入哪一摊，页面插槽只扩展某个产品内部。请求 POST，通知 SSE。v1 不用 WebSocket。
 
 ---
 
@@ -237,11 +237,9 @@ kernel/
   skills/            空登记处 + Skill 摘要
   agents/            Agent 设置服务
   runner/            整份 A；live
-  http/              路径登记处
-  pages/             8 个洞
 
 surface/
-  web/               v1。templ + htmx + SSE
+  web/               v1。产品 / 路由 / 页面插槽登记处；templ + htmx + SSE
 
 plugins/
   machine-local/     本机。RegisterService("machine", …)
@@ -263,7 +261,7 @@ enable: [web, read, write, edit, bash]
 ```
 main:
   host.New()
-  必装：persist（挂 sessionPersistence + sessionSettings + agentStore）→ session → llm → tools → loops → react → skills → agents → runner → http → pages
+  必装：persist（挂 sessionPersistence + sessionSettings + agentStore）→ session → llm → tools → loops → react → skills → agents → runner
   必装提供者：yaml machine 选出的那一个，在 tools 前面 Start
   再按 enable：plugins/* 、 surface/*
   Close 倒序
