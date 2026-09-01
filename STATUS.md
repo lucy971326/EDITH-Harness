@@ -1,6 +1,6 @@
 # 项目状态
 
-更新日期：2026-08-31
+更新日期：2026-09-01
 
 ## 现在是什么
 
@@ -31,12 +31,13 @@ Harness 已有可测试的内核主链，但还没有可运行的应用入口和
 ```text
 真实聊天页面原型
   → surface/web + kernel/pages 一起设计与实现
-  → templ + HTMX + SSE 跑通聊天
+  → HTMX SSE 管长期连接；JSON + 一份 JS/TS `paint()` 画聊天消息区
+  → History HTTP 也返回同样消息 JSON，复用 `paint()`；不在消息完成时 GET HTML
   → cmd/harness 组装全部插件
 ```
 
 页面原型在 `learn/prototypes/chat-page.html`，其中的交互是静态演示，尚未连接
-Runner、HTTP 或 SSE。未来方案统一写入 `learn/插件设计书.md`，不再建立独立计划书目录。
+Runner、HTTP 或 SSE。`playground/sse-draft` 是已验证的消息区画法：SSE 与 History JSON 都交同一个 `paint()`；尚未接入内核。未来方案统一写入 `learn/插件设计书.md`，不再建立独立计划书目录。
 
 ## 已知问题
 
