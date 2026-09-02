@@ -1,6 +1,6 @@
 # Cordis 核心理念
 
-开工先读仓库根 `AGENTS.md`，方案读 `插件设计书.md`。这篇是 Cordis → Go 对照。
+开工先读仓库根 `AGENTS.md`，方案读 `设计书.md`。这篇是 Cordis → Go 对照，仅供偶尔参考。
 
 插件就两种：函数 / 对象。`Service`、类插件 = 对象插件里 `Provide(name, this)`，不是第三种。
 
@@ -243,10 +243,9 @@ func ToolBash(host *Host) error {
 
 # 我们怎么开工
 
-完整方案：`插件设计书.md`。铁律、写法和话术：仓库根 `AGENTS.md`。
+完整方案：`设计书.md`。铁律、写法和话术：仓库根 `AGENTS.md`。
 
 这篇只留 Cordis → Go。分层、账本、前端、Kind/Spec 以方案为准。
 
 以前写过「session 不是插件」——作废。Session 是 A 服务。
-
 
