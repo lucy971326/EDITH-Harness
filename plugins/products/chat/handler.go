@@ -33,7 +33,7 @@ type PageHandler struct {
 	runner   *runner.Runner
 	models   *llm.Client
 	hub      *eventHub
-	panels   Service
+	registry Service
 }
 
 func newPageHandler(
@@ -44,11 +44,11 @@ func newPageHandler(
 	runService *runner.Runner,
 	modelService *llm.Client,
 	hub *eventHub,
-	panels Service,
+	registry Service,
 ) *PageHandler {
 	return &PageHandler{
 		web: webService, product: product, sessions: sessions, settings: settingsStore,
-		runner: runService, models: modelService, hub: hub, panels: panels,
+		runner: runService, models: modelService, hub: hub, registry: registry,
 	}
 }
 
@@ -65,6 +65,9 @@ func (h *PageHandler) ServeHTTP(w nethttp.ResponseWriter, r *nethttp.Request) {
 		return
 	case r.Method == nethttp.MethodPost && strings.HasSuffix(r.URL.Path, "/messages"):
 		h.message(w, r)
+		return
+	case r.Method == nethttp.MethodPost && strings.Contains(r.URL.Path, "/message-actions/"):
+		h.messageAction(w, r)
 		return
 	case r.Method == nethttp.MethodPost && strings.HasSuffix(r.URL.Path, "/stop"):
 		h.stop(w, r)
@@ -112,14 +115,15 @@ type sessionView struct {
 
 // 数据。Chat 页面渲染所需的全部数据。
 type pageView struct {
-	Projects        []projectView
-	Selected        sessionView
-	HasActive       bool
-	Error           string
-	Models          []llm.ModelChoice
-	Model           string
-	ReasoningEffort string
-	Panels          []PanelDefinition
+	Projects           []projectView
+	Selected           sessionView
+	HasActive          bool
+	Error              string
+	Models             []llm.ModelChoice
+	Model              string
+	ReasoningEffort    string
+	Panels             []PanelDefinition
+	MessageActionsJSON string
 }
 
 var selectWorkspace = chooseWorkspace
@@ -152,9 +156,14 @@ func (h *PageHandler) pageData(selectedID string) (pageView, error) {
 	if !found {
 		return pageView{}, fmt.Errorf("%w: session %q", os.ErrNotExist, selectedID)
 	}
-	out := pageView{Selected: selected, HasActive: selectedID != ""}
-	if h.panels != nil {
-		out.Panels = h.panels.Panels()
+	out := pageView{Selected: selected, HasActive: selectedID != "", MessageActionsJSON: "[]"}
+	if h.registry != nil {
+		out.Panels = h.registry.Panels()
+		actionsJSON, err := json.Marshal(h.registry.MessageActions())
+		if err != nil {
+			return pageView{}, fmt.Errorf("chat: encode message actions: %w", err)
+		}
+		out.MessageActionsJSON = string(actionsJSON)
 	}
 	if h.models != nil {
 		out.Models = h.models.Models()
@@ -185,11 +194,11 @@ func (h *PageHandler) panel(w nethttp.ResponseWriter, r *nethttp.Request) {
 		nethttp.Error(w, err.Error(), nethttp.StatusNotFound)
 		return
 	}
-	if h.panels == nil {
+	if h.registry == nil {
 		nethttp.NotFound(w, r)
 		return
 	}
-	panel, ok := h.panels.Panel(r.PathValue("panelType"))
+	panel, ok := h.registry.Panel(r.PathValue("panelType"))
 	if !ok {
 		nethttp.NotFound(w, r)
 		return
@@ -213,6 +222,95 @@ func (h *PageHandler) panel(w nethttp.ResponseWriter, r *nethttp.Request) {
 		return
 	}
 	templ.Handler(content).ServeHTTP(w, r)
+}
+
+func (h *PageHandler) messageAction(w nethttp.ResponseWriter, r *nethttp.Request) {
+	sessionID := r.PathValue("sessionID")
+	sess, err := h.sessions.Get(sessionID)
+	if err != nil {
+		nethttp.Error(w, err.Error(), nethttp.StatusNotFound)
+		return
+	}
+	if h.registry == nil {
+		nethttp.NotFound(w, r)
+		return
+	}
+	action, ok := h.registry.MessageAction(r.PathValue("actionID"))
+	if !ok {
+		nethttp.NotFound(w, r)
+		return
+	}
+	err = r.ParseForm()
+	if err != nil {
+		nethttp.Error(w, err.Error(), nethttp.StatusBadRequest)
+		return
+	}
+	target := MessageActionTarget{
+		CardType:        MessageCardType(r.FormValue("cardType")),
+		EntryID:         strings.TrimSpace(r.FormValue("entryID")),
+		RunID:           strings.TrimSpace(r.FormValue("runID")),
+		BoundaryEntryID: strings.TrimSpace(r.FormValue("boundaryEntryID")),
+	}
+	entries := sess.Entries()
+	err = validateMessageActionTarget(action.Definition(), entries, target)
+	if err != nil {
+		nethttp.Error(w, err.Error(), nethttp.StatusBadRequest)
+		return
+	}
+	if target.CardType == MessageCardAssistant && h.runner != nil {
+		if state, running := h.runner.State(sessionID); running && state.RunID == target.RunID {
+			nethttp.Error(w, "助手回答仍在生成", nethttp.StatusConflict)
+			return
+		}
+	}
+	result, err := action.Execute(r.Context(), MessageActionContext{
+		SessionID: sessionID,
+		Entries:   entries,
+		Target:    target,
+	})
+	if err != nil {
+		nethttp.Error(w, err.Error(), nethttp.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if err := json.NewEncoder(w).Encode(result); err != nil {
+		return
+	}
+}
+
+func validateMessageActionTarget(definition MessageActionDefinition, entries []session.Entry, target MessageActionTarget) error {
+	if !actionSupportsTarget(definition, target.CardType) {
+		return fmt.Errorf("chat: action %q does not support %q cards", definition.ID, target.CardType)
+	}
+	switch target.CardType {
+	case MessageCardUser:
+		if target.EntryID == "" || target.RunID != "" || target.BoundaryEntryID != "" {
+			return fmt.Errorf("chat: invalid user message action target")
+		}
+		entry, ok := entryByID(entries, target.EntryID)
+		if !ok || entry.Message.Role != session.RoleUser {
+			return fmt.Errorf("chat: user message action target not found")
+		}
+	case MessageCardAssistant:
+		if target.EntryID != "" || target.RunID == "" || target.BoundaryEntryID == "" {
+			return fmt.Errorf("chat: invalid assistant message action target")
+		}
+		if assistantSegmentStart(entries, target.RunID, target.BoundaryEntryID) < 0 {
+			return fmt.Errorf("chat: assistant message action target not found")
+		}
+	default:
+		return fmt.Errorf("chat: unknown message action card type %q", target.CardType)
+	}
+	return nil
+}
+
+func actionSupportsTarget(definition MessageActionDefinition, target MessageCardType) bool {
+	for _, supported := range definition.Targets {
+		if supported == target {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *PageHandler) createProject(w nethttp.ResponseWriter, r *nethttp.Request) {

@@ -14,7 +14,20 @@
     return `<details class="mb-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-muted)] px-3 py-2 text-xs"><summary class="cursor-pointer"><strong>${escapeHTML(tool.name || result?.name)}</strong><span class="ml-2 text-[var(--color-subtle)]">${escapeHTML(status)}</span></summary>${result?.content ? `<pre class="mt-2 whitespace-pre-wrap">${escapeHTML(result.content)}</pre>` : ""}</details>`;
   }
 
-  function assistantCard(segment) {
+  function actionBar(actions, target) {
+    if (target.cardType === "assistant" && !target.boundaryEntryID) return "";
+    const matching = actions.filter((action) => (action.targets || []).includes(target.cardType));
+    if (!matching.length) return "";
+    const fields = [
+      `data-card-type="${escapeHTML(target.cardType)}"`,
+      target.entryID ? `data-entry-id="${escapeHTML(target.entryID)}"` : "",
+      target.runID ? `data-run-id="${escapeHTML(target.runID)}"` : "",
+      target.boundaryEntryID ? `data-boundary-entry-id="${escapeHTML(target.boundaryEntryID)}"` : "",
+    ].join(" ");
+    return `<div class="mt-3 flex justify-end gap-1 border-t border-[var(--color-border)] pt-2">${matching.map((action) => `<button type="button" class="message-action rounded px-2 py-1 text-xs text-[var(--color-subtle)] hover:bg-[var(--color-muted)] hover:text-[var(--color-text)]" data-message-action="${escapeHTML(action.id)}" data-action-icon="${escapeHTML(action.icon)}" data-action-label="${escapeHTML(action.name)}" ${fields}>${escapeHTML(action.icon)} ${escapeHTML(action.name)}</button>`).join("")}</div>`;
+  }
+
+  function assistantCard(segment, actions, running) {
     let body = "";
     for (const step of [...segment.steps.values()].sort((left, right) => left.seq - right.seq)) {
       for (const block of [...step.blocks.values()].sort((left, right) => left.seq - right.seq)) {
@@ -27,11 +40,15 @@
         }
       }
     }
-    return `<article data-run-id="${escapeHTML(segment.runID)}" data-segment-id="${escapeHTML(segment.id)}" class="max-w-3xl rounded-xl border border-[var(--color-border)] bg-white px-4 py-3">${body || '<span class="text-sm text-[var(--color-subtle)]">思考中…</span>'}</article>`;
+    const actionsHTML = running ? "" : actionBar(actions, {
+      cardType: "assistant", runID: segment.runID, boundaryEntryID: segment.boundaryEntryID,
+    });
+    return `<article data-run-id="${escapeHTML(segment.runID)}" data-segment-id="${escapeHTML(segment.id)}" class="max-w-3xl rounded-xl border border-[var(--color-border)] bg-white px-4 py-3">${body || '<span class="text-sm text-[var(--color-subtle)]">思考中…</span>'}${actionsHTML}</article>`;
   }
 
-  function userCard(entry) {
-    return `<article class="ml-auto max-w-[80%] rounded-xl bg-[var(--color-muted)] px-4 py-3 text-sm">${escapeHTML(text(entry.message.blocks, "text"))}</article>`;
+  function userCard(entry, actions) {
+    const actionsHTML = actionBar(actions, { cardType: "user", entryID: entry.id });
+    return `<article class="ml-auto max-w-[80%] rounded-xl bg-[var(--color-muted)] px-4 py-3 text-sm">${escapeHTML(text(entry.message.blocks, "text"))}${actionsHTML}</article>`;
   }
 
   function initialize() {
@@ -48,6 +65,10 @@
     const send = document.getElementById("send-button");
     const liveSend = document.getElementById("live-send");
     const stop = document.getElementById("stop-button");
+    let messageActions = [];
+    try {
+      messageActions = JSON.parse(root.dataset.messageActions || "[]");
+    } catch { /* invalid action definitions leave the action bar empty */ }
     const state = { entries: new Map(), runs: new Map(), running: false, activeRunID: "" };
     let hydrating = false;
     let queuedEvents = [];
@@ -80,7 +101,7 @@
       const id = `${run.id}:${boundaryID}`;
       let segment = run.segments.get(id);
       if (!segment) {
-        segment = { id, runID: run.id, boundarySeq, steps: new Map() };
+        segment = { id, runID: run.id, boundarySeq, boundaryEntryID: boundary?.id || "", steps: new Map() };
         run.segments.set(id, segment);
       }
       return segment;
@@ -252,7 +273,9 @@
     }
 
     function paint() {
-      thread.innerHTML = orderedItems().map((item) => item.kind === "entry" ? userCard(item.entry) : assistantCard(item.segment)).join("");
+      thread.innerHTML = orderedItems().map((item) => item.kind === "entry"
+        ? userCard(item.entry, messageActions)
+        : assistantCard(item.segment, messageActions, item.runID === state.activeRunID)).join("");
       thread.lastElementChild?.scrollIntoView({ block: "end" });
       setRunning(state.running);
     }
@@ -298,6 +321,33 @@
       const response = await fetch(composer.action, { method: "POST", body: new URLSearchParams(fields) });
       if (!response.ok) status.textContent = await response.text();
       else composer.elements.text.value = "";
+    });
+    thread.addEventListener("click", async (event) => {
+      const button = event.target.closest(".message-action");
+      if (!button) return;
+      button.disabled = true;
+      try {
+        const fields = new URLSearchParams({
+          cardType: button.dataset.cardType,
+          entryID: button.dataset.entryId || "",
+          runID: button.dataset.runId || "",
+          boundaryEntryID: button.dataset.boundaryEntryId || "",
+        });
+        const response = await fetch(`${root.dataset.messageActionUrl}${encodeURIComponent(button.dataset.messageAction)}`, {
+          method: "POST", body: fields,
+        });
+        if (!response.ok) throw new Error(await response.text());
+        const result = await response.json();
+        if (!result.text) throw new Error("没有可复制的文本");
+        if (!navigator.clipboard) throw new Error("浏览器不支持复制");
+        await navigator.clipboard.writeText(result.text);
+        button.textContent = "已复制";
+        window.setTimeout(() => { button.textContent = `${button.dataset.actionIcon} ${button.dataset.actionLabel}`; }, 1200);
+      } catch (error) {
+        status.textContent = error.message || "复制失败";
+      } finally {
+        button.disabled = false;
+      }
     });
     stop.addEventListener("click", async () => {
       const response = await fetch(stop.dataset.stop, { method: "POST" });

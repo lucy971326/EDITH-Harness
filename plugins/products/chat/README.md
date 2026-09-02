@@ -6,7 +6,7 @@ Chat Web 产品插件。提供项目 / 会话导航、真实消息区和 SSE 实
 
 【提供能力】
 
-在 Host 的 `chat` 键提供 Chat 专属的右侧面板登记处。面板插件可 Resolve `chat.Service` 后登记面板类型；Chat 负责 Tab 壳、开关、宽度与通用实例规则。
+在 Host 的 `chat` 键提供 Chat 专属的右侧面板和消息动作登记处。面板插件可 Resolve `chat.Service` 后登记面板类型；消息动作插件可登记卡片下方的标准按钮。Chat 负责 Tab 壳、开关、宽度、动作路由与通用卡片规则。
 
 【使用能力】
 
@@ -25,6 +25,16 @@ Chat     → 查已登记定义 → Panel.Render(templ.Component)
 ```
 
 面板 Tab 的身份是 `(Type, InstanceKey)`：相同身份只聚焦，不同身份新开。Tab、展开状态与宽度仅存浏览器当前页面；刷新或切换会话即丢弃，Session 不记录面板状态。工具调用仍在消息工具卡中。
+
+## 消息动作
+
+```text
+动作插件 → chat.Service.RegisterMessageAction(动作)
+paint()   → 已落账消息卡片下方画标准按钮
+POST      → Chat 查当前分叉账本 → 动作 Execute → JSON
+```
+
+内置 `copy` 动作同时用于用户和助手卡。助手卡以 `RunID + boundaryEntryID` 定位：从该用户消息开始，到下一条同一 Run 的用户消息停止，取其中最后一条有正文的助手消息。因此 reasoning、工具块、工具前的临时文字和相邻 Steer 段都不会进入剪贴板；运行中的助手卡不显示复制。
 
 ## 实时对话
 

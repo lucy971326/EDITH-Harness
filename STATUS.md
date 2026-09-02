@@ -4,7 +4,7 @@
 
 ## 现在是什么
 
-Harness 已完成阶段 1、2、3，以及阶段 4A 的右侧面板登记处：它是可启动的 Web 聊天产品，具备项目/会话管理、真实 Runner 调度与 SSE 流式界面。
+Harness 已完成阶段 1、2、3，以及阶段 4 的右侧面板和消息复制登记处：它是可启动的 Web 聊天产品，具备项目/会话管理、真实 Runner 调度与 SSE 流式界面。
 
 ```text
 浏览器 POST → Chat → Runner → Agent 设置 → React Loop → LLM / Tools
@@ -44,6 +44,13 @@ Harness 已完成阶段 1、2、3，以及阶段 4A 的右侧面板登记处：�
 - Chat 固定画右侧 Tab 壳、`+`、开关与拖拽调宽；浏览器内存保存当前 Tabs 与宽度，Session 不保存。
 - 已安装 `plugins/panels/demo`，用于验证外部插件能登记并渲染 `demo:main`；它不冒充文件面板。
 
+### 阶段 4B：消息复制动作
+
+- Chat 在同一 `chat.Service` 提供 `message.actions` 登记处；内置 `copy` 通过它填入。
+- `paint()` 统一在耐久用户卡和已完成助手卡底部画复制按钮；运行中的助手卡不允许复制。
+- 动作路由返回 `{"text":"..."}`；浏览器把 `text` 写入 Clipboard。
+- 助手卡用 `RunID + boundaryEntryID` 在当前分叉账本定位同一 Run 段，遇下一条同 Run 用户消息停止；只复制其中最后一条有正文的助手消息，忽略推理、工具、工具前临时文字和相邻 Steer 段。
+
 ## 验证
 
 - `go test ./...` 通过。
@@ -57,7 +64,7 @@ Harness 已完成阶段 1、2、3，以及阶段 4A 的右侧面板登记处：�
 
 ```text
 阶段 4：其余页面插槽
-  ├─ message.actions：复制、分叉、插件动作
+  ├─ message.actions：分叉、其他插件动作
   ├─ dock：持续状态
   ├─ composer.actions：附件等输入动作
   ├─ sidepanel：真实文件等面板类型

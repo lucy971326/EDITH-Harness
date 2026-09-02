@@ -349,6 +349,74 @@ func TestPanelRouteRendersRegisteredPanelAndRejectsUnknownType(t *testing.T) {
 	}
 }
 
+func TestMessageActionReturnsCopyTextAndRejectsInvalidTarget(t *testing.T) {
+	h, webPlugin := installChat(t)
+	defer h.Close()
+	sessions, err := host.Resolve[*session.Store](h, "sessions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := sessions.Create("session-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	question, err := sess.Append(session.Message{
+		RunID: "run-1", Role: session.RoleUser, Blocks: []session.Block{{Kind: "text", Text: "问题"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = sess.Append(session.Message{
+		RunID: "run-1", Role: session.RoleAssistant, Blocks: []session.Block{
+			{Kind: "reasoning", Text: "不复制"}, {Kind: "text", Text: "回答"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := nethttp.PostForm(webPlugin.URL()+"/chat/session-1/message-actions/copy", url.Values{
+		"cardType": {"assistant"}, "runID": {"run-1"}, "boundaryEntryID": {question.ID},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != nethttp.StatusOK {
+		body, readErr := io.ReadAll(response.Body)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		t.Fatalf("status = %d body=%q", response.StatusCode, body)
+	}
+	var result MessageActionResult
+	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Text != "回答" {
+		t.Fatalf("copy result = %#v", result)
+	}
+
+	response, err = nethttp.PostForm(webPlugin.URL()+"/chat/session-1/message-actions/copy", url.Values{
+		"cardType": {"user"}, "entryID": {"missing"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != nethttp.StatusBadRequest {
+		t.Fatalf("invalid target status = %d", response.StatusCode)
+	}
+
+	response, err = nethttp.PostForm(webPlugin.URL()+"/chat/session-1/message-actions/missing", url.Values{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != nethttp.StatusNotFound {
+		t.Fatalf("missing action status = %d", response.StatusCode)
+	}
+}
+
 type failingSettings struct{}
 
 func (failingSettings) For(string) (settings.SessionSettings, error) {

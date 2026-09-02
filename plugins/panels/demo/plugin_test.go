@@ -39,3 +39,15 @@ func (*chatService) Panels() []chat.PanelDefinition {
 func (*chatService) Panel(string) (chat.Panel, bool) {
 	return nil, false
 }
+
+func (*chatService) RegisterMessageAction(chat.MessageAction) error {
+	return nil
+}
+
+func (*chatService) MessageActions() []chat.MessageActionDefinition {
+	return nil
+}
+
+func (*chatService) MessageAction(string) (chat.MessageAction, bool) {
+	return nil, false
+}

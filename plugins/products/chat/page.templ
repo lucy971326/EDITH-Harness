@@ -25,7 +25,7 @@ templ ChatPage(data pageView) {
 				</div>
 			</header>
 			if data.HasActive {
-				<section id="chat-root" class="flex min-h-0 flex-1 flex-col overflow-y-auto px-6" hx-ext="sse" sse-connect={ templ.URL("/chat/" + data.Selected.ID + "/events") } data-history={ templ.URL("/chat/" + data.Selected.ID + "/history") }>
+				<section id="chat-root" class="flex min-h-0 flex-1 flex-col overflow-y-auto px-6" hx-ext="sse" sse-connect={ templ.URL("/chat/" + data.Selected.ID + "/events") } data-history={ templ.URL("/chat/" + data.Selected.ID + "/history") } data-message-actions={ data.MessageActionsJSON } data-message-action-url={ templ.URL("/chat/" + data.Selected.ID + "/message-actions/") }>
 					<div id="thread" class="mx-auto w-full max-w-3xl space-y-3 py-6"></div>
 					<p id="chat-status" class="mx-auto w-full max-w-3xl text-sm text-[var(--color-subtle)]"></p>
 					<div sse-swap="run" hidden></div>
