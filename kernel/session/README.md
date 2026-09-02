@@ -14,8 +14,9 @@
 Store.Get / Create
   → 得到一本 Session
   → Append：在当前 Head 后追加节点并写盘
+  → 首条用户消息成功落账后，把「新对话」自动命名
   → History：沿父链读取当前分叉
   → Branch：只移动 Head
 ```
 
-Session 只记对话；不负责事件通知、模型调用和 SessionSettings。
+元数据文件是会话存在的依据；空会话没有账本文件也能 Get/List。Session 只记对话；不负责事件通知、模型调用和 SessionSettings。
