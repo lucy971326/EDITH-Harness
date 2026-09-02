@@ -24,6 +24,7 @@ import (
 	"harness/kernel/tools"
 	"harness/plugins/loops/react"
 	machinelocal "harness/plugins/machine-local"
+	paneldemo "harness/plugins/panels/demo"
 	chatproduct "harness/plugins/products/chat"
 	bashtool "harness/plugins/tools/bash"
 	edittool "harness/plugins/tools/edit"
@@ -119,6 +120,10 @@ func run(configPath string) error {
 		return err
 	}
 	err = h.Install(chatproduct.NewPlugin())
+	if err != nil {
+		return err
+	}
+	err = h.Install(paneldemo.New())
 	if err != nil {
 		return err
 	}

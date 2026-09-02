@@ -33,6 +33,7 @@ type PageHandler struct {
 	runner   *runner.Runner
 	models   *llm.Client
 	hub      *eventHub
+	panels   Service
 }
 
 func newPageHandler(
@@ -43,10 +44,11 @@ func newPageHandler(
 	runService *runner.Runner,
 	modelService *llm.Client,
 	hub *eventHub,
+	panels Service,
 ) *PageHandler {
 	return &PageHandler{
 		web: webService, product: product, sessions: sessions, settings: settingsStore,
-		runner: runService, models: modelService, hub: hub,
+		runner: runService, models: modelService, hub: hub, panels: panels,
 	}
 }
 
@@ -66,6 +68,9 @@ func (h *PageHandler) ServeHTTP(w nethttp.ResponseWriter, r *nethttp.Request) {
 		return
 	case r.Method == nethttp.MethodPost && strings.HasSuffix(r.URL.Path, "/stop"):
 		h.stop(w, r)
+		return
+	case r.Method == nethttp.MethodGet && strings.Contains(r.URL.Path, "/panels/"):
+		h.panel(w, r)
 		return
 	}
 
@@ -114,6 +119,7 @@ type pageView struct {
 	Models          []llm.ModelChoice
 	Model           string
 	ReasoningEffort string
+	Panels          []PanelDefinition
 }
 
 var selectWorkspace = chooseWorkspace
@@ -147,6 +153,9 @@ func (h *PageHandler) pageData(selectedID string) (pageView, error) {
 		return pageView{}, fmt.Errorf("%w: session %q", os.ErrNotExist, selectedID)
 	}
 	out := pageView{Selected: selected, HasActive: selectedID != ""}
+	if h.panels != nil {
+		out.Panels = h.panels.Panels()
+	}
 	if h.models != nil {
 		out.Models = h.models.Models()
 	}
@@ -168,6 +177,42 @@ func (h *PageHandler) pageData(selectedID string) (pageView, error) {
 		return out.Projects[i].Name < out.Projects[j].Name
 	})
 	return out, nil
+}
+
+func (h *PageHandler) panel(w nethttp.ResponseWriter, r *nethttp.Request) {
+	sessionID := r.PathValue("sessionID")
+	if _, err := h.sessions.Get(sessionID); err != nil {
+		nethttp.Error(w, err.Error(), nethttp.StatusNotFound)
+		return
+	}
+	if h.panels == nil {
+		nethttp.NotFound(w, r)
+		return
+	}
+	panel, ok := h.panels.Panel(r.PathValue("panelType"))
+	if !ok {
+		nethttp.NotFound(w, r)
+		return
+	}
+	instanceKey := strings.TrimSpace(r.URL.Query().Get("instance"))
+	if instanceKey == "" {
+		nethttp.Error(w, "缺少面板实例", nethttp.StatusBadRequest)
+		return
+	}
+	setup, err := h.settings.For(sessionID)
+	if err != nil {
+		nethttp.Error(w, err.Error(), nethttp.StatusInternalServerError)
+		return
+	}
+	content, err := panel.Render(PanelContext{SessionID: sessionID, Workspace: setup.Workspace}, PanelTab{
+		Type:        r.PathValue("panelType"),
+		InstanceKey: instanceKey,
+	})
+	if err != nil {
+		nethttp.Error(w, err.Error(), nethttp.StatusBadRequest)
+		return
+	}
+	templ.Handler(content).ServeHTTP(w, r)
 }
 
 func (h *PageHandler) createProject(w nethttp.ResponseWriter, r *nethttp.Request) {

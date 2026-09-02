@@ -296,6 +296,59 @@ func TestMessageAcceptsURLencodedForm(t *testing.T) {
 	}
 }
 
+func TestPanelRouteRendersRegisteredPanelAndRejectsUnknownType(t *testing.T) {
+	h, webPlugin := installChat(t)
+	defer h.Close()
+	sessions, err := host.Resolve[*session.Store](h, "sessions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sessions.Create("session-1"); err != nil {
+		t.Fatal(err)
+	}
+	settingsStore, err := host.Resolve[settings.SessionSettingsStore](h, "sessionSettings")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = settingsStore.Put("session-1", settings.SessionSettings{AgentID: agents.DefaultID, Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	panels, err := host.Resolve[Service](h, "chat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = panels.RegisterPanel(testPanel{definition: PanelDefinition{
+		ID: "test", Name: "测试", Icon: "T", DefaultInstanceKey: "main", DefaultTabTitle: "测试",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := nethttp.Get(webPlugin.URL() + "/chat/session-1/panels/test?instance=main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = response.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != nethttp.StatusOK || string(body) != "ready" {
+		t.Fatalf("panel response = %d %q", response.StatusCode, body)
+	}
+	response, err = nethttp.Get(webPlugin.URL() + "/chat/session-1/panels/missing?instance=main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != nethttp.StatusNotFound {
+		t.Fatalf("missing panel status = %d", response.StatusCode)
+	}
+}
+
 type failingSettings struct{}
 
 func (failingSettings) For(string) (settings.SessionSettings, error) {

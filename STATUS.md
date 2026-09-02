@@ -4,7 +4,7 @@
 
 ## 现在是什么
 
-Harness 已完成阶段 1、2、3：它是可启动的 Web 聊天产品，具备项目/会话管理、真实 Runner 调度与 SSE 流式界面。
+Harness 已完成阶段 1、2、3，以及阶段 4A 的右侧面板登记处：它是可启动的 Web 聊天产品，具备项目/会话管理、真实 Runner 调度与 SSE 流式界面。
 
 ```text
 浏览器 POST → Chat → Runner → Agent 设置 → React Loop → LLM / Tools
@@ -38,6 +38,12 @@ Harness 已完成阶段 1、2、3：它是可启动的 Web 聊天产品，具备
 - 每次 SSE 重连重新同步 History；慢客户端被断开，不会阻塞 Run。
 - 模型与思考档位是独立选择框；首次发送前两者必选，换模型会清空档位。
 
+### 阶段 4A：右侧面板登记处
+
+- Chat 在 Host 的 `chat` 键提供 `chat.Service`；独立面板插件可登记类型。
+- Chat 固定画右侧 Tab 壳、`+`、开关与拖拽调宽；浏览器内存保存当前 Tabs 与宽度，Session 不保存。
+- 已安装 `plugins/panels/demo`，用于验证外部插件能登记并渲染 `demo:main`；它不冒充文件面板。
+
 ## 验证
 
 - `go test ./...` 通过。
@@ -49,11 +55,11 @@ Harness 已完成阶段 1、2、3：它是可启动的 Web 聊天产品，具备
 ## 下一步
 
 ```text
-阶段 4：页面插槽
+阶段 4：其余页面插槽
   ├─ message.actions：复制、分叉、插件动作
   ├─ dock：持续状态
   ├─ composer.actions：附件等输入动作
-  ├─ sidepanel：文件面板
+  ├─ sidepanel：真实文件等面板类型
   └─ settings.section：插件设置二级列表
 
 阶段 5：完整验收

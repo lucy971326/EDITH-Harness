@@ -6,7 +6,7 @@ Chat Web 产品插件。提供项目 / 会话导航、真实消息区和 SSE 实
 
 【提供能力】
 
-当前不在 Host 上提供独立服务。
+在 Host 的 `chat` 键提供 Chat 专属的右侧面板登记处。面板插件可 Resolve `chat.Service` 后登记面板类型；Chat 负责 Tab 壳、开关、宽度与通用实例规则。
 
 【使用能力】
 
@@ -15,6 +15,16 @@ Resolve `web`、`sessions`、`sessionSettings`、`llm`、`runner` 和 `events`�
 【填充插槽】
 
 向 `web` 填入 Chat 产品和页面、History、SSE、发送、停止等 HTTP 路由。
+
+## 右侧面板
+
+```text
+面板插件 → chat.Service.RegisterPanel(类型)
+浏览器   → type + instance
+Chat     → 查已登记定义 → Panel.Render(templ.Component)
+```
+
+面板 Tab 的身份是 `(Type, InstanceKey)`：相同身份只聚焦，不同身份新开。Tab、展开状态与宽度仅存浏览器当前页面；刷新或切换会话即丢弃，Session 不记录面板状态。工具调用仍在消息工具卡中。
 
 ## 实时对话
 

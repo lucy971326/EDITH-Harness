@@ -29,6 +29,7 @@ type Plugin struct {
 	runner   *runner.Runner
 	models   *llm.Client
 	hub      *eventHub
+	panels   *PanelRegistry
 	unlisten func()
 }
 
@@ -67,6 +68,11 @@ func (p *Plugin) Start(h *host.Host) error {
 		return fmt.Errorf("chat: resolve events: %w", err)
 	}
 	p.hub = newEventHub()
+	p.panels = newPanelRegistry()
+	err = h.RegisterService("chat", Service(p.panels))
+	if err != nil {
+		return err
+	}
 	p.unlisten, err = events.Subscribe(eventRegistry, func(_ context.Context, event runner.RunEvent) error {
 		p.hub.publish(event)
 		return nil
@@ -78,7 +84,7 @@ func (p *Plugin) Start(h *host.Host) error {
 	if err != nil {
 		return err
 	}
-	handler := newPageHandler(webService, chatProduct, sessions, settingsStore, p.runner, p.models, p.hub)
+	handler := newPageHandler(webService, chatProduct, sessions, settingsStore, p.runner, p.models, p.hub, p.panels)
 	err = webService.RegisterRoute("GET /chat", handler)
 	if err != nil {
 		return err
@@ -107,6 +113,10 @@ func (p *Plugin) Start(h *host.Host) error {
 	if err != nil {
 		return err
 	}
+	err = webService.RegisterRoute("GET /chat/{sessionID}/panels/{panelType}", handler)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -122,6 +132,7 @@ func (p *Plugin) Close() error {
 	p.runner = nil
 	p.models = nil
 	p.hub = nil
+	p.panels = nil
 	p.unlisten = nil
 	return nil
 }
