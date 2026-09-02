@@ -11,7 +11,7 @@ Harness 已完成阶段 1、2、3，以及阶段 4A 的右侧面板登记处：�
 浏览器 SSE  ← Chat ← Runner 稳定事件 ← 完整消息先落账
 ```
 
-运行 `go run ./cmd/harness` 会读取 `harness.yaml`，组装完整服务链，自动选择空闲端口并打开 Chat。
+运行 `go run ./cmd/harness` 会读取 `harness.yaml`，组装完整服务链，并在 `http://127.0.0.1:8888` 打开 Chat。
 
 ## 已完成
 
@@ -30,7 +30,7 @@ Harness 已完成阶段 1、2、3，以及阶段 4A 的右侧面板登记处：�
 
 ### 阶段 3：真实聊天
 
-- 启动链已完整组装：`persist → session → llm → machine-local → tools → events → loops/react → skills → agents → runner → web → chat`。
+- 启动链已完整组装：`persist → session → llm → machine-local → tools → events → loops/react → skills → agents → runner → web → chat → panel-demo`。
 - 每轮生成 `RunID`，写入本轮耐久消息与 SSE；History Snapshot 和 SSE 共用前端 reducer / `paint()`。同一 Run 默认合并为一张助手卡，只有耐久 Steer 才切成前后片段；落账完成不会让实时卡片跳位。
 - Chat 支持普通发送、停止、Steer、FollowUp；FollowUp 的顺序由 Runner 按 Session 管理，不属于 Chat。
 - `Runner.Start` 同步占住 Session，再在 Runner 管理的 goroutine 运行；`Runner.Close` 会取消并等待仍在运行的 Run。
@@ -50,6 +50,7 @@ Harness 已完成阶段 1、2、3，以及阶段 4A 的右侧面板登记处：�
 - `go test -race ./kernel/runner ./kernel/session ./kernel/llm ./plugins/products/chat ./cmd/harness` 通过。
 - `go vet ./...` 通过。
 - `git diff --check` 通过。
+- `node --test surface/web/static/test/sidepanel.test.js` 通过。
 - 已做真实浏览器页面与布局检查。
 
 ## 下一步
@@ -85,6 +86,7 @@ providers:
 
 ## 近期提交
 
+- `3378c7c feat: add chat sidepanel registry`
+- `347b9b3 fix: keep chat run segments stable`
+- `c9730b9 feat: add ordered chat timeline`
 - `e08d515 docs: document real chat runtime`
-- `e6fc46c feat: implement real chat stage 3`
-- `dc784e5 feat: add project-grouped session navigation`
