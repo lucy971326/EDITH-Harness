@@ -2,6 +2,8 @@ package runner
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sync"
@@ -23,6 +25,15 @@ type liveRun struct {
 	followUpsClosed bool
 	steers          []session.UserMessage
 	followUps       []session.UserMessage
+	afterEntrySeq   uint64
+	runID           string
+	toolBlocks      map[string]toolBlock
+}
+
+// 数据。一场 Run 内工具调用所在的原始块位置。
+type toolBlock struct {
+	stepSeq  uint64
+	blockSeq uint64
 }
 
 // 活对象。挂在 Host 上、管理尚未结束 Run 的对话运行器。
@@ -77,7 +88,7 @@ func (r *Runner) Run(ctx context.Context, sessionID string, input session.UserMe
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	current := &liveRun{}
+	current := &liveRun{toolBlocks: make(map[string]toolBlock)}
 	if err := r.begin(sessionID, current); err != nil {
 		return err
 	}
@@ -90,7 +101,7 @@ func (r *Runner) Start(ctx context.Context, sessionID string, input session.User
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	current := &liveRun{}
+	current := &liveRun{toolBlocks: make(map[string]toolBlock)}
 	if err := r.begin(sessionID, current); err != nil {
 		return err
 	}
@@ -117,32 +128,14 @@ func (r *Runner) run(ctx context.Context, sessionID string, input session.UserMe
 }
 
 func (r *Runner) runOne(parent context.Context, sessionID string, input session.UserMessage, current *liveRun) (err error) {
+	runID, err := newRunID()
+	if err != nil {
+		return err
+	}
 	current.openSteering()
 	runCtx, cancel := context.WithCancel(parent)
 	current.setCancel(cancel)
 	defer cancel()
-
-	err = r.publish(runCtx, RunEvent{SessionID: sessionID, Kind: RunStarted})
-	if err != nil {
-		return err
-	}
-	defer func() {
-		status := RunSucceeded
-		if errors.Is(err, context.Canceled) {
-			status = RunCancelled
-		} else if err != nil {
-			status = RunFailed
-		}
-		endErr := r.publish(context.Background(), RunEvent{
-			SessionID: sessionID,
-			Kind:      RunEnded,
-			Status:    status,
-			Error:     errorText(err),
-		})
-		if err == nil && endErr != nil {
-			err = endErr
-		}
-	}()
 
 	sess, err := r.sessions.Get(sessionID)
 	if err != nil {
@@ -161,13 +154,38 @@ func (r *Runner) runOne(parent context.Context, sessionID string, input session.
 		return err
 	}
 
-	message := messageFromInput(input)
-	if err = sess.Append(message); err != nil {
+	message := messageFromInput(runID, input)
+	entry, err := sess.Append(message)
+	if err != nil {
 		return err
 	}
-	if err = r.publish(runCtx, RunEvent{SessionID: sessionID, Kind: Message, Message: &message}); err != nil {
+	current.setAfterEntrySeq(entry.Seq)
+	current.setRunID(runID)
+	if err = r.publish(runCtx, RunEvent{SessionID: sessionID, RunID: runID, Kind: Message, Entry: &entry}); err != nil {
 		return err
 	}
+	if err = r.publish(runCtx, RunEvent{SessionID: sessionID, RunID: runID, Kind: RunStarted, AfterEntrySeq: entry.Seq}); err != nil {
+		return err
+	}
+	defer func() {
+		status := RunSucceeded
+		if errors.Is(err, context.Canceled) {
+			status = RunCancelled
+		} else if err != nil {
+			status = RunFailed
+		}
+		endErr := r.publish(context.Background(), RunEvent{
+			SessionID:     sessionID,
+			RunID:         runID,
+			Kind:          RunEnded,
+			AfterEntrySeq: current.afterSeq(),
+			Status:        status,
+			Error:         errorText(err),
+		})
+		if err == nil && endErr != nil {
+			err = endErr
+		}
+	}()
 
 	invocation := loops.Invocation{
 		History:      sess.History(),
@@ -179,10 +197,10 @@ func (r *Runner) runOne(parent context.Context, sessionID string, input session.
 		ToolNames: append([]string(nil), prepared.Tools...),
 		Workspace: runSettings.Workspace,
 		Emit: func(eventCtx context.Context, event loops.Event) error {
-			return r.emit(eventCtx, sessionID, sess, event)
+			return r.emit(eventCtx, sessionID, runID, sess, current, event)
 		},
 		Checkpoint: func(checkpointCtx context.Context, phase loops.CheckpointPhase) ([]session.Message, error) {
-			return r.checkpoint(checkpointCtx, sessionID, sess, current, phase)
+			return r.checkpoint(checkpointCtx, sessionID, runID, sess, current, phase)
 		},
 	}
 	return loop.Run(runCtx, invocation)
@@ -220,20 +238,40 @@ func (r *Runner) end(sessionID string, current *liveRun) {
 	r.wg.Done()
 }
 
-func (r *Runner) emit(ctx context.Context, sessionID string, sess *session.Session, event loops.Event) error {
+func (r *Runner) emit(ctx context.Context, sessionID, runID string, sess *session.Session, current *liveRun, event loops.Event) error {
 	if event.Kind == loops.EventMessage {
 		if event.Message == nil {
 			return fmt.Errorf("runner: message event has nil message")
 		}
-		err := sess.Append(*event.Message)
+		message := *event.Message
+		message.RunID = runID
+		entry, err := sess.Append(message)
 		if err != nil {
 			return err
 		}
-		return r.publish(ctx, RunEvent{SessionID: sessionID, Kind: Message, Message: event.Message})
+		if message.Role == session.RoleAssistant {
+			current.registerToolBlocks(message, event.StepSeq)
+		}
+		position := current.toolBlockForMessage(message, event.StepSeq, event.BlockSeq)
+		return r.publish(ctx, RunEvent{
+			SessionID:     sessionID,
+			RunID:         runID,
+			Kind:          Message,
+			AfterEntrySeq: current.afterSeq(),
+			StepSeq:       position.stepSeq,
+			BlockSeq:      position.blockSeq,
+			Entry:         &entry,
+		})
 	}
-	runEvent, err := mapEvent(sessionID, event)
+	runEvent, err := mapEvent(sessionID, runID, event)
 	if err != nil {
 		return err
+	}
+	runEvent.AfterEntrySeq = current.afterSeq()
+	if event.Tool != nil {
+		position := current.toolBlock(event.Tool.ID)
+		runEvent.StepSeq = position.stepSeq
+		runEvent.BlockSeq = position.blockSeq
 	}
 	return r.publish(ctx, runEvent)
 }
@@ -245,6 +283,7 @@ func (r *Runner) publish(ctx context.Context, event RunEvent) error {
 func (r *Runner) checkpoint(
 	ctx context.Context,
 	sessionID string,
+	runID string,
 	sess *session.Session,
 	current *liveRun,
 	phase loops.CheckpointPhase,
@@ -255,15 +294,16 @@ func (r *Runner) checkpoint(
 	}
 	messages := make([]session.Message, 0, len(inputs))
 	for _, input := range inputs {
-		message := messageFromInput(input)
-		err = sess.Append(message)
+		message := messageFromInput(runID, input)
+		entry, err := sess.Append(message)
 		if err != nil {
 			return nil, err
 		}
-		err = r.publish(ctx, RunEvent{SessionID: sessionID, Kind: Message, Message: &message})
+		err = r.publish(ctx, RunEvent{SessionID: sessionID, RunID: runID, Kind: Message, AfterEntrySeq: current.afterSeq(), Entry: &entry})
 		if err != nil {
 			return nil, err
 		}
+		current.setAfterEntrySeq(entry.Seq)
 		messages = append(messages, message)
 	}
 	return messages, nil
@@ -289,8 +329,8 @@ func (r *Runner) isClosing() bool {
 	return r.closeStarted
 }
 
-func mapEvent(sessionID string, event loops.Event) (RunEvent, error) {
-	out := RunEvent{SessionID: sessionID}
+func mapEvent(sessionID, runID string, event loops.Event) (RunEvent, error) {
+	out := RunEvent{SessionID: sessionID, RunID: runID, StepSeq: event.StepSeq, BlockSeq: event.BlockSeq}
 	switch event.Kind {
 	case loops.EventTextDelta:
 		out.Kind = TextDelta
@@ -318,8 +358,17 @@ func errorText(err error) string {
 	return err.Error()
 }
 
-func messageFromInput(input session.UserMessage) session.Message {
-	return session.Message{Role: session.RoleUser, Blocks: cloneBlocks(input.Blocks)}
+func messageFromInput(runID string, input session.UserMessage) session.Message {
+	return session.Message{RunID: runID, Role: session.RoleUser, Blocks: cloneBlocks(input.Blocks)}
+}
+
+func newRunID() (string, error) {
+	var bytes [16]byte
+	_, err := rand.Read(bytes[:])
+	if err != nil {
+		return "", fmt.Errorf("runner: make run id: %w", err)
+	}
+	return hex.EncodeToString(bytes[:]), nil
 }
 
 func cloneBlocks(blocks []session.Block) []session.Block {

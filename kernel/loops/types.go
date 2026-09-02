@@ -16,10 +16,12 @@ type Definition struct {
 
 // 数据。Loop 产出的一条本轮事件。
 type Event struct {
-	Kind    EventKind
-	Text    string
-	Message *session.Message
-	Tool    *ToolEvent
+	Kind     EventKind
+	StepSeq  uint64
+	BlockSeq uint64
+	Text     string
+	Message  *session.Message
+	Tool     *ToolEvent
 }
 
 // 数据。与工具调用有关的事件内容。

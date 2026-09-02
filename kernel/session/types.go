@@ -52,8 +52,17 @@ type Block struct {
 
 // 数据。账本中的一个完整节点内容。
 type Message struct {
+	RunID  string  `json:"runID,omitempty"`
 	Role   Role    `json:"role"`
 	Blocks []Block `json:"blocks"`
+}
+
+// 数据。当前分叉上一条已落账消息及其稳定位置。
+type Entry struct {
+	ID       string  `json:"id"`
+	ParentID string  `json:"parentID,omitempty"`
+	Seq      uint64  `json:"seq"`
+	Message  Message `json:"message"`
 }
 
 // 数据。Runner 交给 Session 的用户输入。

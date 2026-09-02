@@ -42,19 +42,19 @@ func (l *reactLoop) Run(ctx context.Context, invocation loops.Invocation) error 
 	}
 	history := append([]session.Message(nil), invocation.History...)
 
-	for {
-		assistant, calls, err := l.request(ctx, invocation, history, definitions)
+	for stepSeq := uint64(1); ; stepSeq++ {
+		assistant, calls, err := l.request(ctx, invocation, history, definitions, stepSeq)
 		if err != nil {
 			return err
 		}
-		err = invocation.Emit(ctx, loops.Event{Kind: loops.EventMessage, Message: &assistant})
+		err = invocation.Emit(ctx, loops.Event{Kind: loops.EventMessage, StepSeq: stepSeq, Message: &assistant})
 		if err != nil {
 			return err
 		}
 		history = append(history, assistant)
 
 		for _, call := range calls {
-			resultMessage, err := l.execute(ctx, invocation, call)
+			resultMessage, err := l.execute(ctx, invocation, call, stepSeq, blockForCall(assistant, call.ID))
 			if err != nil {
 				return err
 			}
@@ -81,6 +81,7 @@ func (l *reactLoop) request(
 	invocation loops.Invocation,
 	history []session.Message,
 	definitions []tools.Definition,
+	stepSeq uint64,
 ) (session.Message, []session.ToolCall, error) {
 	requestCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -108,14 +109,14 @@ func (l *reactLoop) request(
 			}
 			switch chunk.Type {
 			case provider.ChunkReasoning:
-				appendTextBlock(&message, "reasoning", chunk.Text)
-				err = invocation.Emit(ctx, loops.Event{Kind: loops.EventReasoningDelta, Text: chunk.Text})
+				blockSeq := appendTextBlock(&message, "reasoning", chunk.Text)
+				err = invocation.Emit(ctx, loops.Event{Kind: loops.EventReasoningDelta, StepSeq: stepSeq, BlockSeq: blockSeq, Text: chunk.Text})
 				if err != nil {
 					return session.Message{}, nil, err
 				}
 			case provider.ChunkText:
-				appendTextBlock(&message, "text", chunk.Text)
-				err = invocation.Emit(ctx, loops.Event{Kind: loops.EventTextDelta, Text: chunk.Text})
+				blockSeq := appendTextBlock(&message, "text", chunk.Text)
+				err = invocation.Emit(ctx, loops.Event{Kind: loops.EventTextDelta, StepSeq: stepSeq, BlockSeq: blockSeq, Text: chunk.Text})
 				if err != nil {
 					return session.Message{}, nil, err
 				}
@@ -144,10 +145,14 @@ func (l *reactLoop) execute(
 	ctx context.Context,
 	invocation loops.Invocation,
 	call session.ToolCall,
+	stepSeq uint64,
+	blockSeq uint64,
 ) (session.Message, error) {
 	err := invocation.Emit(ctx, loops.Event{
-		Kind: loops.EventToolStarted,
-		Tool: &loops.ToolEvent{ID: call.ID, Name: call.Name},
+		Kind:     loops.EventToolStarted,
+		StepSeq:  stepSeq,
+		BlockSeq: blockSeq,
+		Tool:     &loops.ToolEvent{ID: call.ID, Name: call.Name},
 	})
 	if err != nil {
 		return session.Message{}, err
@@ -178,13 +183,15 @@ func (l *reactLoop) execute(
 			},
 		}},
 	}
-	err = invocation.Emit(ctx, loops.Event{Kind: loops.EventMessage, Message: &message})
+	err = invocation.Emit(ctx, loops.Event{Kind: loops.EventMessage, StepSeq: stepSeq, BlockSeq: blockSeq, Message: &message})
 	if err != nil {
 		return session.Message{}, err
 	}
 	err = invocation.Emit(ctx, loops.Event{
-		Kind: loops.EventToolFinished,
-		Tool: &loops.ToolEvent{ID: call.ID, Name: call.Name, IsError: result.IsError},
+		Kind:     loops.EventToolFinished,
+		StepSeq:  stepSeq,
+		BlockSeq: blockSeq,
+		Tool:     &loops.ToolEvent{ID: call.ID, Name: call.Name, IsError: result.IsError},
 	})
 	if err != nil {
 		return session.Message{}, err
@@ -192,16 +199,26 @@ func (l *reactLoop) execute(
 	return message, nil
 }
 
-func appendTextBlock(message *session.Message, kind string, text string) {
+func appendTextBlock(message *session.Message, kind string, text string) uint64 {
 	if text == "" {
-		return
+		return uint64(len(message.Blocks))
 	}
 	last := len(message.Blocks) - 1
 	if last >= 0 && message.Blocks[last].Kind == kind {
 		message.Blocks[last].Text += text
-		return
+		return uint64(last + 1)
 	}
 	message.Blocks = append(message.Blocks, session.Block{Kind: kind, Text: text})
+	return uint64(len(message.Blocks))
+}
+
+func blockForCall(message session.Message, callID string) uint64 {
+	for index, block := range message.Blocks {
+		if block.Kind == "tool-call" && block.Tool != nil && block.Tool.ID == callID {
+			return uint64(index + 1)
+		}
+	}
+	return 0
 }
 
 func errorText(content string) string {

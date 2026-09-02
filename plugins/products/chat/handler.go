@@ -212,7 +212,11 @@ func (h *PageHandler) history(w nethttp.ResponseWriter, r *nethttp.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	if err := json.NewEncoder(w).Encode(sess.History()); err != nil {
+	snapshot := timelineSnapshot{Entries: sess.Entries(), Runs: []runner.RunState{}}
+	if state, ok := h.runner.State(r.PathValue("sessionID")); ok {
+		snapshot.Runs = []runner.RunState{state}
+	}
+	if err := json.NewEncoder(w).Encode(snapshot); err != nil {
 		nethttp.Error(w, err.Error(), nethttp.StatusInternalServerError)
 	}
 }
@@ -228,13 +232,13 @@ func (h *PageHandler) events(w nethttp.ResponseWriter, r *nethttp.Request) {
 		nethttp.Error(w, "streaming unsupported", nethttp.StatusInternalServerError)
 		return
 	}
+	queue, unsubscribe := h.hub.subscribe(sessionID)
+	defer unsubscribe()
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	_, _ = w.Write([]byte(": connected\n\n"))
 	flusher.Flush()
-	queue, unsubscribe := h.hub.subscribe(sessionID)
-	defer unsubscribe()
 	for {
 		select {
 		case <-r.Context().Done():
@@ -243,7 +247,7 @@ func (h *PageHandler) events(w nethttp.ResponseWriter, r *nethttp.Request) {
 			if !ok {
 				return
 			}
-			body, err := json.Marshal(event)
+			body, err := json.Marshal(timelineEventFromRun(event))
 			if err != nil {
 				return
 			}
@@ -261,7 +265,14 @@ func (h *PageHandler) message(w nethttp.ResponseWriter, r *nethttp.Request) {
 		nethttp.Error(w, err.Error(), nethttp.StatusNotFound)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	contentType := r.Header.Get("Content-Type")
+	var err error
+	if strings.HasPrefix(contentType, "multipart/form-data") {
+		err = r.ParseMultipartForm(32 << 20)
+	} else {
+		err = r.ParseForm()
+	}
+	if err != nil {
 		nethttp.Error(w, err.Error(), nethttp.StatusBadRequest)
 		return
 	}

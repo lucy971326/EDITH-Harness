@@ -9,6 +9,7 @@ import (
 type Node struct {
 	ID     string          `json:"id"`
 	Parent string          `json:"parent"`
+	Seq    uint64          `json:"seq"`
 	Body   json.RawMessage `json:"body"`
 }
 

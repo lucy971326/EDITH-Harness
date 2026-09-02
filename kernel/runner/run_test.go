@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"harness/kernel/agents"
 	"harness/kernel/agents/config"
@@ -225,9 +226,18 @@ func TestRunBuildsInvocationPersistsMessagesAndPublishesInOrder(t *testing.T) {
 	var kinds []RunEventKind
 	var durableLengths []int
 	var ended RunEvent
+	var runID string
 	_, err := events.Subscribe(fixture.events, func(_ context.Context, event RunEvent) error {
 		if event.SessionID != "session-1" {
 			t.Fatalf("session id = %q", event.SessionID)
+		}
+		if event.RunID == "" {
+			t.Fatal("run event has no run id")
+		}
+		if runID == "" {
+			runID = event.RunID
+		} else if event.RunID != runID {
+			t.Fatalf("run id = %q, want %q", event.RunID, runID)
 		}
 		kinds = append(kinds, event.Kind)
 		if event.Kind == Message {
@@ -263,12 +273,15 @@ func TestRunBuildsInvocationPersistsMessagesAndPublishesInOrder(t *testing.T) {
 		t.Fatalf("system prompt = %q", gotInvocation.SystemPrompt)
 	}
 	wantKinds := []RunEventKind{
-		RunStarted,
 		Message,
+		RunStarted,
 		TextDelta,
 		Message,
 		Message,
 		RunEnded,
+	}
+	if kinds[0] != Message || kinds[1] != RunStarted {
+		t.Fatalf("initial events = %v", kinds[:2])
 	}
 	if len(kinds) != len(wantKinds) {
 		t.Fatalf("event kinds = %v", kinds)
@@ -291,6 +304,11 @@ func TestRunBuildsInvocationPersistsMessagesAndPublishesInOrder(t *testing.T) {
 	if history[0].Role != session.RoleUser || history[1].Role != session.RoleAssistant || history[2].Role != session.RoleTool {
 		t.Fatalf("history roles = %v, %v, %v", history[0].Role, history[1].Role, history[2].Role)
 	}
+	for _, message := range history {
+		if message.RunID != runID {
+			t.Fatalf("message run id = %q, want %q", message.RunID, runID)
+		}
+	}
 }
 
 func TestRunStopsAfterPublishedDurableMessageFails(t *testing.T) {
@@ -304,7 +322,7 @@ func TestRunStopsAfterPublishedDurableMessageFails(t *testing.T) {
 	}}
 	fixture := newRunnerFixture(t, loop)
 	_, err := events.Subscribe(fixture.events, func(_ context.Context, event RunEvent) error {
-		if event.Message != nil && event.Message.Role == session.RoleAssistant {
+		if event.Entry != nil && event.Entry.Message.Role == session.RoleAssistant {
 			return publishErr
 		}
 		return nil
@@ -320,6 +338,76 @@ func TestRunStopsAfterPublishedDurableMessageFails(t *testing.T) {
 	history := fixture.session.History()
 	if len(history) != 2 || history[1].Role != session.RoleAssistant {
 		t.Fatalf("history = %#v", history)
+	}
+}
+
+func TestRunAnchorsToolEventsToOriginalAssistantBlock(t *testing.T) {
+	loop := &runnerTestLoop{run: func(ctx context.Context, invocation loops.Invocation) error {
+		assistant := session.Message{Role: session.RoleAssistant, Blocks: []session.Block{
+			{Kind: "reasoning", Text: "inspect"},
+			{Kind: "tool-call", Tool: &session.ToolCall{ID: "call-1", Name: "read", Args: `{}`}},
+		}}
+		err := invocation.Emit(ctx, loops.Event{Kind: loops.EventMessage, StepSeq: 1, Message: &assistant})
+		if err != nil {
+			return err
+		}
+		err = invocation.Emit(ctx, loops.Event{Kind: loops.EventToolStarted, StepSeq: 1, BlockSeq: 2, Tool: &loops.ToolEvent{ID: "call-1", Name: "read"}})
+		if err != nil {
+			return err
+		}
+		result := session.Message{Role: session.RoleTool, Blocks: []session.Block{{Kind: "tool-result", Result: &session.ToolResult{ID: "call-1", Name: "read", Content: "done"}}}}
+		return invocation.Emit(ctx, loops.Event{Kind: loops.EventMessage, StepSeq: 1, BlockSeq: 2, Message: &result})
+	}}
+	fixture := newRunnerFixture(t, loop)
+	var started, result RunEvent
+	_, err := events.Subscribe(fixture.events, func(_ context.Context, event RunEvent) error {
+		if event.Kind == ToolStarted {
+			started = event
+		}
+		if event.Kind == Message && event.Entry != nil && event.Entry.Message.Role == session.RoleTool {
+			result = event
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = fixture.runner.Run(context.Background(), "session-1", textInput("question"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if started.AfterEntrySeq != 1 || started.StepSeq != 1 || started.BlockSeq != 2 {
+		t.Fatalf("tool start position = %#v", started)
+	}
+	if result.AfterEntrySeq != 1 || result.StepSeq != 1 || result.BlockSeq != 2 {
+		t.Fatalf("tool result position = %#v", result)
+	}
+}
+
+func TestStateReportsLiveRunAfterInputIsDurable(t *testing.T) {
+	entered := make(chan struct{})
+	loop := &runnerTestLoop{run: func(ctx context.Context, _ loops.Invocation) error {
+		close(entered)
+		<-ctx.Done()
+		return ctx.Err()
+	}}
+	fixture := newRunnerFixture(t, loop)
+	err := fixture.runner.Start(context.Background(), "session-1", textInput("question"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("loop did not start")
+	}
+	state, ok := fixture.runner.State("session-1")
+	if !ok || state.RunID == "" || state.AfterEntrySeq != 1 {
+		t.Fatalf("live state = %#v, %t", state, ok)
+	}
+	err = fixture.runner.Stop("session-1")
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

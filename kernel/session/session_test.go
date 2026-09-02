@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 
 	"harness/kernel/host"
@@ -35,7 +36,7 @@ func TestCreateAppendHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = s.Append(textMessage(RoleUser, "hi"))
+	_, err = s.Append(textMessage(RoleUser, "hi"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,15 +59,15 @@ func TestFirstUserMessageNamesSessionOnlyOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = s.Append(textMessage(RoleAssistant, "answer"))
+	_, err = s.Append(textMessage(RoleAssistant, "answer"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = s.Append(textMessage(RoleUser, " first\nquestion "))
+	_, err = s.Append(textMessage(RoleUser, " first\nquestion "))
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = s.Append(textMessage(RoleUser, "second"))
+	_, err = s.Append(textMessage(RoleUser, "second"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +145,7 @@ func TestAppendSurvivesNewStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = s.Append(textMessage(RoleUser, "saved"))
+	_, err = s.Append(textMessage(RoleUser, "saved"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,6 +160,26 @@ func TestAppendSurvivesNewStore(t *testing.T) {
 	}
 }
 
+func TestGetRejectsOldLedgerWithoutSequence(t *testing.T) {
+	store, p := newTestStore(t)
+	_, err := store.Create("old")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := json.Marshal(textMessage(RoleUser, "old message"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = p.Add("old", persist.Node{ID: "old-node", Body: body})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = NewStore(p).Get("old")
+	if err == nil || !strings.Contains(err.Error(), "unsupported old format") {
+		t.Fatalf("Get() error = %v", err)
+	}
+}
+
 func TestBranchKeepsTreeAndSelectsHistory(t *testing.T) {
 	store, _ := newTestStore(t)
 	s, err := store.Create("chat1")
@@ -166,7 +187,7 @@ func TestBranchKeepsTreeAndSelectsHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, text := range []string{"one", "two"} {
-		err = s.Append(textMessage(RoleUser, text))
+		_, err = s.Append(textMessage(RoleUser, text))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -177,7 +198,7 @@ func TestBranchKeepsTreeAndSelectsHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 从旧节点重新接一条路，旧路仍然留在树中。
-	err = s.Append(textMessage(RoleUser, "other"))
+	_, err = s.Append(textMessage(RoleUser, "other"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,6 +211,37 @@ func TestBranchKeepsTreeAndSelectsHistory(t *testing.T) {
 	}
 	if len(s.History()) != 2 || s.History()[1].Blocks[0].Text != "two" {
 		t.Fatalf("old branch lost: %+v", s.History())
+	}
+}
+
+func TestEntriesKeepPersistentSequenceAcrossBranches(t *testing.T) {
+	store, _ := newTestStore(t)
+	s, err := store.Create("chat1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := s.Append(textMessage(RoleUser, "one"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.Append(textMessage(RoleAssistant, "two"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.Branch(first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	third, err := s.Append(textMessage(RoleUser, "other"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Seq != 1 || third.Seq != 3 {
+		t.Fatalf("sequences = %d, %d", first.Seq, third.Seq)
+	}
+	entries := s.Entries()
+	if len(entries) != 2 || entries[0].Seq != 1 || entries[1].Seq != 3 {
+		t.Fatalf("entries = %#v", entries)
 	}
 }
 
@@ -206,12 +258,12 @@ func TestBranchDoesNotDeleteOldPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = s.Append(textMessage(RoleUser, "root"))
+	_, err = s.Append(textMessage(RoleUser, "root"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	root := s.Head()
-	err = s.Append(textMessage(RoleUser, "old"))
+	_, err = s.Append(textMessage(RoleUser, "old"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +271,7 @@ func TestBranchDoesNotDeleteOldPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = s.Append(textMessage(RoleUser, "new"))
+	_, err = s.Append(textMessage(RoleUser, "new"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,7 +318,7 @@ func TestImageStoresBase64(t *testing.T) {
 		t.Fatal(err)
 	}
 	message := Message{Role: RoleUser, Blocks: []Block{{Kind: "image", Media: &Media{MIME: "image/png", Data: "iVBORw0KGgo"}}}}
-	err = s.Append(message)
+	_, err = s.Append(message)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,11 +345,11 @@ func TestImageNeedsMIMEAndData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = s.Append(Message{Role: RoleUser, Blocks: []Block{{Kind: "image"}}})
+	_, err = s.Append(Message{Role: RoleUser, Blocks: []Block{{Kind: "image"}}})
 	if err == nil {
 		t.Fatal("want error on empty image")
 	}
-	err = s.Append(Message{Role: RoleUser, Blocks: []Block{{Kind: "image", Media: &Media{MIME: "image/png"}}}})
+	_, err = s.Append(Message{Role: RoleUser, Blocks: []Block{{Kind: "image", Media: &Media{MIME: "image/png"}}}})
 	if err == nil {
 		t.Fatal("want error on missing data")
 	}
@@ -310,14 +362,14 @@ func TestToolResultNeedsOnePairedBlock(t *testing.T) {
 		t.Fatal(err)
 	}
 	invalid := Message{Role: RoleTool, Blocks: []Block{{Kind: "text", Text: "result"}}}
-	if err := s.Append(invalid); err == nil {
+	if _, err := s.Append(invalid); err == nil {
 		t.Fatal("want malformed tool result error")
 	}
 	valid := Message{Role: RoleTool, Blocks: []Block{{
 		Kind:   "tool-result",
 		Result: &ToolResult{ID: "call_1", Name: "read", Content: "ok"},
 	}}}
-	if err := s.Append(valid); err != nil {
+	if _, err := s.Append(valid); err != nil {
 		t.Fatal(err)
 	}
 }

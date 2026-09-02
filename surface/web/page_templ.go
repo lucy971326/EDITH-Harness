@@ -29,7 +29,7 @@ func Page(products []Product, currentID string, navigation templ.Component, cont
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Harness</title><link rel=\"stylesheet\" href=\"/static/site.css\"><script src=\"/static/htmx.min.js\"></script><script src=\"/static/htmx-ext-sse.js\"></script></head><body><div class=\"min-h-screen p-2\"><div class=\"flex min-h-[calc(100vh-1rem)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)]\"><aside class=\"flex w-[var(--sidebar-width)] shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-muted)] p-3\"><a href=\"/\" class=\"mb-5 flex items-center gap-2 px-1 text-sm font-semibold no-underline text-[var(--color-text)]\"><span class=\"grid size-6 place-items-center rounded-md bg-[var(--color-accent)] text-xs text-white\">H</span> Harness</a><nav aria-label=\"产品\" class=\"space-y-1\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Harness</title><link rel=\"stylesheet\" href=\"/static/site.css\"><script src=\"/static/htmx.min.js\"></script><script src=\"/static/htmx-ext-sse.js\"></script></head><body><div class=\"min-h-screen p-2\"><div class=\"flex h-[calc(100vh-1rem)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)]\"><aside class=\"flex w-[var(--sidebar-width)] shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-muted)] p-3\"><a href=\"/\" class=\"mb-5 flex items-center gap-2 px-1 text-sm font-semibold no-underline text-[var(--color-text)]\"><span class=\"grid size-6 place-items-center rounded-md bg-[var(--color-accent)] text-xs text-white\">H</span> Harness</a><nav aria-label=\"产品\" class=\"space-y-1\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -235,7 +235,7 @@ func Main(content templ.Component) templ.Component {
 			templ_7745c5c3_Var10 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<main id=\"main\" class=\"relative min-w-0 flex-1 bg-[var(--color-surface)]\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<main id=\"main\" class=\"min-h-0 min-w-0 flex-1 overflow-hidden bg-[var(--color-surface)]\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

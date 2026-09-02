@@ -18,17 +18,18 @@ type Session struct {
 	disk  persist.Persistence
 	nodes map[string]persist.Node
 	head  string
+	next  uint64
 }
 
 // Append 在当前光标下面写入一个完整节点。
-func (s *Session) Append(m Message) error {
+func (s *Session) Append(m Message) (Entry, error) {
 	err := checkMessage(m)
 	if err != nil {
-		return err
+		return Entry{}, err
 	}
 	body, err := json.Marshal(m)
 	if err != nil {
-		return err
+		return Entry{}, err
 	}
 
 	s.mu.Lock()
@@ -36,18 +37,19 @@ func (s *Session) Append(m Message) error {
 
 	id, err := newNodeID()
 	if err != nil {
-		return err
+		return Entry{}, err
 	}
-	node := persist.Node{ID: id, Parent: s.head, Body: body}
+	node := persist.Node{ID: id, Parent: s.head, Seq: s.next + 1, Body: body}
 	err = s.disk.Add(s.id, node)
 	if err != nil {
-		return fmt.Errorf("session: append: %w", err)
+		return Entry{}, fmt.Errorf("session: append: %w", err)
 	}
 	s.nodes[id] = node
 	s.head = id
+	s.next = node.Seq
 	// 标题只是消息成功落账后的派生展示；不能让它的失败把已写入的消息变成未通知。
 	_ = s.renameFirstUserMessage(m)
-	return nil
+	return Entry{ID: node.ID, ParentID: node.Parent, Seq: node.Seq, Message: m}, nil
 }
 
 func (s *Session) renameFirstUserMessage(message Message) error {
@@ -89,6 +91,16 @@ func titleFromMessage(message Message) string {
 
 // History 沿当前分叉回到根，再按对话顺序返回。不按模型裁切图。
 func (s *Session) History() []Message {
+	entries := s.Entries()
+	out := make([]Message, 0, len(entries))
+	for _, entry := range entries {
+		out = append(out, entry.Message)
+	}
+	return out
+}
+
+// Entries 沿当前分叉回到根，再按对话顺序返回已落账消息和节点身份。
+func (s *Session) Entries() []Entry {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -102,14 +114,15 @@ func (s *Session) History() []Message {
 		id = node.Parent
 	}
 
-	out := make([]Message, 0, len(ids))
+	out := make([]Entry, 0, len(ids))
 	for i := len(ids) - 1; i >= 0; i-- {
+		node := s.nodes[ids[i]]
 		var message Message
-		err := json.Unmarshal(s.nodes[ids[i]].Body, &message)
+		err := json.Unmarshal(node.Body, &message)
 		if err != nil {
 			continue
 		}
-		out = append(out, message)
+		out = append(out, Entry{ID: node.ID, ParentID: node.Parent, Seq: node.Seq, Message: message})
 	}
 	return out
 }

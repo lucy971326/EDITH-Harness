@@ -13,7 +13,7 @@ templ Page(products []Product, currentID string, navigation templ.Component, con
 		</head>
 		<body>
 			<div class="min-h-screen p-2">
-				<div class="flex min-h-[calc(100vh-1rem)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)]">
+				<div class="flex h-[calc(100vh-1rem)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)]">
 					<aside class="flex w-[var(--sidebar-width)] shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-muted)] p-3">
 						<a href="/" class="mb-5 flex items-center gap-2 px-1 text-sm font-semibold no-underline text-[var(--color-text)]">
 							<span class="grid size-6 place-items-center rounded-md bg-[var(--color-accent)] text-xs text-white">H</span>
@@ -62,7 +62,7 @@ templ ProductFragment(navigation templ.Component, content templ.Component) {
 }
 
 templ Main(content templ.Component) {
-	<main id="main" class="relative min-w-0 flex-1 bg-[var(--color-surface)]">
+	<main id="main" class="min-h-0 min-w-0 flex-1 overflow-hidden bg-[var(--color-surface)]">
 		@content
 	</main>
 }

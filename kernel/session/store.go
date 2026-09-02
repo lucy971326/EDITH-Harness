@@ -78,8 +78,14 @@ func (s *Store) Get(id string) (*Session, error) {
 		return nil, fmt.Errorf("session: get %q: %w", id, err)
 	}
 	for _, node := range tree.Nodes {
+		if node.Seq == 0 {
+			return nil, fmt.Errorf("session: ledger %q uses unsupported old format; please clear old data", id)
+		}
 		sess.nodes[node.ID] = node
 		sess.head = node.ID
+		if node.Seq > sess.next {
+			sess.next = node.Seq
+		}
 	}
 	s.live[id] = sess
 	return sess, nil

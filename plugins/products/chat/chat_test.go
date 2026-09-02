@@ -1,10 +1,12 @@
 package chat
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"io"
+	"mime/multipart"
 	nethttp "net/http"
 	"net/http/httptest"
 	"net/url"
@@ -207,12 +209,27 @@ func TestMessageSelectsModelAndHistoryReturnsLedger(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	response, err := nethttp.PostForm(webPlugin.URL()+"/chat/session-1/messages", url.Values{
-		"text":            {"hello"},
-		"mode":            {"run"},
-		"model":           {"deepseek/deepseek-v4-flash"},
-		"reasoningEffort": {"high"},
-	})
+	var body bytes.Buffer
+	form := multipart.NewWriter(&body)
+	for name, value := range map[string]string{
+		"text":            "hello",
+		"mode":            "run",
+		"model":           "deepseek/deepseek-v4-flash",
+		"reasoningEffort": "high",
+	} {
+		if err := form.WriteField(name, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := form.Close(); err != nil {
+		t.Fatal(err)
+	}
+	request, err := nethttp.NewRequest(nethttp.MethodPost, webPlugin.URL()+"/chat/session-1/messages", &body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Content-Type", form.FormDataContentType())
+	response, err := nethttp.DefaultClient.Do(request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,12 +257,42 @@ func TestMessageSelectsModelAndHistoryReturnsLedger(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer response.Body.Close()
-	var history []session.Message
+	var history timelineSnapshot
 	if err := json.NewDecoder(response.Body).Decode(&history); err != nil {
 		t.Fatal(err)
 	}
-	if len(history) != 2 || history[0].Blocks[0].Text != "hello" {
+	if len(history.Entries) != 2 || history.Entries[0].Message.Blocks[0].Text != "hello" || history.Entries[0].Seq != 1 {
 		t.Fatalf("history json = %#v", history)
+	}
+}
+
+func TestMessageAcceptsURLencodedForm(t *testing.T) {
+	h, webPlugin := installChat(t)
+	defer h.Close()
+	sessions, err := host.Resolve[*session.Store](h, "sessions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sessions.Create("session-1"); err != nil {
+		t.Fatal(err)
+	}
+	response, err := nethttp.PostForm(webPlugin.URL()+"/chat/session-1/messages", url.Values{
+		"text": {"hello"},
+		"mode": {"unknown"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != nethttp.StatusBadRequest {
+		t.Fatalf("status = %d", response.StatusCode)
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "未知消息模式") {
+		t.Fatalf("body = %q", body)
 	}
 }
 

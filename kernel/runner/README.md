@@ -26,4 +26,4 @@ Run(sessionID, 用户消息)
 
 同一本 Session 同时只能有一个活 Run；`FollowUp` 由 Runner 按顺序启动下一轮，`Stop` 只取消当前轮、不清空 FollowUp。最终 Checkpoint 会原子关闭 Steer 入口。
 
-Runner 是唯一写账者；Loop 不碰 Session，UI 不听账本。对外 `RunEvent` 是稳定契约，不泄漏 Loop 内部事件；关闭 Runner 会取消并等待它管理的全部 Run。
+Runner 是唯一写账者；Loop 不碰 Session，UI 不听账本。每次 Run 会生成一个 `RunID`，写入本轮耐久消息并附在每条 `RunEvent` 上，供表面把同一轮的思考、工具和正文合并展示。对外 `RunEvent` 是稳定契约，不泄漏 Loop 内部事件；关闭 Runner 会取消并等待它管理的全部 Run。

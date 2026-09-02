@@ -58,6 +58,15 @@ func (r *Runner) current(sessionID string) (*liveRun, error) {
 	return current, nil
 }
 
+// State 返回一本 Session 正在运行的稳定身份；空闲时返回 false。
+func (r *Runner) State(sessionID string) (RunState, bool) {
+	current, err := r.current(sessionID)
+	if err != nil {
+		return RunState{}, false
+	}
+	return current.state(), true
+}
+
 func (r *liveRun) takeSteers(phase loops.CheckpointPhase) ([]session.UserMessage, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -99,6 +108,54 @@ func (r *liveRun) openSteering() {
 	r.stopped = false
 	r.steeringClosed = false
 	r.mu.Unlock()
+}
+
+func (r *liveRun) setAfterEntrySeq(seq uint64) {
+	r.mu.Lock()
+	r.afterEntrySeq = seq
+	r.mu.Unlock()
+}
+
+func (r *liveRun) setRunID(id string) {
+	r.mu.Lock()
+	r.runID = id
+	r.mu.Unlock()
+}
+
+func (r *liveRun) state() RunState {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return RunState{RunID: r.runID, AfterEntrySeq: r.afterEntrySeq}
+}
+
+func (r *liveRun) afterSeq() uint64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.afterEntrySeq
+}
+
+func (r *liveRun) registerToolBlocks(message session.Message, stepSeq uint64) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for index, block := range message.Blocks {
+		if block.Kind != "tool-call" || block.Tool == nil {
+			continue
+		}
+		r.toolBlocks[block.Tool.ID] = toolBlock{stepSeq: stepSeq, blockSeq: uint64(index + 1)}
+	}
+}
+
+func (r *liveRun) toolBlock(id string) toolBlock {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.toolBlocks[id]
+}
+
+func (r *liveRun) toolBlockForMessage(message session.Message, stepSeq, blockSeq uint64) toolBlock {
+	if message.Role != session.RoleTool || len(message.Blocks) != 1 || message.Blocks[0].Result == nil {
+		return toolBlock{stepSeq: stepSeq, blockSeq: blockSeq}
+	}
+	return r.toolBlock(message.Blocks[0].Result.ID)
 }
 
 func (r *liveRun) stop() {

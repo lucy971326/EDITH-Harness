@@ -1,64 +1,74 @@
 # 项目状态
 
-更新日期：2026-09-01
+更新日期：2026-09-02
 
 ## 现在是什么
 
-Harness 已有可测试的内核主链和可启动的 Web 产品壳，但尚未接入真实聊天。
+Harness 已完成阶段 1、2、3：它是可启动的 Web 聊天产品，具备项目/会话管理、真实 Runner 调度与 SSE 流式界面。
 
 ```text
-用户输入 → Runner → Agent 设置 → React Loop → LLM / Tools
-                    Loop 事件 → Runner → 完整消息落账 → events → UI
+浏览器 POST → Chat → Runner → Agent 设置 → React Loop → LLM / Tools
+浏览器 SSE  ← Chat ← Runner 稳定事件 ← 完整消息先落账
 ```
 
-运行 `go run ./cmd/harness` 会读取 `harness.yaml`、自动选择空闲端口并打开 Chat 产品壳。当前入口只组装 Web 与 Chat；完整内核、真实模型调用和端到端聊天仍未接入。
+运行 `go run ./cmd/harness` 会读取 `harness.yaml`，组装完整服务链，自动选择空闲端口并打开 Chat。
 
 ## 已完成
 
-- Host 服务表与插件生命周期。
-- JSONL 持久化、Session 账本与 SessionSettings。
-- DeepSeek LLM、machine-local、read / write / edit / bash。
-- Skills 登记处与 Agent 设置；尚无具体 Skill 插件。
-- Loops 登记处、默认 React Loop。
-- Events、Runner.Run / Steer / Stop。
-- `surface/web`：HTTP Server、产品与路由登记处、templ 通用页面壳。
-- `plugins/products/chat`：默认 Chat 产品入口与静态页面壳。
-- `cmd/harness`：读取 YAML、组装插件、打开浏览器并正确关闭服务器。
-- 本地嵌入 HTMX `2.0.10`、SSE 扩展 `2.2.4` 与 Tailwind 编译产物。
-- `go test ./...`、`go vet ./...` 通过。
+### 阶段 1：Web 基础
 
-当前没有 sqlite、E2B、Runner.Spawn / Wait、Chat SSE 和真实聊天组装。
+- `surface/web`：HTTP Server、产品/路由登记处、templ 通用页面壳。
+- `plugins/products/chat`：Chat 产品注册及页面。
+- 本地嵌入 HTMX `2.0.10`、SSE 扩展 `2.2.4`；Tailwind 编译到 `surface/web/static/site.css`。
+
+### 阶段 2：项目与会话
+
+- `SessionMeta` 独立保存 `ID / Title / CreatedAt`；元数据是空会话存在的依据。
+- 新会话显示「新对话」；首条用户消息落账后自动改名。
+- Chat 按 `Workspace` 分组展示项目与会话；项目不是独立数据。
+- Win / macOS / Linux 原生目录选择；取消返回 Chat，真实错误才显示。
+
+### 阶段 3：真实聊天
+
+- 启动链已完整组装：`persist → session → llm → machine-local → tools → events → loops/react → skills → agents → runner → web → chat`。
+- 每轮生成 `RunID`，写入本轮耐久消息与 SSE；History 和 SSE 共用前端 reducer / `paint()`，按 Step / Block 保留思考、工具与正文的原始顺序；Steer 会把后续 Step 放在用户消息之后。
+- Chat 支持普通发送、停止、Steer、FollowUp；FollowUp 的顺序由 Runner 按 Session 管理，不属于 Chat。
+- `Runner.Start` 同步占住 Session，再在 Runner 管理的 goroutine 运行；`Runner.Close` 会取消并等待仍在运行的 Run。
+- Runner 对界面只发布稳定事件：开始、文本/推理 Delta、工具开始/完成、耐久消息、结束状态。
+- 每次 SSE 重连重新同步 History；慢客户端被断开，不会阻塞 Run。
+- 模型与思考档位是独立选择框；首次发送前两者必选，换模型会清空档位。
+
+## 验证
+
+- `go test ./...` 通过。
+- `go test -race ./kernel/runner ./kernel/session ./kernel/llm ./plugins/products/chat ./cmd/harness` 通过。
+- `go vet ./...` 通过。
+- `git diff --check` 通过。
+- 已做真实浏览器页面与布局检查。
 
 ## 下一步
 
 ```text
-SessionMeta 与项目 / 会话列表
-  → Chat 读取 Session + SessionSettings
-  → 按 Workspace 组成项目列表
-  → 实现新建项目与原生目录选择器
-  → 再接 Runner、JSON SSE 与真实消息区
+阶段 4：页面插槽
+  ├─ message.actions：复制、分叉、插件动作
+  ├─ dock：持续状态
+  ├─ composer.actions：附件等输入动作
+  ├─ sidepanel：文件面板
+  └─ settings.section：插件设置二级列表
+
+阶段 5：完整验收
+  ├─ 轨迹页、Session 分叉、模型/档位后续修改
+  └─ 产品切换、SSE 重连、慢客户端、取消、关闭与浏览器验收
 ```
-
-页面原型在 `learn/prototypes/chat-page.html`；真实阶段 1 页面已经由 `surface/web` 与
-`plugins/products/chat` 提供，但尚未连接 Session、Runner 或 SSE。`playground/sse-draft` 是已验证的消息区画法：SSE 与 History JSON 都交同一个 `paint()`；尚未接入内核。
-
-## 已知问题
-
-- 当前 `cmd/harness` 只验证 Web + Chat 产品壳，尚未组装现有内核服务。
-- Chat 页面仍是静态壳，项目、会话和输入控件没有真实数据。
-- 现有测试覆盖各包主链，但没有完整插件组装和真实 LLM 的端到端测试。
 
 ## 运行前提
 
 - Go 1.25。
-- 修改 templ 后运行 `go tool templ generate`。
-- 修改样式前运行 `npm install`，修改后运行 `npm run web:build`。
-- LLM 当前只支持 `deepseek/deepseek-v4-flash` 和 `deepseek/deepseek-v4-pro`。
-- `persist.Plugin.Dir` 必须由未来入口明确指定；当前没有默认数据目录。
-- 创建 Session 后必须写入对应 SessionSettings，Runner 才能开始本轮。
+- 修改 `.templ` 后运行 `go tool templ generate`。
+- 修改样式后运行 `npm run web:build`；首次需要 `npm install`。
+- 数据目录由 `harness.yaml` 的 `dataDir` 指定；账本、SessionSettings 和自建 Agent 不属于源码。
 - machine-local 直接操作本机文件和进程，没有沙箱与路径限制。
-
-新电脑自行创建 `~/.harness/config.yaml`：
+- 本机需要 `~/.harness/config.yaml` 配置 LLM Provider：
 
 ```yaml
 providers:
@@ -67,9 +77,8 @@ providers:
     # baseURL: <optional>
 ```
 
-## 换机与本机数据
+## 近期提交
 
-- `reference/` 源码被 Git 忽略，只有防止 Go 递归测试的 `reference/go.mod` 入库；换机时参考源码单独复制。
-- 换机后执行 `go test ./...` 和 `go vet ./...` 验证环境；这不代表真实聊天已经跑通。
-- `~/.harness/config.yaml` 不进仓库，新电脑按上面的格式重新创建。
-- 账本、SessionSettings 和自建 Agent 保存在 persist 插件配置的目录，不属于源码。
+- `e08d515 docs: document real chat runtime`
+- `e6fc46c feat: implement real chat stage 3`
+- `dc784e5 feat: add project-grouped session navigation`
