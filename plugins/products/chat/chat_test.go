@@ -2,40 +2,34 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	nethttp "net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"harness/kernel/agents"
+	"harness/kernel/events"
 	"harness/kernel/host"
+	"harness/kernel/llm"
+	"harness/kernel/loops"
 	"harness/kernel/persist"
+	"harness/kernel/runner"
 	"harness/kernel/session"
 	"harness/kernel/session/settings"
+	"harness/kernel/skills"
+	"harness/kernel/tools"
 	"harness/surface/web"
 )
 
 func TestPluginRendersFullPageAndHTMXMain(t *testing.T) {
-	h := host.NewHost()
-	err := h.Install(&persist.Plugin{Dir: t.TempDir()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = h.Install(&session.Plugin{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	webPlugin := web.NewPlugin(web.Config{Host: "127.0.0.1", Port: 0})
-	err = h.Install(webPlugin)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = h.Install(NewPlugin())
-	if err != nil {
-		t.Fatal(err)
-	}
+	h, webPlugin := installChat(t)
 	defer h.Close()
 
 	client := &nethttp.Client{Timeout: 2 * time.Second}
@@ -109,7 +103,7 @@ func TestCreateProjectAndCancel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if response.Request.URL.Path == "/chat" || !strings.Contains(string(body), "会话已经创建") {
+	if response.Request.URL.Path == "/chat" || !strings.Contains(string(body), `id="composer"`) {
 		t.Fatalf("create response path=%q body=%q", response.Request.URL.Path, body)
 	}
 
@@ -194,6 +188,67 @@ func TestSettingsFailureDiscardsNewSession(t *testing.T) {
 	}
 }
 
+func TestMessageSelectsModelAndHistoryReturnsLedger(t *testing.T) {
+	h, webPlugin := installChat(t)
+	defer h.Close()
+	sessions, err := host.Resolve[*session.Store](h, "sessions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := sessions.Create("session-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	settingsStore, err := host.Resolve[settings.SessionSettingsStore](h, "sessionSettings")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = settingsStore.Put("session-1", settings.SessionSettings{AgentID: agents.DefaultID, Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := nethttp.PostForm(webPlugin.URL()+"/chat/session-1/messages", url.Values{
+		"text":            {"hello"},
+		"mode":            {"run"},
+		"model":           {"deepseek/deepseek-v4-flash"},
+		"reasoningEffort": {"high"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != nethttp.StatusNoContent {
+		t.Fatalf("status = %d", response.StatusCode)
+	}
+	_ = response.Body.Close()
+
+	deadline := time.Now().Add(time.Second)
+	for len(sess.History()) != 2 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if got := sess.History(); len(got) != 2 || got[1].Blocks[0].Text != "answer" {
+		t.Fatalf("history = %#v", got)
+	}
+	setup, err := settingsStore.For("session-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if setup.Model != "deepseek/deepseek-v4-flash" || setup.ReasoningEffort != "high" {
+		t.Fatalf("settings = %#v", setup)
+	}
+	response, err = nethttp.Get(webPlugin.URL() + "/chat/session-1/history")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	var history []session.Message
+	if err := json.NewDecoder(response.Body).Decode(&history); err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 2 || history[0].Blocks[0].Text != "hello" {
+		t.Fatalf("history json = %#v", history)
+	}
+}
+
 type failingSettings struct{}
 
 func (failingSettings) For(string) (settings.SessionSettings, error) {
@@ -206,12 +261,63 @@ func (failingSettings) Put(string, settings.SessionSettings) error {
 
 func installChat(t *testing.T) (*host.Host, *web.Plugin) {
 	t.Helper()
+	home := t.TempDir()
+	if err := os.Mkdir(filepath.Join(home, ".harness"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(home, ".harness", "config.yaml")
+	if err := os.WriteFile(configPath, []byte("providers:\n  deepseek:\n    apiKey: test-key\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	previousHome := os.Getenv("HOME")
+	if err := os.Setenv("HOME", home); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.Setenv("HOME", previousHome)
+	})
 	h := host.NewHost()
 	err := h.Install(&persist.Plugin{Dir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	err = h.Install(&session.Plugin{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = h.Install(&llm.Plugin{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = h.Install(events.NewPlugin())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = h.Install(loops.NewPlugin())
+	if err != nil {
+		t.Fatal(err)
+	}
+	loopRegistry, err := host.Resolve[loops.Loops](h, "loops")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = loopRegistry.Register(chatTestLoop{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = h.Install(skills.NewPlugin())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = h.Install(tools.NewPlugin())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = h.Install(agents.NewPlugin())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = h.Install(runner.NewPlugin())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,4 +331,15 @@ func installChat(t *testing.T) (*host.Host, *web.Plugin) {
 		t.Fatal(err)
 	}
 	return h, webPlugin
+}
+
+type chatTestLoop struct{}
+
+func (chatTestLoop) Definition() loops.Definition {
+	return loops.Definition{Kind: "react", Description: "chat test"}
+}
+
+func (chatTestLoop) Run(ctx context.Context, invocation loops.Invocation) error {
+	message := session.Message{Role: session.RoleAssistant, Blocks: []session.Block{{Kind: "text", Text: "answer"}}}
+	return invocation.Emit(ctx, loops.Event{Kind: loops.EventMessage, Message: &message})
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 
 	"harness/kernel/persist"
@@ -44,7 +45,46 @@ func (s *Session) Append(m Message) error {
 	}
 	s.nodes[id] = node
 	s.head = id
+	// 标题只是消息成功落账后的派生展示；不能让它的失败把已写入的消息变成未通知。
+	_ = s.renameFirstUserMessage(m)
 	return nil
+}
+
+func (s *Session) renameFirstUserMessage(message Message) error {
+	if message.Role != RoleUser {
+		return nil
+	}
+	title := titleFromMessage(message)
+	if title == "" {
+		return nil
+	}
+	meta, err := s.disk.LoadMeta(s.id)
+	if err != nil {
+		return fmt.Errorf("session: load metadata: %w", err)
+	}
+	if meta.Title != "新对话" {
+		return nil
+	}
+	meta.Title = title
+	if err := s.disk.SaveMeta(meta); err != nil {
+		return fmt.Errorf("session: name first message: %w", err)
+	}
+	return nil
+}
+
+func titleFromMessage(message Message) string {
+	for _, block := range message.Blocks {
+		if block.Kind != "text" {
+			continue
+		}
+		title := strings.Join(strings.Fields(block.Text), " ")
+		runes := []rune(title)
+		if len(runes) > 48 {
+			return string(runes[:48]) + "…"
+		}
+		return title
+	}
+	return ""
 }
 
 // History 沿当前分叉回到根，再按对话顺序返回。不按模型裁切图。

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -154,5 +155,71 @@ func TestSteerAndStopRejectIdleSession(t *testing.T) {
 	}
 	if err := fixture.runner.Stop("session-1"); err == nil {
 		t.Fatal("expected idle Stop error")
+	}
+}
+
+func TestFollowUpStartsNextRunAfterCurrentRunEnds(t *testing.T) {
+	ready := make(chan struct{})
+	release := make(chan struct{})
+	var invocations []loops.Invocation
+	var mu sync.Mutex
+	loop := &runnerTestLoop{run: func(ctx context.Context, invocation loops.Invocation) error {
+		mu.Lock()
+		invocations = append(invocations, invocation)
+		count := len(invocations)
+		mu.Unlock()
+		if count == 1 {
+			close(ready)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-release:
+			}
+		}
+		return nil
+	}}
+	fixture := newRunnerFixture(t, loop)
+	done := make(chan error, 1)
+	go func() { done <- fixture.runner.Run(context.Background(), "session-1", textInput("first")) }()
+	<-ready
+	if err := fixture.runner.FollowUp("session-1", textInput("second")); err != nil {
+		t.Fatal(err)
+	}
+	close(release)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("follow up did not finish")
+	}
+	if len(invocations) != 2 {
+		t.Fatalf("invocations = %d", len(invocations))
+	}
+	if got := invocations[1].History; len(got) != 2 || got[1].Blocks[0].Text != "second" {
+		t.Fatalf("second history = %#v", got)
+	}
+}
+
+func TestCloseCancelsAndWaitsForManagedRun(t *testing.T) {
+	ready := make(chan struct{})
+	loop := &runnerTestLoop{run: func(ctx context.Context, _ loops.Invocation) error {
+		close(ready)
+		<-ctx.Done()
+		return ctx.Err()
+	}}
+	fixture := newRunnerFixture(t, loop)
+	done := make(chan error, 1)
+	go func() { done <- fixture.runner.Run(context.Background(), "session-1", textInput("first")) }()
+	<-ready
+	fixture.runner.close()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("run error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("close did not wait for run")
 	}
 }

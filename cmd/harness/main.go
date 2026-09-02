@@ -12,10 +12,23 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"harness/kernel/agents"
+	"harness/kernel/events"
 	"harness/kernel/host"
+	"harness/kernel/llm"
+	"harness/kernel/loops"
 	"harness/kernel/persist"
+	"harness/kernel/runner"
 	"harness/kernel/session"
+	"harness/kernel/skills"
+	"harness/kernel/tools"
+	"harness/plugins/loops/react"
+	machinelocal "harness/plugins/machine-local"
 	chatproduct "harness/plugins/products/chat"
+	bashtool "harness/plugins/tools/bash"
+	edittool "harness/plugins/tools/edit"
+	readtool "harness/plugins/tools/read"
+	writetool "harness/plugins/tools/write"
 	"harness/surface/web"
 )
 
@@ -45,6 +58,58 @@ func run(configPath string) error {
 		return err
 	}
 	err = h.Install(&session.Plugin{})
+	if err != nil {
+		return err
+	}
+	err = h.Install(&llm.Plugin{})
+	if err != nil {
+		return err
+	}
+	err = h.Install(machinelocal.New())
+	if err != nil {
+		return err
+	}
+	err = h.Install(tools.NewPlugin())
+	if err != nil {
+		return err
+	}
+	err = h.Install(readtool.New())
+	if err != nil {
+		return err
+	}
+	err = h.Install(writetool.New())
+	if err != nil {
+		return err
+	}
+	err = h.Install(edittool.New())
+	if err != nil {
+		return err
+	}
+	err = h.Install(bashtool.New())
+	if err != nil {
+		return err
+	}
+	err = h.Install(events.NewPlugin())
+	if err != nil {
+		return err
+	}
+	err = h.Install(loops.NewPlugin())
+	if err != nil {
+		return err
+	}
+	err = h.Install(react.New())
+	if err != nil {
+		return err
+	}
+	err = h.Install(skills.NewPlugin())
+	if err != nil {
+		return err
+	}
+	err = h.Install(agents.NewPlugin())
+	if err != nil {
+		return err
+	}
+	err = h.Install(runner.NewPlugin())
 	if err != nil {
 		return err
 	}

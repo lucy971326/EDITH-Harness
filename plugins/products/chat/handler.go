@@ -1,8 +1,10 @@
 package chat
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	nethttp "net/http"
@@ -15,6 +17,8 @@ import (
 	"github.com/a-h/templ"
 
 	"harness/kernel/agents"
+	"harness/kernel/llm"
+	"harness/kernel/runner"
 	"harness/kernel/session"
 	"harness/kernel/session/settings"
 	"harness/surface/web"
@@ -26,15 +30,42 @@ type PageHandler struct {
 	product  web.Product
 	sessions *session.Store
 	settings settings.SessionSettingsStore
+	runner   *runner.Runner
+	models   *llm.Client
+	hub      *eventHub
 }
 
-func newPageHandler(webService web.Service, product web.Product, sessions *session.Store, settingsStore settings.SessionSettingsStore) *PageHandler {
-	return &PageHandler{web: webService, product: product, sessions: sessions, settings: settingsStore}
+func newPageHandler(
+	webService web.Service,
+	product web.Product,
+	sessions *session.Store,
+	settingsStore settings.SessionSettingsStore,
+	runService *runner.Runner,
+	modelService *llm.Client,
+	hub *eventHub,
+) *PageHandler {
+	return &PageHandler{
+		web: webService, product: product, sessions: sessions, settings: settingsStore,
+		runner: runService, models: modelService, hub: hub,
+	}
 }
 
 func (h *PageHandler) ServeHTTP(w nethttp.ResponseWriter, r *nethttp.Request) {
-	if r.Method == nethttp.MethodPost {
+	switch {
+	case r.Method == nethttp.MethodPost && r.URL.Path == "/chat/projects":
 		h.createProject(w, r)
+		return
+	case r.Method == nethttp.MethodGet && strings.HasSuffix(r.URL.Path, "/history"):
+		h.history(w, r)
+		return
+	case r.Method == nethttp.MethodGet && strings.HasSuffix(r.URL.Path, "/events"):
+		h.events(w, r)
+		return
+	case r.Method == nethttp.MethodPost && strings.HasSuffix(r.URL.Path, "/messages"):
+		h.message(w, r)
+		return
+	case r.Method == nethttp.MethodPost && strings.HasSuffix(r.URL.Path, "/stop"):
+		h.stop(w, r)
 		return
 	}
 
@@ -76,10 +107,13 @@ type sessionView struct {
 
 // 数据。Chat 页面渲染所需的全部数据。
 type pageView struct {
-	Projects  []projectView
-	Selected  sessionView
-	HasActive bool
-	Error     string
+	Projects        []projectView
+	Selected        sessionView
+	HasActive       bool
+	Error           string
+	Models          []llm.ModelChoice
+	Model           string
+	ReasoningEffort string
 }
 
 var selectWorkspace = chooseWorkspace
@@ -113,6 +147,17 @@ func (h *PageHandler) pageData(selectedID string) (pageView, error) {
 		return pageView{}, fmt.Errorf("%w: session %q", os.ErrNotExist, selectedID)
 	}
 	out := pageView{Selected: selected, HasActive: selectedID != ""}
+	if h.models != nil {
+		out.Models = h.models.Models()
+	}
+	if selectedID != "" {
+		setup, err := h.settings.For(selectedID)
+		if err != nil {
+			return pageView{}, fmt.Errorf("chat: settings for %q: %w", selectedID, err)
+		}
+		out.Model = setup.Model
+		out.ReasoningEffort = setup.ReasoningEffort
+	}
 	for _, project := range projects {
 		sort.Slice(project.Sessions, func(i, j int) bool {
 			return project.Sessions[i].CreatedAt.After(project.Sessions[j].CreatedAt)
@@ -160,7 +205,142 @@ func (h *PageHandler) createProject(w nethttp.ResponseWriter, r *nethttp.Request
 	nethttp.Redirect(w, r, "/chat/"+id, nethttp.StatusSeeOther)
 }
 
+func (h *PageHandler) history(w nethttp.ResponseWriter, r *nethttp.Request) {
+	sess, err := h.sessions.Get(r.PathValue("sessionID"))
+	if err != nil {
+		nethttp.Error(w, err.Error(), nethttp.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if err := json.NewEncoder(w).Encode(sess.History()); err != nil {
+		nethttp.Error(w, err.Error(), nethttp.StatusInternalServerError)
+	}
+}
+
+func (h *PageHandler) events(w nethttp.ResponseWriter, r *nethttp.Request) {
+	sessionID := r.PathValue("sessionID")
+	if _, err := h.sessions.Get(sessionID); err != nil {
+		nethttp.Error(w, err.Error(), nethttp.StatusNotFound)
+		return
+	}
+	flusher, ok := w.(nethttp.Flusher)
+	if !ok {
+		nethttp.Error(w, "streaming unsupported", nethttp.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	_, _ = w.Write([]byte(": connected\n\n"))
+	flusher.Flush()
+	queue, unsubscribe := h.hub.subscribe(sessionID)
+	defer unsubscribe()
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case event, ok := <-queue:
+			if !ok {
+				return
+			}
+			body, err := json.Marshal(event)
+			if err != nil {
+				return
+			}
+			if _, err := fmt.Fprintf(w, "event: run\ndata: %s\n\n", body); err != nil {
+				return
+			}
+			flusher.Flush()
+		}
+	}
+}
+
+func (h *PageHandler) message(w nethttp.ResponseWriter, r *nethttp.Request) {
+	sessionID := r.PathValue("sessionID")
+	if _, err := h.sessions.Get(sessionID); err != nil {
+		nethttp.Error(w, err.Error(), nethttp.StatusNotFound)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		nethttp.Error(w, err.Error(), nethttp.StatusBadRequest)
+		return
+	}
+	text := strings.TrimSpace(r.FormValue("text"))
+	if text == "" {
+		nethttp.Error(w, "消息不能为空", nethttp.StatusBadRequest)
+		return
+	}
+	input := session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: text}}}
+	switch r.FormValue("mode") {
+	case "run":
+		if err := h.selectModel(sessionID, r.FormValue("model"), r.FormValue("reasoningEffort")); err != nil {
+			nethttp.Error(w, err.Error(), nethttp.StatusBadRequest)
+			return
+		}
+		if err := h.startRun(sessionID, input); err != nil {
+			nethttp.Error(w, err.Error(), nethttp.StatusConflict)
+			return
+		}
+	case "steer":
+		if err := h.runner.Steer(sessionID, input); err != nil {
+			nethttp.Error(w, err.Error(), nethttp.StatusConflict)
+			return
+		}
+	case "followup":
+		if err := h.runner.FollowUp(sessionID, input); err != nil {
+			nethttp.Error(w, err.Error(), nethttp.StatusConflict)
+			return
+		}
+	default:
+		nethttp.Error(w, "未知消息模式", nethttp.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(nethttp.StatusNoContent)
+}
+
+func (h *PageHandler) stop(w nethttp.ResponseWriter, r *nethttp.Request) {
+	if err := h.runner.Stop(r.PathValue("sessionID")); err != nil {
+		nethttp.Error(w, err.Error(), nethttp.StatusConflict)
+		return
+	}
+	w.WriteHeader(nethttp.StatusNoContent)
+}
+
+func (h *PageHandler) startRun(sessionID string, input session.UserMessage) error {
+	return h.runner.Start(context.Background(), sessionID, input)
+}
+
+func (h *PageHandler) selectModel(sessionID, model, effort string) error {
+	setup, err := h.settings.For(sessionID)
+	if err != nil {
+		return err
+	}
+	if setup.Model != "" && setup.ReasoningEffort != "" {
+		return nil
+	}
+	if model == "" || effort == "" {
+		return fmt.Errorf("请先选择模型和思考档位")
+	}
+	for _, choice := range h.models.Models() {
+		if choice.ID != model {
+			continue
+		}
+		for _, available := range choice.ReasoningEfforts {
+			if available == effort {
+				setup.Model = model
+				setup.ReasoningEffort = effort
+				return h.settings.Put(sessionID, setup)
+			}
+		}
+	}
+	return fmt.Errorf("模型或思考档位不可用")
+}
+
 func (h *PageHandler) renderError(w nethttp.ResponseWriter, r *nethttp.Request, err error) {
+	if h.web == nil {
+		nethttp.Error(w, err.Error(), nethttp.StatusInternalServerError)
+		return
+	}
 	data, listErr := h.pageData("")
 	if listErr != nil {
 		nethttp.Error(w, err.Error(), nethttp.StatusInternalServerError)

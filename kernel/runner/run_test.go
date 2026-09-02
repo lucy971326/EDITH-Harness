@@ -222,15 +222,19 @@ func TestRunBuildsInvocationPersistsMessagesAndPublishesInOrder(t *testing.T) {
 	}}
 	fixture := newRunnerFixture(t, loop)
 
-	var kinds []loops.EventKind
+	var kinds []RunEventKind
 	var durableLengths []int
+	var ended RunEvent
 	_, err := events.Subscribe(fixture.events, func(_ context.Context, event RunEvent) error {
 		if event.SessionID != "session-1" {
 			t.Fatalf("session id = %q", event.SessionID)
 		}
-		kinds = append(kinds, event.Event.Kind)
-		if event.Event.Kind == loops.EventMessage {
+		kinds = append(kinds, event.Kind)
+		if event.Kind == Message {
 			durableLengths = append(durableLengths, len(fixture.session.History()))
+		}
+		if event.Kind == RunEnded {
+			ended = event
 		}
 		return nil
 	})
@@ -258,11 +262,13 @@ func TestRunBuildsInvocationPersistsMessagesAndPublishesInOrder(t *testing.T) {
 	if !strings.Contains(gotInvocation.SystemPrompt, "/workspace/a") {
 		t.Fatalf("system prompt = %q", gotInvocation.SystemPrompt)
 	}
-	wantKinds := []loops.EventKind{
-		loops.EventMessage,
-		loops.EventTextDelta,
-		loops.EventMessage,
-		loops.EventMessage,
+	wantKinds := []RunEventKind{
+		RunStarted,
+		Message,
+		TextDelta,
+		Message,
+		Message,
+		RunEnded,
 	}
 	if len(kinds) != len(wantKinds) {
 		t.Fatalf("event kinds = %v", kinds)
@@ -271,6 +277,9 @@ func TestRunBuildsInvocationPersistsMessagesAndPublishesInOrder(t *testing.T) {
 		if kinds[i] != wantKinds[i] {
 			t.Fatalf("event kinds = %v", kinds)
 		}
+	}
+	if ended.Status != RunSucceeded || ended.Error != "" {
+		t.Fatalf("run ended = %#v", ended)
 	}
 	if len(durableLengths) != 3 || durableLengths[0] != 1 || durableLengths[1] != 2 || durableLengths[2] != 3 {
 		t.Fatalf("durable lengths = %v", durableLengths)
@@ -295,7 +304,7 @@ func TestRunStopsAfterPublishedDurableMessageFails(t *testing.T) {
 	}}
 	fixture := newRunnerFixture(t, loop)
 	_, err := events.Subscribe(fixture.events, func(_ context.Context, event RunEvent) error {
-		if event.Event.Message != nil && event.Event.Message.Role == session.RoleAssistant {
+		if event.Message != nil && event.Message.Role == session.RoleAssistant {
 			return publishErr
 		}
 		return nil
@@ -323,9 +332,9 @@ func TestRunDoesNotPublishMessageThatFailedToAppend(t *testing.T) {
 	fixture := newRunnerFixture(t, loop)
 	appendErr := errors.New("disk failed")
 	fixture.persistence.addFail = appendErr
-	published := 0
-	_, err := events.Subscribe(fixture.events, func(context.Context, RunEvent) error {
-		published++
+	publishedMessage := false
+	_, err := events.Subscribe(fixture.events, func(_ context.Context, event RunEvent) error {
+		publishedMessage = publishedMessage || event.Kind == Message
 		return nil
 	})
 	if err != nil {
@@ -336,8 +345,8 @@ func TestRunDoesNotPublishMessageThatFailedToAppend(t *testing.T) {
 	if !errors.Is(err, appendErr) {
 		t.Fatalf("error = %v", err)
 	}
-	if published != 0 {
-		t.Fatalf("published = %d", published)
+	if publishedMessage {
+		t.Fatal("published a message that was not appended")
 	}
 	if loopCalled {
 		t.Fatal("loop was called")

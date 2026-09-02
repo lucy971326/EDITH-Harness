@@ -2,9 +2,13 @@
 package chat
 
 import (
+	"context"
 	"fmt"
 
+	"harness/kernel/events"
 	"harness/kernel/host"
+	"harness/kernel/llm"
+	"harness/kernel/runner"
 	"harness/kernel/session"
 	"harness/kernel/session/settings"
 	"harness/surface/web"
@@ -22,6 +26,10 @@ var chatProduct = web.Product{
 type Plugin struct {
 	sessions *session.Store
 	settings settings.SessionSettingsStore
+	runner   *runner.Runner
+	models   *llm.Client
+	hub      *eventHub
+	unlisten func()
 }
 
 // NewPlugin 创建 Chat 产品插件。
@@ -46,11 +54,31 @@ func (p *Plugin) Start(h *host.Host) error {
 	}
 	p.sessions = sessions
 	p.settings = settingsStore
+	p.runner, err = host.Resolve[*runner.Runner](h, "runner")
+	if err != nil {
+		return fmt.Errorf("chat: resolve runner: %w", err)
+	}
+	p.models, err = host.Resolve[*llm.Client](h, "llm")
+	if err != nil {
+		return fmt.Errorf("chat: resolve llm: %w", err)
+	}
+	eventRegistry, err := host.Resolve[*events.Registry](h, "events")
+	if err != nil {
+		return fmt.Errorf("chat: resolve events: %w", err)
+	}
+	p.hub = newEventHub()
+	p.unlisten, err = events.Subscribe(eventRegistry, func(_ context.Context, event runner.RunEvent) error {
+		p.hub.publish(event)
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("chat: subscribe run events: %w", err)
+	}
 	err = webService.RegisterProduct(chatProduct)
 	if err != nil {
 		return err
 	}
-	handler := newPageHandler(webService, chatProduct, sessions, settingsStore)
+	handler := newPageHandler(webService, chatProduct, sessions, settingsStore, p.runner, p.models, p.hub)
 	err = webService.RegisterRoute("GET /chat", handler)
 	if err != nil {
 		return err
@@ -63,11 +91,37 @@ func (p *Plugin) Start(h *host.Host) error {
 	if err != nil {
 		return err
 	}
+	err = webService.RegisterRoute("GET /chat/{sessionID}/history", handler)
+	if err != nil {
+		return err
+	}
+	err = webService.RegisterRoute("GET /chat/{sessionID}/events", handler)
+	if err != nil {
+		return err
+	}
+	err = webService.RegisterRoute("POST /chat/{sessionID}/messages", handler)
+	if err != nil {
+		return err
+	}
+	err = webService.RegisterRoute("POST /chat/{sessionID}/stop", handler)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
 func (p *Plugin) Close() error {
+	if p.unlisten != nil {
+		p.unlisten()
+	}
+	if p.hub != nil {
+		p.hub.close()
+	}
 	p.sessions = nil
 	p.settings = nil
+	p.runner = nil
+	p.models = nil
+	p.hub = nil
+	p.unlisten = nil
 	return nil
 }

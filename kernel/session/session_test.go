@@ -43,6 +43,40 @@ func TestCreateAppendHistory(t *testing.T) {
 	if len(got) != 1 || got[0].Blocks[0].Text != "hi" {
 		t.Fatalf("history = %+v", got)
 	}
+	metas, err := store.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metas[0].Title != "hi" {
+		t.Fatalf("title = %q", metas[0].Title)
+	}
+}
+
+func TestFirstUserMessageNamesSessionOnlyOnce(t *testing.T) {
+	store, _ := newTestStore(t)
+	s, err := store.Create("chat1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.Append(textMessage(RoleAssistant, "answer"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.Append(textMessage(RoleUser, " first\nquestion "))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.Append(textMessage(RoleUser, "second"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	metas, err := store.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metas[0].Title != "first question" {
+		t.Fatalf("title = %q", metas[0].Title)
+	}
 }
 
 func TestEmptySessionSurvivesNewStoreAndList(t *testing.T) {
