@@ -14,7 +14,7 @@
 Runner 传入 Invocation
   → 取得本轮 Tool Schema
   → llm.Stream
-  → Emit 完整 assistant 消息
+  → Emit 带 StepSeq / BlockSeq 的 Delta 和完整 assistant 消息
   → 顺序执行 Tool，并 Emit 结果
   → Checkpoint 接收 Steer
   → 无 Tool、无 Steer时结束

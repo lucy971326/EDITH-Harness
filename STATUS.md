@@ -31,7 +31,7 @@ Harness 已完成阶段 1、2、3：它是可启动的 Web 聊天产品，具备
 ### 阶段 3：真实聊天
 
 - 启动链已完整组装：`persist → session → llm → machine-local → tools → events → loops/react → skills → agents → runner → web → chat`。
-- 每轮生成 `RunID`，写入本轮耐久消息与 SSE；History 和 SSE 共用前端 reducer / `paint()`，按 Step / Block 保留思考、工具与正文的原始顺序；Steer 会把后续 Step 放在用户消息之后。
+- 每轮生成 `RunID`，写入本轮耐久消息与 SSE；History Snapshot 和 SSE 共用前端 reducer / `paint()`。同一 Run 默认合并为一张助手卡，只有耐久 Steer 才切成前后片段；落账完成不会让实时卡片跳位。
 - Chat 支持普通发送、停止、Steer、FollowUp；FollowUp 的顺序由 Runner 按 Session 管理，不属于 Chat。
 - `Runner.Start` 同步占住 Session，再在 Runner 管理的 goroutine 运行；`Runner.Close` 会取消并等待仍在运行的 Run。
 - Runner 对界面只发布稳定事件：开始、文本/推理 Delta、工具开始/完成、耐久消息、结束状态。

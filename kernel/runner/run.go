@@ -303,7 +303,6 @@ func (r *Runner) checkpoint(
 		if err != nil {
 			return nil, err
 		}
-		current.setAfterEntrySeq(entry.Seq)
 		messages = append(messages, message)
 	}
 	return messages, nil

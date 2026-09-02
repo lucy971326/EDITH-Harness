@@ -384,6 +384,56 @@ func TestRunAnchorsToolEventsToOriginalAssistantBlock(t *testing.T) {
 	}
 }
 
+func TestRunKeepsInitialAnchorAfterSteer(t *testing.T) {
+	checkpointed := make(chan struct{})
+	continueRun := make(chan struct{})
+	loop := &runnerTestLoop{run: func(ctx context.Context, invocation loops.Invocation) error {
+		_, err := invocation.Checkpoint(ctx, loops.CheckpointContinue)
+		if err != nil {
+			return err
+		}
+		close(checkpointed)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-continueRun:
+		}
+		return invocation.Emit(ctx, loops.Event{Kind: loops.EventTextDelta, StepSeq: 2, BlockSeq: 1, Text: "continued"})
+	}}
+	fixture := newRunnerFixture(t, loop)
+	var afterEntrySeq uint64
+	_, err := events.Subscribe(fixture.events, func(_ context.Context, event RunEvent) error {
+		if event.Kind == TextDelta {
+			afterEntrySeq = event.AfterEntrySeq
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runDone := make(chan error, 1)
+	go func() {
+		runDone <- fixture.runner.Run(context.Background(), "session-1", textInput("question"))
+	}()
+	<-checkpointed
+	err = fixture.runner.Steer("session-1", textInput("steer"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	close(continueRun)
+	select {
+	case err = <-runDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("run did not finish")
+	}
+	if afterEntrySeq != 1 {
+		t.Fatalf("run anchor after steer = %d, want 1", afterEntrySeq)
+	}
+}
+
 func TestStateReportsLiveRunAfterInputIsDurable(t *testing.T) {
 	entered := make(chan struct{})
 	loop := &runnerTestLoop{run: func(ctx context.Context, _ loops.Invocation) error {
