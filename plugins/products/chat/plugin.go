@@ -78,11 +78,25 @@ func (p *Plugin) Start(h *host.Host) error {
 		return err
 	}
 	p.unlisten, err = events.Subscribe(eventRegistry, func(_ context.Context, event runner.RunEvent) error {
-		p.hub.publish(event)
+		p.hub.publishRun(event)
 		return nil
 	})
 	if err != nil {
 		return fmt.Errorf("chat: subscribe run events: %w", err)
+	}
+	unlistenDock, err := events.Subscribe(eventRegistry, func(_ context.Context, event DockChanged) error {
+		p.hub.publishDock(event)
+		return nil
+	})
+	if err != nil {
+		p.unlisten()
+		p.unlisten = nil
+		return fmt.Errorf("chat: subscribe dock events: %w", err)
+	}
+	unlistenRun := p.unlisten
+	p.unlisten = func() {
+		unlistenDock()
+		unlistenRun()
 	}
 	err = webService.RegisterProduct(chatProduct)
 	if err != nil {

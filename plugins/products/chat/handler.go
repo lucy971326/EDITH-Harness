@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -123,7 +124,14 @@ type pageView struct {
 	Model              string
 	ReasoningEffort    string
 	Panels             []PanelDefinition
+	Docks              []dockView
 	MessageActionsJSON string
+}
+
+// 数据。Chat 固定外壳与 Dock 插件内容组成的页面条目。
+type dockView struct {
+	Definition DockDefinition
+	Content    templ.Component
 }
 
 var selectWorkspace = chooseWorkspace
@@ -164,6 +172,13 @@ func (h *PageHandler) pageData(selectedID string) (pageView, error) {
 			return pageView{}, fmt.Errorf("chat: encode message actions: %w", err)
 		}
 		out.MessageActionsJSON = string(actionsJSON)
+		if selectedID != "" {
+			setup, err := h.settings.For(selectedID)
+			if err != nil {
+				return pageView{}, fmt.Errorf("chat: settings for %q: %w", selectedID, err)
+			}
+			out.Docks = h.dockViews(DockContext{SessionID: selectedID, Workspace: setup.Workspace})
+		}
 	}
 	if h.models != nil {
 		out.Models = h.models.Models()
@@ -186,6 +201,42 @@ func (h *PageHandler) pageData(selectedID string) (pageView, error) {
 		return out.Projects[i].Name < out.Projects[j].Name
 	})
 	return out, nil
+}
+
+func (h *PageHandler) dockViews(dockContext DockContext) []dockView {
+	if h.registry == nil {
+		return nil
+	}
+	definitions := h.registry.Docks()
+	views := make([]dockView, 0, len(definitions))
+	for _, definition := range definitions {
+		content, err := h.renderDock(dockContext, definition.ID)
+		if err != nil {
+			content = DockRenderError()
+		}
+		views = append(views, dockView{Definition: definition, Content: content})
+	}
+	return views
+}
+
+func (h *PageHandler) renderDock(dockContext DockContext, dockID string) (templ.Component, error) {
+	if h.registry == nil {
+		return nil, fmt.Errorf("chat: dock registry unavailable")
+	}
+	dock, ok := h.registry.Dock(dockID)
+	if !ok {
+		return nil, fmt.Errorf("chat: dock %q not registered", dockID)
+	}
+	return dock.Render(dockContext)
+}
+
+func renderComponent(component templ.Component) (string, error) {
+	var output bytes.Buffer
+	err := component.Render(context.Background(), &output)
+	if err != nil {
+		return "", err
+	}
+	return output.String(), nil
 }
 
 func (h *PageHandler) panel(w nethttp.ResponseWriter, r *nethttp.Request) {
@@ -375,6 +426,11 @@ func (h *PageHandler) events(w nethttp.ResponseWriter, r *nethttp.Request) {
 		nethttp.Error(w, "streaming unsupported", nethttp.StatusInternalServerError)
 		return
 	}
+	setup, err := h.settings.For(sessionID)
+	if err != nil {
+		nethttp.Error(w, err.Error(), nethttp.StatusInternalServerError)
+		return
+	}
 	queue, unsubscribe := h.hub.subscribe(sessionID)
 	defer unsubscribe()
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -382,6 +438,12 @@ func (h *PageHandler) events(w nethttp.ResponseWriter, r *nethttp.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	_, _ = w.Write([]byte(": connected\n\n"))
 	flusher.Flush()
+	dockContext := DockContext{SessionID: sessionID, Workspace: setup.Workspace}
+	for _, definition := range h.registry.Docks() {
+		if !h.writeDockEvent(w, flusher, dockContext, definition.ID) {
+			return
+		}
+	}
 	for {
 		select {
 		case <-r.Context().Done():
@@ -390,16 +452,59 @@ func (h *PageHandler) events(w nethttp.ResponseWriter, r *nethttp.Request) {
 			if !ok {
 				return
 			}
-			body, err := json.Marshal(timelineEventFromRun(event))
-			if err != nil {
-				return
+			if event.run != nil {
+				body, err := json.Marshal(timelineEventFromRun(*event.run))
+				if err != nil {
+					return
+				}
+				if err := writeSSE(w, "run", string(body)); err != nil {
+					return
+				}
+				flusher.Flush()
+				continue
 			}
-			if _, err := fmt.Fprintf(w, "event: run\ndata: %s\n\n", body); err != nil {
-				return
+			if event.dock != nil {
+				if !h.writeDockEvent(w, flusher, dockContext, event.dock.DockID) {
+					return
+				}
 			}
-			flusher.Flush()
 		}
 	}
+}
+
+func (h *PageHandler) writeDockEvent(w nethttp.ResponseWriter, flusher nethttp.Flusher, dockContext DockContext, dockID string) bool {
+	if h.registry == nil {
+		return true
+	}
+	if _, ok := h.registry.Dock(dockID); !ok {
+		return true
+	}
+	content, err := h.renderDock(dockContext, dockID)
+	if err != nil {
+		content = DockRenderError()
+	}
+	body, err := renderComponent(content)
+	if err != nil {
+		return true
+	}
+	if err := writeSSE(w, "dock-"+dockID, body); err != nil {
+		return false
+	}
+	flusher.Flush()
+	return true
+}
+
+func writeSSE(w nethttp.ResponseWriter, event string, data string) error {
+	if _, err := fmt.Fprintf(w, "event: %s\n", event); err != nil {
+		return err
+	}
+	for _, line := range strings.Split(data, "\n") {
+		if _, err := fmt.Fprintf(w, "data: %s\n", line); err != nil {
+			return err
+		}
+	}
+	_, err := fmt.Fprint(w, "\n")
+	return err
 }
 
 func (h *PageHandler) message(w nethttp.ResponseWriter, r *nethttp.Request) {
@@ -468,9 +573,6 @@ func (h *PageHandler) selectModel(sessionID, model, effort string) error {
 	setup, err := h.settings.For(sessionID)
 	if err != nil {
 		return err
-	}
-	if setup.Model != "" && setup.ReasoningEffort != "" {
-		return nil
 	}
 	if model == "" || effort == "" {
 		return fmt.Errorf("请先选择模型和思考档位")

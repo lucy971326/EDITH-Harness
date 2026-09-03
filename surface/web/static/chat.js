@@ -250,7 +250,7 @@
         state.running = (input.runs || []).length > 0;
         state.activeRunID = input.runs?.[0]?.runID || "";
         for (const run of input.runs || []) runFor(run.runID, run.afterEntrySeq);
-        for (const entry of input.entries) applyEntry(entry);
+        for (const entry of input.entries) applyEntry(entry, {}, true);
       } else applyEvent(input);
       paint();
     }
@@ -358,6 +358,7 @@
 
     document.addEventListener("htmx:sseBeforeMessage", (event) => {
       if (!root.contains(event.target)) return;
+	  if (event.detail.type !== "run") return;
       event.preventDefault();
       try {
         const item = JSON.parse(event.detail.data);

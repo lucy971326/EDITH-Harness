@@ -3,11 +3,12 @@ package chat
 // 活对象。registry 汇集 Chat 对外提供的页面插槽登记处。
 type registry struct {
 	panels  *PanelRegistry
+	docks   *DockRegistry
 	actions *messageActionRegistry
 }
 
 func newRegistry() *registry {
-	return &registry{panels: newPanelRegistry(), actions: newMessageActionRegistry()}
+	return &registry{panels: newPanelRegistry(), docks: newDockRegistry(), actions: newMessageActionRegistry()}
 }
 
 func (r *registry) RegisterPanel(panel Panel) error {
@@ -20,6 +21,18 @@ func (r *registry) Panels() []PanelDefinition {
 
 func (r *registry) Panel(id string) (Panel, bool) {
 	return r.panels.Panel(id)
+}
+
+func (r *registry) RegisterDock(dock Dock) error {
+	return r.docks.RegisterDock(dock)
+}
+
+func (r *registry) Docks() []DockDefinition {
+	return r.docks.Docks()
+}
+
+func (r *registry) Dock(id string) (Dock, bool) {
+	return r.docks.Dock(id)
 }
 
 func (r *registry) RegisterMessageAction(action MessageAction) error {

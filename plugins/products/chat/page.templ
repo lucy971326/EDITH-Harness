@@ -25,11 +25,54 @@ templ ChatPage(data pageView) {
 				</div>
 			</header>
 			if data.HasActive {
-				<section id="chat-root" class="flex min-h-0 flex-1 flex-col overflow-y-auto px-6" hx-ext="sse" sse-connect={ templ.URL("/chat/" + data.Selected.ID + "/events") } data-history={ templ.URL("/chat/" + data.Selected.ID + "/history") } data-message-actions={ data.MessageActionsJSON } data-message-action-url={ templ.URL("/chat/" + data.Selected.ID + "/message-actions/") }>
-					<div id="thread" class="mx-auto w-full max-w-3xl space-y-3 py-6"></div>
-					<p id="chat-status" class="mx-auto w-full max-w-3xl text-sm text-[var(--color-subtle)]"></p>
-					<div sse-swap="run" hidden></div>
+				<section id="chat-root" class="flex min-h-0 flex-1 flex-col" hx-ext="sse" sse-connect={ templ.URL("/chat/" + data.Selected.ID + "/events") } data-history={ templ.URL("/chat/" + data.Selected.ID + "/history") } data-message-actions={ data.MessageActionsJSON } data-message-action-url={ templ.URL("/chat/" + data.Selected.ID + "/message-actions/") }>
+					<section class="flex min-h-0 flex-1 flex-col overflow-y-auto px-6">
+						<div id="thread" class="mx-auto w-full max-w-3xl space-y-3 py-6"></div>
+						<p id="chat-status" class="mx-auto w-full max-w-3xl text-sm text-[var(--color-subtle)]"></p>
+						<div sse-swap="run" hidden></div>
+					</section>
+					if len(data.Docks) > 0 {
+						<section id="dock" class="mx-auto w-full max-w-3xl px-6 pb-3">
+							for _, dock := range data.Docks {
+								<details class="rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 text-sm">
+									<summary class="cursor-pointer font-medium">{ dock.Definition.Name }</summary>
+									<div class="pt-2" sse-swap={ "dock-" + dock.Definition.ID }>
+										@dock.Content
+									</div>
+								</details>
+							}
+						</section>
+					}
+					<div class="shrink-0 px-6 pb-6">
+						<form id="composer" action={ templ.URL("/chat/" + data.Selected.ID + "/messages") } method="post" class="mx-auto w-full max-w-3xl rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white p-3 shadow-sm">
+							<textarea name="text" rows="2" aria-label="消息" placeholder="输入消息" class="w-full resize-none border-0 bg-transparent px-1 text-sm outline-none placeholder:text-[var(--color-subtle)]"></textarea>
+							<div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-[var(--color-subtle)]">
+								<select name="model" id="model" class="rounded border border-[var(--color-border)] bg-white px-2 py-1">
+									<option value="">选择模型</option>
+									for _, model := range data.Models {
+										<option value={ model.ID } selected?={ data.Model == model.ID }>{ model.ID }</option>
+									}
+								</select>
+								<select name="reasoningEffort" id="reasoning-effort" class="rounded border border-[var(--color-border)] bg-white px-2 py-1">
+									<option value="">选择思考档位</option>
+									for _, model := range data.Models {
+										for _, effort := range model.ReasoningEfforts {
+											<option value={ effort } data-model={ model.ID } selected?={ data.Model == model.ID && data.ReasoningEffort == effort }>{ effort }</option>
+										}
+									}
+								</select>
+								<select id="live-mode" name="mode" class="hidden rounded border border-[var(--color-border)] bg-white px-2 py-1">
+									<option value="steer">插话 Steer</option>
+									<option value="followup">下一轮 FollowUp</option>
+								</select>
+								<button id="send-button" name="mode" value="run" type="submit" class="ml-auto rounded-lg bg-[var(--color-accent)] px-4 py-2 font-medium text-white">发送</button>
+								<button id="live-send" type="submit" class="ml-auto hidden rounded-lg border border-[var(--color-border)] px-4 py-2 font-medium">提交</button>
+								<button id="stop-button" type="button" data-stop={ templ.URL("/chat/" + data.Selected.ID + "/stop") } class="hidden rounded-lg bg-red-700 px-4 py-2 font-medium text-white">停止</button>
+							</div>
+						</form>
+					</div>
 				</section>
+				<script src="/static/chat.js"></script>
 			} else {
 				<section class="flex min-h-0 flex-1 items-center justify-center px-6">
 					<div class="max-w-md text-center">
@@ -43,37 +86,6 @@ templ ChatPage(data pageView) {
 						}
 					</div>
 				</section>
-			}
-			if data.HasActive {
-				<div class="shrink-0 px-6 pb-6">
-					<form id="composer" action={ templ.URL("/chat/" + data.Selected.ID + "/messages") } method="post" class="mx-auto w-full max-w-3xl rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white p-3 shadow-sm">
-						<textarea name="text" rows="2" aria-label="消息" placeholder="输入消息" class="w-full resize-none border-0 bg-transparent px-1 text-sm outline-none placeholder:text-[var(--color-subtle)]"></textarea>
-						<div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-[var(--color-subtle)]">
-							<select name="model" id="model" class="rounded border border-[var(--color-border)] bg-white px-2 py-1" disabled?={ data.Model != "" }>
-								<option value="">选择模型</option>
-								for _, model := range data.Models {
-									<option value={ model.ID } selected?={ data.Model == model.ID }>{ model.ID }</option>
-								}
-							</select>
-							<select name="reasoningEffort" id="reasoning-effort" class="rounded border border-[var(--color-border)] bg-white px-2 py-1" disabled?={ data.ReasoningEffort != "" }>
-								<option value="">选择思考档位</option>
-								for _, model := range data.Models {
-									for _, effort := range model.ReasoningEfforts {
-										<option value={ effort } data-model={ model.ID } selected?={ data.Model == model.ID && data.ReasoningEffort == effort }>{ effort }</option>
-									}
-								}
-							</select>
-							<select id="live-mode" name="mode" class="hidden rounded border border-[var(--color-border)] bg-white px-2 py-1">
-								<option value="steer">插话 Steer</option>
-								<option value="followup">下一轮 FollowUp</option>
-							</select>
-							<button id="send-button" name="mode" value="run" type="submit" class="ml-auto rounded-lg bg-[var(--color-accent)] px-4 py-2 font-medium text-white">发送</button>
-							<button id="live-send" type="submit" class="ml-auto hidden rounded-lg border border-[var(--color-border)] px-4 py-2 font-medium">提交</button>
-							<button id="stop-button" type="button" data-stop={ templ.URL("/chat/" + data.Selected.ID + "/stop") } class="hidden rounded-lg bg-red-700 px-4 py-2 font-medium text-white">停止</button>
-						</div>
-					</form>
-				</div>
-				<script src="/static/chat.js"></script>
 			}
 		</div>
 		if data.HasActive {
@@ -124,4 +136,8 @@ templ ChatNavigation(data pageView) {
 			}
 		</section>
 	}
+}
+
+templ DockRenderError() {
+	<p class="text-xs text-red-700">暂时无法加载</p>
 }

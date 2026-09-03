@@ -36,6 +36,31 @@ type Panel interface {
 	Render(PanelContext, PanelTab) (templ.Component, error)
 }
 
+// 数据。一个已登记 Dock 条目的静态身份。
+type DockDefinition struct {
+	ID    string
+	Name  string
+	Order int
+}
+
+// 数据。渲染 Dock 所需的当前会话事实。
+type DockContext struct {
+	SessionID string
+	Workspace string
+}
+
+// 契约。一个可填入 Chat 输入框上方的持续状态条目。
+type Dock interface {
+	Definition() DockDefinition
+	Render(DockContext) (templ.Component, error)
+}
+
+// 数据。一个 Dock 条目的状态已经变化。
+type DockChanged struct {
+	SessionID string
+	DockID    string
+}
+
 // 数据。一张消息卡片的类型。
 type MessageCardType string
 
@@ -79,11 +104,14 @@ type MessageAction interface {
 	Execute(context.Context, MessageActionContext) (MessageActionResult, error)
 }
 
-// 契约。Chat 提供给面板和消息动作插件的登记处。
+// 契约。Chat 提供给页面插槽插件的登记处。
 type Service interface {
 	RegisterPanel(Panel) error
 	Panels() []PanelDefinition
 	Panel(id string) (Panel, bool)
+	RegisterDock(Dock) error
+	Docks() []DockDefinition
+	Dock(id string) (Dock, bool)
 	RegisterMessageAction(MessageAction) error
 	MessageActions() []MessageActionDefinition
 	MessageAction(id string) (MessageAction, bool)

@@ -40,6 +40,18 @@ func (*chatService) Panel(string) (chat.Panel, bool) {
 	return nil, false
 }
 
+func (*chatService) RegisterDock(chat.Dock) error {
+	return nil
+}
+
+func (*chatService) Docks() []chat.DockDefinition {
+	return nil
+}
+
+func (*chatService) Dock(string) (chat.Dock, bool) {
+	return nil, false
+}
+
 func (*chatService) RegisterMessageAction(chat.MessageAction) error {
 	return nil
 }

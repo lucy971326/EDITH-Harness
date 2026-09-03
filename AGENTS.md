@@ -6,6 +6,20 @@
 
 `learn/reference/` 默认不要改。用户叫写才写。
 
+### 参考资料与查阅规则
+
+`reference/` 目录存放第三方技术文档与参考项目：
+
+1. **技术文档**：
+   - 不懂 HTMX：查阅 `reference/htmx/`
+   - 不懂 Templ：查阅 `reference/templ/`
+
+2. **参考项目（DSH 与 pi）**：
+   - 路径：`reference/deepseek-harness/` 和 `reference/pi/`
+   - 两个参考项目的源码已建立 `codegraph` 索引。
+   - **查阅优先级**：`项目文档 (docs) > codegraph 查源码 > 直接读源码`
+   - 提醒：参考项目仅供对照设计思路，不照抄其具体实现。
+
 ---
 
 ## 原则
