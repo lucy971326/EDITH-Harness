@@ -130,7 +130,14 @@ templ ChatNavigation(data pageView) {
 	</div>
 	for _, project := range data.Projects {
 		<section class="mb-3">
-			<p class="truncate px-2 text-xs font-medium text-[var(--color-subtle)]" title={ project.Workspace }>{ project.Name }</p>
+			<div class="flex items-center justify-between gap-2 px-2">
+				<p class="min-w-0 truncate text-xs font-medium text-[var(--color-subtle)]" title={ project.Workspace }>{ project.Name }</p>
+				if len(project.Sessions) > 0 {
+					<form method="post" action={ templ.URL("/chat/" + project.Sessions[0].ID + "/sessions") }>
+						<button type="submit" aria-label={ "在 " + project.Name + " 新建对话" } title="新建对话" class="rounded px-1.5 py-0.5 text-sm text-[var(--color-subtle)] hover:bg-white hover:text-[var(--color-text)]">＋</button>
+					</form>
+				}
+			</div>
 			for _, item := range project.Sessions {
 				<a
 					href={ templ.SafeURL("/chat/" + item.ID) }

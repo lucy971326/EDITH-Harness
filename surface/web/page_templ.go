@@ -145,7 +145,7 @@ func Page(products []Product, currentID string, navigation templ.Component, cont
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "\"><span aria-hidden=\"true\" class=\"w-4 text-center\">⚙</span> 设置</a><div class=\"mt-2 text-xs text-[var(--color-subtle)]\">阶段 4 · 页面插槽</div></div></aside>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "\"><span aria-hidden=\"true\" class=\"w-4 text-center\">⚙</span> 设置</a></div></aside>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -378,7 +378,7 @@ func SettingsNav(sections []SettingsSectionDefinition, currentSectionID string, 
 				var templ_7745c5c3_Var16 templ.SafeURL
 				templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/settings/" + section.ID))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `surface/web/page.templ`, Line: 113, Col: 52}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `surface/web/page.templ`, Line: 112, Col: 52}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 				if templ_7745c5c3_Err != nil {
@@ -391,7 +391,7 @@ func SettingsNav(sections []SettingsSectionDefinition, currentSectionID string, 
 				var templ_7745c5c3_Var17 string
 				templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.URL("/settings/" + section.ID))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `surface/web/page.templ`, Line: 114, Col: 50}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `surface/web/page.templ`, Line: 113, Col: 50}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var17)
 				if templ_7745c5c3_Err != nil {
@@ -417,7 +417,7 @@ func SettingsNav(sections []SettingsSectionDefinition, currentSectionID string, 
 				var templ_7745c5c3_Var19 string
 				templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(section.Title)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `surface/web/page.templ`, Line: 124, Col: 20}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `surface/web/page.templ`, Line: 123, Col: 20}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 				if templ_7745c5c3_Err != nil {

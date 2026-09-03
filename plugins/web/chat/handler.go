@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/a-h/templ"
@@ -35,6 +36,7 @@ type PageHandler struct {
 	models   *llm.Client
 	hub      *eventHub
 	registry Service
+	createMu sync.Mutex
 }
 
 func newPageHandler(
@@ -57,6 +59,9 @@ func (h *PageHandler) ServeHTTP(w nethttp.ResponseWriter, r *nethttp.Request) {
 	switch {
 	case r.Method == nethttp.MethodPost && r.URL.Path == "/chat/projects":
 		h.createProject(w, r)
+		return
+	case r.Method == nethttp.MethodPost && strings.HasSuffix(r.URL.Path, "/sessions"):
+		h.createSessionInProject(w, r)
 		return
 	case r.Method == nethttp.MethodGet && strings.HasSuffix(r.URL.Path, "/history"):
 		h.history(w, r)
@@ -408,6 +413,32 @@ func (h *PageHandler) createProject(w nethttp.ResponseWriter, r *nethttp.Request
 		h.renderError(w, r, err)
 		return
 	}
+	h.createSession(w, r, workspace)
+}
+
+func (h *PageHandler) createSessionInProject(w nethttp.ResponseWriter, r *nethttp.Request) {
+	setup, err := h.settings.For(r.PathValue("sessionID"))
+	if err != nil {
+		nethttp.Error(w, "未找到该项目", nethttp.StatusNotFound)
+		return
+	}
+	h.createSession(w, r, setup.Workspace)
+}
+
+func (h *PageHandler) createSession(w nethttp.ResponseWriter, r *nethttp.Request, workspace string) {
+	h.createMu.Lock()
+	defer h.createMu.Unlock()
+
+	existingID, err := h.emptySessionIn(workspace)
+	if err != nil {
+		h.renderError(w, r, err)
+		return
+	}
+	if existingID != "" {
+		nethttp.Redirect(w, r, "/chat/"+existingID, nethttp.StatusSeeOther)
+		return
+	}
+
 	id, err := newSessionID()
 	if err != nil {
 		h.renderError(w, r, err)
@@ -426,6 +457,30 @@ func (h *PageHandler) createProject(w nethttp.ResponseWriter, r *nethttp.Request
 		return
 	}
 	nethttp.Redirect(w, r, "/chat/"+id, nethttp.StatusSeeOther)
+}
+
+func (h *PageHandler) emptySessionIn(workspace string) (string, error) {
+	metas, err := h.sessions.List()
+	if err != nil {
+		return "", fmt.Errorf("读取会话失败：%w", err)
+	}
+	for _, meta := range metas {
+		setup, err := h.settings.For(meta.ID)
+		if err != nil {
+			return "", fmt.Errorf("读取会话设置失败：%w", err)
+		}
+		if setup.Workspace != workspace {
+			continue
+		}
+		sess, err := h.sessions.Get(meta.ID)
+		if err != nil {
+			return "", fmt.Errorf("读取会话失败：%w", err)
+		}
+		if len(sess.Entries()) == 0 {
+			return meta.ID, nil
+		}
+	}
+	return "", nil
 }
 
 func (h *PageHandler) history(w nethttp.ResponseWriter, r *nethttp.Request) {
