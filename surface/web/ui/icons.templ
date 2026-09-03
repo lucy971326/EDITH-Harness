@@ -9,6 +9,7 @@ const (
 	IconClose    IconName = "close"
 	IconChat     IconName = "chat"
 	IconPanel    IconName = "panel"
+	IconSidebar  IconName = "sidebar"
 	IconZap      IconName = "zap"
 )
 
@@ -36,6 +37,11 @@ templ Icon(name IconName) {
 		<svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
 			<rect x="3" y="3" width="18" height="18" rx="2"/>
 			<path d="M15 3v18"/>
+		</svg>
+	case IconSidebar:
+		<svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+			<rect x="3" y="3" width="18" height="18" rx="2"/>
+			<path d="M9 3v18"/>
 		</svg>
 	case IconZap:
 		<svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">

@@ -20,12 +20,15 @@ templ Page(products []Product, currentID string, navigation templ.Component, con
 		</head>
 		<body class="ui-page">
 			<div class="min-h-screen p-2">
-				<div class="ui-shell flex h-[calc(100vh-1rem)] overflow-hidden">
-					<aside class="ui-panel flex w-[var(--sidebar-width)] shrink-0 flex-col border-r border-[var(--ui-color-border)] p-3">
-						<a href="/" class="mb-5 flex items-center gap-2 px-1 ui-text-body font-semibold no-underline">
+				<div id="app-shell" class="ui-shell flex h-[calc(100vh-1rem)] overflow-hidden">
+					<aside id="sidebar" class="ui-panel flex w-[var(--sidebar-width)] shrink-0 flex-col border-r border-[var(--ui-color-border)] p-3">
+						<div class="sidebar-brand mb-5 flex items-center justify-between gap-2 px-1">
+							<a href="/" class="flex items-center gap-2 ui-text-body font-semibold no-underline" aria-label="Harness 首页">
 							<span class="ui-brand-mark">H</span>
-							Harness
-						</a>
+								<span class="sidebar-label">Harness</span>
+							</a>
+							<button id="sidebar-toggle" type="button" aria-label="收起侧栏" aria-expanded="true" class="ui-icon-button">@ui.Icon(ui.IconSidebar)</button>
+						</div>
 						<nav aria-label="产品" class="space-y-1">
 							for _, product := range products {
 								<a
@@ -40,7 +43,7 @@ templ Page(products []Product, currentID string, navigation templ.Component, con
 									}
 								>
 									@ui.Icon(product.Icon)
-									{ product.Name }
+									<span class="sidebar-label">{ product.Name }</span>
 								</a>
 							}
 						</nav>
@@ -58,13 +61,14 @@ templ Page(products []Product, currentID string, navigation templ.Component, con
 								}
 							>
 								@ui.Icon(ui.IconSettings)
-								设置
+								<span class="sidebar-label">设置</span>
 							</a>
 						</div>
 					</aside>
 					@Main(content)
 				</div>
 			</div>
+			<script src="/static/sidebar.js"></script>
 		</body>
 	</html>
 }
