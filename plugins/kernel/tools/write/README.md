@@ -1,22 +1,16 @@
 # write
 
-【它是什么】完整覆写文本文件的 Tool 插件。
+【它是什么】完整写入文本文件的 Tool 插件。
 
-【提供能力】不注册整份服务。
+【使用能力】
 
-【使用能力】Resolve `machine`、`tools`。
+- `machine`：在工作区写入文件，通常由 `machine-local` 提供；
+- `tools`：登记自身。
+
+【提供能力】不注册整份服务；提供 `write` Tool。
 
 【填充插槽】向 `tools` 登记 `write`。
 
-## 代码主干
+【谁在用】`react` 通过 `tools` 在模型请求时调用它。
 
-```text
-模型参数 Path + Content
-  → 相对路径从 Workspace 起算
-  → machine.WriteFile
-  → 返回写入字节数
-```
-
-本机 machine 会创建缺失的父目录；已有文件会被整体替换。
-
-`plugin.go` 负责登记；`write.go` 定义参数和执行逻辑。
+【不做】不管理文件版本；已有文件会由 `machine` 按调用参数整体写入。

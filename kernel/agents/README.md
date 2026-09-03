@@ -2,24 +2,15 @@
 
 【它是什么】Agent 设置插件。
 
-【提供能力】注册整份服务 `agents`，管理默认与自建 Agent。
+【使用能力】
 
-【使用能力】Resolve `agentStore`、`loops`、`tools`、`skills`。
+- `agentStore`：读取和保存 Agent 设置，由 `persist` 提供；
+- `loops`、`tools`、`skills`：校验 Kind、Tool、Skill 名称，并取得本轮所需事实。
+
+【提供能力】注册服务 `agents`：保存设置，并在每轮 `Prepare` 时产出 Kind、Tool 名单与最终 System Prompt。
 
 【填充插槽】不填。
 
-## 代码主干
+【谁在用】`runner` 每轮调用 `Prepare`，再交给选中的 Loop。
 
-```text
-Save
-  → 校验 Kind / Tool / Skill 名
-  → 写入 agentStore
-
-Prepare(AgentID, Workspace)
-  → 读取实时 Agent 设置
-  → 取得最新 Skill 摘要
-  → 拼 SystemPrompt + Skills + Workspace
-  → 返回 Kind + Tool 名单 + 最终提示词
-```
-
-默认 Agent 实时使用当前全部 Tool 和 Skill；自建 Agent 使用所选子集。
+【不做】不运行 Loop、不写账本、不把提示词另存进 Session。

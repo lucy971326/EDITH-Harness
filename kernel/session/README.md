@@ -2,21 +2,12 @@
 
 【它是什么】对话账本插件。
 
-【提供能力】注册整份服务 `sessions`，用于创建、取得和列出账本。
+【使用能力】Resolve `sessionPersistence`：读写账本节点与会话元数据，由 `persist` 提供。
 
-【使用能力】Resolve `sessionPersistence`。
+【提供能力】注册服务 `sessions`：创建、取得、列出、读取当前分叉，以及移动分叉 Head。
 
 【填充插槽】不填。
 
-## 代码主干
+【谁在用】`runner` 追加对话事实；`chat` 创建、列出和展示会话。
 
-```text
-Store.Get / Create
-  → 得到一本 Session
-  → Append：在当前 Head 后追加节点、分配不复用的 Seq 并写盘
-  → 首条用户消息成功落账后，把「新对话」自动命名
-  → History：沿父链读取当前分叉
-  → Branch：只移动 Head
-```
-
-元数据文件是会话存在的依据；空会话没有账本文件也能 Get/List。`Entries()` 提供当前分叉的 `ID / ParentID / Seq / Message` 投影；缺少 `Seq` 的旧账本明确拒绝加载，不静默混用。Session 只记对话；不负责事件通知、模型调用和 SessionSettings。
+【不做】不调用模型、不发布事件、不保存 UI、Todo 或其他业务状态。Session 只记对话。

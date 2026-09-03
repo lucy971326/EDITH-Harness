@@ -1,24 +1,13 @@
 # machine-local
 
-【它是什么】本机版 `machine` 提供者插件。
+【它是什么】本机 `machine` 服务提供者插件。
 
-【提供能力】注册整份服务 `machine`，实现读文件、写文件、运行进程。
+【使用能力】不 Resolve 其他服务。
 
-【使用能力】无。
+【提供能力】注册服务 `machine`：读文件、写文件、在工作区启动本机进程。
 
 【填充插槽】不填。
 
-## 代码主干
+【谁在用】`read`、`write`、`edit`、`bash` 四个 Tool 插件调用它完成真实操作。
 
-```text
-Start
-  → 查找 bash（Windows 优先 Git Bash）
-  → RegisterService("machine", local)
-
-ReadFile / WriteFile  → 本机文件系统
-Run(dir, argv)        → 在 dir 下启动进程
-```
-
-`bash` 参数会替换为找到的真实路径；插件不限制文件访问范围。
-
-`plugin.go` 负责装卸；`local.go` 负责实际操作。
+【不做】不决定哪些 Tool 可用，也不限制本机文件访问范围。

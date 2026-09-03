@@ -2,25 +2,12 @@
 
 【它是什么】模型流式调用插件。
 
-【提供能力】注册整份服务 `llm`，提供 `Client.Models` 和 `Client.Stream`。
+【使用能力】不 Resolve Host 服务；启动时读取 `~/.harness/config.yaml` 与内置模型清单。
 
-【使用能力】不 Resolve 其他 Host 服务。
+【提供能力】注册服务 `llm`：`Models()` 返回可选模型/思考档位，`Stream()` 执行一次模型流。
 
 【填充插槽】不填。
 
-## 代码主干
+【谁在用】`react` 用 `Stream()` 调模型；`chat` 用 `Models()` 画选择框。
 
-```text
-Start
-  → 读取 ~/.harness/config.yaml
-  → 加载内置 models.json
-  → RegisterService("llm", client)
-
-Stream
-  → 校验模型与思考档位
-  → 转换历史和 Tool Schema
-  → 调 goai
-  → 返回流事件
-```
-
-`Models()` 只列出本机已配置 Provider 支持的模型及思考档位，供 Chat 首次选择；Chat 不读取或硬编码 `models.json`。模型与思考档位仍由本次 `RunConfig` 决定，不保存在 Client 中。
+【不做】不保存会话、不决定本轮配置、不直接写页面。

@@ -1,25 +1,17 @@
 # react
 
-【它是什么】默认的 ReAct 运行范式插件。
+【它是什么】默认 ReAct 运行范式插件。
 
-【提供能力】不注册整份服务。
+【使用能力】
 
-【使用能力】Resolve `llm`、`tools`、`loops`。
+- `llm`：流式调用模型；
+- `tools`：取得本轮 Tool Schema，并执行模型请求的 Tool；
+- `loops`：登记自身。
 
-【填充插槽】向 `loops` 登记 `react`。
+【提供能力】不注册整份服务；提供可运行的 `react` Loop。
 
-## 代码主干
+【填充插槽】向 `loops` 登记 `react` Kind。
 
-```text
-Runner 传入 Invocation
-  → 取得本轮 Tool Schema
-  → llm.Stream
-  → Emit 带 StepSeq / BlockSeq 的 Delta 和完整 assistant 消息
-  → 顺序执行 Tool，并 Emit 结果
-  → Checkpoint 接收 Steer
-  → 无 Tool、无 Steer时结束
-```
+【谁在用】`runner` 根据 Agent 的 Kind 取出并执行它。
 
-最终 Checkpoint 会关闭 Steer 入口，避免消息成功入队后丢失。
-
-它不读取 SessionSettings、不写账本；落账由 Runner 负责。
+【不做】不读 SessionSettings、不写账本、不直接向浏览器发事件。

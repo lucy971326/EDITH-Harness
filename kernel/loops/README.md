@@ -2,19 +2,12 @@
 
 【它是什么】运行范式登记处插件。
 
-【提供能力】注册登记处服务 `loops`。
+【使用能力】不 Resolve 其他服务。
 
-【使用能力】无。
+【提供能力】注册登记处服务 `loops`：按 Kind 保存可复用的 `Loop` 程序。
 
-【填充插槽】自身不填；React、Graph 等插件来登记。
+【填充插槽】自身不填；`react` 等运行范式插件向它登记。
 
-## 代码主干
+【谁在用】`agents` 校验 Agent 选用的 Kind；`runner` 按本轮 Agent 的 Kind 取出并运行 Loop。
 
-```text
-Register(Loop) → 按 Kind 登记
-Get(Kind)      → Runner 取得一种 Loop
-Loop.Run       → 消费 Invocation，产出 Event
-Checkpoint     → 安全位置接收 Steer
-```
-
-登记的是可复用程序；正在运行的活 Run 在 Runner 中。
+【不做】不拥有某场 Run；活 Run 永远由 `runner` 管理。
