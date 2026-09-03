@@ -1,13 +1,14 @@
 package runner
 
 import (
+	"context"
 	"fmt"
 
 	"harness/kernel/loops"
 	"harness/kernel/session"
 )
 
-// Steer 把一条用户输入暂存到当前 Run 的下一个检查点。
+// Steer 先把一条用户输入落账，再交给当前 Run 的下一个检查点。
 func (r *Runner) Steer(sessionID string, input session.UserMessage) error {
 	current, err := r.current(sessionID)
 	if err != nil {
@@ -15,11 +16,36 @@ func (r *Runner) Steer(sessionID string, input session.UserMessage) error {
 	}
 
 	current.mu.Lock()
-	defer current.mu.Unlock()
-	if current.steeringClosed {
+	if current.steeringClosed || current.runID == "" {
+		current.mu.Unlock()
 		return fmt.Errorf("runner: session %q is not running", sessionID)
 	}
-	current.steers = append(current.steers, session.UserMessage{Blocks: cloneBlocks(input.Blocks)})
+	message := messageFromInput(current.runID, input)
+	entry, err := r.sessions.Get(sessionID)
+	if err != nil {
+		current.mu.Unlock()
+		return err
+	}
+	durable, err := entry.Append(message)
+	if err != nil {
+		current.mu.Unlock()
+		return err
+	}
+	current.steers = append(current.steers, message)
+	afterEntrySeq := current.afterEntrySeq
+	current.mu.Unlock()
+
+	err = r.publish(context.Background(), RunEvent{
+		SessionID:     sessionID,
+		RunID:         message.RunID,
+		Kind:          Message,
+		AfterEntrySeq: afterEntrySeq,
+		Entry:         &durable,
+	})
+	if err != nil {
+		current.stop()
+		return err
+	}
 	return nil
 }
 
@@ -67,7 +93,7 @@ func (r *Runner) State(sessionID string) (RunState, bool) {
 	return current.state(), true
 }
 
-func (r *liveRun) takeSteers(phase loops.CheckpointPhase) ([]session.UserMessage, error) {
+func (r *liveRun) takeSteers(phase loops.CheckpointPhase) ([]session.Message, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if phase != loops.CheckpointContinue && phase != loops.CheckpointFinal {
@@ -103,22 +129,21 @@ func (r *liveRun) setCancel(cancel func()) {
 	}
 }
 
-func (r *liveRun) openSteering() {
+func (r *liveRun) openSteering(runID string) bool {
 	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closing {
+		return false
+	}
 	r.stopped = false
 	r.steeringClosed = false
-	r.mu.Unlock()
+	r.runID = runID
+	return true
 }
 
 func (r *liveRun) setAfterEntrySeq(seq uint64) {
 	r.mu.Lock()
 	r.afterEntrySeq = seq
-	r.mu.Unlock()
-}
-
-func (r *liveRun) setRunID(id string) {
-	r.mu.Lock()
-	r.runID = id
 	r.mu.Unlock()
 }
 
@@ -160,6 +185,17 @@ func (r *liveRun) toolBlockForMessage(message session.Message, stepSeq, blockSeq
 
 func (r *liveRun) stop() {
 	r.mu.Lock()
+	r.stopped = true
+	cancel := r.cancel
+	r.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+}
+
+func (r *liveRun) shutdown() {
+	r.mu.Lock()
+	r.closing = true
 	r.stopped = true
 	cancel := r.cancel
 	r.mu.Unlock()

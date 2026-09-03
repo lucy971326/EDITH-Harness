@@ -21,9 +21,10 @@ type liveRun struct {
 	mu              sync.Mutex
 	cancel          context.CancelFunc
 	stopped         bool
+	closing         bool
 	steeringClosed  bool
 	followUpsClosed bool
-	steers          []session.UserMessage
+	steers          []session.Message
 	followUps       []session.UserMessage
 	afterEntrySeq   uint64
 	runID           string
@@ -132,7 +133,9 @@ func (r *Runner) runOne(parent context.Context, sessionID string, input session.
 	if err != nil {
 		return err
 	}
-	current.openSteering()
+	if !current.openSteering(runID) {
+		return context.Canceled
+	}
 	runCtx, cancel := context.WithCancel(parent)
 	current.setCancel(cancel)
 	defer cancel()
@@ -160,7 +163,6 @@ func (r *Runner) runOne(parent context.Context, sessionID string, input session.
 		return err
 	}
 	current.setAfterEntrySeq(entry.Seq)
-	current.setRunID(runID)
 	if err = r.publish(runCtx, RunEvent{SessionID: sessionID, RunID: runID, Kind: Message, Entry: &entry}); err != nil {
 		return err
 	}
@@ -199,8 +201,8 @@ func (r *Runner) runOne(parent context.Context, sessionID string, input session.
 		Emit: func(eventCtx context.Context, event loops.Event) error {
 			return r.emit(eventCtx, sessionID, runID, sess, current, event)
 		},
-		Checkpoint: func(checkpointCtx context.Context, phase loops.CheckpointPhase) ([]session.Message, error) {
-			return r.checkpoint(checkpointCtx, sessionID, runID, sess, current, phase)
+		Checkpoint: func(_ context.Context, phase loops.CheckpointPhase) ([]session.Message, error) {
+			return r.checkpoint(current, phase)
 		},
 	}
 	return loop.Run(runCtx, invocation)
@@ -280,30 +282,10 @@ func (r *Runner) publish(ctx context.Context, event RunEvent) error {
 	return events.Publish(ctx, r.events, event)
 }
 
-func (r *Runner) checkpoint(
-	ctx context.Context,
-	sessionID string,
-	runID string,
-	sess *session.Session,
-	current *liveRun,
-	phase loops.CheckpointPhase,
-) ([]session.Message, error) {
-	inputs, err := current.takeSteers(phase)
+func (r *Runner) checkpoint(current *liveRun, phase loops.CheckpointPhase) ([]session.Message, error) {
+	messages, err := current.takeSteers(phase)
 	if err != nil {
 		return nil, err
-	}
-	messages := make([]session.Message, 0, len(inputs))
-	for _, input := range inputs {
-		message := messageFromInput(runID, input)
-		entry, err := sess.Append(message)
-		if err != nil {
-			return nil, err
-		}
-		err = r.publish(ctx, RunEvent{SessionID: sessionID, RunID: runID, Kind: Message, AfterEntrySeq: current.afterSeq(), Entry: &entry})
-		if err != nil {
-			return nil, err
-		}
-		messages = append(messages, message)
 	}
 	return messages, nil
 }
@@ -317,7 +299,7 @@ func (r *Runner) close() {
 	}
 	r.mu.Unlock()
 	for _, current := range runs {
-		current.stop()
+		current.shutdown()
 	}
 	r.wg.Wait()
 }

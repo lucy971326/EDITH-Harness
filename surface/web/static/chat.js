@@ -160,17 +160,19 @@
       run.pendingResults.set(result.id, result);
     }
 
-    function registerAssistant(run, entry, event) {
+    function registerAssistant(run, entry, event, durable) {
       const maxSeq = Number(entry.seq) || Number.POSITIVE_INFINITY;
       const segment = segmentFor(run, maxSeq);
       let stepSeq = Number(event.stepSeq) || 0;
       if (!stepSeq) {
-        for (const candidate of segment.steps.values()) stepSeq = Math.max(stepSeq, candidate.seq);
+        for (const candidateSegment of run.segments.values()) {
+          for (const candidate of candidateSegment.steps.values()) stepSeq = Math.max(stepSeq, candidate.seq);
+        }
         stepSeq++;
       }
       const step = stepFor(segment, stepSeq);
       for (const [index, block] of (entry.message.blocks || []).entries()) {
-        const merged = mergeBlock(step, index + 1, { ...block });
+        const merged = mergeBlock(step, index + 1, { ...block, durable });
         if (merged.kind === "tool-call" && merged.tool?.id) {
           const result = run.pendingResults.get(merged.tool.id);
           if (result) {
@@ -181,14 +183,14 @@
       }
     }
 
-    function applyEntry(entry, event = {}) {
+    function applyEntry(entry, event = {}, durable = false) {
       if (!entry?.id || state.entries.has(entry.id)) return;
       state.entries.set(entry.id, entry);
       const message = entry.message || {};
       if (!message.runID || (message.role !== "assistant" && message.role !== "tool")) return;
       const run = runFor(message.runID, event.afterEntrySeq || Math.max(0, entry.seq - 1));
       if (message.role === "assistant") {
-        registerAssistant(run, entry, event);
+        registerAssistant(run, entry, event, durable);
         return;
       }
       const result = (message.blocks || []).find((block) => block.kind === "tool-result")?.result;
@@ -214,6 +216,7 @@
         const step = stepFor(segment, event.stepSeq);
         const kind = event.kind === "text-delta" ? "text" : "reasoning";
         const block = blockFor(step, event.blockSeq, kind);
+        if (block.durable) return;
         if (block.kind === kind) block.text = (block.text || "") + (event.text || "");
         else step.blocks.set(Number(event.blockSeq) || 1, { seq: Number(event.blockSeq) || 1, kind, text: event.text || "" });
         return;

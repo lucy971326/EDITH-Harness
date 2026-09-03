@@ -120,7 +120,7 @@ func Page(products []Product, currentID string, navigation templ.Component, cont
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<div class=\"border-t border-[var(--color-border)] pt-3 text-xs text-[var(--color-subtle)]\">阶段 2 · 项目与会话</div></aside>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<div class=\"border-t border-[var(--color-border)] pt-3 text-xs text-[var(--color-subtle)]\">阶段 4 · 页面插槽</div></aside>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

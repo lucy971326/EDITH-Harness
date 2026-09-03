@@ -266,6 +266,35 @@ func TestMessageSelectsModelAndHistoryReturnsLedger(t *testing.T) {
 	}
 }
 
+func TestSelectModelReplacesSettingsForNextRun(t *testing.T) {
+	h, _ := installChat(t)
+	defer h.Close()
+	settingsStore, err := host.Resolve[settings.SessionSettingsStore](h, "sessionSettings")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := settingsStore.Put("session-1", settings.SessionSettings{
+		AgentID: agents.DefaultID, Workspace: t.TempDir(), Model: "deepseek/deepseek-v4-flash", ReasoningEffort: "high",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	models, err := host.Resolve[*llm.Client](h, "llm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := &PageHandler{settings: settingsStore, models: models}
+	if err := handler.selectModel("session-1", "deepseek/deepseek-v4-pro", "low"); err != nil {
+		t.Fatal(err)
+	}
+	setup, err := settingsStore.For("session-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if setup.Model != "deepseek/deepseek-v4-pro" || setup.ReasoningEffort != "low" {
+		t.Fatalf("settings = %#v", setup)
+	}
+}
+
 func TestMessageAcceptsURLencodedForm(t *testing.T) {
 	h, webPlugin := installChat(t)
 	defer h.Close()

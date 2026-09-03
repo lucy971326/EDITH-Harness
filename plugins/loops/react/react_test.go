@@ -252,6 +252,39 @@ func TestReactReturnsMalformedToolArgumentsToModel(t *testing.T) {
 	}
 }
 
+func TestReactPersistsCancelledToolResult(t *testing.T) {
+	registry := tools.NewRegistry()
+	if err := registry.Register(tools.New("echo", "Echo a value.", func(context.Context, tools.Call, echoArgs) (tools.Result, error) {
+		return tools.Result{Content: "unexpected"}, nil
+	})); err != nil {
+		t.Fatal(err)
+	}
+	loop := &reactLoop{tools: registry}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var events []loops.Event
+	message, err := loop.execute(ctx, loops.Invocation{
+		ToolNames: []string{"echo"},
+		Emit: func(_ context.Context, event loops.Event) error {
+			events = append(events, event)
+			return nil
+		},
+	}, session.ToolCall{ID: "call_1", Name: "echo", Args: `{"value":"hello"}`}, 1, 1)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("execute error = %v", err)
+	}
+	result := message.Blocks[0].Result
+	if result == nil || !result.IsError || result.Content != "已取消" {
+		t.Fatalf("tool result = %#v", result)
+	}
+	if len(events) != 3 || events[0].Kind != loops.EventToolStarted || events[1].Kind != loops.EventMessage || events[2].Kind != loops.EventToolFinished {
+		t.Fatalf("events = %#v", events)
+	}
+	if !events[2].Tool.IsError {
+		t.Fatalf("finish event = %#v", events[2])
+	}
+}
+
 func TestReactAddsCheckpointMessagesBeforeNextRequest(t *testing.T) {
 	var secondRequest map[string]any
 	requests := 0

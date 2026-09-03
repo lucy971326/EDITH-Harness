@@ -3,6 +3,7 @@ package react
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -165,6 +166,24 @@ func (l *reactLoop) execute(
 		Allow:     invocation.ToolNames,
 	})
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			message := cancelledToolMessage(call)
+			finishCtx := context.Background()
+			err = invocation.Emit(finishCtx, loops.Event{Kind: loops.EventMessage, StepSeq: stepSeq, BlockSeq: blockSeq, Message: &message})
+			if err != nil {
+				return session.Message{}, err
+			}
+			err = invocation.Emit(finishCtx, loops.Event{
+				Kind:     loops.EventToolFinished,
+				StepSeq:  stepSeq,
+				BlockSeq: blockSeq,
+				Tool:     &loops.ToolEvent{ID: call.ID, Name: call.Name, IsError: true},
+			})
+			if err != nil {
+				return session.Message{}, err
+			}
+			return message, ctx.Err()
+		}
 		return session.Message{}, err
 	}
 	content := result.Content
@@ -197,6 +216,21 @@ func (l *reactLoop) execute(
 		return session.Message{}, err
 	}
 	return message, nil
+}
+
+func cancelledToolMessage(call session.ToolCall) session.Message {
+	return session.Message{
+		Role: session.RoleTool,
+		Blocks: []session.Block{{
+			Kind: "tool-result",
+			Result: &session.ToolResult{
+				ID:      call.ID,
+				Name:    call.Name,
+				Content: "已取消",
+				IsError: true,
+			},
+		}},
+	}
 }
 
 func appendTextBlock(message *session.Message, kind string, text string) uint64 {

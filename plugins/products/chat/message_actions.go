@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // 活对象。messageActionRegistry 保存已填入 Chat 消息动作登记处的动作。
 type messageActionRegistry struct {
+	mu      sync.RWMutex
 	actions map[string]MessageAction
 }
 
@@ -32,6 +34,8 @@ func (r *messageActionRegistry) RegisterMessageAction(action MessageAction) erro
 			return fmt.Errorf("chat: message action %q has unknown target %q", definition.ID, target)
 		}
 	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if _, exists := r.actions[definition.ID]; exists {
 		return fmt.Errorf("chat: message action %q already registered", definition.ID)
 	}
@@ -41,10 +45,12 @@ func (r *messageActionRegistry) RegisterMessageAction(action MessageAction) erro
 
 // MessageActions 返回稳定排序后的动作定义。
 func (r *messageActionRegistry) MessageActions() []MessageActionDefinition {
+	r.mu.RLock()
 	definitions := make([]MessageActionDefinition, 0, len(r.actions))
 	for _, action := range r.actions {
 		definitions = append(definitions, action.Definition())
 	}
+	r.mu.RUnlock()
 	sort.Slice(definitions, func(i, j int) bool {
 		if definitions[i].Order == definitions[j].Order {
 			return definitions[i].ID < definitions[j].ID
@@ -56,6 +62,8 @@ func (r *messageActionRegistry) MessageActions() []MessageActionDefinition {
 
 // MessageAction 按 ID 返回已登记的动作。
 func (r *messageActionRegistry) MessageAction(id string) (MessageAction, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	action, ok := r.actions[id]
 	return action, ok
 }

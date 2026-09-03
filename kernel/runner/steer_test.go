@@ -12,7 +12,7 @@ import (
 	"harness/kernel/session"
 )
 
-func TestSteerWaitsForCheckpointAndCopiesInput(t *testing.T) {
+func TestSteerPersistsBeforeCheckpointAndCopiesInput(t *testing.T) {
 	ready := make(chan struct{})
 	continueRun := make(chan struct{})
 	checkpointMessages := make(chan []session.Message, 1)
@@ -43,8 +43,8 @@ func TestSteerWaitsForCheckpointAndCopiesInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(fixture.session.History()) != 1 {
-		t.Fatal("steer was appended before checkpoint")
+	if history := fixture.session.History(); len(history) != 2 || history[1].Blocks[0].Text != "steer" {
+		t.Fatalf("history after Steer = %#v", history)
 	}
 	steer.Blocks[0].Text = "mutated"
 	err = fixture.runner.Steer("session-1", textInput("second steer"))
@@ -112,6 +112,34 @@ func TestSteerCannotEnterAfterEmptyFinalCheckpoint(t *testing.T) {
 	}
 	if len(fixture.session.History()) != 1 {
 		t.Fatal("late steer reached the ledger")
+	}
+}
+
+func TestSteerSurvivesRunFailureBeforeCheckpoint(t *testing.T) {
+	ready := make(chan struct{})
+	release := make(chan struct{})
+	loop := &runnerTestLoop{run: func(context.Context, loops.Invocation) error {
+		close(ready)
+		<-release
+		return errors.New("model failed")
+	}}
+	fixture := newRunnerFixture(t, loop)
+	done := make(chan error, 1)
+	go func() {
+		done <- fixture.runner.Run(context.Background(), "session-1", textInput("initial"))
+	}()
+	<-ready
+
+	if err := fixture.runner.Steer("session-1", textInput("keep this")); err != nil {
+		t.Fatal(err)
+	}
+	close(release)
+	if err := <-done; err == nil || !strings.Contains(err.Error(), "model failed") {
+		t.Fatalf("run error = %v", err)
+	}
+	history := fixture.session.History()
+	if len(history) != 2 || history[1].Blocks[0].Text != "keep this" {
+		t.Fatalf("history = %#v", history)
 	}
 }
 
@@ -221,5 +249,26 @@ func TestCloseCancelsAndWaitsForManagedRun(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("close did not wait for run")
+	}
+}
+
+func TestClosePreventsRunFromOpeningAfterItStarts(t *testing.T) {
+	called := false
+	loop := &runnerTestLoop{run: func(context.Context, loops.Invocation) error {
+		called = true
+		return nil
+	}}
+	fixture := newRunnerFixture(t, loop)
+	current := &liveRun{toolBlocks: make(map[string]toolBlock)}
+	current.shutdown()
+	err := fixture.runner.runOne(context.Background(), "session-1", textInput("first"), current)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("run error = %v", err)
+	}
+	if called {
+		t.Fatal("loop started after Runner.Close")
+	}
+	if len(fixture.session.History()) != 0 {
+		t.Fatal("input was appended after Runner.Close")
 	}
 }
