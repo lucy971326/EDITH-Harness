@@ -29,24 +29,7 @@ templ Page(products []Product, currentID string, navigation templ.Component, con
 							</a>
 							<button id="sidebar-toggle" type="button" aria-label="收起侧栏" aria-expanded="true" class="ui-icon-button">@ui.Icon(ui.IconSidebar)</button>
 						</div>
-						<nav aria-label="产品" class="space-y-1">
-							for _, product := range products {
-								<a
-									href={ templ.SafeURL(product.BasePath) }
-									hx-get={ templ.URL(product.BasePath) }
-									hx-target="#main"
-									hx-swap="outerHTML"
-									hx-push-url="true"
-									class="ui-nav-item"
-									if product.ID == currentID {
-										aria-current="page"
-									}
-								>
-									@ui.Icon(product.Icon)
-									<span class="sidebar-label">{ product.Name }</span>
-								</a>
-							}
-						</nav>
+						@ProductLinks(products, currentID, false)
 						@ProductNavigation(navigation)
 						<div class="mt-auto border-t border-[var(--ui-color-border)] pt-3">
 							<a
@@ -79,7 +62,36 @@ templ ProductNavigation(content templ.Component) {
 	</div>
 }
 
-templ ProductFragment(navigation templ.Component, content templ.Component) {
+templ ProductLinks(products []Product, currentID string, oob bool) {
+	<nav
+		id="product-links"
+		aria-label="产品"
+		class="space-y-1"
+		if oob {
+			hx-swap-oob="outerHTML"
+		}
+	>
+		for _, product := range products {
+			<a
+				href={ templ.SafeURL(product.BasePath) }
+				hx-get={ templ.URL(product.BasePath) }
+				hx-target="#main"
+				hx-swap="outerHTML"
+				hx-push-url="true"
+				class="ui-nav-item"
+				if product.ID == currentID {
+					aria-current="page"
+				}
+			>
+				@ui.Icon(product.Icon)
+				<span class="sidebar-label">{ product.Name }</span>
+			</a>
+		}
+	</nav>
+}
+
+templ ProductFragment(products []Product, currentID string, navigation templ.Component, content templ.Component) {
+	@ProductLinks(products, currentID, true)
 	<div id="product-navigation" hx-swap-oob="outerHTML" class="mt-4 min-h-0 flex-1 overflow-y-auto border-t border-[var(--ui-color-border)] pt-3">
 		@navigation
 	</div>

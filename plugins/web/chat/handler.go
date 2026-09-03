@@ -100,7 +100,7 @@ func (h *PageHandler) renderPage(r *nethttp.Request, data pageView) templ.Compon
 	navigation := ChatNavigation(data)
 	content := ChatPage(data)
 	if r.Header.Get("HX-Request") == "true" {
-		return web.ProductFragment(navigation, content)
+		return web.ProductFragment(h.web.Products(), h.product.ID, navigation, content)
 	}
 	return web.Page(h.web.Products(), h.product.ID, navigation, content)
 }

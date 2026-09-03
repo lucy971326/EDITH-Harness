@@ -25,6 +25,7 @@ import (
 	"harness/kernel/skills"
 	"harness/kernel/tools"
 	composerdemo "harness/plugins/web/chat/composer/demo"
+	webdemo "harness/plugins/web/demo"
 	"harness/plugins/kernel/loops/react"
 	machinelocal "harness/plugins/kernel/machine/local"
 	paneldemo "harness/plugins/web/chat/sidepanel/demo"
@@ -127,6 +128,10 @@ func run(configPath string) error {
 		return err
 	}
 	err = h.Install(chatproduct.NewPlugin())
+	if err != nil {
+		return err
+	}
+	err = h.Install(webdemo.New())
 	if err != nil {
 		return err
 	}

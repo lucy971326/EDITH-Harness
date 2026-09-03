@@ -16,6 +16,20 @@ Resolve `web`、`sessions`、`sessionSettings`、`llm`、`runner` 和 `events`�
 
 向 `web` 填入 Chat 产品和页面、History、SSE、发送、停止等 HTTP 路由。
 
+## 目录形状
+
+```text
+根目录
+├─ plugin.go / handler.go / page.templ / timeline.go / events.go
+│  Chat 产品本体：路由、页面、History 与 SSE
+├─ slot_composer.go / slot_dock.go / slot_message.go / slot_sidepanel.go
+│  Chat 提供的四个内部插槽登记处
+├─ message_copy_action.go
+│  Chat 自带的复制动作
+└─ composer/ dock/ message/ sidepanel/
+   外部插件填入对应插槽的位置
+```
+
 ## 右侧面板
 
 ```text

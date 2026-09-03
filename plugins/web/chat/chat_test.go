@@ -77,7 +77,8 @@ func TestPluginRendersFullPageAndHTMXMain(t *testing.T) {
 		t.Fatal(err)
 	}
 	partial := string(body)
-	if !strings.HasPrefix(partial, "<div id=\"product-navigation\" hx-swap-oob=\"outerHTML\"") ||
+	if !strings.HasPrefix(partial, "<nav id=\"product-links\" aria-label=\"产品\" class=\"space-y-1\" hx-swap-oob=\"outerHTML\"") ||
+		!strings.Contains(partial, "<div id=\"product-navigation\" hx-swap-oob=\"outerHTML\"") ||
 		!strings.Contains(partial, "<main id=\"main\"") ||
 		strings.Contains(partial, "<!doctype html>") {
 		t.Fatalf("HTMX partial = %q", partial)

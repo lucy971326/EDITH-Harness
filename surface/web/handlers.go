@@ -66,7 +66,7 @@ func (h *SettingsHandler) ServeHTTP(w nethttp.ResponseWriter, r *nethttp.Request
 
 	settingsPage := SettingsPage(sections, targetID, content)
 	if r.Header.Get("HX-Request") == "true" {
-		fragment := ProductFragment(templ.NopComponent, settingsPage)
+		fragment := ProductFragment(h.service.Products(), "settings", templ.NopComponent, settingsPage)
 		templ.Handler(fragment).ServeHTTP(w, r)
 		return
 	}
