@@ -667,6 +667,14 @@
     stroke-width: 1.8;
   }
 
+  /* 窄桌面优先保留主工作区；右侧面板仅在空间充足时可用。 */
+  @media (max-width: 70rem) {
+    #sidepanel,
+    #panel-toggle {
+      display: none !important;
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
