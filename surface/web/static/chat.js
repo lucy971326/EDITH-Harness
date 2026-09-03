@@ -1,17 +1,183 @@
 (() => {
   function escapeHTML(value) {
-    return String(value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    if (value == null) return "";
+    return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;");
   }
 
-  function text(blocks, kind) {
-    return (blocks || []).filter((block) => block.kind === kind).map((block) => block.text || "").join("");
+  const markdownTags = [
+    "a", "blockquote", "br", "code", "del", "em", "h1", "h2", "h3", "h4", "h5", "h6", "hr", "img",
+    "input", "li", "ol", "p", "pre", "strong", "table", "tbody", "td", "th", "thead", "tr", "ul",
+  ];
+  const markdownAttributes = ["alt", "checked", "colspan", "disabled", "href", "rowspan", "src", "start", "title", "type"];
+
+  function safeURL(value, allowMailto = true) {
+    if (typeof value !== "string" || !value.trim()) return "";
+    try {
+      const url = new URL(value, window.location.href);
+      const allowed = allowMailto ? ["http:", "https:", "mailto:"] : ["http:", "https:"];
+      return allowed.includes(url.protocol) ? url.href : "";
+    } catch {
+      return "";
+    }
   }
 
-  function toolBlock(block) {
+  function plainTextMarkdown(value) {
+    return escapeHTML(value).replace(/\n/g, "<br>");
+  }
+
+  function renderMarkdown(value) {
+    const text = String(value || "");
+    if (!window.marked || !window.DOMPurify) return plainTextMarkdown(text);
+    const parsed = window.marked.parse(text, { breaks: true, gfm: true });
+    const clean = window.DOMPurify.sanitize(parsed, {
+      ALLOWED_ATTR: markdownAttributes,
+      ALLOWED_TAGS: markdownTags,
+      ALLOW_DATA_ATTR: false,
+      ALLOW_ARIA_ATTR: false,
+    });
+    const template = document.createElement("template");
+    template.innerHTML = clean;
+    for (const image of template.content.querySelectorAll("img")) {
+      const label = image.getAttribute("alt") || "图片";
+      const href = safeURL(image.getAttribute("src"), false);
+      const parentLink = image.closest("a");
+      const replacement = document.createElement(href && !parentLink ? "a" : "span");
+      replacement.textContent = `图片：${label}`;
+      replacement.className = "ui-markdown-image-link";
+      if (href && replacement.tagName === "A") replacement.setAttribute("href", href);
+      image.replaceWith(replacement);
+    }
+    for (const link of template.content.querySelectorAll("a")) {
+      const href = safeURL(link.getAttribute("href"));
+      if (!href) {
+        link.replaceWith(...link.childNodes);
+        continue;
+      }
+      link.setAttribute("href", href);
+      link.setAttribute("target", "_blank");
+      link.setAttribute("rel", "noopener noreferrer");
+    }
+    return template.innerHTML;
+  }
+
+  function number(value, fallback = 1) {
+    const result = Number(value);
+    return Number.isFinite(result) && result > 0 ? result : fallback;
+  }
+
+  function sortedSteps(segment) {
+    return [...segment.steps.values()].sort((left, right) => left.seq - right.seq);
+  }
+
+  function sortedBlocks(step) {
+    return [...step.blocks.values()].sort((left, right) => left.seq - right.seq);
+  }
+
+  function textBlocks(blocks, kind = "text") {
+    return (blocks || [])
+      .filter((block) => block.kind === kind)
+      .map((block) => block.text || "")
+      .join("");
+  }
+
+  function hasToolCall(step) {
+    return [...step.blocks.values()].some((block) => block.kind === "tool-call");
+  }
+
+  function finalStep(segment) {
+    const steps = sortedSteps(segment);
+    for (let index = steps.length - 1; index >= 0; index--) {
+      if (!hasToolCall(steps[index]) && steps[index].durable) return steps[index];
+    }
+    return null;
+  }
+
+  function formatArguments(args) {
+    if (!args) return "";
+    try {
+      return JSON.stringify(JSON.parse(args), null, 2);
+    } catch {
+      return args;
+    }
+  }
+
+  function toolStatus(block) {
+    const result = block.result;
+    if (result) return result.isError ? "失败" : "完成";
+    return block.status || "执行中";
+  }
+
+  function toolStatusClass(status) {
+    if (status === "失败") return "ui-workflow-tool-status-danger";
+    if (status === "执行中") return "ui-workflow-tool-status-running";
+    return "";
+  }
+
+  function toolBlock(segment, step, block) {
     const tool = block.tool || {};
     const result = block.result;
-    const status = result ? (result.isError ? "失败" : "完成") : (block.status || "执行中");
-    return `<details class="mb-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-muted)] px-3 py-2 text-xs"><summary class="cursor-pointer"><strong>${escapeHTML(tool.name || result?.name)}</strong><span class="ml-2 text-[var(--color-subtle)]">${escapeHTML(status)}</span></summary>${result?.content ? `<pre class="mt-2 whitespace-pre-wrap">${escapeHTML(result.content)}</pre>` : ""}</details>`;
+    const status = toolStatus(block);
+    const toolName = tool.name || result?.name || "工具";
+    const key = `tool:${segment.runID}:${segment.boundarySeq}:${step.seq}:${block.seq}:${tool.id || result?.id || ""}`;
+    const args = formatArguments(tool.args);
+    const output = result?.content || "";
+    return `<details class="ui-workflow-tool" data-disclosure-key="${escapeHTML(key)}">
+  <summary class="ui-workflow-tool-summary">
+    <span class="ui-workflow-tool-name">${escapeHTML(toolName)}</span>
+    <span class="ui-workflow-tool-status ${toolStatusClass(status)}">${escapeHTML(status)}</span>
+  </summary>
+  <div class="ui-workflow-tool-content">
+    ${args ? `<div class="ui-workflow-field"><span class="ui-workflow-field-label ui-text-meta">参数</span><pre class="ui-workflow-output ui-text-code">${escapeHTML(args)}</pre></div>` : ""}
+    ${output ? `<div class="ui-workflow-field"><span class="ui-workflow-field-label ui-text-meta">结果</span><pre class="ui-workflow-output ui-text-code ${result?.isError ? "ui-workflow-output-error" : ""}">${escapeHTML(output)}</pre></div>` : ""}
+  </div>
+</details>`;
+  }
+
+  function workflowContent(segment) {
+    const answer = finalStep(segment);
+    let content = "";
+    let toolCount = 0;
+    for (const step of sortedSteps(segment)) {
+      for (const block of sortedBlocks(step)) {
+        if (step === answer && block.kind === "text") continue;
+        if ((block.kind === "reasoning" || block.kind === "text") && block.text) {
+          const label = block.kind === "reasoning" ? "思考过程" : "进展说明";
+          content += `<div class="ui-workflow-note"><span class="ui-workflow-note-label ui-text-meta">${label}</span><p class="ui-workflow-note-text ui-text-body">${escapeHTML(block.text)}</p></div>`;
+        } else if (block.kind === "tool-call") {
+          toolCount++;
+          content += toolBlock(segment, step, block);
+        }
+      }
+    }
+    return { answer, content, toolCount };
+  }
+
+  function latestRunningTool(segment) {
+    let latest = null;
+    for (const step of sortedSteps(segment)) {
+      for (const block of sortedBlocks(step)) {
+        if (block.kind === "tool-call" && block.status === "执行中") latest = block;
+      }
+    }
+    return latest;
+  }
+
+  function workflowSummary(run, segment, live, hasContent) {
+    if (live) {
+      const tool = latestRunningTool(segment);
+      const name = tool?.tool?.name;
+      return name ? `正在工作 · ${name}` : "正在工作";
+    }
+    const latest = !run.latestSegment || run.latestSegment === segment.id;
+    if (latest && run.status === "failed") return "未完成 · 查看过程";
+    if (latest && run.status === "cancelled") return "已停止 · 查看过程";
+    return hasContent ? "已完成 · 工作过程" : "";
+  }
+
+  function workflowStatusClass(run, segment, live) {
+    if (live) return "ui-workflow-status-running";
+    if (run.latestSegment === segment.id && (run.status === "failed" || run.status === "cancelled")) return "ui-workflow-status-danger";
+    return "";
   }
 
   function actionBar(actions, target) {
@@ -24,31 +190,30 @@
       target.runID ? `data-run-id="${escapeHTML(target.runID)}"` : "",
       target.boundaryEntryID ? `data-boundary-entry-id="${escapeHTML(target.boundaryEntryID)}"` : "",
     ].join(" ");
-    return `<div class="mt-3 flex justify-end gap-1 border-t border-[var(--color-border)] pt-2">${matching.map((action) => `<button type="button" class="message-action rounded px-2 py-1 text-xs text-[var(--color-subtle)] hover:bg-[var(--color-muted)] hover:text-[var(--color-text)]" data-message-action="${escapeHTML(action.id)}" data-action-icon="${escapeHTML(action.icon)}" data-action-label="${escapeHTML(action.name)}" ${fields}>${escapeHTML(action.icon)} ${escapeHTML(action.name)}</button>`).join("")}</div>`;
+    return `<div class="ui-message-actions">${matching.map((action) => `<button type="button" class="message-action ui-button-secondary ui-message-action" data-message-action="${escapeHTML(action.id)}" data-action-icon="${escapeHTML(action.icon)}" data-action-label="${escapeHTML(action.name)}" ${fields}>${escapeHTML(action.icon)} ${escapeHTML(action.name)}</button>`).join("")}</div>`;
   }
 
-  function assistantCard(segment, actions, running) {
-    let body = "";
-    for (const step of [...segment.steps.values()].sort((left, right) => left.seq - right.seq)) {
-      for (const block of [...step.blocks.values()].sort((left, right) => left.seq - right.seq)) {
-        if (block.kind === "reasoning" && block.text) {
-          body += `<details class="mb-3 text-xs text-[var(--color-subtle)]"><summary>思考过程</summary><pre class="mt-2 whitespace-pre-wrap font-sans">${escapeHTML(block.text)}</pre></details>`;
-        } else if (block.kind === "text" && block.text) {
-          body += `<p class="mb-3 whitespace-pre-wrap text-sm leading-6">${escapeHTML(block.text)}</p>`;
-        } else if (block.kind === "tool-call") {
-          body += toolBlock(block);
-        }
-      }
-    }
-    const actionsHTML = running ? "" : actionBar(actions, {
+  function assistantCard(run, segment, actions, live) {
+    const parts = workflowContent(segment);
+    const answerText = parts.answer ? textBlocks(sortedBlocks(parts.answer)) : "";
+    const summary = workflowSummary(run, segment, live, Boolean(parts.content));
+    const showWorkflow = Boolean(summary);
+    const error = run.latestSegment === segment.id && run.status === "failed" && run.error ? `<p class="ui-workflow-error ui-text-body">${escapeHTML(run.error)}</p>` : "";
+    const workflow = showWorkflow ? `<details class="ui-workflow" data-disclosure-key="workflow:${escapeHTML(segment.id)}">
+  <summary class="ui-workflow-summary ${workflowStatusClass(run, segment, live)}">${escapeHTML(summary)}<span class="ui-workflow-count">${parts.toolCount ? `${parts.toolCount} 个工具` : ""}</span></summary>
+  <div class="ui-workflow-body">${parts.content || `<p class="ui-workflow-empty ui-text-meta">暂无可展开内容</p>`}${error}</div>
+</details>` : "";
+    const answer = answerText ? `<div class="ui-message-answer ui-text-body ui-markdown">${renderMarkdown(answerText)}</div>` : "";
+    const actionsHTML = live || !answerText ? "" : actionBar(actions, {
       cardType: "assistant", runID: segment.runID, boundaryEntryID: segment.boundaryEntryID,
     });
-    return `<article data-run-id="${escapeHTML(segment.runID)}" data-segment-id="${escapeHTML(segment.id)}" class="max-w-3xl rounded-xl border border-[var(--color-border)] bg-white px-4 py-3">${body || '<span class="text-sm text-[var(--color-subtle)]">思考中…</span>'}${actionsHTML}</article>`;
+    if (!workflow && !answer && !actionsHTML) return "";
+    return `<article data-run-id="${escapeHTML(segment.runID)}" data-segment-id="${escapeHTML(segment.id)}" class="ui-message-assistant">${workflow}${answer}${actionsHTML}</article>`;
   }
 
   function userCard(entry, actions) {
     const actionsHTML = actionBar(actions, { cardType: "user", entryID: entry.id });
-    return `<article class="ml-auto max-w-[80%] rounded-xl bg-[var(--color-muted)] px-4 py-3 text-sm">${escapeHTML(text(entry.message.blocks, "text"))}${actionsHTML}</article>`;
+    return `<article class="ui-message-user ui-text-body ui-markdown">${renderMarkdown(textBlocks(entry.message.blocks))}${actionsHTML}</article>`;
   }
 
   function initialize() {
@@ -70,6 +235,7 @@
       messageActions = JSON.parse(root.dataset.messageActions || "[]");
     } catch { /* invalid action definitions leave the action bar empty */ }
     const state = { entries: new Map(), runs: new Map(), running: false, activeRunID: "" };
+    const expanded = new Set();
     let hydrating = false;
     let queuedEvents = [];
     let historyRequest = null;
@@ -77,7 +243,7 @@
     function runFor(id, afterEntrySeq = 0) {
       let run = state.runs.get(id);
       if (!run) {
-        run = { id, afterEntrySeq, segments: new Map(), pendingResults: new Map() };
+        run = { id, afterEntrySeq, status: "", error: "", latestSegment: "", segments: new Map(), pendingResults: new Map() };
         state.runs.set(id, run);
       } else if (!run.afterEntrySeq && afterEntrySeq) {
         run.afterEntrySeq = afterEntrySeq;
@@ -89,36 +255,38 @@
       let boundary = null;
       for (const entry of state.entries.values()) {
         if (entry.message?.role !== "user" || entry.message.runID !== run.id || entry.seq > maxSeq) continue;
-        if (!boundary || entry.seq > boundary.seq) boundary = entry;
+        if (!boundary || boundary.seq < entry.seq) boundary = entry;
       }
       return boundary;
     }
 
     function segmentFor(run, maxSeq = Number.POSITIVE_INFINITY) {
       const boundary = userBoundary(run, maxSeq);
-      const boundaryID = boundary?.id || `seq-${boundary?.seq || run.afterEntrySeq || 0}`;
       const boundarySeq = boundary?.seq || run.afterEntrySeq || 0;
-      const id = `${run.id}:${boundaryID}`;
+      const id = `${run.id}:${boundarySeq}`;
       let segment = run.segments.get(id);
       if (!segment) {
         segment = { id, runID: run.id, boundarySeq, boundaryEntryID: boundary?.id || "", steps: new Map() };
         run.segments.set(id, segment);
+      } else if (!segment.boundaryEntryID && boundary?.id) {
+        segment.boundaryEntryID = boundary.id;
       }
+      if (!run.latestSegment || run.segments.get(run.latestSegment)?.boundarySeq <= boundarySeq) run.latestSegment = id;
       return segment;
     }
 
     function stepFor(segment, stepSeq) {
-      const seq = Number(stepSeq) || 1;
+      const seq = number(stepSeq);
       let step = segment.steps.get(seq);
       if (!step) {
-        step = { seq, blocks: new Map() };
+        step = { seq, durable: false, blocks: new Map() };
         segment.steps.set(seq, step);
       }
       return step;
     }
 
     function mergeBlock(step, seq, block) {
-      const blockSeq = Number(seq) || 1;
+      const blockSeq = number(seq);
       const previous = step.blocks.get(blockSeq);
       const merged = { ...block, seq: blockSeq };
       if (previous?.status) merged.status = previous.status;
@@ -128,7 +296,7 @@
     }
 
     function blockFor(step, seq, kind) {
-      const blockSeq = Number(seq) || 1;
+      const blockSeq = number(seq);
       let block = step.blocks.get(blockSeq);
       if (!block) {
         block = { seq: blockSeq, kind, text: "" };
@@ -163,7 +331,7 @@
     function registerAssistant(run, entry, event, durable) {
       const maxSeq = Number(entry.seq) || Number.POSITIVE_INFINITY;
       const segment = segmentFor(run, maxSeq);
-      let stepSeq = Number(event.stepSeq) || 0;
+      let stepSeq = number(event.stepSeq, 0);
       if (!stepSeq) {
         for (const candidateSegment of run.segments.values()) {
           for (const candidate of candidateSegment.steps.values()) stepSeq = Math.max(stepSeq, candidate.seq);
@@ -171,6 +339,7 @@
         stepSeq++;
       }
       const step = stepFor(segment, stepSeq);
+      step.durable = durable || step.durable;
       for (const [index, block] of (entry.message.blocks || []).entries()) {
         const merged = mergeBlock(step, index + 1, { ...block, durable });
         if (merged.kind === "tool-call" && merged.tool?.id) {
@@ -187,25 +356,33 @@
       if (!entry?.id || state.entries.has(entry.id)) return;
       state.entries.set(entry.id, entry);
       const message = entry.message || {};
-      if (!message.runID || (message.role !== "assistant" && message.role !== "tool")) return;
+      if (!message.runID) return;
+      if (message.role === "user" && !state.runs.has(message.runID)) return;
       const run = runFor(message.runID, event.afterEntrySeq || Math.max(0, entry.seq - 1));
+      if (message.role === "user") {
+        segmentFor(run, entry.seq);
+        return;
+      }
       if (message.role === "assistant") {
         registerAssistant(run, entry, event, durable);
         return;
       }
+      if (message.role !== "tool") return;
       const result = (message.blocks || []).find((block) => block.kind === "tool-result")?.result;
       attachResult(run, result, event.stepSeq, event.blockSeq);
     }
 
     function applyEvent(event) {
       if (event.kind === "message" && event.entry) {
-        applyEntry(event.entry, event);
+        applyEntry(event.entry, event, true);
         return;
       }
       if (event.kind === "run-started") {
         state.activeRunID = event.runID;
         state.running = true;
-        runFor(event.runID, event.afterEntrySeq);
+        const run = runFor(event.runID, event.afterEntrySeq);
+        run.status = "running";
+        segmentFor(run);
         return;
       }
       const runID = event.runID || state.activeRunID;
@@ -218,7 +395,7 @@
         const block = blockFor(step, event.blockSeq, kind);
         if (block.durable) return;
         if (block.kind === kind) block.text = (block.text || "") + (event.text || "");
-        else step.blocks.set(Number(event.blockSeq) || 1, { seq: Number(event.blockSeq) || 1, kind, text: event.text || "" });
+        else step.blocks.set(number(event.blockSeq), { seq: number(event.blockSeq), kind, text: event.text || "" });
         return;
       }
       if ((event.kind === "tool-started" || event.kind === "tool-finished") && event.tool && run) {
@@ -240,9 +417,12 @@
         return;
       }
       if (event.kind === "run-ended") {
+        if (run) {
+          run.status = event.status || "success";
+          run.error = event.error || "";
+        }
         if (event.runID === state.activeRunID) state.activeRunID = "";
         state.running = false;
-        if (event.status !== "success") status.textContent = event.status === "cancelled" ? "已停止" : event.error || "运行失败";
       }
     }
 
@@ -252,8 +432,14 @@
         state.runs.clear();
         state.running = (input.runs || []).length > 0;
         state.activeRunID = input.runs?.[0]?.runID || "";
-        for (const run of input.runs || []) runFor(run.runID, run.afterEntrySeq);
+        for (const run of input.runs || []) {
+          const current = runFor(run.runID, run.afterEntrySeq);
+          current.status = "running";
+        }
         for (const entry of input.entries) applyEntry(entry, {}, true);
+        for (const run of state.runs.values()) {
+          if (run.status === "running" && run.segments.size === 0) segmentFor(run);
+        }
       } else applyEvent(input);
       paint();
     }
@@ -264,9 +450,7 @@
         if (entry.message?.role === "user") items.push({ kind: "entry", seq: entry.seq, entry });
       }
       for (const run of state.runs.values()) {
-        for (const segment of run.segments.values()) {
-          items.push({ kind: "segment", seq: segment.boundarySeq, runID: run.id, segment });
-        }
+        for (const segment of run.segments.values()) items.push({ kind: "segment", seq: segment.boundarySeq, run, segment });
       }
       return items.sort((left, right) => {
         const leftSeq = left.seq * 2 + (left.kind === "segment" ? 1 : 0);
@@ -275,10 +459,23 @@
       });
     }
 
+    function rememberExpanded() {
+      for (const detail of thread.querySelectorAll("details[data-disclosure-key]")) {
+        if (detail.open) expanded.add(detail.dataset.disclosureKey);
+        else expanded.delete(detail.dataset.disclosureKey);
+      }
+    }
+
     function paint() {
-      thread.innerHTML = orderedItems().map((item) => item.kind === "entry"
-        ? userCard(item.entry, messageActions)
-        : assistantCard(item.segment, messageActions, item.runID === state.activeRunID)).join("");
+      rememberExpanded();
+      thread.innerHTML = orderedItems().map((item) => {
+        if (item.kind === "entry") return userCard(item.entry, messageActions);
+        const live = state.running && item.run.id === state.activeRunID && item.run.latestSegment === item.segment.id;
+        return assistantCard(item.run, item.segment, messageActions, live);
+      }).join("");
+      for (const detail of thread.querySelectorAll("details[data-disclosure-key]")) {
+        detail.open = expanded.has(detail.dataset.disclosureKey);
+      }
       thread.lastElementChild?.scrollIntoView({ block: "end" });
       setRunning(state.running);
     }
@@ -291,7 +488,6 @@
       liveSend.classList.toggle("hidden", !value);
       liveSend.disabled = !value;
       stop.classList.toggle("hidden", !value);
-      if (value && !status.textContent) status.textContent = "运行中：可选择插话或下一轮。";
       if (!value && status.textContent === "运行中：可选择插话或下一轮。") status.textContent = "";
     }
 
@@ -373,7 +569,7 @@
 
     document.addEventListener("htmx:sseBeforeMessage", (event) => {
       if (!root.contains(event.target)) return;
-	  if (event.detail.type !== "run") return;
+      if (event.detail.type !== "run") return;
       event.preventDefault();
       try {
         const item = JSON.parse(event.detail.data);

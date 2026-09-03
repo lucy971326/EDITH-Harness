@@ -93,17 +93,32 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的五个页面插槽基础�
 - Sidepanel、Dock、Composer、Settings 的 demo 填充物已迁移到公共视觉规则；动态面板脚本只更新样式类，不改变交互逻辑。
 - Chat 消息卡与消息动作仍保留现有 `chat.js` 投影，留待第三步按工作流层级统一重构。
 
+### UI 重构第三步：Chat 工作流投影
+
+- Chat 消息区改为“结论优先”：最终回答直接显示，推理、进展说明与工具细节收进默认收起的工作过程。
+- 工作过程与工具详情使用原生 `<details>` 两级展开；多个 Step 按 `StepSeq / BlockSeq` 完整保留，工具结果按原始调用块回填。
+- 同一 Run 的 Steer 继续按用户消息切成前后片段，片段不会互相串位；运行中、完成、失败与停止使用紧凑状态行，不显示计时器。
+- 最终回答只取最后一个不含 tool-call 且已落账的助手 Step；运行中的临时正文不会提前冒充最终回答。
+- SSE 与 History 仍进入同一个 `apply() → paint()`，仅保留浏览器内临时展开状态；不改 Session、Runner、SSE 事件名或插件契约。
+- Chat 投影与样式已迁移到 `ui-message-*`、`ui-workflow-*` 语义规则，亮暗主题继续复用 Web Token。
+- 用户消息与已落账的最终回答共用浏览器端 Markdown 渲染出口；History JSON 与 SSE 最终消息保持同一视觉结果。解析使用本地 `marked`，输出再经 `DOMPurify` 清洗；推理与工具内容仍保持纯文本。
+
 ## 验证
 
 - `go test ./...` 通过。
 - `go vet ./...` 通过。
 - `git diff --check` 通过。
 - `node --test surface/web/static/test/sidepanel.test.js` 通过。
+- `node --check surface/web/static/chat.js` 通过。
 - 已做真实浏览器页面与布局检查。
 
 ## 下一步
 
 ```text
+UI 重构第四步：验收与收尾
+  ├─ 亮色 / 暗色 / 跟随系统与窄桌面
+  └─ 键盘焦点、可访问标签、减少动态效果
+
 阶段 4 扩展（插槽填充物）：
   ├─ message.actions：分叉（Fork / Branch）动作
   └─ sidepanel：真实文件树与文件查看面板

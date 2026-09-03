@@ -33,7 +33,7 @@ func Page(products []Product, currentID string, navigation templ.Component, cont
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Harness</title><script src=\"/static/theme.js\"></script><link rel=\"stylesheet\" href=\"/static/site.css\"><script src=\"/static/htmx.min.js\"></script><script src=\"/static/htmx-ext-sse.js\"></script></head><body class=\"ui-page\"><div class=\"min-h-screen p-2\"><div class=\"ui-shell flex h-[calc(100vh-1rem)] overflow-hidden\"><aside class=\"ui-panel flex w-[var(--sidebar-width)] shrink-0 flex-col border-r border-[var(--ui-color-border)] p-3\"><a href=\"/\" class=\"mb-5 flex items-center gap-2 px-1 ui-text-body font-semibold no-underline\"><span class=\"ui-brand-mark\">H</span> Harness</a><nav aria-label=\"产品\" class=\"space-y-1\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Harness</title><script src=\"/static/theme.js\"></script><link rel=\"stylesheet\" href=\"/static/site.css\"><script src=\"/static/htmx.min.js\"></script><script src=\"/static/htmx-ext-sse.js\"></script><script src=\"/static/vendor/marked.umd.js\"></script><script src=\"/static/vendor/purify.min.js\"></script></head><body class=\"ui-page\"><div class=\"min-h-screen p-2\"><div class=\"ui-shell flex h-[calc(100vh-1rem)] overflow-hidden\"><aside class=\"ui-panel flex w-[var(--sidebar-width)] shrink-0 flex-col border-r border-[var(--ui-color-border)] p-3\"><a href=\"/\" class=\"mb-5 flex items-center gap-2 px-1 ui-text-body font-semibold no-underline\"><span class=\"ui-brand-mark\">H</span> Harness</a><nav aria-label=\"产品\" class=\"space-y-1\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -45,7 +45,7 @@ func Page(products []Product, currentID string, navigation templ.Component, cont
 			var templ_7745c5c3_Var2 templ.SafeURL
 			templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(product.BasePath))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `surface/web/page.templ`, Line: 30, Col: 47}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `surface/web/page.templ`, Line: 32, Col: 47}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 			if templ_7745c5c3_Err != nil {
@@ -58,7 +58,7 @@ func Page(products []Product, currentID string, navigation templ.Component, cont
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.URL(product.BasePath))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `surface/web/page.templ`, Line: 31, Col: 45}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `surface/web/page.templ`, Line: 33, Col: 45}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
 			if templ_7745c5c3_Err != nil {
@@ -85,7 +85,7 @@ func Page(products []Product, currentID string, navigation templ.Component, cont
 			var templ_7745c5c3_Var4 string
 			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(product.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `surface/web/page.templ`, Line: 41, Col: 23}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `surface/web/page.templ`, Line: 43, Col: 23}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 			if templ_7745c5c3_Err != nil {
@@ -365,7 +365,7 @@ func SettingsNav(sections []SettingsSectionDefinition, currentSectionID string, 
 				var templ_7745c5c3_Var10 templ.SafeURL
 				templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/settings/" + section.ID))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `surface/web/page.templ`, Line: 129, Col: 52}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `surface/web/page.templ`, Line: 131, Col: 52}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 				if templ_7745c5c3_Err != nil {
@@ -378,7 +378,7 @@ func SettingsNav(sections []SettingsSectionDefinition, currentSectionID string, 
 				var templ_7745c5c3_Var11 string
 				templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.URL("/settings/" + section.ID))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `surface/web/page.templ`, Line: 130, Col: 50}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `surface/web/page.templ`, Line: 132, Col: 50}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var11)
 				if templ_7745c5c3_Err != nil {
@@ -401,7 +401,7 @@ func SettingsNav(sections []SettingsSectionDefinition, currentSectionID string, 
 				var templ_7745c5c3_Var12 string
 				templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(section.Title)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `surface/web/page.templ`, Line: 139, Col: 20}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `surface/web/page.templ`, Line: 141, Col: 20}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 				if templ_7745c5c3_Err != nil {

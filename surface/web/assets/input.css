@@ -268,6 +268,293 @@
     padding: 0 var(--ui-space-3) var(--ui-space-3);
   }
 
+  .ui-message-user,
+  .ui-message-assistant {
+    display: block;
+    width: 100%;
+  }
+
+  .ui-message-user {
+    max-width: 80%;
+    margin-left: auto;
+    border: 1px solid var(--ui-color-border);
+    border-radius: var(--ui-radius-card);
+    background: var(--ui-color-panel);
+    padding: var(--ui-space-3) var(--ui-space-4);
+  }
+
+  .ui-message-assistant {
+    max-width: 48rem;
+    color: var(--ui-color-text);
+  }
+
+  .ui-message-answer {
+    min-width: 0;
+  }
+
+  .ui-markdown {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .ui-markdown > :first-child {
+    margin-top: 0;
+  }
+
+  .ui-markdown > :last-child {
+    margin-bottom: 0;
+  }
+
+  .ui-markdown :is(h1, h2, h3, h4, h5, h6) {
+    color: var(--ui-color-text);
+    font-weight: 650;
+    line-height: var(--ui-line-title);
+  }
+
+  .ui-markdown h1 {
+    font-size: var(--ui-size-title);
+  }
+
+  .ui-markdown :is(h2, h3) {
+    font-size: var(--ui-size-section);
+  }
+
+  .ui-markdown :is(h4, h5, h6) {
+    font-size: var(--ui-size-body);
+  }
+
+  .ui-markdown :is(p, ul, ol, blockquote, pre, table, hr) {
+    margin: var(--ui-space-3) 0;
+  }
+
+  .ui-markdown :is(ul, ol) {
+    padding-left: var(--ui-space-6);
+  }
+
+  .ui-markdown li + li {
+    margin-top: var(--ui-space-1);
+  }
+
+  .ui-markdown blockquote {
+    border-left: 2px solid var(--ui-color-border-strong);
+    color: var(--ui-color-text-secondary);
+    padding-left: var(--ui-space-3);
+  }
+
+  .ui-markdown a,
+  .ui-markdown-image-link {
+    color: var(--ui-color-accent);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.14em;
+  }
+
+  .ui-markdown :not(pre) > code {
+    border: 1px solid var(--ui-color-border);
+    border-radius: var(--ui-radius-control);
+    background: var(--ui-color-panel);
+    font-family: var(--ui-font-mono);
+    font-size: var(--ui-size-code);
+    padding: 0.08em 0.32em;
+  }
+
+  .ui-markdown pre {
+    max-width: 100%;
+    overflow: auto;
+    border: 1px solid var(--ui-color-border);
+    border-radius: var(--ui-radius-card);
+    background: var(--ui-color-panel);
+    padding: var(--ui-space-3);
+  }
+
+  .ui-markdown pre code {
+    display: block;
+    font-family: var(--ui-font-mono);
+    font-size: var(--ui-size-code);
+    line-height: var(--ui-line-body);
+    white-space: pre;
+  }
+
+  .ui-markdown table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    border-collapse: collapse;
+  }
+
+  .ui-markdown :is(th, td) {
+    min-width: 7rem;
+    border: 1px solid var(--ui-color-border);
+    padding: var(--ui-space-2) var(--ui-space-3);
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .ui-markdown th {
+    background: var(--ui-color-panel);
+    color: var(--ui-color-text);
+    font-weight: 600;
+  }
+
+  .ui-markdown input[type="checkbox"] {
+    margin-right: var(--ui-space-2);
+    accent-color: var(--ui-color-accent);
+  }
+
+  .ui-workflow {
+    margin-bottom: var(--ui-space-3);
+    color: var(--ui-color-text-muted);
+  }
+
+  .ui-workflow > summary {
+    display: flex;
+    align-items: center;
+    gap: var(--ui-space-2);
+    cursor: pointer;
+    list-style: none;
+    padding: var(--ui-space-2) 0;
+  }
+
+  .ui-workflow > summary::-webkit-details-marker,
+  .ui-workflow-tool > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .ui-workflow > summary::after,
+  .ui-workflow-tool > summary::after {
+    color: var(--ui-color-text-muted);
+    content: "›";
+    transition: transform var(--ui-motion-fast) ease;
+  }
+
+  .ui-workflow > summary::after {
+    order: -1;
+  }
+
+  .ui-workflow[open] > summary::after,
+  .ui-workflow-tool[open] > summary::after {
+    transform: rotate(90deg);
+  }
+
+  .ui-workflow-summary {
+    border-bottom: 1px solid var(--ui-color-border);
+    font-weight: 600;
+  }
+
+  .ui-workflow-status-running {
+    color: var(--ui-color-accent);
+  }
+
+  .ui-workflow-status-danger,
+  .ui-workflow-tool-status-danger,
+  .ui-workflow-output-error,
+  .ui-workflow-error {
+    color: var(--ui-color-danger);
+  }
+
+  .ui-workflow-count {
+    margin-left: auto;
+    color: var(--ui-color-text-muted);
+    font-size: var(--ui-size-meta);
+    font-weight: 400;
+  }
+
+  .ui-workflow-body {
+    padding: var(--ui-space-2) 0 0 var(--ui-space-4);
+  }
+
+  .ui-workflow-note {
+    border-left: 2px solid var(--ui-color-border);
+    margin-bottom: var(--ui-space-3);
+    padding-left: var(--ui-space-3);
+  }
+
+  .ui-workflow-note-label,
+  .ui-workflow-field-label {
+    display: block;
+  }
+
+  .ui-workflow-note-text {
+    margin: var(--ui-space-1) 0 0;
+    white-space: pre-wrap;
+  }
+
+  .ui-workflow-tool {
+    margin-bottom: var(--ui-space-2);
+    border: 1px solid var(--ui-color-border);
+    border-radius: var(--ui-radius-control);
+    background: var(--ui-color-panel);
+  }
+
+  .ui-workflow-tool > summary {
+    display: flex;
+    align-items: center;
+    gap: var(--ui-space-2);
+    cursor: pointer;
+    list-style: none;
+    padding: var(--ui-space-2) var(--ui-space-3);
+  }
+
+  .ui-workflow-tool > summary::after {
+    order: -1;
+  }
+
+  .ui-workflow-tool-name {
+    color: var(--ui-color-text);
+    font-weight: 600;
+  }
+
+  .ui-workflow-tool-status {
+    margin-left: auto;
+    color: var(--ui-color-text-muted);
+    font-size: var(--ui-size-meta);
+  }
+
+  .ui-workflow-tool-status-running {
+    color: var(--ui-color-accent);
+  }
+
+  .ui-workflow-tool-content {
+    border-top: 1px solid var(--ui-color-border);
+    padding: var(--ui-space-3);
+  }
+
+  .ui-workflow-field + .ui-workflow-field {
+    margin-top: var(--ui-space-3);
+  }
+
+  .ui-workflow-output {
+    max-height: 16rem;
+    margin: var(--ui-space-1) 0 0;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .ui-workflow-empty {
+    margin: 0;
+  }
+
+  .ui-workflow-error {
+    margin: var(--ui-space-3) 0 0;
+  }
+
+  .ui-message-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--ui-space-1);
+    margin-top: var(--ui-space-3);
+    border-top: 1px solid var(--ui-color-border);
+    padding-top: var(--ui-space-2);
+  }
+
+  .ui-message-action {
+    min-height: 1.75rem;
+    padding: 0 var(--ui-space-2);
+    font-size: var(--ui-size-meta);
+    font-weight: 400;
+  }
+
   .ui-menu {
     border: 1px solid var(--ui-color-border);
     border-radius: var(--ui-radius-card);

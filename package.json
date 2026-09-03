@@ -6,8 +6,10 @@
   },
   "devDependencies": {
     "@tailwindcss/cli": "4.3.3",
+    "dompurify": "^3.4.14",
     "htmx-ext-sse": "2.2.4",
     "htmx.org": "2.0.10",
+    "marked": "^18.0.11",
     "tailwindcss": "4.3.3"
   }
 }

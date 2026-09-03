@@ -34,9 +34,10 @@
 - 禁止新增裸颜色、任意 `rounded-*`、私有 SVG、正式 Emoji 图标。
 - 保持当前 HTMX 路由、设置局部刷新、Dock SSE HTML 替换、右侧面板行为不变。
 
-## 3. Chat 工作流重构
+## 3. Chat 工作流重构（已完成）
 
 - 保留现有 JSON reducer、`RunID / StepSeq / BlockSeq`、SSE 排序与历史恢复。
+- 用户与最终回答使用本地安全 Markdown 渲染；History 与 SSE 通过同一 `apply() → paint()` 出口恢复相同结果。
 - 只重写 `chat.js` 的投影 HTML：
 
 ```text
@@ -62,6 +63,8 @@
 - 过程与工具二级展开使用原生 `<details>`。
 - 在现有 `chat.js` 增加极小临时展开状态：SSE 重画后仍保持用户已展开的项目；刷新页面后恢复默认收起。
 - 历史账本已有工具名、参数、结果与失败事实；不新增字段、不迁移数据。
+
+已完成：Chat 已按上述规则投影。最终回答只取最后一个不含 `tool-call` 且已落账的助手 Step；多个 Step、Steer 分段和工具结果回填均保持稳定，History 与 SSE 共用同一 reducer 与 `paint()`。
 
 ## 4. 验收与收尾
 
