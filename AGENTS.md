@@ -1,10 +1,10 @@
 # AGENTS.md
 
-压缩会话、换人、新开对话：先读这篇，再读 `STATUS.md`。方案细节：`learn/设计书.md`。Cordis 对照：`learn/reference/DSH项目心得.md`。不要先翻 DSH / pi 源码。`learn/reference/` 只是偶尔参考，不是我们的方案。
+压缩会话、换人、新开对话：先读这篇，再读 `STATUS.md`。方案细节：`docs/设计书.md`。Cordis 对照：`docs/reference/DSH项目心得.md`。不要先翻 DSH / pi 源码。`docs/reference/` 只是偶尔参考，不是我们的方案。
 
 冲突：铁律以这篇为准，产品形状以设计书为准。
 
-`learn/reference/` 默认不要改。用户叫写才写。
+`docs/reference/` 默认不要改。用户叫写才写。
 
 ### 参考资料与查阅规则
 
@@ -193,7 +193,7 @@ kernel/tools/
 填充者：
 
 ```
-plugins/tools/bash/
+plugins/kernel/tools/bash/
   plugin.go    Resolve("tools")、Resolve("machine")，Register(bash)
   bash.go      Call 里 machine.Run
 ```
@@ -209,14 +209,30 @@ plugins/tools/bash/
 #### import
 
 ```
-cmd      → kernel / surface / plugins
-plugins  → kernel（只定义者）
-surface  → kernel
-kernel   不得 import plugins、surface
-定义者   不得 import 填充者
+cmd             → kernel / surface / plugins
+plugins/kernel  → kernel（只 import 自己填充的定义者）
+plugins/web     → surface/web；确有业务需要时再 import kernel 定义者
+surface         → kernel
+kernel          不得 import plugins、surface
+surface/web     不得 import Web 产品或页面插槽填充者
+定义者          不得 import 填充者
 ```
 
 提供者和消费者都 import 定义者，彼此不 import。
+
+插件目录按它填充的契约所有者归档，不按技术名或插件大小平铺：
+
+```text
+plugins/kernel/...          内核服务的提供者、内核登记处的填充者
+plugins/web/<product>/      填 Web products 登记处的产品
+plugins/web/chat/<slot>/... 填 Chat 自己的页面插槽
+plugins/web/settings/...    填 Web 公共 settings.section
+```
+
+Chat 当前是 Web 产品，因为它直接使用 `surface/web`、Templ、HTMX 和 SSE。TUI
+将来自己画，只复用 Session / Runner 等内核；ACP 是协议桥，不画页面；桌面端用
+WebView 承载同一套 Web，不复制一份 Chat。真实代码出现前不建空的 `plugins/tui`
+或 `plugins/acp`。
 
 ### 风格
 
@@ -256,13 +272,19 @@ surface/
   web/               v1。产品 / 路由 / 页面插槽登记处；templ + htmx + SSE
 
 plugins/
-  machine-local/     本机。RegisterService("machine", …)
-  machine-e2b/       E2B。同上
-  loops/react/       必装默认 Loop；使用 llm、tools，填 loops
-  tools/read/ write/ edit/ bash/   各填 tools
+  kernel/
+    machine/local/   本机。RegisterService("machine", …)
+    loops/react/     必装默认 Loop；使用 llm、tools，填 loops
+    tools/read/ write/ edit/ bash/   各填 tools
+  web/
+    chat/            Chat 产品；填 Web products 和 routes
+      composer/demo/ 填 Chat composer.actions
+      dock/demo/     填 Chat dock（仅测试安装）
+      sidepanel/demo/ 填 Chat sidepanel
+    settings/demo/   填 Web settings.section
 ```
 
-`tui/`、`acp/` 后期真写再加目录，**不要先建空文件夹**。
+`plugins/tui/`、`plugins/acp/` 后期真写再加目录，**不要先建空文件夹**。
 
 ### 启动
 

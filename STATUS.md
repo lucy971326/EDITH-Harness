@@ -4,7 +4,9 @@
 
 ## 现在是什么
 
-Harness 已完成阶段 1、2、3，以及阶段 4 的右侧面板、Dock 和消息复制登记处：它是可启动的 Web 聊天产品，具备项目/会话管理、真实 Runner 调度与 SSE 流式界面。
+Harness 已完成阶段 1、2、3，以及阶段 4 的五个页面插槽基础设施：它是可启动的 Web 聊天产品，具备项目/会话管理、真实 Runner 调度与 SSE 流式界面。
+
+插件已按契约所有者归档：`plugins/kernel` 放内核服务实现与登记处填充物，`plugins/web` 放 Web 产品及其页面插槽填充物；Chat 是 `plugins/web/chat` 下的 Web 产品。
 
 ```text
 浏览器 POST → Chat → Runner → Agent 设置 → React Loop → LLM / Tools
@@ -18,7 +20,7 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的右侧面板、Dock 和消
 ### 阶段 1：Web 基础
 
 - `surface/web`：HTTP Server、产品/路由登记处、templ 通用页面壳。
-- `plugins/products/chat`：Chat 产品注册及页面。
+- `plugins/web/chat`：Chat 产品注册及页面。
 - 本地嵌入 HTMX `2.0.10`、SSE 扩展 `2.2.4`；Tailwind 编译到 `surface/web/static/site.css`。
 
 ### 阶段 2：项目与会话
@@ -32,6 +34,7 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的右侧面板、Dock 和消
 
 - 启动链已完整组装：`persist → session → llm → machine-local → tools → events → loops/react → skills → agents → runner → web → chat → panel-demo`。
 - 每轮生成 `RunID`，写入本轮耐久消息与 SSE；History Snapshot 和 SSE 共用前端 reducer / `paint()`。同一 Run 默认合并为一张助手卡，只有耐久 Steer 才切成前后片段；落账完成不会让实时卡片跳位。
+- 时间线的耐久顺序使用 `Entry.Seq`；运行中卡片用 `AfterEntrySeq` 定位，Run 内按 `StepSeq / BlockSeq` 排列，工具结果按原始调用块回填。
 - Chat 支持普通发送、停止、Steer、FollowUp；FollowUp 的顺序由 Runner 按 Session 管理，不属于 Chat。
 - Steer 在接受时立即落账；工具被停止时也会补齐「已取消」结果，不留下悬空工具调用。
 - `Runner.Start` 同步占住 Session，再在 Runner 管理的 goroutine 运行；`Runner.Close` 会取消并等待仍在运行的 Run。
@@ -43,7 +46,7 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的右侧面板、Dock 和消
 
 - Chat 在 Host 的 `chat` 键提供 `chat.Service`；独立面板插件可登记类型。
 - Chat 固定画右侧 Tab 壳、`+`、开关与拖拽调宽；浏览器内存保存当前 Tabs 与宽度，Session 不保存。
-- 已安装 `plugins/panels/demo`，用于验证外部插件能登记并渲染 `demo:main`；它不冒充文件面板。
+- 已安装 `plugins/web/chat/sidepanel/demo`，用于验证外部插件能登记并渲染 `demo:main`；它不冒充文件面板。
 
 ### 阶段 4B：消息复制动作
 
@@ -58,14 +61,14 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的右侧面板、Dock 和消
 - Chat 固定在输入框上方画默认折叠的 `<details>` 外壳；Dock 只画内部内容，业务状态不写入 Session。
 - `DockChanged{SessionID, DockID}` 通过 `events` 通知 Chat；Chat 复用会话 SSE，以 `dock-{id}` 直接发送 Templ HTML，HTMX `sse-swap` 只替换该 Dock 内容。
 - SSE 首次连接和重连会在订阅后重发所有已登记 Dock 的当前 HTML；未知条目不发送，单项渲染失败不影响聊天流。
-- 新增测试专用 `plugins/docks/demo`：内存计数验证“状态变化 → events → Chat → SSE HTML”的完整边界，正常 `cmd/harness` 不安装它。
+- 新增测试专用 `plugins/web/chat/dock/demo`：内存计数验证“状态变化 → events → Chat → SSE HTML”的完整边界，正常 `cmd/harness` 不安装它。
 
 ### 阶段 4D：输入工具栏插槽 composer.actions
 
 - Chat 的 `chat.Service` 提供 `composer.actions` 登记处；填充插件登记 `ID / Order` 和 `Render(ComposerActionContext) (templ.Component, error)`。
 - Chat 固定在输入框表单 `#composer` 底部工具栏左侧渲染插槽容器 `#composer-actions`；单个 Action 渲染失败被隔离并跳过，不影响 Chat 页面渲染。
 - 遵循 `templ + 原生 HTML + HTMX` 原则，组件位于 `#composer` 表单内部，禁止嵌套 `<form>`，选项使用 `type="button"`。
-- 新增 `plugins/composers/demo`：使用原生 `<details>` 下拉菜单提供快捷模版输入，一行原生 JS 将文本填入 `textarea` 并聚焦；已安装至 `cmd/harness`。
+- 新增 `plugins/web/chat/composer/demo`：使用原生 `<details>` 下拉菜单提供快捷模版输入，一行原生 JS 将文本填入 `textarea` 并聚焦；已安装至 `cmd/harness`。
 
 ### 阶段 4E：Web 公共设置插槽 settings.section
 
@@ -73,7 +76,7 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的右侧面板、Dock 和消
 - Web 左侧边栏最底部固定放置「⚙ 设置」入口；主界面为 Master-Detail 左右双栏结构，左侧列出插件设置项，右侧为主配置区域。
 - 左栏切换使用 `hx-target="#settings-content" hx-push-url="true"` 保留 URL 与历史记录；OOB 自动同步左栏高亮项；默认选中排在首位的插件。
 - 错误隔离：单项渲染失败或返回 `nil` 组件优雅展示加载失败提示，绝不影响设置页主体；空状态展示友好指引。
-- 新增 `plugins/settings/demo`：登记演示配置（昵称），原生表单通过 HTMX 提交并在内存中维护状态；已安装至 `cmd/harness`。
+- 新增 `plugins/web/settings/demo`：登记演示配置（昵称），原生表单通过 HTMX 提交并在内存中维护状态；已安装至 `cmd/harness`。
 
 ## 验证
 
@@ -94,6 +97,8 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的右侧面板、Dock 和消
   ├─ 轨迹页、Session 分叉
   └─ 产品切换、SSE 重连、慢客户端、取消、关闭与浏览器验收
 ```
+
+唯一施工计划维护在 `docs/plan/future_plan.md`；已完成事实只写在本文件，稳定决策写入 `docs/设计书.md`。
 
 ## 运行前提
 
