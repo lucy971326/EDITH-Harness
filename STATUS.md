@@ -130,7 +130,7 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的五个页面插槽基础�
   └─ 产品切换、SSE 重连、慢客户端、取消、关闭与浏览器验收
 ```
 
-唯一施工计划维护在 `docs/plan/future_plan.md`；UI 重构步骤见 `docs/plan/UI计划书总.md`，已完成事实只写在本文件，稳定决策写入 `docs/设计书.md`。
+唯一施工计划维护在 `docs/plan/future_plan.md`；UI 重构的稳定规范见根目录 `WEB_UI.md`，已完成事实只写在本文件，产品决策写入 `docs/设计书.md`。
 
 ## 运行前提
 
