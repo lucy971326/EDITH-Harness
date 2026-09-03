@@ -40,6 +40,7 @@ func TestSettingsSectionRegistryRejectsInvalidAndDuplicate(t *testing.T) {
 		{ID: "Upper", Title: "uppercase"},
 		{ID: "7starts", Title: "number"},
 		{ID: "has space", Title: "space"},
+		{ID: "appearance", Title: "reserved"},
 		{ID: "valid", Title: "   "},
 	} {
 		if err := registry.RegisterSettingsSection(testSettingsSection{definition: definition}); err == nil {
@@ -97,16 +98,16 @@ func TestSettingsHandlerRendersAndIsolatesErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 1. 无任何插件登记时，访问 /settings 经由路由分发显示空状态
+	// 1. 无任何插件登记时，访问 /settings 显示 Web 自带的外观设置
 	req := httptest.NewRequest(nethttp.MethodGet, "/settings", nil)
 	rec := httptest.NewRecorder()
 	reg.ServeHTTP(rec, req)
 	if rec.Code != nethttp.StatusOK {
-		t.Fatalf("empty status = %d", rec.Code)
+		t.Fatalf("appearance status = %d", rec.Code)
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, "暂无可用设置") {
-		t.Fatalf("expected empty prompt, got: %s", body)
+	if !strings.Contains(body, `id="theme-select"`) {
+		t.Fatalf("expected appearance settings, got: %s", body)
 	}
 
 	// 2. 登记一个正常 section 和一个返回错误的 section 以及一个返回 nil 的 section
@@ -126,7 +127,7 @@ func TestSettingsHandlerRendersAndIsolatesErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 3. 访问 /settings 自动选中并渲染第一项
+	// 3. 访问 /settings 仍默认展示 Web 自带外观，插件栏目留在左侧
 	req = httptest.NewRequest(nethttp.MethodGet, "/settings", nil)
 	rec = httptest.NewRecorder()
 	reg.ServeHTTP(rec, req)
@@ -134,9 +135,6 @@ func TestSettingsHandlerRendersAndIsolatesErrors(t *testing.T) {
 		t.Fatalf("first item status = %d", rec.Code)
 	}
 	body = rec.Body.String()
-	if !strings.Contains(body, "<div>demo content</div>") {
-		t.Fatalf("expected normal content, got: %s", body)
-	}
 	if !strings.Contains(body, `href="/settings/normal"`) {
 		t.Fatalf("expected link to normal, got: %s", body)
 	}

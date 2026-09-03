@@ -29,6 +29,9 @@ func (r *settingsSectionRegistry) RegisterSettingsSection(section SettingsSectio
 	if !settingsSectionIDPattern.MatchString(definition.ID) {
 		return fmt.Errorf("web: settings section ID %q is invalid", definition.ID)
 	}
+	if definition.ID == appearanceSectionID {
+		return fmt.Errorf("web: settings section ID %q is reserved", definition.ID)
+	}
 	if strings.TrimSpace(definition.Title) == "" {
 		return fmt.Errorf("web: settings section definition has empty title")
 	}

@@ -1,13 +1,111 @@
+/* 基础 Token：所有 Web 产品与插槽只消费语义变量，不直接挑颜色。 */
 :root {
-  --color-canvas: #f5f4f0;
-  --color-surface: #fbfaf7;
-  --color-muted: #ebe9e3;
-  --color-border: #d8d5cd;
-  --color-text: #252522;
-  --color-subtle: #77756f;
-  --color-accent: #252522;
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 18px;
+  color-scheme: light;
+
+  --ui-font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --ui-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+
+  --ui-size-title: 1.125rem;
+  --ui-size-section: 1rem;
+  --ui-size-body: 0.875rem;
+  --ui-size-meta: 0.75rem;
+  --ui-size-code: 0.8125rem;
+  --ui-line-title: 1.4;
+  --ui-line-body: 1.55;
+  --ui-line-tight: 1.3;
+
+  --ui-space-1: 0.25rem;
+  --ui-space-2: 0.5rem;
+  --ui-space-3: 0.75rem;
+  --ui-space-4: 1rem;
+  --ui-space-5: 1.25rem;
+  --ui-space-6: 1.5rem;
+  --ui-space-8: 2rem;
+
+  --ui-radius-control: 0.375rem;
+  --ui-radius-card: 0.625rem;
+  --ui-radius-shell: 0.875rem;
+
+  --ui-color-canvas: #f5f4f0;
+  --ui-color-surface: #fbfaf7;
+  --ui-color-surface-raised: #ffffff;
+  --ui-color-panel: #eeece6;
+  --ui-color-border: #d8d5cd;
+  --ui-color-border-strong: #bbb8ae;
+  --ui-color-text: #252522;
+  --ui-color-text-secondary: #5f605b;
+  --ui-color-text-muted: #77756f;
+  --ui-color-text-faint: #a09e96;
+  --ui-color-accent: #252522;
+  --ui-color-accent-contrast: #ffffff;
+  --ui-color-focus: #2563eb;
+  --ui-color-success: #18794e;
+  --ui-color-warning: #9a6700;
+  --ui-color-danger: #b42318;
+  --ui-color-danger-contrast: #ffffff;
+  --ui-color-danger-surface: #fff1f0;
+
+  --ui-shadow-popover: 0 10px 24px rgba(37, 37, 34, 0.12), 0 2px 6px rgba(37, 37, 34, 0.08);
+  --ui-motion-fast: 140ms;
+
+  /* 旧模板的过渡别名；迁移完成后可删除。 */
+  --color-canvas: var(--ui-color-canvas);
+  --color-surface: var(--ui-color-surface);
+  --color-muted: var(--ui-color-panel);
+  --color-border: var(--ui-color-border);
+  --color-text: var(--ui-color-text);
+  --color-subtle: var(--ui-color-text-muted);
+  --color-accent: var(--ui-color-accent);
+  --radius-sm: var(--ui-radius-control);
+  --radius-md: var(--ui-radius-card);
+  --radius-lg: var(--ui-radius-shell);
   --sidebar-width: 232px;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ui-color-canvas: #171816;
+  --ui-color-surface: #1d1e1c;
+  --ui-color-surface-raised: #252623;
+  --ui-color-panel: #23241f;
+  --ui-color-border: #3a3c36;
+  --ui-color-border-strong: #565950;
+  --ui-color-text: #f0efe9;
+  --ui-color-text-secondary: #c1c3ba;
+  --ui-color-text-muted: #969990;
+  --ui-color-text-faint: #6f726a;
+  --ui-color-accent: #f0efe9;
+  --ui-color-accent-contrast: #1d1e1c;
+  --ui-color-focus: #79a7ff;
+  --ui-color-success: #66c995;
+  --ui-color-warning: #e5b64d;
+  --ui-color-danger: #ff8f85;
+  --ui-color-danger-contrast: #251311;
+  --ui-color-danger-surface: #3a211f;
+  --ui-shadow-popover: 0 12px 28px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.24);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    color-scheme: dark;
+    --ui-color-canvas: #171816;
+    --ui-color-surface: #1d1e1c;
+    --ui-color-surface-raised: #252623;
+    --ui-color-panel: #23241f;
+    --ui-color-border: #3a3c36;
+    --ui-color-border-strong: #565950;
+    --ui-color-text: #f0efe9;
+    --ui-color-text-secondary: #c1c3ba;
+    --ui-color-text-muted: #969990;
+    --ui-color-text-faint: #6f726a;
+    --ui-color-accent: #f0efe9;
+    --ui-color-accent-contrast: #1d1e1c;
+    --ui-color-focus: #79a7ff;
+    --ui-color-success: #66c995;
+    --ui-color-warning: #e5b64d;
+    --ui-color-danger: #ff8f85;
+    --ui-color-danger-contrast: #251311;
+    --ui-color-danger-surface: #3a211f;
+    --ui-shadow-popover: 0 12px 28px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.24);
+  }
 }

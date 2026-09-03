@@ -29,7 +29,7 @@ func DemoSettings(nickname string, saved bool) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div id=\"settings-demo-container\" class=\"max-w-xl space-y-6\"><div><h3 class=\"text-lg font-medium text-[var(--color-text)]\">演示插件设置</h3><p class=\"mt-1 text-sm text-[var(--color-subtle)]\">状态仅由本插件在内存中持有，不写入 Session，不提供通用持久化；进程重启后重置为默认值。</p></div><form hx-post=\"/settings/demo\" hx-target=\"#settings-demo-container\" hx-swap=\"outerHTML\" class=\"space-y-4 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white p-5 shadow-sm\"><div><label for=\"demo-nickname\" class=\"block text-xs font-medium text-[var(--color-subtle)]\">用户昵称</label> <input type=\"text\" id=\"demo-nickname\" name=\"nickname\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div id=\"settings-demo-container\" class=\"max-w-xl space-y-6\"><div><h3 class=\"ui-text-title\">演示插件设置</h3><p class=\"mt-1 ui-text-meta\">状态仅由本插件在内存中持有，不写入 Session，不提供通用持久化；进程重启后重置为默认值。</p></div><form hx-post=\"/settings/demo\" hx-target=\"#settings-demo-container\" hx-swap=\"outerHTML\" class=\"ui-card space-y-4 p-5\"><div><label for=\"demo-nickname\" class=\"ui-text-meta\">用户昵称</label> <input type=\"text\" id=\"demo-nickname\" name=\"nickname\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -42,12 +42,12 @@ func DemoSettings(nickname string, saved bool) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\" class=\"mt-1.5 w-full rounded border border-[var(--color-border)] bg-transparent px-3 py-1.5 text-sm outline-none focus:border-[var(--color-accent)]\" placeholder=\"输入昵称\"></div><div class=\"flex items-center gap-3 pt-2\"><button type=\"submit\" class=\"rounded bg-[var(--color-accent)] px-4 py-1.5 text-sm font-medium text-white hover:opacity-90\">保存设置</button> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\" class=\"ui-input mt-1.5\" placeholder=\"输入昵称\"></div><div class=\"flex items-center gap-3 pt-2\"><button type=\"submit\" class=\"ui-button-primary\">保存设置</button> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if saved {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<span class=\"text-xs text-green-700\">✓ 设置已保存（内存）</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<span class=\"ui-text-meta ui-notice-success\">设置已保存（内存）</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

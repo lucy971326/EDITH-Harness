@@ -1,5 +1,9 @@
 package web
 
+import "harness/surface/web/ui"
+
+const appearanceSectionID = "appearance"
+
 templ Page(products []Product, currentID string, navigation templ.Component, content templ.Component) {
 	<!DOCTYPE html>
 	<html lang="zh-CN">
@@ -7,16 +11,17 @@ templ Page(products []Product, currentID string, navigation templ.Component, con
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<title>Harness</title>
+			<script src="/static/theme.js"></script>
 			<link rel="stylesheet" href="/static/site.css"/>
 			<script src="/static/htmx.min.js"></script>
 			<script src="/static/htmx-ext-sse.js"></script>
 		</head>
-		<body>
+		<body class="ui-page">
 			<div class="min-h-screen p-2">
-				<div class="flex h-[calc(100vh-1rem)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)]">
-					<aside class="flex w-[var(--sidebar-width)] shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-muted)] p-3">
-						<a href="/" class="mb-5 flex items-center gap-2 px-1 text-sm font-semibold no-underline text-[var(--color-text)]">
-							<span class="grid size-6 place-items-center rounded-md bg-[var(--color-accent)] text-xs text-white">H</span>
+				<div class="ui-shell flex h-[calc(100vh-1rem)] overflow-hidden">
+					<aside class="ui-panel flex w-[var(--sidebar-width)] shrink-0 flex-col border-r border-[var(--ui-color-border)] p-3">
+						<a href="/" class="mb-5 flex items-center gap-2 px-1 ui-text-body font-semibold no-underline">
+							<span class="ui-brand-mark">H</span>
 							Harness
 						</a>
 						<nav aria-label="产品" class="space-y-1">
@@ -27,32 +32,30 @@ templ Page(products []Product, currentID string, navigation templ.Component, con
 									hx-target="#main"
 									hx-swap="outerHTML"
 									hx-push-url="true"
-									class={
-										"flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-2 text-sm no-underline",
-										templ.KV("bg-[var(--color-surface)] font-medium text-[var(--color-text)]", product.ID == currentID),
-										templ.KV("text-[var(--color-subtle)] hover:bg-[var(--color-surface)]", product.ID != currentID),
+									class="ui-nav-item"
+									if product.ID == currentID {
+										aria-current="page"
 									}
 								>
-									<span aria-hidden="true" class="w-4 text-center">{ product.Icon }</span>
+									@ui.Icon(product.Icon)
 									{ product.Name }
 								</a>
 							}
 						</nav>
 						@ProductNavigation(navigation)
-						<div class="mt-auto border-t border-[var(--color-border)] pt-3">
+						<div class="mt-auto border-t border-[var(--ui-color-border)] pt-3">
 							<a
 								href="/settings"
 								hx-get="/settings"
 								hx-target="#main"
 								hx-swap="outerHTML"
 								hx-push-url="true"
-								class={
-									"flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-2 text-sm no-underline",
-									templ.KV("bg-[var(--color-surface)] font-medium text-[var(--color-text)]", currentID == "settings"),
-									templ.KV("text-[var(--color-subtle)] hover:bg-[var(--color-surface)]", currentID != "settings"),
+								class="ui-nav-item"
+								if currentID == "settings" {
+									aria-current="page"
 								}
 							>
-								<span aria-hidden="true" class="w-4 text-center">⚙</span>
+								@ui.Icon(ui.IconSettings)
 								设置
 							</a>
 						</div>
@@ -65,31 +68,31 @@ templ Page(products []Product, currentID string, navigation templ.Component, con
 }
 
 templ ProductNavigation(content templ.Component) {
-	<div id="product-navigation" class="mt-4 min-h-0 flex-1 overflow-y-auto border-t border-[var(--color-border)] pt-3">
+	<div id="product-navigation" class="mt-4 min-h-0 flex-1 overflow-y-auto border-t border-[var(--ui-color-border)] pt-3">
 		@content
 	</div>
 }
 
 templ ProductFragment(navigation templ.Component, content templ.Component) {
-	<div id="product-navigation" hx-swap-oob="outerHTML" class="mt-4 min-h-0 flex-1 overflow-y-auto border-t border-[var(--color-border)] pt-3">
+	<div id="product-navigation" hx-swap-oob="outerHTML" class="mt-4 min-h-0 flex-1 overflow-y-auto border-t border-[var(--ui-color-border)] pt-3">
 		@navigation
 	</div>
 	@Main(content)
 }
 
 templ Main(content templ.Component) {
-	<main id="main" class="min-h-0 min-w-0 flex-1 overflow-hidden bg-[var(--color-surface)]">
+	<main id="main" class="min-h-0 min-w-0 flex-1 overflow-hidden bg-[var(--ui-color-surface)]">
 		@content
 	</main>
 }
 
 templ SettingsPage(sections []SettingsSectionDefinition, currentSectionID string, content templ.Component) {
 	<div id="settings-page" class="flex h-full min-h-0">
-		<aside class="flex w-56 shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-muted)] p-4">
-			<h2 class="mb-3 text-sm font-semibold text-[var(--color-text)]">插件设置</h2>
+		<aside class="ui-panel flex w-56 shrink-0 flex-col border-r border-[var(--ui-color-border)] p-4">
+			<h2 class="ui-text-section mb-3">设置</h2>
 			@SettingsNav(sections, currentSectionID, false)
 		</aside>
-		<section id="settings-content" class="min-h-0 flex-1 overflow-y-auto p-8">
+		<section id="settings-content" class="min-h-0 flex-1 overflow-y-auto bg-[var(--ui-color-surface)] p-8">
 			@content
 		</section>
 	</div>
@@ -104,8 +107,22 @@ templ SettingsNav(sections []SettingsSectionDefinition, currentSectionID string,
 			hx-swap-oob="outerHTML"
 		}
 	>
+		<a
+			href="/settings/appearance"
+			hx-get="/settings/appearance"
+			hx-target="#settings-content"
+			hx-swap="innerHTML"
+			hx-push-url="true"
+			class="ui-nav-item"
+			if currentSectionID == appearanceSectionID {
+				aria-current="page"
+			}
+		>
+			@ui.Icon(ui.IconSettings)
+			外观
+		</a>
 		if len(sections) == 0 {
-			<p class="px-2 py-1 text-xs text-[var(--color-subtle)]">暂无插件设置</p>
+			<p class="px-3 py-1 ui-text-meta">暂无插件设置</p>
 		} else {
 			for _, section := range sections {
 				<a
@@ -114,10 +131,9 @@ templ SettingsNav(sections []SettingsSectionDefinition, currentSectionID string,
 					hx-target="#settings-content"
 					hx-swap="innerHTML"
 					hx-push-url="true"
-					class={
-						"block rounded-[var(--radius-sm)] px-3 py-2 text-sm no-underline",
-						templ.KV("bg-[var(--color-surface)] font-medium text-[var(--color-text)]", section.ID == currentSectionID),
-						templ.KV("text-[var(--color-subtle)] hover:bg-[var(--color-surface)]", section.ID != currentSectionID),
+					class="ui-nav-item"
+					if section.ID == currentSectionID {
+						aria-current="page"
 					}
 				>
 					{ section.Title }
@@ -132,24 +148,44 @@ templ SettingsContentFragment(sections []SettingsSectionDefinition, currentSecti
 	@content
 }
 
+templ SettingsAppearance() {
+	<div class="max-w-xl space-y-6">
+		<header class="space-y-1">
+			<h3 class="ui-text-title">外观</h3>
+			<p class="ui-text-meta">主题只保存在当前浏览器，不会写入会话或项目数据。</p>
+		</header>
+		<section class="ui-card space-y-4 p-5">
+			<div class="space-y-1.5">
+				<label for="theme-select" class="ui-text-meta">界面主题</label>
+				<select id="theme-select" class="ui-select">
+					<option value="system" selected>跟随系统</option>
+					<option value="light">亮色</option>
+					<option value="dark">暗色</option>
+				</select>
+			</div>
+			<p class="ui-text-meta">选择暗色或亮色后，所有 Web 产品和插槽会使用同一套主题 Token。</p>
+		</section>
+	</div>
+}
+
 templ SettingsEmpty() {
-	<div class="grid h-full place-items-center text-center text-sm text-[var(--color-subtle)]">
+	<div class="ui-empty-state">
 		<div>
-			<div class="mx-auto mb-2 grid size-10 place-items-center rounded-xl bg-[var(--color-muted)] text-lg">⚙</div>
-			<p class="font-medium text-[var(--color-text)]">暂无可用设置</p>
-			<p class="mt-1 text-xs">当前没有插件登记设置项。</p>
+			<div class="mx-auto mb-3 ui-text-section" aria-hidden="true">@ui.Icon(ui.IconSettings)</div>
+			<p class="ui-text-body font-semibold">暂无可用设置</p>
+			<p class="mt-1 ui-text-meta">当前没有插件登记设置项。</p>
 		</div>
 	</div>
 }
 
 templ SettingsNotFound() {
-	<div class="grid h-full place-items-center text-center text-sm text-[var(--color-subtle)]">
-		<p class="text-red-700">未找到该插件设置</p>
+	<div class="ui-empty-state">
+		<p class="ui-notice ui-notice-danger">未找到该插件设置</p>
 	</div>
 }
 
 templ SettingsRenderError() {
-	<div class="grid h-full place-items-center text-center text-sm text-[var(--color-subtle)]">
-		<p class="text-red-700">设置项暂时无法加载</p>
+	<div class="ui-empty-state">
+		<p class="ui-notice ui-notice-danger">设置项暂时无法加载</p>
 	</div>
 }

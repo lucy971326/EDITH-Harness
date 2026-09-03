@@ -12,12 +12,13 @@ import (
 	"harness/kernel/session"
 	"harness/kernel/session/settings"
 	"harness/surface/web"
+	"harness/surface/web/ui"
 )
 
 var chatProduct = web.Product{
 	ID:       "chat",
 	Name:     "对话",
-	Icon:     "▣",
+	Icon:     ui.IconChat,
 	BasePath: "/chat",
 	Order:    10,
 }

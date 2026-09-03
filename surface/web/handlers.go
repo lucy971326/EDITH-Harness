@@ -38,13 +38,13 @@ func newSettingsHandler(service Service) *SettingsHandler {
 func (h *SettingsHandler) ServeHTTP(w nethttp.ResponseWriter, r *nethttp.Request) {
 	sections := h.service.SettingsSections()
 	targetID := r.PathValue("sectionID")
-	if targetID == "" && len(sections) > 0 {
-		targetID = sections[0].ID
+	if targetID == "" {
+		targetID = appearanceSectionID
 	}
 
 	var content templ.Component
-	if targetID == "" {
-		content = SettingsEmpty()
+	if targetID == appearanceSectionID {
+		content = SettingsAppearance()
 	} else {
 		section, ok := h.service.SettingsSection(targetID)
 		if !ok {

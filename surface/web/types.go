@@ -5,13 +5,14 @@ import (
 	nethttp "net/http"
 
 	"github.com/a-h/templ"
+	"harness/surface/web/ui"
 )
 
 // 数据。Product 描述 Web 左栏中的一个产品入口。
 type Product struct {
 	ID       string
 	Name     string
-	Icon     string
+	Icon     ui.IconName
 	BasePath string
 	Order    int
 }

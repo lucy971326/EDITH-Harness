@@ -74,9 +74,17 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的五个页面插槽基础�
 
 - Web 表面 `web.Service` 提供 `settings.section` 登记处；填充插件登记 `ID / Title / Order` 和 `Render() (templ.Component, error)`。
 - Web 左侧边栏最底部固定放置「⚙ 设置」入口；主界面为 Master-Detail 左右双栏结构，左侧列出插件设置项，右侧为主配置区域。
-- 左栏切换使用 `hx-target="#settings-content" hx-push-url="true"` 保留 URL 与历史记录；OOB 自动同步左栏高亮项；默认选中排在首位的插件。
+- 左栏切换使用 `hx-target="#settings-content" hx-push-url="true"` 保留 URL 与历史记录；OOB 自动同步左栏高亮项；默认展示 Web 自带的「外观」栏目。
 - 错误隔离：单项渲染失败或返回 `nil` 组件优雅展示加载失败提示，绝不影响设置页主体；空状态展示友好指引。
 - 新增 `plugins/web/settings/demo`：登记演示配置（昵称），原生表单通过 HTMX 提交并在内存中维护状态；已安装至 `cmd/harness`。
+
+### UI 重构第一步：视觉基础层
+
+- `surface/web/assets` 已建立统一 Token：亮色、暗色、跟随系统、系统字体、固定字号、4px 间距、统一圆角、边框层级、状态色与减少动态效果。
+- 已增加 `ui-*` 公共规则，Web 外壳、设置页与设置 demo 开始消费语义样式，不再为这些页面直接挑白色背景或任意圆角。
+- 新增静态编译的 `surface/web/ui` Lucide 图标入口与受控图标常量；全局设置入口与设置空态已迁移。
+- 新增浏览器本地主题偏好脚本；Web 自带 `/settings/appearance` 外观栏目，主题不进入 Session、账本或插件状态。
+- 本步未改 Chat 的消息投影、SSE、Runner、Session 或插件边界；确认截图后再进入全 Web 迁移。
 
 ## 验证
 
@@ -98,7 +106,7 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的五个页面插槽基础�
   └─ 产品切换、SSE 重连、慢客户端、取消、关闭与浏览器验收
 ```
 
-唯一施工计划维护在 `docs/plan/future_plan.md`；已完成事实只写在本文件，稳定决策写入 `docs/设计书.md`。
+唯一施工计划维护在 `docs/plan/future_plan.md`；UI 重构步骤见 `docs/plan/UI计划书总.md`，已完成事实只写在本文件，稳定决策写入 `docs/设计书.md`。
 
 ## 运行前提
 
