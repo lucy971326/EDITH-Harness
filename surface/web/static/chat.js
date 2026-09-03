@@ -113,6 +113,26 @@
     return "";
   }
 
+  function toolPreview(args) {
+    if (!args) return "";
+    try {
+      const value = JSON.parse(args);
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        for (const key of ["command", "path", "query", "url"]) {
+          if (typeof value[key] === "string" && value[key].trim()) return value[key];
+        }
+      }
+    } catch {
+      // 非 JSON 参数按原文展示。
+    }
+    return String(args);
+  }
+
+  function truncate(value, limit = 88) {
+    const text = String(value || "").replace(/\s+/g, " ").trim();
+    return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
+  }
+
   function toolBlock(segment, step, block) {
     const tool = block.tool || {};
     const result = block.result;
@@ -121,9 +141,11 @@
     const key = `tool:${segment.runID}:${segment.boundarySeq}:${step.seq}:${block.seq}:${tool.id || result?.id || ""}`;
     const args = formatArguments(tool.args);
     const output = result?.content || "";
+    const preview = truncate(toolPreview(tool.args));
     return `<details class="ui-workflow-tool" data-disclosure-key="${escapeHTML(key)}">
   <summary class="ui-workflow-tool-summary">
     <span class="ui-workflow-tool-name">${escapeHTML(toolName)}</span>
+    ${preview ? `<span class="ui-workflow-tool-preview ui-text-code">${escapeHTML(preview)}</span>` : ""}
     <span class="ui-workflow-tool-status ${toolStatusClass(status)}">${escapeHTML(status)}</span>
   </summary>
   <div class="ui-workflow-tool-content">
@@ -141,8 +163,7 @@
       for (const block of sortedBlocks(step)) {
         if (step === answer && block.kind === "text") continue;
         if ((block.kind === "reasoning" || block.kind === "text") && block.text) {
-          const label = block.kind === "reasoning" ? "思考过程" : "进展说明";
-          content += `<div class="ui-workflow-note"><span class="ui-workflow-note-label ui-text-meta">${label}</span><p class="ui-workflow-note-text ui-text-body">${escapeHTML(block.text)}</p></div>`;
+          content += `<p class="ui-workflow-note ${block.kind === "reasoning" ? "ui-workflow-note-reasoning" : ""}">${escapeHTML(block.text)}</p>`;
         } else if (block.kind === "tool-call") {
           toolCount++;
           content += toolBlock(segment, step, block);
@@ -162,7 +183,7 @@
     return latest;
   }
 
-  function workflowSummary(run, segment, live, hasContent) {
+  function workflowSummary(run, segment, live, hasContent, toolCount) {
     if (live) {
       const tool = latestRunningTool(segment);
       const name = tool?.tool?.name;
@@ -171,7 +192,8 @@
     const latest = !run.latestSegment || run.latestSegment === segment.id;
     if (latest && run.status === "failed") return "未完成 · 查看过程";
     if (latest && run.status === "cancelled") return "已停止 · 查看过程";
-    return hasContent ? "已完成 · 工作过程" : "";
+    if (!hasContent) return "";
+    return toolCount ? `已完成 · ${toolCount} 次工具调用` : "已完成 · 工作过程";
   }
 
   function workflowStatusClass(run, segment, live) {
@@ -196,11 +218,11 @@
   function assistantCard(run, segment, actions, live) {
     const parts = workflowContent(segment);
     const answerText = parts.answer ? textBlocks(sortedBlocks(parts.answer)) : "";
-    const summary = workflowSummary(run, segment, live, Boolean(parts.content));
+    const summary = workflowSummary(run, segment, live, Boolean(parts.content), parts.toolCount);
     const showWorkflow = Boolean(summary);
     const error = run.latestSegment === segment.id && run.status === "failed" && run.error ? `<p class="ui-workflow-error ui-text-body">${escapeHTML(run.error)}</p>` : "";
     const workflow = showWorkflow ? `<details class="ui-workflow" data-disclosure-key="workflow:${escapeHTML(segment.id)}">
-  <summary class="ui-workflow-summary ${workflowStatusClass(run, segment, live)}">${escapeHTML(summary)}<span class="ui-workflow-count">${parts.toolCount ? `${parts.toolCount} 个工具` : ""}</span></summary>
+  <summary class="ui-workflow-summary ${workflowStatusClass(run, segment, live)}">${escapeHTML(summary)}</summary>
   <div class="ui-workflow-body">${parts.content || `<p class="ui-workflow-empty ui-text-meta">暂无可展开内容</p>`}${error}</div>
 </details>` : "";
     const answer = answerText ? `<div class="ui-message-answer ui-text-body ui-markdown">${renderMarkdown(answerText)}</div>` : "";

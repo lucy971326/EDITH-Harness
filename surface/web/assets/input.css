@@ -153,14 +153,14 @@
   .ui-button-secondary,
   .ui-icon-button {
     border-color: var(--ui-color-border);
-    background: var(--ui-color-surface-raised);
+    background: transparent;
     color: var(--ui-color-text-secondary);
   }
 
   .ui-button-secondary:hover,
   .ui-icon-button:hover {
     border-color: var(--ui-color-border-strong);
-    background: var(--ui-color-panel);
+    background: var(--ui-color-hover);
     color: var(--ui-color-text);
   }
 
@@ -225,7 +225,7 @@
 
   .ui-tab:hover,
   .ui-tab-active {
-    background: var(--ui-color-panel);
+    background: var(--ui-color-selected);
     color: var(--ui-color-text);
   }
 
@@ -343,7 +343,7 @@
 
   .ui-markdown a,
   .ui-markdown-image-link {
-    color: var(--ui-color-accent);
+    color: var(--ui-color-link);
     text-decoration: underline;
     text-decoration-thickness: 1px;
     text-underline-offset: 0.14em;
@@ -464,26 +464,24 @@
   }
 
   .ui-workflow-note {
-    border-left: 2px solid var(--ui-color-border);
-    margin-bottom: var(--ui-space-3);
-    padding-left: var(--ui-space-3);
+    margin: 0 0 var(--ui-space-2);
+    color: var(--ui-color-text-secondary);
+    font-size: var(--ui-size-body);
+    line-height: var(--ui-line-body);
+    white-space: pre-wrap;
   }
 
-  .ui-workflow-note-label,
+  .ui-workflow-note-reasoning {
+    color: var(--ui-color-text-muted);
+  }
+
   .ui-workflow-field-label {
     display: block;
   }
 
-  .ui-workflow-note-text {
-    margin: var(--ui-space-1) 0 0;
-    white-space: pre-wrap;
-  }
-
   .ui-workflow-tool {
-    margin-bottom: var(--ui-space-2);
-    border: 1px solid var(--ui-color-border);
-    border-radius: var(--ui-radius-control);
-    background: var(--ui-color-panel);
+    margin: 0 0 var(--ui-space-1);
+    color: var(--ui-color-text-secondary);
   }
 
   .ui-workflow-tool > summary {
@@ -492,7 +490,8 @@
     gap: var(--ui-space-2);
     cursor: pointer;
     list-style: none;
-    padding: var(--ui-space-2) var(--ui-space-3);
+    min-width: 0;
+    padding: var(--ui-space-1) 0;
   }
 
   .ui-workflow-tool > summary::after {
@@ -502,6 +501,14 @@
   .ui-workflow-tool-name {
     color: var(--ui-color-text);
     font-weight: 600;
+  }
+
+  .ui-workflow-tool-preview {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--ui-color-text-muted);
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .ui-workflow-tool-status {
@@ -515,8 +522,20 @@
   }
 
   .ui-workflow-tool-content {
-    border-top: 1px solid var(--ui-color-border);
     padding: var(--ui-space-3);
+  }
+
+  .ui-workflow-tool[open] {
+    margin: var(--ui-space-2) 0;
+    overflow: hidden;
+    border: 1px solid var(--ui-color-border);
+    border-radius: var(--ui-radius-card);
+    background: var(--ui-color-surface-raised);
+  }
+
+  .ui-workflow-tool[open] > summary {
+    border-bottom: 1px solid var(--ui-color-border);
+    padding: var(--ui-space-2) var(--ui-space-3);
   }
 
   .ui-workflow-field + .ui-workflow-field {
@@ -580,7 +599,7 @@
   }
 
   .ui-menu-item:hover {
-    background: var(--ui-color-panel);
+    background: var(--ui-color-hover);
   }
 
   .ui-menu-trigger {
@@ -626,7 +645,7 @@
 
   .ui-nav-item:hover,
   .ui-nav-item[aria-current="page"] {
-    background: var(--ui-color-surface-raised);
+    background: var(--ui-color-selected);
     color: var(--ui-color-text);
   }
 
