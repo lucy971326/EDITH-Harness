@@ -1,6 +1,6 @@
 # AGENTS.md
 
-压缩会话、换人、新开对话：先读这篇，再读 `STATUS.md`。方案细节：`docs/设计书.md`。Cordis 对照：`docs/reference/DSH项目心得.md`。不要先翻 DSH / pi 源码。`docs/reference/` 只是偶尔参考，不是我们的方案。
+压缩会话、换人、新开对话：先读这篇，再读 `STATUS.md`。方案细节：`docs/设计书.md`。Web UI 细则：`WEB_UI.md`。数据归属与运行文件：`DATA_MODEL.md`。Cordis 对照：`docs/reference/DSH项目心得.md`。不要先翻 DSH / pi 源码。`docs/reference/` 只是偶尔参考，不是我们的方案。
 
 冲突：铁律以这篇为准，产品形状以设计书为准。
 
@@ -53,6 +53,7 @@ Host（桌子）
 7. Session **只记对话**，可以分叉。todo / 审批 / 游戏状态放插件自己的结构体。别往账本塞。
 8. 屏幕听这一轮 Run（`Emit`；浏览器用 SSE）。不听账本。喇叭就这一个，插件不要各搞各的。耐久事件先 `Append` 再给屏幕，失败则终止 Run。
 9. 前端：内核一份，表面按端 enable。Web 和 webview 同一套 templ；TUI 另画；ACP 是管子不是画面。Web 内有产品、路由和少量页面插槽登记处；产品决定进入哪一摊，页面插槽只扩展某个产品内部。请求 POST，通知 SSE。v1 不用 WebSocket。
+10. Web UI 的 Token、公共规则、图标、视觉方向与 JS 边界见根目录 `WEB_UI.md`。做 Web 页面、产品或页面插槽前必须阅读；其中 JS 规则同样是铁律。
 
 ---
 
