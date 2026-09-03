@@ -234,6 +234,10 @@ func TestListRejectsMetaWhoseIDDoesNotMatchFilename(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := []byte(`{"id":"other","title":"新对话","createdAt":"2026-09-02T00:00:00Z"}`)
+	err = s.ensureSessionDir("expected")
+	if err != nil {
+		t.Fatal(err)
+	}
 	err = os.WriteFile(s.metaFile("expected"), body, 0o644)
 	if err != nil {
 		t.Fatal(err)
@@ -372,7 +376,7 @@ func TestTreeFileName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = os.Stat(filepath.Join(dir, "chat1.jsonl"))
+	_, err = os.Stat(filepath.Join(dir, "sessions", "chat1", "messages.jsonl"))
 	if err != nil {
 		t.Fatal(err)
 	}

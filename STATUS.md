@@ -100,7 +100,7 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的右侧面板、Dock 和消
 - Go 1.25。
 - 修改 `.templ` 后运行 `go tool templ generate`。
 - 修改样式后运行 `npm run web:build`；首次需要 `npm install`。
-- 数据根目录固定为 `~/.harness`；账本、SessionSettings 和自建 Agent 不属于源码。项目内旧 `.harness-data/` 不再读取，可由用户自行删除。
+- 数据根目录固定为 `~/.harness`；全局 `config.yaml` 留在根目录，每场会话位于 `sessions/<session-id>/`，其中分别保存账本、元数据与 SessionSettings。项目内旧 `.harness-data/` 和用户目录旧平铺会话文件均不再读取，可由用户自行删除。
 - machine-local 直接操作本机文件和进程，没有沙箱与路径限制。
 - 本机需要 `~/.harness/config.yaml` 配置 LLM Provider：
 

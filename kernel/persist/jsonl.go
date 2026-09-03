@@ -38,11 +38,19 @@ func openJSONL(dir string) (*jsonl, error) {
 }
 
 func (s *jsonl) treeFile(id string) string {
-	return filepath.Join(s.dir, id+".jsonl")
+	return filepath.Join(s.sessionDir(id), "messages.jsonl")
 }
 
 func (s *jsonl) metaFile(id string) string {
-	return filepath.Join(s.dir, id+".session.json")
+	return filepath.Join(s.sessionDir(id), "meta.json")
+}
+
+func (s *jsonl) sessionDir(id string) string {
+	return filepath.Join(s.dir, "sessions", id)
+}
+
+func (s *jsonl) ensureSessionDir(id string) error {
+	return os.MkdirAll(s.sessionDir(id), 0o755)
 }
 
 func (s *jsonl) Load(id string) (*Tree, error) {
@@ -86,6 +94,10 @@ func (s *jsonl) Save(id string, tree *Tree) error {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	err = s.ensureSessionDir(id)
+	if err != nil {
+		return err
+	}
 
 	var buf bytes.Buffer
 	for _, n := range tree.Nodes {
@@ -152,6 +164,10 @@ func (s *jsonl) SaveMeta(meta Meta) error {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	err = s.ensureSessionDir(meta.ID)
+	if err != nil {
+		return err
+	}
 
 	path := s.metaFile(meta.ID)
 	tmp := path + ".tmp"
@@ -178,7 +194,7 @@ func (s *jsonl) List() ([]Meta, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	matches, err := filepath.Glob(filepath.Join(s.dir, "*.session.json"))
+	matches, err := filepath.Glob(filepath.Join(s.dir, "sessions", "*", "meta.json"))
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +202,7 @@ func (s *jsonl) List() ([]Meta, error) {
 	out := make([]Meta, 0, len(matches))
 	for _, path := range matches {
 		name := filepath.Base(path)
-		expectedID := strings.TrimSuffix(name, ".session.json")
+		expectedID := filepath.Base(filepath.Dir(path))
 		body, err := os.ReadFile(path)
 		if err != nil {
 			return nil, err
@@ -194,7 +210,7 @@ func (s *jsonl) List() ([]Meta, error) {
 		var meta Meta
 		err = json.Unmarshal(body, &meta)
 		if err != nil {
-			return nil, fmt.Errorf("persist: session meta %q: %w", filepath.Base(path), err)
+			return nil, fmt.Errorf("persist: session meta %q: %w", expectedID, err)
 		}
 		err = checkID(meta.ID)
 		if err != nil {
@@ -219,6 +235,10 @@ func (s *jsonl) Add(id string, node Node) error {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	err = s.ensureSessionDir(id)
+	if err != nil {
+		return err
+	}
 
 	line, err := json.Marshal(node)
 	if err != nil {

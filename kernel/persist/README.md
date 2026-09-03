@@ -15,8 +15,9 @@ Start(Dir)
   → 打开 JSONL 存储
   → 注册三把服务键
 
-账本节点       → <session>.jsonl
-会话设置       → <session>.session-settings.json
+账本节点       → sessions/<session>/messages.jsonl
+会话元数据     → sessions/<session>/meta.json
+会话设置       → sessions/<session>/settings.json
 自建 Agent     → <agent>.agent.json
 ```
 

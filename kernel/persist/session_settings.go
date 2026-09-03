@@ -10,7 +10,7 @@ import (
 )
 
 func (s *jsonl) sessionSettingsFile(id string) string {
-	return filepath.Join(s.dir, id+".session-settings.json")
+	return filepath.Join(s.sessionDir(id), "settings.json")
 }
 
 func (s *jsonl) For(sessionID string) (settings.SessionSettings, error) {
@@ -48,6 +48,10 @@ func (s *jsonl) Put(sessionID string, in settings.SessionSettings) error {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	err = s.ensureSessionDir(sessionID)
+	if err != nil {
+		return err
+	}
 
 	path := s.sessionSettingsFile(sessionID)
 	tmp := path + ".tmp"
