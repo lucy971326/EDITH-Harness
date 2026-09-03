@@ -7,11 +7,12 @@ import (
 	"sync"
 )
 
-// 活对象。Registry 保存 Web 服务暴露的产品名单和 HTTP 路由表。
+// 活对象。Registry 保存 Web 服务暴露的产品名单、设置栏目和 HTTP 路由表。
 type Registry struct {
 	productsMu sync.RWMutex
 	products   map[string]Product
 	paths      map[string]string
+	sections   *settingsSectionRegistry
 	mux        *nethttp.ServeMux
 }
 
@@ -19,6 +20,7 @@ func newRegistry() *Registry {
 	return &Registry{
 		products: make(map[string]Product),
 		paths:    make(map[string]string),
+		sections: newSettingsSectionRegistry(),
 		mux:      nethttp.NewServeMux(),
 	}
 }
@@ -78,6 +80,21 @@ func (r *Registry) Products() []Product {
 		return products[i].Order < products[j].Order
 	})
 	return products
+}
+
+// RegisterSettingsSection 往 Web 公共设置页登记一个插件栏目。
+func (r *Registry) RegisterSettingsSection(section SettingsSection) error {
+	return r.sections.RegisterSettingsSection(section)
+}
+
+// SettingsSections 返回按显示顺序排列的设置栏目列表。
+func (r *Registry) SettingsSections() []SettingsSectionDefinition {
+	return r.sections.SettingsSections()
+}
+
+// SettingsSection 按 ID 查找已登记的设置栏目。
+func (r *Registry) SettingsSection(id string) (SettingsSection, bool) {
+	return r.sections.SettingsSection(id)
 }
 
 // ServeHTTP 把请求交给已登记的路由。

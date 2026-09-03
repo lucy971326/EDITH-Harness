@@ -108,6 +108,15 @@ func registerWebRoutes(registry *Registry) error {
 	if err != nil {
 		return err
 	}
+	settingsHandler := newSettingsHandler(registry)
+	err = registry.RegisterRoute("GET /settings", settingsHandler)
+	if err != nil {
+		return err
+	}
+	err = registry.RegisterRoute("GET /settings/{sectionID}", settingsHandler)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 

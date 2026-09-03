@@ -27,6 +27,7 @@ import (
 	machinelocal "harness/plugins/machine-local"
 	paneldemo "harness/plugins/panels/demo"
 	chatproduct "harness/plugins/products/chat"
+	settingsdemo "harness/plugins/settings/demo"
 	bashtool "harness/plugins/tools/bash"
 	edittool "harness/plugins/tools/edit"
 	readtool "harness/plugins/tools/read"
@@ -129,6 +130,10 @@ func run(configPath string) error {
 		return err
 	}
 	err = h.Install(composerdemo.New())
+	if err != nil {
+		return err
+	}
+	err = h.Install(settingsdemo.New())
 	if err != nil {
 		return err
 	}

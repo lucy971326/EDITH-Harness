@@ -67,10 +67,17 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的右侧面板、Dock 和消
 - 遵循 `templ + 原生 HTML + HTMX` 原则，组件位于 `#composer` 表单内部，禁止嵌套 `<form>`，选项使用 `type="button"`。
 - 新增 `plugins/composers/demo`：使用原生 `<details>` 下拉菜单提供快捷模版输入，一行原生 JS 将文本填入 `textarea` 并聚焦；已安装至 `cmd/harness`。
 
+### 阶段 4E：Web 公共设置插槽 settings.section
+
+- Web 表面 `web.Service` 提供 `settings.section` 登记处；填充插件登记 `ID / Title / Order` 和 `Render() (templ.Component, error)`。
+- Web 左侧边栏最底部固定放置「⚙ 设置」入口；主界面为 Master-Detail 左右双栏结构，左侧列出插件设置项，右侧为主配置区域。
+- 左栏切换使用 `hx-target="#settings-content" hx-push-url="true"` 保留 URL 与历史记录；OOB 自动同步左栏高亮项；默认选中排在首位的插件。
+- 错误隔离：单项渲染失败或返回 `nil` 组件优雅展示加载失败提示，绝不影响设置页主体；空状态展示友好指引。
+- 新增 `plugins/settings/demo`：登记演示配置（昵称、主题选项），原生表单通过 HTMX 提交并在内存中维护状态；已安装至 `cmd/harness`。
+
 ## 验证
 
 - `go test ./...` 通过。
-- `go test -race ./kernel/runner ./kernel/session ./kernel/llm ./plugins/products/chat ./plugins/composers/demo ./cmd/harness` 通过。
 - `go vet ./...` 通过。
 - `git diff --check` 通过。
 - `node --test surface/web/static/test/sidepanel.test.js` 通过。
@@ -79,10 +86,9 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的右侧面板、Dock 和消
 ## 下一步
 
 ```text
-阶段 4：其余页面插槽
-  ├─ settings.section：插件设置二级列表
-  ├─ message.actions：分叉、其他插件动作
-  └─ sidepanel：真实文件等面板类型
+阶段 4 扩展（插槽填充物）：
+  ├─ message.actions：分叉（Fork / Branch）动作
+  └─ sidepanel：真实文件树与文件查看面板
 
 阶段 5：完整验收
   ├─ 轨迹页、Session 分叉

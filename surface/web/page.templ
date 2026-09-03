@@ -39,7 +39,24 @@ templ Page(products []Product, currentID string, navigation templ.Component, con
 							}
 						</nav>
 						@ProductNavigation(navigation)
-						<div class="border-t border-[var(--color-border)] pt-3 text-xs text-[var(--color-subtle)]">阶段 4 · 页面插槽</div>
+						<div class="mt-auto border-t border-[var(--color-border)] pt-3">
+							<a
+								href="/settings"
+								hx-get="/settings"
+								hx-target="#main"
+								hx-swap="outerHTML"
+								hx-push-url="true"
+								class={
+									"flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-2 text-sm no-underline",
+									templ.KV("bg-[var(--color-surface)] font-medium text-[var(--color-text)]", currentID == "settings"),
+									templ.KV("text-[var(--color-subtle)] hover:bg-[var(--color-surface)]", currentID != "settings"),
+								}
+							>
+								<span aria-hidden="true" class="w-4 text-center">⚙</span>
+								设置
+							</a>
+							<div class="mt-2 text-xs text-[var(--color-subtle)]">阶段 4 · 页面插槽</div>
+						</div>
 					</aside>
 					@Main(content)
 				</div>
@@ -65,4 +82,75 @@ templ Main(content templ.Component) {
 	<main id="main" class="min-h-0 min-w-0 flex-1 overflow-hidden bg-[var(--color-surface)]">
 		@content
 	</main>
+}
+
+templ SettingsPage(sections []SettingsSectionDefinition, currentSectionID string, content templ.Component) {
+	<div id="settings-page" class="flex h-full min-h-0">
+		<aside class="flex w-56 shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-muted)] p-4">
+			<h2 class="mb-3 text-sm font-semibold text-[var(--color-text)]">插件设置</h2>
+			@SettingsNav(sections, currentSectionID, false)
+		</aside>
+		<section id="settings-content" class="min-h-0 flex-1 overflow-y-auto p-8">
+			@content
+		</section>
+	</div>
+}
+
+templ SettingsNav(sections []SettingsSectionDefinition, currentSectionID string, oob bool) {
+	<nav
+		id="settings-nav"
+		aria-label="设置栏目"
+		class="space-y-1"
+		if oob {
+			hx-swap-oob="outerHTML"
+		}
+	>
+		if len(sections) == 0 {
+			<p class="px-2 py-1 text-xs text-[var(--color-subtle)]">暂无插件设置</p>
+		} else {
+			for _, section := range sections {
+				<a
+					href={ templ.SafeURL("/settings/" + section.ID) }
+					hx-get={ templ.URL("/settings/" + section.ID) }
+					hx-target="#settings-content"
+					hx-swap="innerHTML"
+					hx-push-url="true"
+					class={
+						"block rounded-[var(--radius-sm)] px-3 py-2 text-sm no-underline",
+						templ.KV("bg-[var(--color-surface)] font-medium text-[var(--color-text)]", section.ID == currentSectionID),
+						templ.KV("text-[var(--color-subtle)] hover:bg-[var(--color-surface)]", section.ID != currentSectionID),
+					}
+				>
+					{ section.Title }
+				</a>
+			}
+		}
+	</nav>
+}
+
+templ SettingsContentFragment(sections []SettingsSectionDefinition, currentSectionID string, content templ.Component) {
+	@SettingsNav(sections, currentSectionID, true)
+	@content
+}
+
+templ SettingsEmpty() {
+	<div class="grid h-full place-items-center text-center text-sm text-[var(--color-subtle)]">
+		<div>
+			<div class="mx-auto mb-2 grid size-10 place-items-center rounded-xl bg-[var(--color-muted)] text-lg">⚙</div>
+			<p class="font-medium text-[var(--color-text)]">暂无可用设置</p>
+			<p class="mt-1 text-xs">当前没有插件登记设置项。</p>
+		</div>
+	</div>
+}
+
+templ SettingsNotFound() {
+	<div class="grid h-full place-items-center text-center text-sm text-[var(--color-subtle)]">
+		<p class="text-red-700">未找到该插件设置</p>
+	</div>
+}
+
+templ SettingsRenderError() {
+	<div class="grid h-full place-items-center text-center text-sm text-[var(--color-subtle)]">
+		<p class="text-red-700">设置项暂时无法加载</p>
+	</div>
 }
