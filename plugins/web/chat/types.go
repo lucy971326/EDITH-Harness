@@ -6,13 +6,14 @@ import (
 	"github.com/a-h/templ"
 
 	"harness/kernel/session"
+	"harness/surface/web/ui"
 )
 
 // 数据。一个已登记面板类型的显示与默认打开信息。
 type PanelDefinition struct {
 	ID                 string
 	Name               string
-	Icon               string
+	Icon               ui.IconName
 	Order              int
 	DefaultInstanceKey string
 	DefaultTabTitle    string

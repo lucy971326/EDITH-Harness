@@ -28,6 +28,7 @@ import (
 	"harness/kernel/skills"
 	"harness/kernel/tools"
 	"harness/surface/web"
+	"harness/surface/web/ui"
 )
 
 func TestPluginRendersFullPageAndHTMXMain(t *testing.T) {
@@ -348,7 +349,7 @@ func TestPanelRouteRendersRegisteredPanelAndRejectsUnknownType(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = panels.RegisterPanel(testPanel{definition: PanelDefinition{
-		ID: "test", Name: "测试", Icon: "T", DefaultInstanceKey: "main", DefaultTabTitle: "测试",
+		ID: "test", Name: "测试", Icon: ui.IconPanel, DefaultInstanceKey: "main", DefaultTabTitle: "测试",
 	}})
 	if err != nil {
 		t.Fatal(err)

@@ -4,24 +4,26 @@ import (
 	"testing"
 
 	"github.com/a-h/templ"
+
+	"harness/surface/web/ui"
 )
 
 func TestPanelRegistryRegistersAndSortsDefinitions(t *testing.T) {
 	registry := newPanelRegistry()
 	err := registry.RegisterPanel(testPanel{definition: PanelDefinition{
-		ID: "second", Name: "第二", Icon: "2", Order: 20, DefaultInstanceKey: "main", DefaultTabTitle: "第二",
+		ID: "second", Name: "第二", Icon: ui.IconPanel, Order: 20, DefaultInstanceKey: "main", DefaultTabTitle: "第二",
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	err = registry.RegisterPanel(testPanel{definition: PanelDefinition{
-		ID: "first", Name: "第一", Icon: "1", Order: 10, DefaultInstanceKey: "main", DefaultTabTitle: "第一",
+		ID: "first", Name: "第一", Icon: ui.IconChat, Order: 10, DefaultInstanceKey: "main", DefaultTabTitle: "第一",
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	err = registry.RegisterPanel(testPanel{definition: PanelDefinition{
-		ID: "alpha", Name: "甲", Icon: "A", Order: 10, DefaultInstanceKey: "main", DefaultTabTitle: "甲",
+		ID: "alpha", Name: "甲", Icon: ui.IconPlus, Order: 10, DefaultInstanceKey: "main", DefaultTabTitle: "甲",
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -45,7 +47,7 @@ func TestPanelRegistryRejectsInvalidAndDuplicatePanels(t *testing.T) {
 		t.Fatal("RegisterPanel(invalid) succeeded")
 	}
 	valid := testPanel{definition: PanelDefinition{
-		ID: "demo", Name: "演示", Icon: "D", DefaultInstanceKey: "main", DefaultTabTitle: "演示",
+		ID: "demo", Name: "演示", Icon: ui.IconPanel, DefaultInstanceKey: "main", DefaultTabTitle: "演示",
 	}}
 	err := registry.RegisterPanel(valid)
 	if err != nil {
@@ -54,6 +56,12 @@ func TestPanelRegistryRejectsInvalidAndDuplicatePanels(t *testing.T) {
 	err = registry.RegisterPanel(valid)
 	if err == nil {
 		t.Fatal("RegisterPanel accepted duplicate")
+	}
+	unknown := testPanel{definition: PanelDefinition{
+		ID: "unknown", Name: "未知图标", Icon: ui.IconName("missing"), DefaultInstanceKey: "main", DefaultTabTitle: "未知图标",
+	}}
+	if err := registry.RegisterPanel(unknown); err == nil {
+		t.Fatal("RegisterPanel accepted unknown icon")
 	}
 }
 

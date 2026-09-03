@@ -86,6 +86,13 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的五个页面插槽基础�
 - 新增浏览器本地主题偏好脚本；Web 自带 `/settings/appearance` 外观栏目，主题不进入 Session、账本或插件状态。
 - 本步未改 Chat 的消息投影、SSE、Runner、Session 或插件边界；确认截图后再进入全 Web 迁移。
 
+### UI 重构第二步：全 Web 外壳与填充物迁移
+
+- Chat 页面外壳、Composer、Dock、右侧面板与项目导航已统一消费 `ui-*` 公共规则；HTMX、SSE、路由与插槽行为不变。
+- `surface/web/ui` 新增面板与模版图标；Chat 面板定义使用受控的 `ui.IconName`，正式 Templ 图标不再使用字符图标。
+- Sidepanel、Dock、Composer、Settings 的 demo 填充物已迁移到公共视觉规则；动态面板脚本只更新样式类，不改变交互逻辑。
+- Chat 消息卡与消息动作仍保留现有 `chat.js` 投影，留待第三步按工作流层级统一重构。
+
 ## 验证
 
 - `go test ./...` 通过。

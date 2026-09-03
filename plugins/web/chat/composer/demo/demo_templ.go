@@ -8,6 +8,8 @@ package demo
 import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
+import "harness/surface/web/ui"
+
 func content() templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -29,7 +31,15 @@ func content() templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<details class=\"relative inline-block text-xs\"><summary class=\"flex cursor-pointer select-none items-center gap-1 rounded border border-[var(--color-border)] bg-white px-2 py-1 text-[var(--color-subtle)] hover:bg-[var(--color-muted)] hover:text-[var(--color-text)] list-none\"><span>⚡ 模版</span></summary><div class=\"absolute bottom-full left-0 z-20 mb-1 w-48 rounded-lg border border-[var(--color-border)] bg-white p-1 shadow-lg\"><button type=\"button\" class=\"block w-full rounded px-2 py-1.5 text-left text-xs text-[var(--color-text)] hover:bg-[var(--color-muted)]\" onclick=\"const ta = document.querySelector('#composer textarea'); if (ta) { ta.value = '请帮我审查当前工作区的代码并找出潜在问题。'; ta.focus(); this.closest('details').removeAttribute('open'); }\">审查代码</button> <button type=\"button\" class=\"block w-full rounded px-2 py-1.5 text-left text-xs text-[var(--color-text)] hover:bg-[var(--color-muted)]\" onclick=\"const ta = document.querySelector('#composer textarea'); if (ta) { ta.value = '请帮我为当前模块编写单元测试，覆盖主要边界情况。'; ta.focus(); this.closest('details').removeAttribute('open'); }\">编写测试</button> <button type=\"button\" class=\"block w-full rounded px-2 py-1.5 text-left text-xs text-[var(--color-text)] hover:bg-[var(--color-muted)]\" onclick=\"const ta = document.querySelector('#composer textarea'); if (ta) { ta.value = '请分析当前代码的性能瓶颈并提出重构建议。'; ta.focus(); this.closest('details').removeAttribute('open'); }\">性能分析</button></div></details>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<details class=\"relative inline-block\"><summary class=\"ui-button-secondary ui-menu-trigger gap-1\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = ui.Icon(ui.IconZap).Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<span>模版</span></summary><div class=\"ui-menu absolute bottom-full left-0 z-20 mb-1 w-48\"><button type=\"button\" class=\"ui-menu-item\" onclick=\"const ta = document.querySelector('#composer textarea'); if (ta) { ta.value = '请帮我审查当前工作区的代码并找出潜在问题。'; ta.focus(); this.closest('details').removeAttribute('open'); }\">审查代码</button> <button type=\"button\" class=\"ui-menu-item\" onclick=\"const ta = document.querySelector('#composer textarea'); if (ta) { ta.value = '请帮我为当前模块编写单元测试，覆盖主要边界情况。'; ta.focus(); this.closest('details').removeAttribute('open'); }\">编写测试</button> <button type=\"button\" class=\"ui-menu-item\" onclick=\"const ta = document.querySelector('#composer textarea'); if (ta) { ta.value = '请分析当前代码的性能瓶颈并提出重构建议。'; ta.focus(); this.closest('details').removeAttribute('open'); }\">性能分析</button></div></details>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

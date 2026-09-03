@@ -53,10 +53,10 @@
     async function loadActivePanel() {
       const tab = activeTab();
       if (!tab) {
-        content.innerHTML = '<div class="grid h-full place-items-center p-6 text-center text-sm text-[var(--color-subtle)]">从 + 打开一个面板</div>';
+        content.innerHTML = '<div class="ui-panel-empty ui-text-body">从 + 打开一个面板</div>';
         return;
       }
-      content.innerHTML = '<div class="p-6 text-sm text-[var(--color-subtle)]">加载中…</div>';
+      content.innerHTML = '<div class="ui-panel-loading ui-text-body">加载中…</div>';
       const url = `${panel.dataset.panelUrl}${encodeURIComponent(tab.type)}?instance=${encodeURIComponent(tab.instanceKey)}`;
       try {
         const response = await fetch(url);
@@ -72,8 +72,8 @@
         const tabKey = key(tab);
         const button = document.createElement("button");
         button.type = "button";
-        button.className = "max-w-36 truncate rounded px-2 py-1.5 text-sm hover:bg-[var(--color-muted)]";
-        if (tabKey === state.activeKey) button.classList.add("bg-[var(--color-muted)]", "font-medium");
+        button.className = "ui-tab max-w-36 truncate";
+        if (tabKey === state.activeKey) button.classList.add("ui-tab-active");
         button.textContent = tab.title;
         button.addEventListener("click", () => {
           state.activeKey = tabKey;

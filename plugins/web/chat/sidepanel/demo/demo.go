@@ -6,6 +6,7 @@ import (
 	"github.com/a-h/templ"
 
 	"harness/plugins/web/chat"
+	"harness/surface/web/ui"
 )
 
 type panel struct{}
@@ -14,7 +15,7 @@ func (panel) Definition() chat.PanelDefinition {
 	return chat.PanelDefinition{
 		ID:                 "demo",
 		Name:               "演示面板",
-		Icon:               "▤",
+		Icon:               ui.IconPanel,
 		Order:              10,
 		DefaultInstanceKey: "main",
 		DefaultTabTitle:    "演示面板",

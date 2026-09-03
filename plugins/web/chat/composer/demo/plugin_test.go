@@ -37,7 +37,7 @@ func TestPluginRegistersDemoComposerAction(t *testing.T) {
 		t.Fatal(err)
 	}
 	html := buf.String()
-	if !strings.Contains(html, "⚡ 模版") {
+	if !strings.Contains(html, "模版") || !strings.Contains(html, "ui-icon") {
 		t.Fatalf("rendered output missing template button: %s", html)
 	}
 	if !strings.Contains(html, "审查代码") || !strings.Contains(html, "type=\"button\"") {
@@ -53,16 +53,16 @@ type mockChatService struct {
 	action chat.ComposerAction
 }
 
-func (*mockChatService) RegisterPanel(chat.Panel) error { return nil }
+func (*mockChatService) RegisterPanel(chat.Panel) error  { return nil }
 func (*mockChatService) Panels() []chat.PanelDefinition  { return nil }
 func (*mockChatService) Panel(string) (chat.Panel, bool) { return nil, false }
 
-func (*mockChatService) RegisterDock(chat.Dock) error { return nil }
-func (*mockChatService) Docks() []chat.DockDefinition { return nil }
+func (*mockChatService) RegisterDock(chat.Dock) error  { return nil }
+func (*mockChatService) Docks() []chat.DockDefinition  { return nil }
 func (*mockChatService) Dock(string) (chat.Dock, bool) { return nil, false }
 
-func (*mockChatService) RegisterMessageAction(chat.MessageAction) error { return nil }
-func (*mockChatService) MessageActions() []chat.MessageActionDefinition { return nil }
+func (*mockChatService) RegisterMessageAction(chat.MessageAction) error  { return nil }
+func (*mockChatService) MessageActions() []chat.MessageActionDefinition  { return nil }
 func (*mockChatService) MessageAction(string) (chat.MessageAction, bool) { return nil, false }
 
 func (s *mockChatService) RegisterComposerAction(action chat.ComposerAction) error {
@@ -70,5 +70,5 @@ func (s *mockChatService) RegisterComposerAction(action chat.ComposerAction) err
 	return nil
 }
 
-func (*mockChatService) ComposerActions() []chat.ComposerActionDefinition { return nil }
+func (*mockChatService) ComposerActions() []chat.ComposerActionDefinition  { return nil }
 func (*mockChatService) ComposerAction(string) (chat.ComposerAction, bool) { return nil, false }

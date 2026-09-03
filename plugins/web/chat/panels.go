@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"harness/surface/web/ui"
 )
 
 // 活对象。PanelRegistry 保存已填入 Chat 右侧面板登记处的面板类型。
@@ -25,10 +27,12 @@ func (r *PanelRegistry) RegisterPanel(panel Panel) error {
 	definition := panel.Definition()
 	if strings.TrimSpace(definition.ID) == "" ||
 		strings.TrimSpace(definition.Name) == "" ||
-		strings.TrimSpace(definition.Icon) == "" ||
 		strings.TrimSpace(definition.DefaultInstanceKey) == "" ||
 		strings.TrimSpace(definition.DefaultTabTitle) == "" {
 		return fmt.Errorf("chat: panel definition has empty required field")
+	}
+	if !ui.IsKnownIcon(definition.Icon) {
+		return fmt.Errorf("chat: panel %q has unknown icon %q", definition.ID, definition.Icon)
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
