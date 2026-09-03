@@ -617,6 +617,7 @@
   }
 
   #sidebar {
+    width: var(--sidebar-width);
     overflow: hidden;
     transition: width var(--ui-motion-fast) ease, padding var(--ui-motion-fast) ease;
   }
