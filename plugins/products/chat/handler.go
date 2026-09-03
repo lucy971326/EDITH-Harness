@@ -126,11 +126,18 @@ type pageView struct {
 	Panels             []PanelDefinition
 	Docks              []dockView
 	MessageActionsJSON string
+	ComposerActions    []composerActionView
 }
 
 // 数据。Chat 固定外壳与 Dock 插件内容组成的页面条目。
 type dockView struct {
 	Definition DockDefinition
+	Content    templ.Component
+}
+
+// 数据。Chat 输入工具栏与插件自绘内容组成的页面条目。
+type composerActionView struct {
+	Definition ComposerActionDefinition
 	Content    templ.Component
 }
 
@@ -178,6 +185,7 @@ func (h *PageHandler) pageData(selectedID string) (pageView, error) {
 				return pageView{}, fmt.Errorf("chat: settings for %q: %w", selectedID, err)
 			}
 			out.Docks = h.dockViews(DockContext{SessionID: selectedID, Workspace: setup.Workspace})
+			out.ComposerActions = h.composerActionViews(ComposerActionContext{SessionID: selectedID, Workspace: setup.Workspace})
 		}
 	}
 	if h.models != nil {
@@ -215,6 +223,27 @@ func (h *PageHandler) dockViews(dockContext DockContext) []dockView {
 			content = DockRenderError()
 		}
 		views = append(views, dockView{Definition: definition, Content: content})
+	}
+	return views
+}
+
+func (h *PageHandler) composerActionViews(composerContext ComposerActionContext) []composerActionView {
+	if h.registry == nil {
+		return nil
+	}
+	definitions := h.registry.ComposerActions()
+	views := make([]composerActionView, 0, len(definitions))
+	for _, definition := range definitions {
+		action, ok := h.registry.ComposerAction(definition.ID)
+		if !ok {
+			continue
+		}
+		content, err := action.Render(composerContext)
+		if err != nil || content == nil {
+			// 单个 Action 渲染失败或返回空组件则优雅跳过，隔离错误
+			continue
+		}
+		views = append(views, composerActionView{Definition: definition, Content: content})
 	}
 	return views
 }

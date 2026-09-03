@@ -2,13 +2,19 @@ package chat
 
 // 活对象。registry 汇集 Chat 对外提供的页面插槽登记处。
 type registry struct {
-	panels  *PanelRegistry
-	docks   *DockRegistry
-	actions *messageActionRegistry
+	panels          *PanelRegistry
+	docks           *DockRegistry
+	actions         *messageActionRegistry
+	composerActions *composerActionRegistry
 }
 
 func newRegistry() *registry {
-	return &registry{panels: newPanelRegistry(), docks: newDockRegistry(), actions: newMessageActionRegistry()}
+	return &registry{
+		panels:          newPanelRegistry(),
+		docks:           newDockRegistry(),
+		actions:         newMessageActionRegistry(),
+		composerActions: newComposerActionRegistry(),
+	}
 }
 
 func (r *registry) RegisterPanel(panel Panel) error {
@@ -45,4 +51,16 @@ func (r *registry) MessageActions() []MessageActionDefinition {
 
 func (r *registry) MessageAction(id string) (MessageAction, bool) {
 	return r.actions.MessageAction(id)
+}
+
+func (r *registry) RegisterComposerAction(action ComposerAction) error {
+	return r.composerActions.RegisterComposerAction(action)
+}
+
+func (r *registry) ComposerActions() []ComposerActionDefinition {
+	return r.composerActions.ComposerActions()
+}
+
+func (r *registry) ComposerAction(id string) (ComposerAction, bool) {
+	return r.composerActions.ComposerAction(id)
 }

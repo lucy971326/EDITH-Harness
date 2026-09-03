@@ -215,263 +215,283 @@ func ChatPage(data pageView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "\" method=\"post\" class=\"mx-auto w-full max-w-3xl rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white p-3 shadow-sm\"><textarea name=\"text\" rows=\"2\" aria-label=\"消息\" placeholder=\"输入消息\" class=\"w-full resize-none border-0 bg-transparent px-1 text-sm outline-none placeholder:text-[var(--color-subtle)]\"></textarea><div class=\"mt-2 flex flex-wrap items-center gap-2 text-xs text-[var(--color-subtle)]\"><select name=\"model\" id=\"model\" class=\"rounded border border-[var(--color-border)] bg-white px-2 py-1\"><option value=\"\">选择模型</option> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "\" method=\"post\" class=\"mx-auto w-full max-w-3xl rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white p-3 shadow-sm\"><textarea name=\"text\" rows=\"2\" aria-label=\"消息\" placeholder=\"输入消息\" class=\"w-full resize-none border-0 bg-transparent px-1 text-sm outline-none placeholder:text-[var(--color-subtle)]\"></textarea><div class=\"mt-2 flex flex-wrap items-center gap-2 text-xs text-[var(--color-subtle)]\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if len(data.ComposerActions) > 0 {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<div id=\"composer-actions\" class=\"flex items-center gap-1.5\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				for _, action := range data.ComposerActions {
+					templ_7745c5c3_Err = action.Content.Render(ctx, templ_7745c5c3_Buffer)
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "<select name=\"model\" id=\"model\" class=\"rounded border border-[var(--color-border)] bg-white px-2 py-1\"><option value=\"\">选择模型</option> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			for _, model := range data.Models {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<option value=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<option value=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var11 string
 				templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.ResolveAttributeValue(model.ID)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 53, Col: 34}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 60, Col: 34}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var11)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if data.Model == model.ID {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, " selected")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, " selected")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, ">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, ">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var12 string
 				templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(model.ID)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 53, Col: 84}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 60, Col: 84}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "</option>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "</option>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</select> <select name=\"reasoningEffort\" id=\"reasoning-effort\" class=\"rounded border border-[var(--color-border)] bg-white px-2 py-1\"><option value=\"\">选择思考档位</option> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "</select> <select name=\"reasoningEffort\" id=\"reasoning-effort\" class=\"rounded border border-[var(--color-border)] bg-white px-2 py-1\"><option value=\"\">选择思考档位</option> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			for _, model := range data.Models {
 				for _, effort := range model.ReasoningEfforts {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "<option value=\"")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "<option value=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var13 string
 					templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.ResolveAttributeValue(effort)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 60, Col: 33}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 67, Col: 33}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var13)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "\" data-model=\"")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "\" data-model=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var14 string
 					templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.ResolveAttributeValue(model.ID)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 60, Col: 57}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 67, Col: 57}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var14)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "\"")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					if data.Model == model.ID && data.ReasoningEffort == effort {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, " selected")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, " selected")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, ">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, ">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var15 string
 					templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(effort)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 60, Col: 139}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 67, Col: 139}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "</option>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "</option>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "</select> <select id=\"live-mode\" name=\"mode\" class=\"hidden rounded border border-[var(--color-border)] bg-white px-2 py-1\"><option value=\"steer\">插话 Steer</option> <option value=\"followup\">下一轮 FollowUp</option></select> <button id=\"send-button\" name=\"mode\" value=\"run\" type=\"submit\" class=\"ml-auto rounded-lg bg-[var(--color-accent)] px-4 py-2 font-medium text-white\">发送</button> <button id=\"live-send\" type=\"submit\" class=\"ml-auto hidden rounded-lg border border-[var(--color-border)] px-4 py-2 font-medium\">提交</button> <button id=\"stop-button\" type=\"button\" data-stop=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "</select> <select id=\"live-mode\" name=\"mode\" class=\"hidden rounded border border-[var(--color-border)] bg-white px-2 py-1\"><option value=\"steer\">插话 Steer</option> <option value=\"followup\">下一轮 FollowUp</option></select> <button id=\"send-button\" name=\"mode\" value=\"run\" type=\"submit\" class=\"ml-auto rounded-lg bg-[var(--color-accent)] px-4 py-2 font-medium text-white\">发送</button> <button id=\"live-send\" type=\"submit\" class=\"ml-auto hidden rounded-lg border border-[var(--color-border)] px-4 py-2 font-medium\">提交</button> <button id=\"stop-button\" type=\"button\" data-stop=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var16 string
 			templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.URL("/chat/" + data.Selected.ID + "/stop"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 70, Col: 107}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 77, Col: 107}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var16)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "\" class=\"hidden rounded-lg bg-red-700 px-4 py-2 font-medium text-white\">停止</button></div></form></div></section><script src=\"/static/chat.js\"></script>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "\" class=\"hidden rounded-lg bg-red-700 px-4 py-2 font-medium text-white\">停止</button></div></form></div></section><script src=\"/static/chat.js\"></script>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "<section class=\"flex min-h-0 flex-1 items-center justify-center px-6\"><div class=\"max-w-md text-center\"><div class=\"mx-auto mb-4 grid size-11 place-items-center rounded-2xl bg-[var(--color-muted)] text-lg\">H</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "<section class=\"flex min-h-0 flex-1 items-center justify-center px-6\"><div class=\"max-w-md text-center\"><div class=\"mx-auto mb-4 grid size-11 place-items-center rounded-2xl bg-[var(--color-muted)] text-lg\">H</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if data.Error != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "<h2 class=\"text-lg font-semibold\">无法创建项目</h2><p class=\"mt-2 text-sm leading-6 text-red-700\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "<h2 class=\"text-lg font-semibold\">无法创建项目</h2><p class=\"mt-2 text-sm leading-6 text-red-700\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var17 string
 				templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(data.Error)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 82, Col: 66}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 89, Col: 66}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "<h2 class=\"text-lg font-semibold\">创建一个项目开始对话</h2><p class=\"mt-2 text-sm leading-6 text-[var(--color-subtle)]\">项目会按工作区目录分组。</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "<h2 class=\"text-lg font-semibold\">创建一个项目开始对话</h2><p class=\"mt-2 text-sm leading-6 text-[var(--color-subtle)]\">项目会按工作区目录分组。</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "</div></section>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "</div></section>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if data.HasActive {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "<aside id=\"sidepanel\" hidden class=\"relative flex h-full shrink-0 border-l border-[var(--color-border)] bg-white\" style=\"width: 420px\" data-panel-url=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "<aside id=\"sidepanel\" hidden class=\"relative flex h-full shrink-0 border-l border-[var(--color-border)] bg-white\" style=\"width: 420px\" data-panel-url=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var18 string
 			templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.URL("/chat/" + data.Selected.ID + "/panels/"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 92, Col: 206}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 99, Col: 206}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var18)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "\"><div id=\"panel-resize-handle\" class=\"absolute inset-y-0 -left-1 w-2 cursor-col-resize\" aria-label=\"调节面板宽度\"></div><div class=\"flex min-w-0 flex-1 flex-col\"><header class=\"flex h-16 shrink-0 items-center gap-2 border-b border-[var(--color-border)] px-3\"><div id=\"panel-tabs\" class=\"flex min-w-0 flex-1 items-center gap-1 overflow-x-auto\"></div><div class=\"relative\"><button id=\"panel-add\" type=\"button\" aria-label=\"打开面板\" aria-expanded=\"false\" class=\"rounded p-2 hover:bg-[var(--color-muted)]\">＋</button><div id=\"panel-menu\" hidden class=\"absolute right-0 top-10 z-10 w-44 rounded-lg border border-[var(--color-border)] bg-white p-1 shadow-lg\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "\"><div id=\"panel-resize-handle\" class=\"absolute inset-y-0 -left-1 w-2 cursor-col-resize\" aria-label=\"调节面板宽度\"></div><div class=\"flex min-w-0 flex-1 flex-col\"><header class=\"flex h-16 shrink-0 items-center gap-2 border-b border-[var(--color-border)] px-3\"><div id=\"panel-tabs\" class=\"flex min-w-0 flex-1 items-center gap-1 overflow-x-auto\"></div><div class=\"relative\"><button id=\"panel-add\" type=\"button\" aria-label=\"打开面板\" aria-expanded=\"false\" class=\"rounded p-2 hover:bg-[var(--color-muted)]\">＋</button><div id=\"panel-menu\" hidden class=\"absolute right-0 top-10 z-10 w-44 rounded-lg border border-[var(--color-border)] bg-white p-1 shadow-lg\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			for _, panel := range data.Panels {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "<button type=\"button\" class=\"panel-menu-item flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[var(--color-muted)]\" data-panel-type=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "<button type=\"button\" class=\"panel-menu-item flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[var(--color-muted)]\" data-panel-type=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var19 string
 				templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.ResolveAttributeValue(panel.ID)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 101, Col: 178}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 108, Col: 178}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var19)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "\" data-panel-instance=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "\" data-panel-instance=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var20 string
 				templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.ResolveAttributeValue(panel.DefaultInstanceKey)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 101, Col: 227}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 108, Col: 227}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var20)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "\" data-panel-title=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "\" data-panel-title=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var21 string
 				templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.ResolveAttributeValue(panel.DefaultTabTitle)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 101, Col: 270}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 108, Col: 270}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var21)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var22 string
 				templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(panel.Icon)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 101, Col: 285}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 108, Col: 285}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, " ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, " ")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var23 string
 				templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(panel.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 101, Col: 300}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 108, Col: 300}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "</button>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "</button>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "</div></div><button id=\"panel-close\" type=\"button\" aria-label=\"关闭面板\" class=\"rounded p-2 hover:bg-[var(--color-muted)]\">×</button></header><div id=\"panel-content\" class=\"min-h-0 flex-1 overflow-auto\"><div class=\"grid h-full place-items-center p-6 text-center text-sm text-[var(--color-subtle)]\">从 + 打开一个面板</div></div></div></aside><script src=\"/static/sidepanel.js\"></script>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "</div></div><button id=\"panel-close\" type=\"button\" aria-label=\"关闭面板\" class=\"rounded p-2 hover:bg-[var(--color-muted)]\">×</button></header><div id=\"panel-content\" class=\"min-h-0 flex-1 overflow-auto\"><div class=\"grid h-full place-items-center p-6 text-center text-sm text-[var(--color-subtle)]\">从 + 打开一个面板</div></div></div></aside><script src=\"/static/sidepanel.js\"></script>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -500,38 +520,38 @@ func ChatNavigation(data pageView) templ.Component {
 			templ_7745c5c3_Var24 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "<div class=\"mb-3 flex items-center justify-between text-sm font-semibold\"><span>项目</span><form method=\"post\" action=\"/chat/projects\"><button type=\"submit\" aria-label=\"新建项目\" class=\"rounded px-2 py-1 hover:bg-white\">＋</button></form></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "<div class=\"mb-3 flex items-center justify-between text-sm font-semibold\"><span>项目</span><form method=\"post\" action=\"/chat/projects\"><button type=\"submit\" aria-label=\"新建项目\" class=\"rounded px-2 py-1 hover:bg-white\">＋</button></form></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		for _, project := range data.Projects {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "<section class=\"mb-3\"><p class=\"truncate px-2 text-xs font-medium text-[var(--color-subtle)]\" title=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "<section class=\"mb-3\"><p class=\"truncate px-2 text-xs font-medium text-[var(--color-subtle)]\" title=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var25 string
 			templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.ResolveAttributeValue(project.Workspace)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 126, Col: 100}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 133, Col: 100}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var25)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var26 string
 			templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(project.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 126, Col: 117}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 133, Col: 117}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -541,33 +561,33 @@ func ChatNavigation(data pageView) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "<a href=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "<a href=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var28 templ.SafeURL
 				templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/chat/" + item.ID))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 129, Col: 45}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 136, Col: 45}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "\" hx-get=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "\" hx-get=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var29 string
 				templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.URL("/chat/" + item.ID))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 130, Col: 43}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 137, Col: 43}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var29)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "\" hx-target=\"#main\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "\" hx-target=\"#main\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -580,25 +600,25 @@ func ChatNavigation(data pageView) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var31 string
 				templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(item.Title)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 135, Col: 17}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/products/chat/page.templ`, Line: 142, Col: 17}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "</a>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "</a>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "</section>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, "</section>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -628,7 +648,7 @@ func DockRenderError() templ.Component {
 			templ_7745c5c3_Var32 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "<p class=\"text-xs text-red-700\">暂时无法加载</p>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "<p class=\"text-xs text-red-700\">暂时无法加载</p>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

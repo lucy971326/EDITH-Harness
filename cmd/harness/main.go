@@ -22,6 +22,7 @@ import (
 	"harness/kernel/session"
 	"harness/kernel/skills"
 	"harness/kernel/tools"
+	composerdemo "harness/plugins/composers/demo"
 	"harness/plugins/loops/react"
 	machinelocal "harness/plugins/machine-local"
 	paneldemo "harness/plugins/panels/demo"
@@ -124,6 +125,10 @@ func run(configPath string) error {
 		return err
 	}
 	err = h.Install(paneldemo.New())
+	if err != nil {
+		return err
+	}
+	err = h.Install(composerdemo.New())
 	if err != nil {
 		return err
 	}

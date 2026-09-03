@@ -63,3 +63,15 @@ func (*chatService) MessageActions() []chat.MessageActionDefinition {
 func (*chatService) MessageAction(string) (chat.MessageAction, bool) {
 	return nil, false
 }
+
+func (*chatService) RegisterComposerAction(chat.ComposerAction) error {
+	return nil
+}
+
+func (*chatService) ComposerActions() []chat.ComposerActionDefinition {
+	return nil
+}
+
+func (*chatService) ComposerAction(string) (chat.ComposerAction, bool) {
+	return nil, false
+}

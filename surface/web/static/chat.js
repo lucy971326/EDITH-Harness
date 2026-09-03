@@ -321,9 +321,21 @@
       event.preventDefault();
       const fields = new FormData(composer, event.submitter);
       fields.set("mode", state.running ? mode.value : "run");
-      const response = await fetch(composer.action, { method: "POST", body: new URLSearchParams(fields) });
-      if (!response.ok) status.textContent = await response.text();
-      else composer.elements.text.value = "";
+      let hasFile = false;
+      for (const value of fields.values()) {
+        if (value instanceof File && value.name !== "") {
+          hasFile = true;
+          break;
+        }
+      }
+      const body = hasFile ? fields : new URLSearchParams(fields);
+      const response = await fetch(composer.action, { method: "POST", body });
+      if (!response.ok) {
+        status.textContent = await response.text();
+      } else {
+        composer.elements.text.value = "";
+        composer.querySelectorAll('input[type="file"]').forEach((input) => { input.value = ""; });
+      }
     });
     thread.addEventListener("click", async (event) => {
       const button = event.target.closest(".message-action");

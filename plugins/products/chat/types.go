@@ -104,6 +104,24 @@ type MessageAction interface {
 	Execute(context.Context, MessageActionContext) (MessageActionResult, error)
 }
 
+// 数据。一个已登记输入工具栏动作的静态身份。
+type ComposerActionDefinition struct {
+	ID    string
+	Order int
+}
+
+// 数据。渲染输入工具栏动作所需的当前会话事实。
+type ComposerActionContext struct {
+	SessionID string
+	Workspace string
+}
+
+// 契约。一个可填入 Chat 输入工具栏的扩展动作。
+type ComposerAction interface {
+	Definition() ComposerActionDefinition
+	Render(ComposerActionContext) (templ.Component, error)
+}
+
 // 契约。Chat 提供给页面插槽插件的登记处。
 type Service interface {
 	RegisterPanel(Panel) error
@@ -115,4 +133,7 @@ type Service interface {
 	RegisterMessageAction(MessageAction) error
 	MessageActions() []MessageActionDefinition
 	MessageAction(id string) (MessageAction, bool)
+	RegisterComposerAction(ComposerAction) error
+	ComposerActions() []ComposerActionDefinition
+	ComposerAction(id string) (ComposerAction, bool)
 }

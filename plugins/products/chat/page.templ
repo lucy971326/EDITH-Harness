@@ -47,6 +47,13 @@ templ ChatPage(data pageView) {
 						<form id="composer" action={ templ.URL("/chat/" + data.Selected.ID + "/messages") } method="post" class="mx-auto w-full max-w-3xl rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white p-3 shadow-sm">
 							<textarea name="text" rows="2" aria-label="消息" placeholder="输入消息" class="w-full resize-none border-0 bg-transparent px-1 text-sm outline-none placeholder:text-[var(--color-subtle)]"></textarea>
 							<div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-[var(--color-subtle)]">
+								if len(data.ComposerActions) > 0 {
+									<div id="composer-actions" class="flex items-center gap-1.5">
+										for _, action := range data.ComposerActions {
+											@action.Content
+										}
+									</div>
+								}
 								<select name="model" id="model" class="rounded border border-[var(--color-border)] bg-white px-2 py-1">
 									<option value="">选择模型</option>
 									for _, model := range data.Models {

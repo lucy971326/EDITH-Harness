@@ -60,10 +60,17 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的右侧面板、Dock 和消
 - SSE 首次连接和重连会在订阅后重发所有已登记 Dock 的当前 HTML；未知条目不发送，单项渲染失败不影响聊天流。
 - 新增测试专用 `plugins/docks/demo`：内存计数验证“状态变化 → events → Chat → SSE HTML”的完整边界，正常 `cmd/harness` 不安装它。
 
+### 阶段 4D：输入工具栏插槽 composer.actions
+
+- Chat 的 `chat.Service` 提供 `composer.actions` 登记处；填充插件登记 `ID / Order` 和 `Render(ComposerActionContext) (templ.Component, error)`。
+- Chat 固定在输入框表单 `#composer` 底部工具栏左侧渲染插槽容器 `#composer-actions`；单个 Action 渲染失败被隔离并跳过，不影响 Chat 页面渲染。
+- 遵循 `templ + 原生 HTML + HTMX` 原则，组件位于 `#composer` 表单内部，禁止嵌套 `<form>`，选项使用 `type="button"`。
+- 新增 `plugins/composers/demo`：使用原生 `<details>` 下拉菜单提供快捷模版输入，一行原生 JS 将文本填入 `textarea` 并聚焦；已安装至 `cmd/harness`。
+
 ## 验证
 
 - `go test ./...` 通过。
-- `go test -race ./kernel/runner ./kernel/session ./kernel/llm ./plugins/products/chat ./cmd/harness` 通过。
+- `go test -race ./kernel/runner ./kernel/session ./kernel/llm ./plugins/products/chat ./plugins/composers/demo ./cmd/harness` 通过。
 - `go vet ./...` 通过。
 - `git diff --check` 通过。
 - `node --test surface/web/static/test/sidepanel.test.js` 通过。
@@ -73,10 +80,9 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的右侧面板、Dock 和消
 
 ```text
 阶段 4：其余页面插槽
+  ├─ settings.section：插件设置二级列表
   ├─ message.actions：分叉、其他插件动作
-  ├─ composer.actions：附件等输入动作
-  ├─ sidepanel：真实文件等面板类型
-  └─ settings.section：插件设置二级列表
+  └─ sidepanel：真实文件等面板类型
 
 阶段 5：完整验收
   ├─ 轨迹页、Session 分叉
