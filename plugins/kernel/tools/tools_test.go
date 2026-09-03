@@ -10,10 +10,10 @@ import (
 	"harness/kernel/host"
 	"harness/kernel/machine"
 	kerneltools "harness/kernel/tools"
-	"harness/plugins/tools/bash"
-	"harness/plugins/tools/edit"
-	"harness/plugins/tools/read"
-	"harness/plugins/tools/write"
+	"harness/plugins/kernel/tools/bash"
+	"harness/plugins/kernel/tools/edit"
+	"harness/plugins/kernel/tools/read"
+	"harness/plugins/kernel/tools/write"
 )
 
 // 活对象。工具插件测试使用的内存机器。

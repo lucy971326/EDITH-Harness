@@ -3,7 +3,7 @@ package demo
 import (
 	"github.com/a-h/templ"
 
-	"harness/plugins/products/chat"
+	"harness/plugins/web/chat"
 )
 
 type composerAction struct{}

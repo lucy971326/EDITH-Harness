@@ -1,4 +1,4 @@
-# plugins/settings/demo
+# plugins/web/settings/demo
 
 验证 Web 公共设置插槽 `settings.section` 的独立演示插件。
 

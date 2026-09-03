@@ -1,4 +1,4 @@
-# plugins/composers/demo
+# plugins/web/chat/composer/demo
 
 验证 Chat 输入工具栏插槽 `composer.actions` 边界的演示插件。
 

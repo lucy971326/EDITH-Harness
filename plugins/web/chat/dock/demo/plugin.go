@@ -10,7 +10,7 @@ import (
 
 	"harness/kernel/events"
 	"harness/kernel/host"
-	"harness/plugins/products/chat"
+	"harness/plugins/web/chat"
 )
 
 // 活对象。Plugin 保存测试用的按会话计数，并把 demo 条目填入 Chat Dock。

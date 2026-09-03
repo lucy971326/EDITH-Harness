@@ -3,7 +3,7 @@ package demo
 
 import (
 	"harness/kernel/host"
-	"harness/plugins/products/chat"
+	"harness/plugins/web/chat"
 )
 
 // 活对象。Plugin 在启动时把 demo 动作填入 Chat 登记处。

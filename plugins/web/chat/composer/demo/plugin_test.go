@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"harness/kernel/host"
-	"harness/plugins/products/chat"
+	"harness/plugins/web/chat"
 )
 
 func TestPluginRegistersDemoComposerAction(t *testing.T) {

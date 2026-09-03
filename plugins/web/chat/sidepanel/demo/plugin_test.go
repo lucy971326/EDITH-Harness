@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"harness/kernel/host"
-	"harness/plugins/products/chat"
+	"harness/plugins/web/chat"
 )
 
 func TestPluginRegistersDemoPanel(t *testing.T) {

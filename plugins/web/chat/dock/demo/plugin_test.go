@@ -22,7 +22,7 @@ import (
 	"harness/kernel/session/settings"
 	"harness/kernel/skills"
 	"harness/kernel/tools"
-	"harness/plugins/products/chat"
+	"harness/plugins/web/chat"
 	"harness/surface/web"
 )
 
