@@ -14,7 +14,6 @@ import (
 type state struct {
 	mu       sync.RWMutex
 	nickname string
-	theme    string
 }
 
 type demoSection struct {
@@ -36,9 +35,8 @@ func (s *demoSection) Definition() web.SettingsSectionDefinition {
 func (s *demoSection) Render() (templ.Component, error) {
 	s.st.mu.RLock()
 	nickname := s.st.nickname
-	theme := s.st.theme
 	s.st.mu.RUnlock()
-	return DemoSettings(nickname, theme, false), nil
+	return DemoSettings(nickname, false), nil
 }
 
 type saveHandler struct {
@@ -56,18 +54,13 @@ func (h *saveHandler) ServeHTTP(w nethttp.ResponseWriter, r *nethttp.Request) {
 		return
 	}
 	nickname := strings.TrimSpace(r.FormValue("nickname"))
-	theme := strings.TrimSpace(r.FormValue("theme"))
 	if nickname == "" {
 		nickname = "Explorer"
 	}
-	if theme != "light" && theme != "dark" && theme != "system" {
-		theme = "light"
-	}
 	h.st.mu.Lock()
 	h.st.nickname = nickname
-	h.st.theme = theme
 	h.st.mu.Unlock()
 
-	component := DemoSettings(nickname, theme, true)
+	component := DemoSettings(nickname, true)
 	templ.Handler(component).ServeHTTP(w, r)
 }

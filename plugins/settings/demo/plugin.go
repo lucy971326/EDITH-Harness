@@ -16,7 +16,6 @@ func New() *Plugin {
 	return &Plugin{
 		state: &state{
 			nickname: "Explorer",
-			theme:    "light",
 		},
 	}
 }

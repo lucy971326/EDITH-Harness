@@ -73,7 +73,7 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的右侧面板、Dock 和消
 - Web 左侧边栏最底部固定放置「⚙ 设置」入口；主界面为 Master-Detail 左右双栏结构，左侧列出插件设置项，右侧为主配置区域。
 - 左栏切换使用 `hx-target="#settings-content" hx-push-url="true"` 保留 URL 与历史记录；OOB 自动同步左栏高亮项；默认选中排在首位的插件。
 - 错误隔离：单项渲染失败或返回 `nil` 组件优雅展示加载失败提示，绝不影响设置页主体；空状态展示友好指引。
-- 新增 `plugins/settings/demo`：登记演示配置（昵称、主题选项），原生表单通过 HTMX 提交并在内存中维护状态；已安装至 `cmd/harness`。
+- 新增 `plugins/settings/demo`：登记演示配置（昵称），原生表单通过 HTMX 提交并在内存中维护状态；已安装至 `cmd/harness`。
 
 ## 验证
 
@@ -100,7 +100,7 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的右侧面板、Dock 和消
 - Go 1.25。
 - 修改 `.templ` 后运行 `go tool templ generate`。
 - 修改样式后运行 `npm run web:build`；首次需要 `npm install`。
-- 数据目录由 `harness.yaml` 的 `dataDir` 指定；账本、SessionSettings 和自建 Agent 不属于源码。
+- 数据根目录固定为 `~/.harness`；账本、SessionSettings 和自建 Agent 不属于源码。项目内旧 `.harness-data/` 不再读取，可由用户自行删除。
 - machine-local 直接操作本机文件和进程，没有沙箱与路径限制。
 - 本机需要 `~/.harness/config.yaml` 配置 LLM Provider：
 

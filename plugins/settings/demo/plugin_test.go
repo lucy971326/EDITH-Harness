@@ -91,7 +91,7 @@ func TestPluginRegistersAndHandlesForm(t *testing.T) {
 		t.Fatal("route POST /settings/demo not registered")
 	}
 
-	form := url.Values{"nickname": {"Alice"}, "theme": {"dark"}}
+	form := url.Values{"nickname": {"Alice"}}
 	req := httptest.NewRequest(nethttp.MethodPost, "/settings/demo", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()

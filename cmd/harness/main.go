@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"syscall"
 
@@ -37,8 +39,7 @@ import (
 
 // 数据。Config 是应用入口读取的静态组装配置。
 type Config struct {
-	DataDir string     `yaml:"dataDir"`
-	Web     web.Config `yaml:"web"`
+	Web web.Config `yaml:"web"`
 }
 
 func main() {
@@ -54,9 +55,13 @@ func run(configPath string) error {
 	if err != nil {
 		return err
 	}
+	dataDir, err := userDataDir()
+	if err != nil {
+		return err
+	}
 
 	h := host.NewHost()
-	err = h.Install(&persist.Plugin{Dir: config.DataDir})
+	err = h.Install(&persist.Plugin{Dir: dataDir})
 	if err != nil {
 		return err
 	}
@@ -161,11 +166,21 @@ func loadConfig(path string) (Config, error) {
 		return Config{}, fmt.Errorf("read config %s: %w", path, err)
 	}
 	var config Config
-	err = yaml.Unmarshal(data, &config)
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	err = decoder.Decode(&config)
 	if err != nil {
 		return Config{}, fmt.Errorf("parse config %s: %w", path, err)
 	}
 	return config, nil
+}
+
+func userDataDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("find home directory: %w", err)
+	}
+	return filepath.Join(home, ".harness"), nil
 }
 
 func openBrowser(url string) error {

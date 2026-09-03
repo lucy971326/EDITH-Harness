@@ -1,6 +1,6 @@
 package demo
 
-templ DemoSettings(nickname string, theme string, saved bool) {
+templ DemoSettings(nickname string, saved bool) {
 	<div id="settings-demo-container" class="max-w-xl space-y-6">
 		<div>
 			<h3 class="text-lg font-medium text-[var(--color-text)]">演示插件设置</h3>
@@ -24,18 +24,6 @@ templ DemoSettings(nickname string, theme string, saved bool) {
 					class="mt-1.5 w-full rounded border border-[var(--color-border)] bg-transparent px-3 py-1.5 text-sm outline-none focus:border-[var(--color-accent)]"
 					placeholder="输入昵称"
 				/>
-			</div>
-			<div>
-				<label for="demo-theme" class="block text-xs font-medium text-[var(--color-subtle)]">界面主题</label>
-				<select
-					id="demo-theme"
-					name="theme"
-					class="mt-1.5 w-full rounded border border-[var(--color-border)] bg-transparent px-3 py-1.5 text-sm outline-none focus:border-[var(--color-accent)]"
-				>
-					<option value="light" selected?={ theme == "light" }>明亮 (Light)</option>
-					<option value="dark" selected?={ theme == "dark" }>暗黑 (Dark)</option>
-					<option value="system" selected?={ theme == "system" }>跟随系统 (System)</option>
-				</select>
 			</div>
 			<div class="flex items-center gap-3 pt-2">
 				<button
