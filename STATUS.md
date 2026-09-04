@@ -33,7 +33,7 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的五个页面插槽基础�
 ### 阶段 3：真实聊天
 
 - 启动链已完整组装：`persist → session → llm → machine-local → tools → events → loops/react → skills → agents → runner → web → chat → panel-demo`。
-- 每轮生成 `RunID`，写入本轮耐久消息与 SSE；History Snapshot 和 SSE 共用前端 reducer / `paint()`。同一 Run 默认合并为一张助手卡，只有耐久 Steer 才切成前后片段；落账完成不会让实时卡片跳位。
+- 每轮生成 `RunID`，写入本轮耐久消息与 SSE；History Snapshot 和 SSE 共用 RunView reducer / `paint()`。同一 Run 默认合并为一张助手卡，只有耐久 Steer 才切成前后片段；落账完成不会让实时卡片跳位。
 - 时间线的耐久顺序使用 `Entry.Seq`；运行中卡片用 `AfterEntrySeq` 定位，Run 内按 `StepSeq / BlockSeq` 排列，工具结果按原始调用块回填。
 - Chat 支持普通发送、停止、Steer、FollowUp；FollowUp 的顺序由 Runner 按 Session 管理，不属于 Chat。
 - Steer 在接受时立即落账；工具被停止时也会补齐「已取消」结果，不留下悬空工具调用。
@@ -109,13 +109,20 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的五个页面插槽基础�
 - 窄于 1120px 时，右侧面板及其开关由 CSS 隐藏，优先保留 Chat 主工作区，不增加响应式 JS。
 - 已知例外：右侧面板鼠标调宽把手暂不支持键盘操作；为保持前端 JS 最少，当前明确不做。
 
+### 公共 RunView
+
+- `surface/web/runview` 提供单 Session 的 Snapshot、Templ 运行视图和公共浏览器 reducer；它统一处理 History、SSE Delta、Step / Block 排序、Tool 回填、工作流、Markdown 与展开状态。
+- Chat 改用 RunView；Chat 私有脚本只保留 Composer、停止、消息动作和右侧面板交互，资源由 `/assets/chat/` 路由提供。
+- Chat 保持一条 SSE：`run` JSON 交给 RunView，`dock-*` HTML 继续由 HTMX `sse-swap` 处理。
+- 新的 Runner 驱动 Web 产品可以直接使用 `runview.View`，不必重写流式投影 JavaScript；Snapshot 与 SSE HTTP 路由仍归产品自己。
+
 ## 验证
 
 - `go test ./...` 通过。
 - `go vet ./...` 通过。
 - `git diff --check` 通过。
 - `node --test surface/web/static/test/sidepanel.test.js` 通过。
-- `node --check surface/web/static/chat.js` 通过。
+- `node --check surface/web/static/runview.js` 与 Chat 私有脚本通过。
 - 已做真实浏览器页面与布局检查。
 
 ## 下一步

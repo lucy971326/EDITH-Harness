@@ -103,6 +103,14 @@ func (p *Plugin) Start(h *host.Host) error {
 	if err != nil {
 		return err
 	}
+	staticHandler, err := chatStaticHandler()
+	if err != nil {
+		return err
+	}
+	err = webService.RegisterRoute("GET /assets/chat/", staticHandler)
+	if err != nil {
+		return err
+	}
 	handler := newPageHandler(webService, chatProduct, sessions, settingsStore, p.runner, p.models, p.hub, p.registry)
 	err = webService.RegisterRoute("GET /chat", handler)
 	if err != nil {

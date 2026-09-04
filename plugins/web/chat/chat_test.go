@@ -28,6 +28,7 @@ import (
 	"harness/kernel/skills"
 	"harness/kernel/tools"
 	"harness/surface/web"
+	"harness/surface/web/runview"
 	"harness/surface/web/ui"
 )
 
@@ -259,7 +260,7 @@ func TestMessageSelectsModelAndHistoryReturnsLedger(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer response.Body.Close()
-	var history timelineSnapshot
+	var history runview.Snapshot
 	if err := json.NewDecoder(response.Body).Decode(&history); err != nil {
 		t.Fatal(err)
 	}

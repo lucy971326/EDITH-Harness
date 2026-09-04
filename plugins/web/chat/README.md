@@ -9,6 +9,7 @@
 - `runner`：发送、Steer、FollowUp、Stop；
 - `llm`：列出模型和思考档位；
 - `events`：订阅 `RunEvent` 与 `DockChanged`，转成浏览器 SSE。
+- `surface/web/runview`：统一投影历史、思考、Tool 与最终回答；Chat 不维护运行 reducer。
 
 【提供能力】注册服务 `chat`：提供 `sidepanel`、`dock`、`message.actions`、`composer.actions` 四个 Chat 内部登记处；内置 `copy` 消息动作。
 
@@ -22,8 +23,10 @@
 
 ```text
 根目录
-├─ plugin.go / handler.go / page.templ / timeline.go / events.go
+├─ plugin.go / handler.go / page.templ / events.go
 │  Chat 产品本体：路由、页面、History 与 SSE
+├─ static/
+│  Composer、停止、消息动作与右侧面板的私有浏览器交互
 ├─ slot_composer.go / slot_dock.go / slot_message.go / slot_sidepanel.go
 │  Chat 提供的四个内部插槽登记处
 ├─ message_copy_action.go

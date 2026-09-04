@@ -24,6 +24,7 @@ import (
 	"harness/kernel/session"
 	"harness/kernel/session/settings"
 	"harness/surface/web"
+	"harness/surface/web/runview"
 )
 
 // 活对象。PageHandler 渲染 Chat 完整页面或 HTMX 主区域片段。
@@ -490,7 +491,7 @@ func (h *PageHandler) history(w nethttp.ResponseWriter, r *nethttp.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	snapshot := timelineSnapshot{Entries: sess.Entries(), Runs: []runner.RunState{}}
+	snapshot := runview.Snapshot{Entries: sess.Entries(), Runs: []runner.RunState{}}
 	if state, ok := h.runner.State(r.PathValue("sessionID")); ok {
 		snapshot.Runs = []runner.RunState{state}
 	}
@@ -537,7 +538,7 @@ func (h *PageHandler) events(w nethttp.ResponseWriter, r *nethttp.Request) {
 				return
 			}
 			if event.run != nil {
-				body, err := json.Marshal(timelineEventFromRun(*event.run))
+				body, err := json.Marshal(*event.run)
 				if err != nil {
 					return
 				}

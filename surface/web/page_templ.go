@@ -33,7 +33,7 @@ func Page(products []Product, currentID string, navigation templ.Component, cont
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Harness</title><script src=\"/static/theme.js\"></script><link rel=\"stylesheet\" href=\"/static/site.css\"><script src=\"/static/htmx.min.js\"></script><script src=\"/static/htmx-ext-sse.js\"></script><script src=\"/static/vendor/marked.umd.js\"></script><script src=\"/static/vendor/purify.min.js\"></script></head><body class=\"ui-page\"><div class=\"min-h-screen p-2\"><div id=\"app-shell\" class=\"ui-shell flex h-[calc(100vh-1rem)] overflow-hidden\"><aside id=\"sidebar\" class=\"ui-panel flex shrink-0 flex-col border-r border-[var(--ui-color-border)] p-3\"><div class=\"sidebar-brand mb-5 flex items-center justify-between gap-2 px-1\"><a href=\"/\" class=\"flex items-center gap-2 ui-text-body font-semibold no-underline\" aria-label=\"Harness 首页\"><span class=\"ui-brand-mark\">H</span> <span class=\"sidebar-label\">Harness</span></a> <button id=\"sidebar-toggle\" type=\"button\" aria-label=\"收起侧栏\" aria-expanded=\"true\" class=\"ui-icon-button\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Harness</title><script src=\"/static/theme.js\"></script><link rel=\"stylesheet\" href=\"/static/site.css\"><script src=\"/static/htmx.min.js\"></script><script src=\"/static/htmx-ext-sse.js\"></script><script src=\"/static/vendor/marked.umd.js\"></script><script src=\"/static/vendor/purify.min.js\"></script><script src=\"/static/runview.js\"></script></head><body class=\"ui-page\"><div class=\"min-h-screen p-2\"><div id=\"app-shell\" class=\"ui-shell flex h-[calc(100vh-1rem)] overflow-hidden\"><aside id=\"sidebar\" class=\"ui-panel flex shrink-0 flex-col border-r border-[var(--ui-color-border)] p-3\"><div class=\"sidebar-brand mb-5 flex items-center justify-between gap-2 px-1\"><a href=\"/\" class=\"flex items-center gap-2 ui-text-body font-semibold no-underline\" aria-label=\"Harness 首页\"><span class=\"ui-brand-mark\">H</span> <span class=\"sidebar-label\">Harness</span></a> <button id=\"sidebar-toggle\" type=\"button\" aria-label=\"收起侧栏\" aria-expanded=\"true\" class=\"ui-icon-button\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -167,7 +167,7 @@ func ProductLinks(products []Product, currentID string, oob bool) templ.Componen
 			var templ_7745c5c3_Var4 templ.SafeURL
 			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(product.BasePath))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `surface/web/page.templ`, Line: 76, Col: 42}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `surface/web/page.templ`, Line: 77, Col: 42}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 			if templ_7745c5c3_Err != nil {
@@ -180,7 +180,7 @@ func ProductLinks(products []Product, currentID string, oob bool) templ.Componen
 			var templ_7745c5c3_Var5 string
 			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.URL(product.BasePath))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `surface/web/page.templ`, Line: 77, Col: 40}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `surface/web/page.templ`, Line: 78, Col: 40}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
 			if templ_7745c5c3_Err != nil {
@@ -211,7 +211,7 @@ func ProductLinks(products []Product, currentID string, oob bool) templ.Componen
 			var templ_7745c5c3_Var6 string
 			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(product.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `surface/web/page.templ`, Line: 87, Col: 46}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `surface/web/page.templ`, Line: 88, Col: 46}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 			if templ_7745c5c3_Err != nil {
@@ -424,7 +424,7 @@ func SettingsNav(sections []SettingsSectionDefinition, currentSectionID string, 
 				var templ_7745c5c3_Var11 templ.SafeURL
 				templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/settings/" + section.ID))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `surface/web/page.templ`, Line: 147, Col: 52}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `surface/web/page.templ`, Line: 148, Col: 52}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 				if templ_7745c5c3_Err != nil {
@@ -437,7 +437,7 @@ func SettingsNav(sections []SettingsSectionDefinition, currentSectionID string, 
 				var templ_7745c5c3_Var12 string
 				templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.URL("/settings/" + section.ID))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `surface/web/page.templ`, Line: 148, Col: 50}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `surface/web/page.templ`, Line: 149, Col: 50}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var12)
 				if templ_7745c5c3_Err != nil {
@@ -460,7 +460,7 @@ func SettingsNav(sections []SettingsSectionDefinition, currentSectionID string, 
 				var templ_7745c5c3_Var13 string
 				templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(section.Title)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `surface/web/page.templ`, Line: 157, Col: 20}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `surface/web/page.templ`, Line: 158, Col: 20}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 				if templ_7745c5c3_Err != nil {

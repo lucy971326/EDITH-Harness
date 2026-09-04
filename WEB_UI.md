@@ -60,9 +60,10 @@ Token 是唯一的视觉事实来源。颜色、排版、间距、圆角与主�
 只在一类元素会跨产品重复出现时，才新增公共 `ui-*` 规则；仅属于一个产品的内容，写在该产品自己的语义类中。
 
 ```text
-正确：ui-workflow 属于 Chat，留在 Chat 专属规则
+正确：Runner 驱动产品共用的运行过程属于 `surface/web/runview`
+正确：Chat 的 Composer、Dock、Sidepanel 与消息动作留在 Chat
 正确：ui-button-primary 属于所有 Web 产品，留在公共规则
-错误：为了未来假设需求，把 Chat 工作过程做成全局组件
+错误：把批次、编辑器、Composer 等产品事实塞进 RunView
 ```
 
 ## 图标
@@ -96,6 +97,10 @@ SSE 实时投影
 浏览器临时状态
 拖拽、复制、输入填充
 ```
+
+`surface/web/runview` 是已批准的公共 SSE 投影：它把 Snapshot 与 `runner.RunEvent`
+归并为完整运行记录。新 Agent 产品应直接使用它，不重写 reducer、Tool 回填或 Markdown；
+产品私有交互仍归产品自己的少量 JS。
 
 不得把业务状态、Session 状态或插件状态放进 JS；不引入前端状态管理框架。新增 JS 前，先说明 HTMX / 原生 HTML 无法完成的原因，并征得用户同意。
 

@@ -1,0 +1,20 @@
+package runview
+
+templ View(config Config) {
+	<section
+		id={ "runview-" + config.ID }
+		data-runview
+		data-runview-snapshot={ config.SnapshotURL }
+		class="flex min-h-0 flex-1 flex-col"
+		if config.AutoScroll {
+			data-runview-autoscroll="true"
+		}
+		if config.EventsURL != "" {
+			hx-ext="sse"
+			sse-connect={ templ.URL(config.EventsURL) }
+		}
+	>
+		<div data-runview-thread class="mx-auto w-full max-w-3xl space-y-3 py-6"></div>
+		<div sse-swap="run" hidden></div>
+	</section>
+}

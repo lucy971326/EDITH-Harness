@@ -1,6 +1,9 @@
 package chat
 
-import "harness/surface/web/ui"
+import (
+	"harness/surface/web/runview"
+	"harness/surface/web/ui"
+)
 
 templ ChatPage(data pageView) {
 	<div id="chat-page" class="flex h-full min-h-0">
@@ -27,11 +30,14 @@ templ ChatPage(data pageView) {
 				</div>
 			</header>
 			if data.HasActive {
-				<section id="chat-root" class="flex min-h-0 flex-1 flex-col" hx-ext="sse" sse-connect={ templ.URL("/chat/" + data.Selected.ID + "/events") } data-history={ templ.URL("/chat/" + data.Selected.ID + "/history") } data-message-actions={ data.MessageActionsJSON } data-message-action-url={ templ.URL("/chat/" + data.Selected.ID + "/message-actions/") }>
+				<section id="chat-root" class="flex min-h-0 flex-1 flex-col" hx-ext="sse" sse-connect={ templ.URL("/chat/" + data.Selected.ID + "/events") } data-message-actions={ data.MessageActionsJSON } data-message-action-url={ templ.URL("/chat/" + data.Selected.ID + "/message-actions/") }>
 					<section class="flex min-h-0 flex-1 flex-col overflow-y-auto px-6">
-						<div id="thread" class="mx-auto w-full max-w-3xl space-y-3 py-6"></div>
+						@runview.View(runview.Config{
+							ID:          "chat-run",
+							SnapshotURL: "/chat/" + data.Selected.ID + "/history",
+							AutoScroll:  true,
+						})
 						<p id="chat-status" class="mx-auto w-full max-w-3xl ui-text-meta"></p>
-						<div sse-swap="run" hidden></div>
 					</section>
 					if len(data.Docks) > 0 {
 						<section id="dock" class="mx-auto w-full max-w-3xl px-6 pb-3">
@@ -81,7 +87,7 @@ templ ChatPage(data pageView) {
 						</form>
 					</div>
 				</section>
-				<script src="/static/chat.js"></script>
+				<script src="/assets/chat/chat.js"></script>
 			} else {
 				<section class="flex min-h-0 flex-1 items-center justify-center px-6">
 					<div class="max-w-md text-center">
@@ -118,7 +124,7 @@ templ ChatPage(data pageView) {
 					</div>
 				</div>
 			</aside>
-			<script src="/static/sidepanel.js"></script>
+			<script src="/assets/chat/sidepanel.js"></script>
 		}
 	</div>
 }

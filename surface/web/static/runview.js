@@ -202,20 +202,7 @@
     return "";
   }
 
-  function actionBar(actions, target) {
-    if (target.cardType === "assistant" && !target.boundaryEntryID) return "";
-    const matching = actions.filter((action) => (action.targets || []).includes(target.cardType));
-    if (!matching.length) return "";
-    const fields = [
-      `data-card-type="${escapeHTML(target.cardType)}"`,
-      target.entryID ? `data-entry-id="${escapeHTML(target.entryID)}"` : "",
-      target.runID ? `data-run-id="${escapeHTML(target.runID)}"` : "",
-      target.boundaryEntryID ? `data-boundary-entry-id="${escapeHTML(target.boundaryEntryID)}"` : "",
-    ].join(" ");
-    return `<div class="ui-message-actions">${matching.map((action) => `<button type="button" class="message-action ui-button-secondary ui-message-action" data-message-action="${escapeHTML(action.id)}" data-action-icon="${escapeHTML(action.icon)}" data-action-label="${escapeHTML(action.name)}" ${fields}>${escapeHTML(action.icon)} ${escapeHTML(action.name)}</button>`).join("")}</div>`;
-  }
-
-  function assistantCard(run, segment, actions, live) {
+  function assistantCard(run, segment, live) {
     const parts = workflowContent(segment);
     const answerText = parts.answer ? textBlocks(sortedBlocks(parts.answer)) : "";
     const summary = workflowSummary(run, segment, live, Boolean(parts.content), parts.toolCount);
@@ -226,36 +213,24 @@
   <div class="ui-workflow-body">${parts.content || `<p class="ui-workflow-empty ui-text-meta">暂无可展开内容</p>`}${error}</div>
 </details>` : "";
     const answer = answerText ? `<div class="ui-message-answer ui-text-body ui-markdown">${renderMarkdown(answerText)}</div>` : "";
-    const actionsHTML = live || !answerText ? "" : actionBar(actions, {
-      cardType: "assistant", runID: segment.runID, boundaryEntryID: segment.boundaryEntryID,
-    });
-    if (!workflow && !answer && !actionsHTML) return "";
-    return `<article data-run-id="${escapeHTML(segment.runID)}" data-segment-id="${escapeHTML(segment.id)}" class="ui-message-assistant">${workflow}${answer}${actionsHTML}</article>`;
+    if (!workflow && !answer) return "";
+    return `<article data-runview-card="assistant" data-run-id="${escapeHTML(segment.runID)}" data-segment-id="${escapeHTML(segment.id)}" data-boundary-entry-id="${escapeHTML(segment.boundaryEntryID)}" data-runview-live="${live}" data-runview-answer="${Boolean(answerText)}" class="ui-message-assistant">${workflow}${answer}</article>`;
   }
 
-  function userCard(entry, actions) {
-    const actionsHTML = actionBar(actions, { cardType: "user", entryID: entry.id });
-    return `<article class="ui-message-user ui-text-body ui-markdown">${renderMarkdown(textBlocks(entry.message.blocks))}${actionsHTML}</article>`;
+  function userCard(entry) {
+    return `<article data-runview-card="user" data-entry-id="${escapeHTML(entry.id)}" class="ui-message-user ui-text-body ui-markdown">${renderMarkdown(textBlocks(entry.message.blocks))}</article>`;
   }
 
   function initialize() {
-    const root = document.getElementById("chat-root");
-    const composer = document.getElementById("composer");
-    if (!root || !composer || root.dataset.ready === "true") return;
+    for (const root of document.querySelectorAll("[data-runview]")) initializeView(root);
+  }
+
+  function initializeView(root) {
+    if (root.dataset.ready === "true") return;
     root.dataset.ready = "true";
 
-    const thread = document.getElementById("thread");
-    const status = document.getElementById("chat-status");
-    const model = document.getElementById("model");
-    const effort = document.getElementById("reasoning-effort");
-    const mode = document.getElementById("live-mode");
-    const send = document.getElementById("send-button");
-    const liveSend = document.getElementById("live-send");
-    const stop = document.getElementById("stop-button");
-    let messageActions = [];
-    try {
-      messageActions = JSON.parse(root.dataset.messageActions || "[]");
-    } catch { /* invalid action definitions leave the action bar empty */ }
+    const thread = root.querySelector("[data-runview-thread]");
+    if (!thread) return;
     const state = { entries: new Map(), runs: new Map(), running: false, activeRunID: "" };
     const expanded = new Set();
     let hydrating = false;
@@ -491,31 +466,19 @@
     function paint() {
       rememberExpanded();
       thread.innerHTML = orderedItems().map((item) => {
-        if (item.kind === "entry") return userCard(item.entry, messageActions);
+        if (item.kind === "entry") return userCard(item.entry);
         const live = state.running && item.run.id === state.activeRunID && item.run.latestSegment === item.segment.id;
-        return assistantCard(item.run, item.segment, messageActions, live);
+        return assistantCard(item.run, item.segment, live);
       }).join("");
       for (const detail of thread.querySelectorAll("details[data-disclosure-key]")) {
         detail.open = expanded.has(detail.dataset.disclosureKey);
       }
-      thread.lastElementChild?.scrollIntoView({ block: "end" });
-      setRunning(state.running);
-    }
-
-    function setRunning(value) {
-      send.classList.toggle("hidden", value);
-      send.disabled = value;
-      mode.classList.toggle("hidden", !value);
-      mode.disabled = !value;
-      liveSend.classList.toggle("hidden", !value);
-      liveSend.disabled = !value;
-      stop.classList.toggle("hidden", !value);
-      if (!value && status.textContent === "运行中：可选择插话或下一轮。") status.textContent = "";
-    }
-
-    function filterEfforts() {
-      for (const option of effort.options) option.hidden = Boolean(option.dataset.model && option.dataset.model !== model.value);
-      if (effort.selectedOptions[0]?.dataset.model && effort.selectedOptions[0].dataset.model !== model.value) effort.value = "";
+      if (root.dataset.runviewAutoscroll === "true") thread.lastElementChild?.scrollIntoView({ block: "end" });
+      root.dataset.running = String(state.running);
+      root.dispatchEvent(new CustomEvent("runview:updated", {
+        bubbles: true,
+        detail: { running: state.running, activeRunID: state.activeRunID },
+      }));
     }
 
     async function loadHistory() {
@@ -523,7 +486,7 @@
       hydrating = true;
       historyRequest = (async () => {
         try {
-          const response = await fetch(root.dataset.history);
+          const response = await fetch(root.dataset.runviewSnapshot);
           if (response.ok) apply(await response.json());
         } finally {
           hydrating = false;
@@ -534,60 +497,6 @@
       })();
       return historyRequest;
     }
-
-    composer.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const fields = new FormData(composer, event.submitter);
-      fields.set("mode", state.running ? mode.value : "run");
-      let hasFile = false;
-      for (const value of fields.values()) {
-        if (value instanceof File && value.name !== "") {
-          hasFile = true;
-          break;
-        }
-      }
-      const body = hasFile ? fields : new URLSearchParams(fields);
-      const response = await fetch(composer.action, { method: "POST", body });
-      if (!response.ok) {
-        status.textContent = await response.text();
-      } else {
-        composer.elements.text.value = "";
-        composer.querySelectorAll('input[type="file"]').forEach((input) => { input.value = ""; });
-      }
-    });
-    thread.addEventListener("click", async (event) => {
-      const button = event.target.closest(".message-action");
-      if (!button) return;
-      button.disabled = true;
-      try {
-        const fields = new URLSearchParams({
-          cardType: button.dataset.cardType,
-          entryID: button.dataset.entryId || "",
-          runID: button.dataset.runId || "",
-          boundaryEntryID: button.dataset.boundaryEntryId || "",
-        });
-        const response = await fetch(`${root.dataset.messageActionUrl}${encodeURIComponent(button.dataset.messageAction)}`, {
-          method: "POST", body: fields,
-        });
-        if (!response.ok) throw new Error(await response.text());
-        const result = await response.json();
-        if (!result.text) throw new Error("没有可复制的文本");
-        if (!navigator.clipboard) throw new Error("浏览器不支持复制");
-        await navigator.clipboard.writeText(result.text);
-        button.textContent = "已复制";
-        window.setTimeout(() => { button.textContent = `${button.dataset.actionIcon} ${button.dataset.actionLabel}`; }, 1200);
-      } catch (error) {
-        status.textContent = error.message || "复制失败";
-      } finally {
-        button.disabled = false;
-      }
-    });
-    stop.addEventListener("click", async () => {
-      const response = await fetch(stop.dataset.stop, { method: "POST" });
-      if (!response.ok) status.textContent = await response.text();
-    });
-    model.addEventListener("change", filterEfforts);
-    filterEfforts();
 
     document.addEventListener("htmx:sseBeforeMessage", (event) => {
       if (!root.contains(event.target)) return;
@@ -600,7 +509,7 @@
       } catch { /* malformed SSE is ignored */ }
     });
     document.addEventListener("htmx:sseOpen", (event) => {
-      if (root.contains(event.target)) loadHistory();
+      if (event.target === root || event.target.contains(root)) loadHistory();
     });
     loadHistory();
   }
