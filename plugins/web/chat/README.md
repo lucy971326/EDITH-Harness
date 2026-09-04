@@ -31,6 +31,8 @@
 │  Chat 提供的四个内部插槽登记处
 ├─ message_copy_action.go
 │  Chat 自带复制动作
+├─ message/fork/
+│  Chat 消息动作插槽的分叉填充者
 └─ composer/ dock/ message/ sidepanel/
    外部插件填入对应插槽的位置
 ```

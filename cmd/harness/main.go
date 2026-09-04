@@ -24,17 +24,18 @@ import (
 	"harness/kernel/session"
 	"harness/kernel/skills"
 	"harness/kernel/tools"
-	composerdemo "harness/plugins/web/chat/composer/demo"
-	webdemo "harness/plugins/web/demo"
 	"harness/plugins/kernel/loops/react"
 	machinelocal "harness/plugins/kernel/machine/local"
-	paneldemo "harness/plugins/web/chat/sidepanel/demo"
-	chatproduct "harness/plugins/web/chat"
-	settingsdemo "harness/plugins/web/settings/demo"
 	bashtool "harness/plugins/kernel/tools/bash"
 	edittool "harness/plugins/kernel/tools/edit"
 	readtool "harness/plugins/kernel/tools/read"
 	writetool "harness/plugins/kernel/tools/write"
+	chatproduct "harness/plugins/web/chat"
+	composerdemo "harness/plugins/web/chat/composer/demo"
+	messagefork "harness/plugins/web/chat/message/fork"
+	paneldemo "harness/plugins/web/chat/sidepanel/demo"
+	webdemo "harness/plugins/web/demo"
+	settingsdemo "harness/plugins/web/settings/demo"
 	"harness/surface/web"
 )
 
@@ -140,6 +141,10 @@ func run(configPath string) error {
 		return err
 	}
 	err = h.Install(composerdemo.New())
+	if err != nil {
+		return err
+	}
+	err = h.Install(messagefork.New())
 	if err != nil {
 		return err
 	}

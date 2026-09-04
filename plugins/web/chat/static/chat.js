@@ -96,6 +96,10 @@
         });
         if (!response.ok) throw new Error(await response.text());
         const result = await response.json();
+        if (result.redirect) {
+          window.location.assign(result.redirect);
+          return;
+        }
         if (!result.text) throw new Error("没有可复制的文本");
         if (!navigator.clipboard) throw new Error("浏览器不支持复制");
         await navigator.clipboard.writeText(result.text);

@@ -96,7 +96,8 @@ type MessageActionContext struct {
 
 // 数据。一项消息动作成功后的浏览器回包。
 type MessageActionResult struct {
-	Text string `json:"text"`
+	Text     string `json:"text"`
+	Redirect string `json:"redirect"`
 }
 
 // 契约。一个可填入 Chat 消息卡片下方的标准动作。

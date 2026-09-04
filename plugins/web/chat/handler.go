@@ -3,8 +3,6 @@ package chat
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -709,10 +707,5 @@ func checkWorkspace(path string) error {
 }
 
 func newSessionID() (string, error) {
-	var bytes [16]byte
-	_, err := rand.Read(bytes[:])
-	if err != nil {
-		return "", fmt.Errorf("chat: make session id: %w", err)
-	}
-	return hex.EncodeToString(bytes[:]), nil
+	return session.NewID()
 }

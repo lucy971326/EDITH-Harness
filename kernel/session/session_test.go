@@ -214,6 +214,45 @@ func TestBranchKeepsTreeAndSelectsHistory(t *testing.T) {
 	}
 }
 
+func TestForkCopiesPrefixIntoIndependentSession(t *testing.T) {
+	store, _ := newTestStore(t)
+	source, err := store.Create("source")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = source.Append(textMessage(RoleUser, "问题"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	answer, err := source.Append(textMessage(RoleAssistant, "回答"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = source.Append(textMessage(RoleUser, "原会话后续"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	child, err := store.Fork("source", "child", answer.ID, "问题 · 分叉")
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries := child.Entries()
+	if len(entries) != 2 || entries[0].Message.Blocks[0].Text != "问题" || entries[1].Message.Blocks[0].Text != "回答" {
+		t.Fatalf("fork entries = %#v", entries)
+	}
+	if entries[1].ID == answer.ID || entries[0].Seq != 1 || entries[1].Seq != 2 {
+		t.Fatalf("fork identities = %#v", entries)
+	}
+	_, err = child.Append(textMessage(RoleUser, "分叉后续"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(source.Entries()) != 3 || len(child.Entries()) != 3 {
+		t.Fatalf("source = %#v child = %#v", source.Entries(), child.Entries())
+	}
+}
+
 func TestEntriesKeepPersistentSequenceAcrossBranches(t *testing.T) {
 	store, _ := newTestStore(t)
 	s, err := store.Create("chat1")
