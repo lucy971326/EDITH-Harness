@@ -158,6 +158,13 @@ type Client struct { ... }
 
 类型跟定义者走：块在 `session`，goai 流事件留在 goai，SessionSettings / Invocation 在它们的定义包。SessionSettingsStore 契约跟 SessionSettings 走；For/Put 的实现在 persist 包，Host 键是 `sessionSettings`。Agent 的纯数据与 Store 契约在 `agents/config`，persist 以 `agentStore` 挂同一份实现，避免 Agent 服务、Loop、Session、persist 的 Go import 环。`Persistence` 接口仍然只谈 Tree。
 
+#### 契约与接口排版
+
+降低阅读心智负担：接口内方法不得无序堆叠在一起。
+1. **按职责归组**：同类能力的方法聚拢（如产品的存与取、同一插槽的注册与查询）。
+2. **语义空行**：不同职责的方法块之间必须保留空行隔开。
+3. **职责注释**：每组方法上方标明简明中文注释（如 `// 产品管理`、`// 路由分配`）。
+
 #### 一个包怎么拆
 
 打开一个包，先填四格：表上有键吗？A 还是 B 还是库？契约有几份、各给谁？本包不做什么？
@@ -242,6 +249,7 @@ WebView 承载同一套 Web，不复制一份 Chat。真实代码出现前不建
 - 普通包只返回错误，不打日志。错误只在 main 等进程边界，或无法再返回错误的后台入口打印一次。
 - 生产与测试代码一律把 `err := f()` 和 `if err != nil` 分成两行。
 - 每包一个主要公开构造入口；构造只校验依赖和组装。
+- 契约接口方法必须按职责成组，用空行与中文注释隔开，严禁杂乱堆叠。
 - 不要没有主人的 `utils.go` / `helpers.go` / `common.go`。
 
 ---

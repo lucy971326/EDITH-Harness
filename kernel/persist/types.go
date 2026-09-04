@@ -29,11 +29,14 @@ type Meta struct {
 // 契约。只负责账本字节。不认识 Append / History / Branch。
 // Add 写穿一个节点（jsonl 一行）。Save 留给整棵重写。
 type Persistence interface {
-	Load(id string) (*Tree, error)
-	Save(id string, tree *Tree) error
+	// 会话元数据（会话存在的依据与列表）
+	List() ([]Meta, error)
 	LoadMeta(id string) (Meta, error)
 	SaveMeta(meta Meta) error
 	DeleteMeta(id string) error
-	List() ([]Meta, error)
+
+	// 账本树与节点数据（按行追加与整树加载）
+	Load(id string) (*Tree, error)
+	Save(id string, tree *Tree) error
 	Add(id string, node Node) error
 }

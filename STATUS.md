@@ -121,7 +121,7 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的五个页面插槽基础�
 - `go test ./...` 通过。
 - `go vet ./...` 通过。
 - `git diff --check` 通过。
-- `node --test surface/web/static/test/sidepanel.test.js` 通过。
+- `node --test plugins/web/chat/static/test/sidepanel.test.js` 通过。
 - `node --check surface/web/static/runview.js` 与 Chat 私有脚本通过。
 - 已做真实浏览器页面与布局检查。
 

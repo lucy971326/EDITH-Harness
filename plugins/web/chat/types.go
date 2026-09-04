@@ -125,15 +125,22 @@ type ComposerAction interface {
 
 // 契约。Chat 提供给页面插槽插件的登记处。
 type Service interface {
+	// 右侧面板插槽 (Sidepanel)
 	RegisterPanel(Panel) error
 	Panels() []PanelDefinition
 	Panel(id string) (Panel, bool)
+
+	// 持续状态插槽 (Dock)
 	RegisterDock(Dock) error
 	Docks() []DockDefinition
 	Dock(id string) (Dock, bool)
+
+	// 消息动作插槽 (Message Actions)
 	RegisterMessageAction(MessageAction) error
 	MessageActions() []MessageActionDefinition
 	MessageAction(id string) (MessageAction, bool)
+
+	// 输入工具栏插槽 (Composer Actions)
 	RegisterComposerAction(ComposerAction) error
 	ComposerActions() []ComposerActionDefinition
 	ComposerAction(id string) (ComposerAction, bool)

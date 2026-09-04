@@ -4,8 +4,9 @@ package web
 import (
 	nethttp "net/http"
 
-	"github.com/a-h/templ"
 	"harness/surface/web/ui"
+
+	"github.com/a-h/templ"
 )
 
 // 数据。Product 描述 Web 左栏中的一个产品入口。
@@ -33,8 +34,10 @@ type SettingsSection interface {
 // 契约。Service 是 Web 暴露给静态产品插件与设置栏目的登记口。
 type Service interface {
 	RegisterProduct(product Product) error
-	RegisterRoute(pattern string, handler nethttp.Handler) error
 	Products() []Product
+
+	RegisterRoute(pattern string, handler nethttp.Handler) error
+
 	RegisterSettingsSection(section SettingsSection) error
 	SettingsSections() []SettingsSectionDefinition
 	SettingsSection(id string) (SettingsSection, bool)
