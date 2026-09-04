@@ -17,3 +17,6 @@ playground/
 
 # IDE
 .vscode/
+.claude/
+.codex/
+.agents/
