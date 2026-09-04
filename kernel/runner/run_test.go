@@ -179,6 +179,9 @@ type runnerFixture struct {
 	persistence *memoryPersistence
 	settings    *memorySettings
 	events      *events.Registry
+	agents      *agents.Service
+	tools       *tools.Registry
+	skills      *skills.Registry
 }
 
 func newRunnerFixture(t *testing.T, loop loops.Loop) runnerFixture {
@@ -200,12 +203,14 @@ func newRunnerFixture(t *testing.T, loop loops.Loop) runnerFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
+	toolRegistry := tools.NewRegistry()
+	skillRegistry := skills.NewRegistry()
 	agentService, err := agents.NewService(
 		newEmptyAgentStore(),
 		settingsStore,
 		loopRegistry,
-		tools.NewRegistry(),
-		skills.NewRegistry(),
+		toolRegistry,
+		skillRegistry,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -221,11 +226,24 @@ func newRunnerFixture(t *testing.T, loop loops.Loop) runnerFixture {
 		persistence: persistence,
 		settings:    settingsStore,
 		events:      eventRegistry,
+		agents:      agentService,
+		tools:       toolRegistry,
+		skills:      skillRegistry,
 	}
 }
 
 func textInput(text string) session.UserMessage {
 	return session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: text}}}
+}
+
+type testRunnerSkillErrorProvider struct {
+	err error
+}
+
+func (testRunnerSkillErrorProvider) Name() string { return "error" }
+
+func (p testRunnerSkillErrorProvider) List(string) ([]skills.Skill, error) {
+	return nil, p.err
 }
 
 func TestRunBuildsInvocationPersistsMessagesAndPublishesInOrder(t *testing.T) {
@@ -490,6 +508,44 @@ func TestStateReportsLiveRunAfterInputIsDurable(t *testing.T) {
 	err = fixture.runner.Stop("session-1")
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestStartReturnsSkillDiscoveryErrorBeforeStartingLoop(t *testing.T) {
+	loopCalled := false
+	loop := &runnerTestLoop{run: func(context.Context, loops.Invocation) error {
+		loopCalled = true
+		return nil
+	}}
+	fixture := newRunnerFixture(t, loop)
+	err := fixture.tools.Register(tools.New("read", "read", func(context.Context, tools.Call, struct{}) (tools.Result, error) {
+		return tools.Result{}, nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = fixture.agents.Save(agents.Agent{
+		ID: agents.DefaultID, Name: "Harness", Kind: "react", Tools: []string{"read"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = fixture.skills.Register(testRunnerSkillErrorProvider{err: errors.New("skill discovery failed")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = fixture.runner.Start(context.Background(), "session-1", textInput("question"))
+	if err == nil || !strings.Contains(err.Error(), "skill discovery failed") {
+		t.Fatalf("Start() error = %v", err)
+	}
+	if loopCalled {
+		t.Fatal("loop started after preparation failed")
+	}
+	if _, ok := fixture.runner.State("session-1"); ok {
+		t.Fatal("session remained live after preparation failed")
+	}
+	if len(fixture.session.History()) != 0 {
+		t.Fatalf("history = %#v, want empty", fixture.session.History())
 	}
 }
 

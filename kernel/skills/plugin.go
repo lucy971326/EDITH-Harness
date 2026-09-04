@@ -2,12 +2,12 @@ package skills
 
 import "harness/kernel/host"
 
-// 活对象。把空 Skill 摘要登记处挂到 Host 的 skills 键。
+// 活对象。把空 Skill Provider 登记处挂到 Host 的 skills 键。
 type Plugin struct {
 	registry *Registry
 }
 
-// NewPlugin 造 Skill 摘要登记处插件。
+// NewPlugin 造 Skill Provider 登记处插件。
 func NewPlugin() *Plugin {
 	return &Plugin{}
 }

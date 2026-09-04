@@ -12,7 +12,7 @@
 
 ### 2. 扩展 Agent 可用输入
 
-- 调研并拍板 MCP 如何成为 Tool / Skill 的来源，再实现；不为 MCP 改动 Runner 或 Session 的边界。
+- 调研并拍板 MCP 如何成为 Tool / Skill 的来源，再实现；不为 MCP 改动 Runner 或 Session 的边界。当前文件系统 Skill Provider 已完成，MCP 仍未实现。
 - 在真实输入需求出现后，扩展 `composer.actions` 支持多模态输入；先定义输入的落盘归属和模型适配范围。
 
 ### 3. 多 Agent 与可追溯性

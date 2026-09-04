@@ -11,6 +11,7 @@ Host
 ├─ 内核提供者与填充者
 │  machine-local → machine
 │  react         → loops
+│  skills/filesystem → skills
 │  read/write/edit/bash → tools
 │
 └─ Web

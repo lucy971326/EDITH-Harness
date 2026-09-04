@@ -171,13 +171,20 @@ func (p *page) view(id string, draft agents.Agent, isNew bool, message string) (
 		}
 		views = append(views, agentView{ID: agent.ID, Name: agent.Name, Selected: agent.ID == id && !isNew, InUse: inUse})
 	}
+	choices, err := p.agents.Choices()
+	if err != nil {
+		return agentSettingsView{}, err
+	}
 	return agentSettingsView{
-		Agents: views, Selected: selected, Choices: p.agents.Choices(), IsNew: isNew, Error: message, SelectedID: id, SelectedInUse: selectedInUse,
+		Agents: views, Selected: selected, Choices: choices, IsNew: isNew, Error: message, SelectedID: id, SelectedInUse: selectedInUse,
 	}, nil
 }
 
 func (p *page) newAgent() agents.Agent {
-	choices := p.agents.Choices()
+	choices, err := p.agents.Choices()
+	if err != nil {
+		return agents.Agent{}
+	}
 	if len(choices.Loops) == 0 {
 		return agents.Agent{}
 	}
@@ -201,7 +208,7 @@ func loopDescription(definition loops.Definition) string { return definition.Des
 
 func toolDescription(definition tools.Definition) string { return definition.Description }
 
-func skillSummary(skill skills.Skill) string { return skill.Summary }
+func skillSummary(skill skills.Skill) string { return skill.Description }
 
 func agentTitle(agent agents.Agent, isNew bool) string {
 	if isNew {

@@ -27,6 +27,19 @@ type fakeMachine struct {
 	runError error
 }
 
+func (m *fakeMachine) HomeDir() (string, error) { return "/home/test", nil }
+
+func (m *fakeMachine) ReadDir(string) ([]machine.DirEntry, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (m *fakeMachine) ResolvePath(workspace, path string) string {
+	if strings.HasPrefix(path, "/") {
+		return path
+	}
+	return workspace + "/" + path
+}
+
 func (m *fakeMachine) ReadFile(path string) ([]byte, error) {
 	data, ok := m.files[path]
 	if !ok {

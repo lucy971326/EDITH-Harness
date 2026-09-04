@@ -19,7 +19,7 @@ func newTool(m machine.Machine) tools.Tool {
 		if err := ctx.Err(); err != nil {
 			return tools.Result{}, err
 		}
-		path := tools.ResolvePath(call.Workspace, args.Path)
+		path := m.ResolvePath(call.Workspace, args.Path)
 		err := m.WriteFile(path, []byte(args.Content))
 		if err != nil {
 			return tools.Result{}, err

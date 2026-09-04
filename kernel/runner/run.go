@@ -31,6 +31,14 @@ type liveRun struct {
 	toolBlocks      map[string]toolBlock
 }
 
+// 数据。一轮 Run 在进入 Loop 前读取的一致配置快照。
+type runPreparation struct {
+	sess     *session.Session
+	settings settings.SessionSettings
+	prepared agents.PreparedAgent
+	loop     loops.Loop
+}
+
 // 数据。一场 Run 内工具调用所在的原始块位置。
 type toolBlock struct {
 	stepSeq  uint64
@@ -89,17 +97,25 @@ func (r *Runner) Run(ctx context.Context, sessionID string, input session.UserMe
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	prepared, err := r.prepare(sessionID)
+	if err != nil {
+		return err
+	}
 	current := &liveRun{toolBlocks: make(map[string]toolBlock)}
 	if err := r.begin(sessionID, current); err != nil {
 		return err
 	}
 	defer r.end(sessionID, current)
-	return r.run(ctx, sessionID, input, current)
+	return r.run(ctx, sessionID, input, current, prepared)
 }
 
 // Start 启动一轮对话并在 Runner 自己的 goroutine 中执行。
 func (r *Runner) Start(ctx context.Context, sessionID string, input session.UserMessage) error {
 	if err := ctx.Err(); err != nil {
+		return err
+	}
+	prepared, err := r.prepare(sessionID)
+	if err != nil {
 		return err
 	}
 	current := &liveRun{toolBlocks: make(map[string]toolBlock)}
@@ -108,15 +124,14 @@ func (r *Runner) Start(ctx context.Context, sessionID string, input session.User
 	}
 	go func() {
 		defer r.end(sessionID, current)
-		_ = r.run(ctx, sessionID, input, current)
+		_ = r.run(ctx, sessionID, input, current, prepared)
 	}()
 	return nil
 }
 
-func (r *Runner) run(ctx context.Context, sessionID string, input session.UserMessage, current *liveRun) error {
-	next := input
+func (r *Runner) run(ctx context.Context, sessionID string, input session.UserMessage, current *liveRun, prepared runPreparation) error {
+	err := r.runOnePrepared(ctx, sessionID, input, current, prepared)
 	for {
-		err := r.runOne(ctx, sessionID, next, current)
 		if r.isClosing() {
 			return err
 		}
@@ -124,10 +139,11 @@ func (r *Runner) run(ctx context.Context, sessionID string, input session.UserMe
 		if !ok {
 			return err
 		}
-		next = followUp
+		err = r.runOne(ctx, sessionID, followUp, current)
 	}
 }
 
+// runOne 为下一轮建立可停止的运行身份，再读取这一轮配置。
 func (r *Runner) runOne(parent context.Context, sessionID string, input session.UserMessage, current *liveRun) (err error) {
 	runID, err := newRunID()
 	if err != nil {
@@ -140,22 +156,52 @@ func (r *Runner) runOne(parent context.Context, sessionID string, input session.
 	current.setCancel(cancel)
 	defer cancel()
 
-	sess, err := r.sessions.Get(sessionID)
+	prepared, err := r.prepare(sessionID)
 	if err != nil {
 		return err
+	}
+	return r.executePrepared(runCtx, sessionID, runID, input, current, prepared)
+}
+
+func (r *Runner) prepare(sessionID string) (runPreparation, error) {
+	sess, err := r.sessions.Get(sessionID)
+	if err != nil {
+		return runPreparation{}, err
 	}
 	runSettings, err := r.settings.For(sessionID)
 	if err != nil {
-		return err
+		return runPreparation{}, err
 	}
 	prepared, err := r.agents.Prepare(runSettings.AgentID, runSettings.Workspace)
 	if err != nil {
-		return err
+		return runPreparation{}, err
 	}
 	loop, err := r.loops.Get(prepared.Kind)
 	if err != nil {
+		return runPreparation{}, err
+	}
+	return runPreparation{sess: sess, settings: runSettings, prepared: prepared, loop: loop}, nil
+}
+
+func (r *Runner) runOnePrepared(parent context.Context, sessionID string, input session.UserMessage, current *liveRun, preparation runPreparation) (err error) {
+	runID, err := newRunID()
+	if err != nil {
 		return err
 	}
+	if !current.openSteering(runID) {
+		return context.Canceled
+	}
+	runCtx, cancel := context.WithCancel(parent)
+	current.setCancel(cancel)
+	defer cancel()
+	return r.executePrepared(runCtx, sessionID, runID, input, current, preparation)
+}
+
+func (r *Runner) executePrepared(runCtx context.Context, sessionID, runID string, input session.UserMessage, current *liveRun, preparation runPreparation) (err error) {
+	sess := preparation.sess
+	runSettings := preparation.settings
+	prepared := preparation.prepared
+	loop := preparation.loop
 
 	message := messageFromInput(runID, input)
 	entry, err := sess.Append(message)

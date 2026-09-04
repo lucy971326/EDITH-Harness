@@ -4,7 +4,7 @@
 
 【使用能力】
 
-- `machine`：读取并写回文件，通常由 `machine-local` 提供；
+- `machine`：解析工作区路径、读取并写回文件，通常由 `machine-local` 提供；
 - `tools`：登记自身。
 
 【提供能力】不注册整份服务；提供 `edit` Tool。

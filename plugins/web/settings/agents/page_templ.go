@@ -341,7 +341,7 @@ func AgentSettings(data agentSettingsView) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "</div></fieldset><fieldset><legend class=\"ui-text-body font-semibold\">启用的 Skill</legend><p class=\"mt-1 ui-text-meta\">Skill 摘要会加入此 Agent 的系统提示词。</p><div class=\"mt-3 divide-y divide-[var(--ui-color-border)] border-y border-[var(--ui-color-border)]\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "</div></fieldset><fieldset><legend class=\"ui-text-body font-semibold\">启用的 Skill</legend><p class=\"mt-1 ui-text-meta\">这里只选择用户级 Skill；项目 Skill 会自动提供给此工作区的所有 Agent。</p><div class=\"mt-3 divide-y divide-[var(--ui-color-border)] border-y border-[var(--ui-color-border)]\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

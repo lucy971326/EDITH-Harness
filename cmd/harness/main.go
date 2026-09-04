@@ -26,6 +26,7 @@ import (
 	"harness/kernel/tools"
 	"harness/plugins/kernel/loops/react"
 	machinelocal "harness/plugins/kernel/machine/local"
+	skillsfilesystem "harness/plugins/kernel/skills/filesystem"
 	bashtool "harness/plugins/kernel/tools/bash"
 	edittool "harness/plugins/kernel/tools/edit"
 	readtool "harness/plugins/kernel/tools/read"
@@ -113,6 +114,10 @@ func run(configPath string) error {
 		return err
 	}
 	err = h.Install(skills.NewPlugin())
+	if err != nil {
+		return err
+	}
+	err = h.Install(skillsfilesystem.New())
 	if err != nil {
 		return err
 	}

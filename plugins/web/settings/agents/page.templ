@@ -76,7 +76,7 @@ templ AgentSettings(data agentSettingsView) {
 				</fieldset>
 				<fieldset>
 					<legend class="ui-text-body font-semibold">启用的 Skill</legend>
-					<p class="mt-1 ui-text-meta">Skill 摘要会加入此 Agent 的系统提示词。</p>
+					<p class="mt-1 ui-text-meta">这里只选择用户级 Skill；项目 Skill 会自动提供给此工作区的所有 Agent。</p>
 					<div class="mt-3 divide-y divide-[var(--ui-color-border)] border-y border-[var(--ui-color-border)]">
 						for _, skill := range data.Choices.Skills {
 							<label class="flex cursor-pointer items-start gap-3 py-3 ui-text-body">

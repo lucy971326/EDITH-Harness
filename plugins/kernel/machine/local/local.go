@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+
+	"harness/kernel/machine"
 )
 
 // 活对象。挂在 Host 的 machine 键上的本机机器。
@@ -23,12 +25,32 @@ func newLocal() (*local, error) {
 	return &local{bash: bash}, nil
 }
 
+func (m *local) HomeDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("machine-local: find home directory: %w", err)
+	}
+	return home, nil
+}
+
 func (m *local) ReadFile(path string) ([]byte, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("machine-local: read %q: %w", path, err)
 	}
 	return b, nil
+}
+
+func (m *local) ReadDir(path string) ([]machine.DirEntry, error) {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return nil, fmt.Errorf("machine-local: read directory %q: %w", path, err)
+	}
+	out := make([]machine.DirEntry, 0, len(entries))
+	for _, entry := range entries {
+		out = append(out, machine.DirEntry{Name: entry.Name(), IsDir: entry.IsDir()})
+	}
+	return out, nil
 }
 
 func (m *local) WriteFile(path string, data []byte) error {
@@ -43,6 +65,13 @@ func (m *local) WriteFile(path string, data []byte) error {
 		return fmt.Errorf("machine-local: write %q: %w", path, err)
 	}
 	return nil
+}
+
+func (m *local) ResolvePath(workspace string, path string) string {
+	if filepath.IsAbs(path) {
+		return filepath.Clean(path)
+	}
+	return filepath.Clean(filepath.Join(workspace, path))
 }
 
 func (m *local) Run(ctx context.Context, dir string, argv []string) ([]byte, []byte, error) {

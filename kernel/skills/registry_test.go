@@ -2,25 +2,19 @@ package skills
 
 import "testing"
 
-func TestRegistry_getPreservesSelectionOrder(t *testing.T) {
+func TestRegistry_listSortsByName(t *testing.T) {
 	registry := NewRegistry()
-	for _, skill := range []Skill{
-		{Name: "git", Summary: "Git workflow."},
-		{Name: "go", Summary: "Go workflow."},
-	} {
-		err := registry.Register(skill)
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	got, err := registry.Get([]string{"go", "git"})
+	err := registry.Register(testProvider{name: "one", skills: []Skill{
+		{Name: "git", Description: "Git workflow.", Location: "/skills/git", Scope: ScopeUser},
+		{Name: "go", Description: "Go workflow.", Location: "/skills/go", Scope: ScopeUser},
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got[0].Name != "go" || got[1].Name != "git" {
-		t.Fatalf("Get() = %#v", got)
+	list, err := registry.List("/work")
+	if err != nil {
+		t.Fatal(err)
 	}
-	list := registry.List()
 	if list[0].Name != "git" || list[1].Name != "go" {
 		t.Fatalf("List() = %#v", list)
 	}
@@ -28,23 +22,48 @@ func TestRegistry_getPreservesSelectionOrder(t *testing.T) {
 
 func TestRegistry_rejectsInvalidDuplicateAndMissingSkills(t *testing.T) {
 	registry := NewRegistry()
-	err := registry.Register(Skill{})
-	if err == nil {
-		t.Fatal("Register(empty) error = nil")
-	}
-	skill := Skill{Name: "git", Summary: "Git workflow."}
-	err = registry.Register(skill)
+	err := registry.Register(testProvider{name: "invalid", skills: []Skill{{}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = registry.Register(skill)
+	if _, err := registry.List("/work"); err == nil {
+		t.Fatal("List(empty) error = nil")
+	}
+	registry = NewRegistry()
+	skill := Skill{Name: "git", Description: "Git workflow.", Location: "/skills/git", Scope: ScopeUser}
+	err = registry.Register(testProvider{name: "one", skills: []Skill{skill}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = registry.Register(testProvider{name: "one", skills: []Skill{skill}})
 	if err == nil {
-		t.Fatal("duplicate Register() error = nil")
+		t.Fatal("Register(duplicate provider) error = nil")
 	}
-	if _, err := registry.Get([]string{"missing"}); err == nil {
-		t.Fatal("Get(missing) error = nil")
+}
+
+func TestRegistry_rejectsDuplicateNamesAcrossProviders(t *testing.T) {
+	registry := NewRegistry()
+	err := registry.Register(testProvider{name: "one", skills: []Skill{{Name: "same", Description: "one", Location: "/one", Scope: ScopeUser}}})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, err := registry.Get([]string{"git", "git"}); err == nil {
-		t.Fatal("Get(duplicate) error = nil")
+	err = registry.Register(testProvider{name: "two", skills: []Skill{{Name: "same", Description: "two", Location: "/two", Scope: ScopeUser}}})
+	if err != nil {
+		t.Fatal(err)
 	}
+	_, err = registry.List("/work")
+	if err == nil {
+		t.Fatal("List() error = nil")
+	}
+}
+
+type testProvider struct {
+	name   string
+	skills []Skill
+}
+
+func (p testProvider) Name() string { return p.name }
+
+func (p testProvider) List(string) ([]Skill, error) {
+	return append([]Skill(nil), p.skills...), nil
 }

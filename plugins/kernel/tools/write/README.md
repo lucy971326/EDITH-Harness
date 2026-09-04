@@ -4,7 +4,7 @@
 
 【使用能力】
 
-- `machine`：在工作区写入文件，通常由 `machine-local` 提供；
+- `machine`：解析工作区路径并写入文件，通常由 `machine-local` 提供；
 - `tools`：登记自身。
 
 【提供能力】不注册整份服务；提供 `write` Tool。

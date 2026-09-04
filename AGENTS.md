@@ -28,7 +28,7 @@
 
 **进程是一张服务表。聊天是桌上的一摊产品，不是根。**
 
-能换的做成登记处，别人来填；不能换的做成一整份服务。一场对话是一次 `Runner.Send` / `Run`：怎么想是 Loop（要编译）；Agent 设置管 Kind、SystemPrompt、工具和 Skill 名单；这份会话怎么配是 SessionSettings（AgentID、模型、思考档位、工作区文件夹）。账本只记说过的话。屏幕听这一轮 `Emit`，不听账本。插件要编译进去；配置只决定这次启不启动，不排顺序，不热加载新代码。
+能换的做成登记处，别人来填；不能换的做成一整份服务。一场对话是一次 `Runner.Send` / `Run`：怎么想是 Loop（要编译）；Agent 设置管 Kind、SystemPrompt、工具和用户级 Skill 名单，项目 Skill 随工作区自动可用；这份会话怎么配是 SessionSettings（AgentID、模型、思考档位、工作区文件夹）。账本只记说过的话。屏幕听这一轮 `Emit`，不听账本。插件要编译进去；配置只决定这次启不启动，不排顺序，不热加载新代码。
 
 动手之前先问：这是桌上新的一摊，还是聊天里的一份数据、一种画法？工作区、自定义模式、轨迹页，全是聊天产品，不改内核形状。不要为了对齐 DSH 往内核加插槽。
 
@@ -48,8 +48,8 @@ Host（桌子）
 2. **根是插件宿主，不是 Runner。** 聊天只是宿主里的一摊。电影播放器可以零依赖对话。
 3. 对话：`Runner.Run` → `Loop.Run` →（仅 LLM 类）`llm.Stream`。Runner 在 Loop 外面。换 loop = 换 Agent Kind，不是换 Runner。
 4. Loop 是一种程序，不是一场焊死的对话。session 在 `Run` 的参数上。接着问 = 闲着再 `Run`（FollowUp）。还在转时插一句 = `Runner.Steer`。不要 `Chat.Followup`，不要 Inbox。
-5. 自定义：Loop / Kind（开发者代码，要编译）vs Agent 设置（用户数据：SystemPrompt、已有 Tool / Skill 名）vs SessionSettings（会话数据：AgentID、模型、思考档位、工作区）。用户不热加载 Go。Agent 设置和 SessionSettings 都是实时事实来源；Runner 每轮读取一次。
-6. 系统提示词属于 Agent 设置。`agents.Prepare` 现取选中 Skill 的摘要和本轮工作区，拼成最终 System Prompt；Runner 只拿成品交给 Loop。LLM 类 Loop 插件在 `Start` 时自己 Resolve `llm`、`tools`，运行时按本轮工具名单现取 schema。不要另设提示词登记处。
+5. 自定义：Loop / Kind（开发者代码，要编译）vs Agent 设置（用户数据：SystemPrompt、已有 Tool / 用户级 Skill 名）vs SessionSettings（会话数据：AgentID、模型、思考档位、工作区）。项目 Skill 属于工作区，不写进全局 Agent。用户不热加载 Go。Agent 设置和 SessionSettings 都是实时事实来源；Runner 每轮读取一次。
+6. 系统提示词属于 Agent 设置。`agents.Prepare` 现取已选用户 Skill、工作区 Skill 摘要和本轮工作区，拼成最终 System Prompt；Runner 只拿成品交给 Loop。LLM 类 Loop 插件在 `Start` 时自己 Resolve `llm`、`tools`，运行时按本轮工具名单现取 schema。不要另设提示词登记处。
 7. Session **只记对话**，可以分叉。todo / 审批 / 游戏状态放插件自己的结构体。别往账本塞。
 8. 屏幕听这一轮 Run（`Emit`；浏览器用 SSE）。不听账本。喇叭就这一个，插件不要各搞各的。耐久事件先 `Append` 再给屏幕，失败则终止 Run。
 9. 前端：内核一份，表面按端 enable。Web 和 webview 同一套 templ；TUI 另画；ACP 是管子不是画面。Web 内有产品、路由和少量页面插槽登记处；产品决定进入哪一摊，页面插槽只扩展某个产品内部。请求 POST，通知 SSE。v1 不用 WebSocket。
@@ -273,7 +273,7 @@ kernel/
   llm/               plugin.go + Client / models.json；直接调 goai
   tools/             空登记处 + Tool
   loops/             空登记处 + Loop / Invocation
-  skills/            空登记处 + Skill 摘要
+  skills/            空登记处 + Skill Provider / Skill 摘要
   agents/            Agent 设置服务
   runner/            整份 A；live
 
@@ -284,6 +284,7 @@ plugins/
   kernel/
     machine/local/   本机。RegisterService("machine", …)
     loops/react/     必装默认 Loop；使用 llm、tools，填 loops
+    skills/filesystem/  扫描用户与工作区 Skill 根，填 skills
     tools/read/ write/ edit/ bash/   各填 tools
   web/
     chat/            Chat 产品；填 Web products 和 routes
@@ -306,13 +307,15 @@ enable: [web, read, write, edit, bash]
 ```
 main:
   host.New()
-  必装：persist（挂 sessionPersistence + sessionSettings + agentStore）→ session → llm → tools → loops → react → skills → agents → runner
+  必装：persist（挂 sessionPersistence + sessionSettings + agentStore）→ session → llm → tools → loops → react → skills → skills-filesystem → agents → runner
   必装提供者：yaml machine 选出的那一个，在 tools 前面 Start
   再按 enable：plugins/* 、 surface/*
   Close 倒序
 ```
 
 顺序只出现在 `cmd/harness`。yaml 不能重排。jsonl / sqlite 是 persist 包内部选文件。machine 是 yaml 选提供者插件。两者都不进 `enable`。内核每次都 Start，不进 `enable`。
+
+`skills` 只登记 Provider；Provider 在每次 `List(workspace)` 时动态发现 Skill。文件系统 Provider 扫描用户 `~/.harness/skills`、`~/.agents/skills` 与项目 `.harness/skills`、`.agents/skills`，项目覆盖用户，同层 `.harness` 覆盖 `.agents`。`Agent.Skills` 只保存用户级明确选择；项目 Skill 自动对所有 Agent 可用。
 
 没有 `service.go`。Host 上那份对象就是结构体本身。服务名硬编码字符串。取出时泛型 Resolve。对不上就是组装错误。
 

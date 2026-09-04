@@ -3,6 +3,7 @@ package machinelocal
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -46,6 +47,40 @@ func TestLocal_writeThenRead(t *testing.T) {
 	}
 	if string(got) != "second" {
 		t.Fatalf("ReadFile() = %q, want second", got)
+	}
+}
+
+func TestLocal_homeDirAndReadDir(t *testing.T) {
+	m := newTestLocal(t)
+	home, err := m.HomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if home == "" || !filepath.IsAbs(home) {
+		t.Fatalf("HomeDir() = %q", home)
+	}
+
+	dir := t.TempDir()
+	err = os.WriteFile(filepath.Join(dir, "note.txt"), []byte("note"), 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := m.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name != "note.txt" || entries[0].IsDir {
+		t.Fatalf("ReadDir() = %#v", entries)
+	}
+}
+
+func TestLocal_resolvePath(t *testing.T) {
+	m := newTestLocal(t)
+	if got := m.ResolvePath("/work", "nested/note.txt"); got != filepath.Join("/work", "nested", "note.txt") {
+		t.Fatalf("ResolvePath(relative) = %q", got)
+	}
+	if got := m.ResolvePath("/work", "/tmp/note.txt"); got != filepath.Join("/tmp", "note.txt") {
+		t.Fatalf("ResolvePath(absolute) = %q", got)
 	}
 }
 
