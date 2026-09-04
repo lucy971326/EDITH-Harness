@@ -127,20 +127,51 @@ func (s *memorySettings) Put(_ string, value settings.SessionSettings) error {
 	return nil
 }
 
+func (s *memorySettings) UsesAgent(agentID string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.value.AgentID == agentID, nil
+}
+
 func (s *memorySettings) readCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.reads
 }
 
-type emptyAgentStore struct{}
-
-func (emptyAgentStore) ListAgents() ([]config.Agent, error) { return nil, nil }
-func (emptyAgentStore) ForAgent(string) (config.Agent, error) {
-	return config.Agent{}, os.ErrNotExist
+type emptyAgentStore struct {
+	agents map[string]config.Agent
 }
-func (emptyAgentStore) PutAgent(config.Agent) error { return nil }
-func (emptyAgentStore) DeleteAgent(string) error    { return nil }
+
+func newEmptyAgentStore() *emptyAgentStore {
+	return &emptyAgentStore{agents: make(map[string]config.Agent)}
+}
+
+func (s *emptyAgentStore) ListAgents() ([]config.Agent, error) {
+	out := make([]config.Agent, 0, len(s.agents))
+	for _, agent := range s.agents {
+		out = append(out, agent)
+	}
+	return out, nil
+}
+
+func (s *emptyAgentStore) ForAgent(id string) (config.Agent, error) {
+	agent, ok := s.agents[id]
+	if !ok {
+		return config.Agent{}, os.ErrNotExist
+	}
+	return agent, nil
+}
+
+func (s *emptyAgentStore) PutAgent(agent config.Agent) error {
+	s.agents[agent.ID] = agent
+	return nil
+}
+
+func (s *emptyAgentStore) DeleteAgent(id string) error {
+	delete(s.agents, id)
+	return nil
+}
 
 type runnerFixture struct {
 	runner      *Runner
@@ -170,7 +201,8 @@ func newRunnerFixture(t *testing.T, loop loops.Loop) runnerFixture {
 		t.Fatal(err)
 	}
 	agentService, err := agents.NewService(
-		emptyAgentStore{},
+		newEmptyAgentStore(),
+		settingsStore,
 		loopRegistry,
 		tools.NewRegistry(),
 		skills.NewRegistry(),

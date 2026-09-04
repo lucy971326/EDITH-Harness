@@ -31,6 +31,7 @@ type PageHandler struct {
 	product  web.Product
 	sessions *session.Store
 	settings settings.SessionSettingsStore
+	agents   *agents.Service
 	runner   *runner.Runner
 	models   *llm.Client
 	hub      *eventHub
@@ -43,13 +44,14 @@ func newPageHandler(
 	product web.Product,
 	sessions *session.Store,
 	settingsStore settings.SessionSettingsStore,
+	agentService *agents.Service,
 	runService *runner.Runner,
 	modelService *llm.Client,
 	hub *eventHub,
 	registry Service,
 ) *PageHandler {
 	return &PageHandler{
-		web: webService, product: product, sessions: sessions, settings: settingsStore,
+		web: webService, product: product, sessions: sessions, settings: settingsStore, agents: agentService,
 		runner: runService, models: modelService, hub: hub, registry: registry,
 	}
 }
@@ -127,6 +129,8 @@ type pageView struct {
 	Models             []llm.ModelChoice
 	Model              string
 	ReasoningEffort    string
+	Agents             []agents.Agent
+	AgentID            string
 	Panels             []PanelDefinition
 	Docks              []dockView
 	MessageActionsJSON string
@@ -195,6 +199,12 @@ func (h *PageHandler) pageData(selectedID string) (pageView, error) {
 	if h.models != nil {
 		out.Models = h.models.Models()
 	}
+	if h.agents != nil {
+		out.Agents, err = h.agents.List()
+		if err != nil {
+			return pageView{}, fmt.Errorf("chat: list agents: %w", err)
+		}
+	}
 	if selectedID != "" {
 		setup, err := h.settings.For(selectedID)
 		if err != nil {
@@ -202,6 +212,7 @@ func (h *PageHandler) pageData(selectedID string) (pageView, error) {
 		}
 		out.Model = setup.Model
 		out.ReasoningEffort = setup.ReasoningEffort
+		out.AgentID = setup.AgentID
 	}
 	for _, project := range projects {
 		sort.Slice(project.Sessions, func(i, j int) bool {
@@ -615,7 +626,7 @@ func (h *PageHandler) message(w nethttp.ResponseWriter, r *nethttp.Request) {
 	input := session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: text}}}
 	switch r.FormValue("mode") {
 	case "run":
-		if err := h.selectModel(sessionID, r.FormValue("model"), r.FormValue("reasoningEffort")); err != nil {
+		if err := h.selectRunSettings(sessionID, r.FormValue("agentID"), r.FormValue("model"), r.FormValue("reasoningEffort")); err != nil {
 			nethttp.Error(w, err.Error(), nethttp.StatusBadRequest)
 			return
 		}
@@ -652,7 +663,7 @@ func (h *PageHandler) startRun(sessionID string, input session.UserMessage) erro
 	return h.runner.Start(context.Background(), sessionID, input)
 }
 
-func (h *PageHandler) selectModel(sessionID, model, effort string) error {
+func (h *PageHandler) selectRunSettings(sessionID, agentID, model, effort string) error {
 	setup, err := h.settings.For(sessionID)
 	if err != nil {
 		return err
@@ -660,12 +671,20 @@ func (h *PageHandler) selectModel(sessionID, model, effort string) error {
 	if model == "" || effort == "" {
 		return fmt.Errorf("请先选择模型和思考档位")
 	}
+	agentID = strings.TrimSpace(agentID)
+	if agentID == "" {
+		agentID = setup.AgentID
+	}
+	if _, err := h.agents.Get(agentID); err != nil {
+		return fmt.Errorf("Agent 不可用：%w", err)
+	}
 	for _, choice := range h.models.Models() {
 		if choice.ID != model {
 			continue
 		}
 		for _, available := range choice.ReasoningEfforts {
 			if available == effort {
+				setup.AgentID = agentID
 				setup.Model = model
 				setup.ReasoningEffort = effort
 				return h.settings.Put(sessionID, setup)

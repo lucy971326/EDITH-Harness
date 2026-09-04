@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 
+	"harness/kernel/agents"
 	"harness/kernel/events"
 	"harness/kernel/host"
 	"harness/kernel/llm"
@@ -27,6 +28,7 @@ var chatProduct = web.Product{
 type Plugin struct {
 	sessions *session.Store
 	settings settings.SessionSettingsStore
+	agents   *agents.Service
 	runner   *runner.Runner
 	models   *llm.Client
 	hub      *eventHub
@@ -56,6 +58,10 @@ func (p *Plugin) Start(h *host.Host) error {
 	}
 	p.sessions = sessions
 	p.settings = settingsStore
+	p.agents, err = host.Resolve[*agents.Service](h, "agents")
+	if err != nil {
+		return fmt.Errorf("chat: resolve agents: %w", err)
+	}
 	p.runner, err = host.Resolve[*runner.Runner](h, "runner")
 	if err != nil {
 		return fmt.Errorf("chat: resolve runner: %w", err)
@@ -111,7 +117,7 @@ func (p *Plugin) Start(h *host.Host) error {
 	if err != nil {
 		return err
 	}
-	handler := newPageHandler(webService, chatProduct, sessions, settingsStore, p.runner, p.models, p.hub, p.registry)
+	handler := newPageHandler(webService, chatProduct, sessions, settingsStore, p.agents, p.runner, p.models, p.hub, p.registry)
 	err = webService.RegisterRoute("GET /chat", handler)
 	if err != nil {
 		return err
@@ -164,6 +170,7 @@ func (p *Plugin) Close() error {
 	}
 	p.sessions = nil
 	p.settings = nil
+	p.agents = nil
 	p.runner = nil
 	p.models = nil
 	p.hub = nil

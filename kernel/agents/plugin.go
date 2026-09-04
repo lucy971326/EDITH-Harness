@@ -3,6 +3,7 @@ package agents
 import (
 	"harness/kernel/host"
 	"harness/kernel/loops"
+	"harness/kernel/session/settings"
 	"harness/kernel/skills"
 	"harness/kernel/tools"
 )
@@ -24,6 +25,10 @@ func (p *Plugin) Start(h *host.Host) error {
 	if err != nil {
 		return err
 	}
+	settingsStore, err := host.Resolve[settings.SessionSettingsStore](h, "sessionSettings")
+	if err != nil {
+		return err
+	}
 	loopRegistry, err := host.Resolve[loops.Loops](h, "loops")
 	if err != nil {
 		return err
@@ -36,7 +41,7 @@ func (p *Plugin) Start(h *host.Host) error {
 	if err != nil {
 		return err
 	}
-	p.service, err = NewService(store, loopRegistry, toolRegistry, skillRegistry)
+	p.service, err = NewService(store, settingsStore, loopRegistry, toolRegistry, skillRegistry)
 	if err != nil {
 		return err
 	}

@@ -13,4 +13,5 @@ type SessionSettings struct {
 type SessionSettingsStore interface {
 	For(sessionID string) (SessionSettings, error)
 	Put(sessionID string, settings SessionSettings) error
+	UsesAgent(agentID string) (bool, error)
 }

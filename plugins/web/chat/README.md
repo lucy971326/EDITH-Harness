@@ -6,6 +6,7 @@
 
 - `web`：登记 Chat 产品和 HTTP 路由；
 - `sessions`、`sessionSettings`：列出会话，读取本轮配置；
+- `agents`：列出可选 Agent，并在普通发送前保存此会话下一轮使用的 Agent；
 - `runner`：发送、Steer、FollowUp、Stop；
 - `llm`：列出模型和思考档位；
 - `events`：订阅 `RunEvent` 与 `DockChanged`，转成浏览器 SSE。

@@ -269,7 +269,7 @@ func TestMessageSelectsModelAndHistoryReturnsLedger(t *testing.T) {
 	}
 }
 
-func TestSelectModelReplacesSettingsForNextRun(t *testing.T) {
+func TestSelectRunSettingsReplacesSettingsForNextRun(t *testing.T) {
 	h, _ := installChat(t)
 	defer h.Close()
 	settingsStore, err := host.Resolve[settings.SessionSettingsStore](h, "sessionSettings")
@@ -285,8 +285,12 @@ func TestSelectModelReplacesSettingsForNextRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := &PageHandler{settings: settingsStore, models: models}
-	if err := handler.selectModel("session-1", "deepseek/deepseek-v4-pro", "low"); err != nil {
+	agentService, err := host.Resolve[*agents.Service](h, "agents")
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := &PageHandler{settings: settingsStore, agents: agentService, models: models}
+	if err := handler.selectRunSettings("session-1", agents.DefaultID, "deepseek/deepseek-v4-pro", "low"); err != nil {
 		t.Fatal(err)
 	}
 	setup, err := settingsStore.For("session-1")
@@ -457,6 +461,10 @@ func (failingSettings) For(string) (settings.SessionSettings, error) {
 
 func (failingSettings) Put(string, settings.SessionSettings) error {
 	return errors.New("disk full")
+}
+
+func (failingSettings) UsesAgent(string) (bool, error) {
+	return false, errors.New("disk full")
 }
 
 func installChat(t *testing.T) (*host.Host, *web.Plugin) {

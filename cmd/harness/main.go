@@ -35,6 +35,7 @@ import (
 	messagefork "harness/plugins/web/chat/message/fork"
 	paneldemo "harness/plugins/web/chat/sidepanel/demo"
 	webdemo "harness/plugins/web/demo"
+	agentsettings "harness/plugins/web/settings/agents"
 	settingsdemo "harness/plugins/web/settings/demo"
 	"harness/surface/web"
 )
@@ -149,6 +150,10 @@ func run(configPath string) error {
 		return err
 	}
 	err = h.Install(settingsdemo.New())
+	if err != nil {
+		return err
+	}
+	err = h.Install(agentsettings.New())
 	if err != nil {
 		return err
 	}

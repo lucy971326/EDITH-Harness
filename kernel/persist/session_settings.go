@@ -62,3 +62,42 @@ func (s *jsonl) Put(sessionID string, in settings.SessionSettings) error {
 	}
 	return os.Rename(tmp, path)
 }
+
+// UsesAgent 返回是否仍有会话选择了指定 Agent。
+func (s *jsonl) UsesAgent(agentID string) (bool, error) {
+	if err := checkID(agentID); err != nil {
+		return false, err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	entries, err := os.ReadDir(filepath.Join(s.dir, "sessions"))
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		path := filepath.Join(s.dir, "sessions", entry.Name(), "settings.json")
+		data, err := os.ReadFile(path)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return false, err
+		}
+		var sessionSettings settings.SessionSettings
+		if err := json.Unmarshal(data, &sessionSettings); err != nil {
+			return false, fmt.Errorf("persist: session settings %q: %w", entry.Name(), err)
+		}
+		if sessionSettings.AgentID == agentID {
+			return true, nil
+		}
+	}
+	return false, nil
+}

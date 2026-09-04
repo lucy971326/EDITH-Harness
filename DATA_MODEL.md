@@ -11,6 +11,11 @@
 ├─ config.yaml
 │  全局 LLM 配置
 │
+├─ default.agent.json
+│  新会话默认使用、可编辑但不可删除的 Agent 配置
+├─ <agent-id>.agent.json
+│  其他用户创建的 Agent 配置
+│
 └─ sessions/<session-id>/
    ├─ messages.jsonl
    │  对话账本
@@ -35,7 +40,7 @@ SessionSettings
 
 Agent 设置
 └─ 一个 Agent 怎样工作
-   Kind、System Prompt、允许的 Tool / Skill 名单
+   Kind、System Prompt、允许的 Tool / Skill 名单；不进对话账本
 
 插件状态
 └─ 插件自己的业务事实

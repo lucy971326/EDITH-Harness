@@ -11,6 +11,7 @@ import (
 	"harness/kernel/host"
 	"harness/kernel/loops"
 	"harness/kernel/persist"
+	"harness/kernel/session/settings"
 	"harness/kernel/skills"
 	"harness/kernel/tools"
 )
@@ -51,11 +52,17 @@ func TestService_saveChoicesAndPrepare(t *testing.T) {
 	}
 }
 
-func TestService_defaultAgentUsesNewlyRegisteredToolsAndSkills(t *testing.T) {
-	service, loopsRegistry, toolsRegistry, skillsRegistry := testService(t)
+func TestService_defaultAgentKeepsInitialToolsAndSkills(t *testing.T) {
+	loopsRegistry := loops.NewRegistry()
+	toolsRegistry := tools.NewRegistry()
+	skillsRegistry := skills.NewRegistry()
 	registerLoop(t, loopsRegistry, "react")
 	registerTool(t, toolsRegistry, "read")
 	registerSkill(t, skillsRegistry, "first", "First summary.")
+	service, err := NewService(newMemoryStore(), noAgentUse{}, loopsRegistry, toolsRegistry, skillsRegistry)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	first, err := service.Prepare(DefaultID, "/work")
 	if err != nil {
@@ -70,15 +77,15 @@ func TestService_defaultAgentUsesNewlyRegisteredToolsAndSkills(t *testing.T) {
 	if !slices.Equal(first.Tools, []string{"read"}) {
 		t.Fatalf("first tools = %#v", first.Tools)
 	}
-	if !slices.Equal(second.Tools, []string{"bash", "read"}) {
+	if !slices.Equal(second.Tools, []string{"read"}) {
 		t.Fatalf("second tools = %#v", second.Tools)
 	}
-	if !strings.Contains(second.SystemPrompt, "- second: Second summary.") {
+	if strings.Contains(second.SystemPrompt, "- second: Second summary.") {
 		t.Fatalf("second prompt = %q", second.SystemPrompt)
 	}
 }
 
-func TestService_rejectsInvalidConfigurationAndDefaultChanges(t *testing.T) {
+func TestService_rejectsInvalidConfigurationAndAllowsDefaultChanges(t *testing.T) {
 	service, loopsRegistry, toolsRegistry, skillsRegistry := testService(t)
 	registerLoop(t, loopsRegistry, "react")
 	registerTool(t, toolsRegistry, "bash")
@@ -94,11 +101,37 @@ func TestService_rejectsInvalidConfigurationAndDefaultChanges(t *testing.T) {
 			t.Fatalf("Save(%#v) error = nil", agent)
 		}
 	}
-	if _, err := service.Save(Agent{ID: DefaultID, Name: "Default", Kind: "react"}); err == nil {
-		t.Fatal("Save(default) error = nil")
+	updated, err := service.Save(Agent{ID: DefaultID, Name: "Harness", Kind: "react", Tools: []string{"bash"}, Skills: []string{"git"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(updated.Tools, []string{"bash"}) || !slices.Equal(updated.Skills, []string{"git"}) {
+		t.Fatalf("updated default = %#v", updated)
 	}
 	if err := service.Delete(DefaultID); err == nil {
 		t.Fatal("Delete(default) error = nil")
+	}
+}
+
+func TestService_deleteRejectsAgentUsedBySession(t *testing.T) {
+	loopRegistry := loops.NewRegistry()
+	toolRegistry := tools.NewRegistry()
+	skillRegistry := skills.NewRegistry()
+	registerLoop(t, loopRegistry, "react")
+	usage := &agentUse{used: map[string]bool{"coding": true}}
+	service, err := NewService(newMemoryStore(), usage, loopRegistry, toolRegistry, skillRegistry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Save(Agent{ID: "coding", Name: "Coding", Kind: "react"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Delete("coding"); err == nil {
+		t.Fatal("Delete(coding) error = nil")
+	}
+	usage.used["coding"] = false
+	if err := service.Delete("coding"); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -134,7 +167,7 @@ func testService(t *testing.T) (*Service, *loops.Registry, *tools.Registry, *ski
 	loopRegistry := loops.NewRegistry()
 	toolRegistry := tools.NewRegistry()
 	skillRegistry := skills.NewRegistry()
-	service, err := NewService(newMemoryStore(), loopRegistry, toolRegistry, skillRegistry)
+	service, err := NewService(newMemoryStore(), noAgentUse{}, loopRegistry, toolRegistry, skillRegistry)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,6 +212,28 @@ func (agentTestLoop) Run(context.Context, loops.Invocation) error { return nil }
 type memoryStore struct {
 	agents map[string]Agent
 }
+
+type noAgentUse struct{}
+
+func (noAgentUse) For(string) (settings.SessionSettings, error) {
+	return settings.SessionSettings{}, nil
+}
+
+func (noAgentUse) Put(string, settings.SessionSettings) error { return nil }
+
+func (noAgentUse) UsesAgent(string) (bool, error) { return false, nil }
+
+type agentUse struct {
+	used map[string]bool
+}
+
+func (s *agentUse) For(string) (settings.SessionSettings, error) {
+	return settings.SessionSettings{}, nil
+}
+
+func (s *agentUse) Put(string, settings.SessionSettings) error { return nil }
+
+func (s *agentUse) UsesAgent(id string) (bool, error) { return s.used[id], nil }
 
 func newMemoryStore() *memoryStore {
 	return &memoryStore{agents: make(map[string]Agent)}

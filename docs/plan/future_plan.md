@@ -10,21 +10,17 @@
 
 - 将 Chat 的 demo sidepanel 替换为真实工作区文件树与文件查看面板。
 
-### 2. 让已有服务可配置
-
-- 增加 Agent 设置页面：编辑已有 Agent 设置，不重做 `agents` 服务或提示词链路。
-
-### 3. 扩展 Agent 可用输入
+### 2. 扩展 Agent 可用输入
 
 - 调研并拍板 MCP 如何成为 Tool / Skill 的来源，再实现；不为 MCP 改动 Runner 或 Session 的边界。
 - 在真实输入需求出现后，扩展 `composer.actions` 支持多模态输入；先定义输入的落盘归属和模型适配范围。
 
-### 4. 多 Agent 与可追溯性
+### 3. 多 Agent 与可追溯性
 
 - 实现 Subagent：它拥有自己的运行与业务状态，不写入父 Session。
 - Subagent、MCP 已产生足够真实事实后，再实现轨迹页；它用于检查 Agent、Tool Schema、调用与结果是否符合预期。
 
-### 5. 完整验收
+### 4. 完整验收
 
 - 验证产品切换、SSE 重连、慢客户端、取消和关闭。
 - 完成与改动匹配的 Go、race、vet、跨平台编译与真实浏览器验收。

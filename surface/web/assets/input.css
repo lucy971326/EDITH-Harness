@@ -185,6 +185,10 @@
     padding: 0 var(--ui-space-3);
   }
 
+  .ui-checkbox {
+    accent-color: var(--ui-color-accent);
+  }
+
   .ui-textarea {
     display: block;
     min-height: 5rem;

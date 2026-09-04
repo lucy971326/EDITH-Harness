@@ -62,6 +62,11 @@ templ ChatPage(data pageView) {
 										}
 									</div>
 								}
+								<select name="agentID" id="agent" class="ui-select w-auto">
+									for _, agent := range data.Agents {
+										<option value={ agent.ID } selected?={ data.AgentID == agent.ID }>{ agent.Name }</option>
+									}
+								</select>
 								<select name="model" id="model" class="ui-select w-auto">
 									<option value="">选择模型</option>
 									for _, model := range data.Models {

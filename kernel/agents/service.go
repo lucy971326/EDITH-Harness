@@ -3,10 +3,13 @@ package agents
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"harness/kernel/loops"
+	"harness/kernel/session/settings"
 	"harness/kernel/skills"
 	"harness/kernel/tools"
 )
@@ -15,16 +18,20 @@ const defaultSystemPrompt = "You are Harness, a helpful assistant."
 
 // 活对象。挂在 Host 的 agents 键上的 Agent 设置服务。
 type Service struct {
-	store  AgentStore
-	loops  loops.Loops
-	tools  tools.Tools
-	skills skills.Skills
+	store    AgentStore
+	settings settings.SessionSettingsStore
+	loops    loops.Loops
+	tools    tools.Tools
+	skills   skills.Skills
 }
 
 // NewService 组装 Agent 设置服务。
-func NewService(store AgentStore, loopRegistry loops.Loops, toolRegistry tools.Tools, skillRegistry skills.Skills) (*Service, error) {
+func NewService(store AgentStore, settingsStore settings.SessionSettingsStore, loopRegistry loops.Loops, toolRegistry tools.Tools, skillRegistry skills.Skills) (*Service, error) {
 	if store == nil {
 		return nil, fmt.Errorf("agents: nil store")
+	}
+	if settingsStore == nil {
+		return nil, fmt.Errorf("agents: nil session settings")
 	}
 	if loopRegistry == nil {
 		return nil, fmt.Errorf("agents: nil loops")
@@ -35,34 +42,37 @@ func NewService(store AgentStore, loopRegistry loops.Loops, toolRegistry tools.T
 	if skillRegistry == nil {
 		return nil, fmt.Errorf("agents: nil skills")
 	}
-	return &Service{store: store, loops: loopRegistry, tools: toolRegistry, skills: skillRegistry}, nil
+	service := &Service{store: store, settings: settingsStore, loops: loopRegistry, tools: toolRegistry, skills: skillRegistry}
+	if err := service.ensureDefault(); err != nil {
+		return nil, err
+	}
+	return service, nil
 }
 
-// List 返回默认 Agent 和所有自建 Agent；默认项始终排在第一项。
+// List 返回所有 Agent；default 始终排在第一项。
 func (s *Service) List() ([]Agent, error) {
-	custom, err := s.store.ListAgents()
+	registered, err := s.store.ListAgents()
 	if err != nil {
 		return nil, err
 	}
-	out := make([]Agent, 0, len(custom)+1)
-	out = append(out, defaultAgent())
-	out = append(out, custom...)
+	out := make([]Agent, 0, len(registered))
+	for _, agent := range registered {
+		if agent.ID == DefaultID {
+			out = append([]Agent{agent}, out...)
+			continue
+		}
+		out = append(out, agent)
+	}
 	return out, nil
 }
 
 // Get 按 ID 取一份 Agent 设置。
 func (s *Service) Get(id string) (Agent, error) {
-	if id == DefaultID {
-		return defaultAgent(), nil
-	}
 	return s.store.ForAgent(id)
 }
 
-// Save 新建或更新自建 Agent。空 ID 会生成一个新 ID。
+// Save 新建或更新一份 Agent。空 ID 会生成一个新 ID。
 func (s *Service) Save(agent Agent) (Agent, error) {
-	if agent.ID == DefaultID {
-		return Agent{}, fmt.Errorf("agents: default agent is read-only")
-	}
 	if agent.ID == "" {
 		id, err := newID()
 		if err != nil {
@@ -79,12 +89,24 @@ func (s *Service) Save(agent Agent) (Agent, error) {
 	return copyAgent(agent), nil
 }
 
-// Delete 删除一份自建 Agent；默认 Agent 不可删除。
+// Delete 删除一份未被会话使用的自建 Agent；默认 Agent 不可删除。
 func (s *Service) Delete(id string) error {
 	if id == DefaultID {
 		return fmt.Errorf("agents: default agent cannot be deleted")
 	}
+	inUse, err := s.InUse(id)
+	if err != nil {
+		return err
+	}
+	if inUse {
+		return fmt.Errorf("agents: agent %q is used by a session", id)
+	}
 	return s.store.DeleteAgent(id)
+}
+
+// InUse 返回指定 Agent 是否仍被某本会话选择。
+func (s *Service) InUse(id string) (bool, error) {
+	return s.settings.UsesAgent(id)
 }
 
 // Choices 返回此刻可被 Agent 选择的 Loop、Tool 和 Skill。
@@ -101,18 +123,6 @@ func (s *Service) Prepare(id string, workspace string) (PreparedAgent, error) {
 	agent, err := s.Get(id)
 	if err != nil {
 		return PreparedAgent{}, err
-	}
-	if id == DefaultID {
-		definitions := s.tools.List()
-		agent.Tools = make([]string, 0, len(definitions))
-		for _, definition := range definitions {
-			agent.Tools = append(agent.Tools, definition.Name)
-		}
-		skillDefinitions := s.skills.List()
-		agent.Skills = make([]string, 0, len(skillDefinitions))
-		for _, skill := range skillDefinitions {
-			agent.Skills = append(agent.Skills, skill.Name)
-		}
 	}
 	if _, err := s.loops.Get(agent.Kind); err != nil {
 		return PreparedAgent{}, err
@@ -153,13 +163,31 @@ func (s *Service) validate(agent Agent) error {
 	return nil
 }
 
-func defaultAgent() Agent {
-	return Agent{
+func (s *Service) ensureDefault() error {
+	_, err := s.store.ForAgent(DefaultID)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	choices := s.Choices()
+	toolNames := make([]string, 0, len(choices.Tools))
+	for _, tool := range choices.Tools {
+		toolNames = append(toolNames, tool.Name)
+	}
+	skillNames := make([]string, 0, len(choices.Skills))
+	for _, skill := range choices.Skills {
+		skillNames = append(skillNames, skill.Name)
+	}
+	return s.store.PutAgent(Agent{
 		ID:           DefaultID,
-		Name:         "Default",
+		Name:         "Harness",
 		Kind:         "react",
 		SystemPrompt: defaultSystemPrompt,
-	}
+		Tools:        toolNames,
+		Skills:       skillNames,
+	})
 }
 
 func assemblePrompt(systemPrompt string, selected []skills.Skill, workspace string) string {

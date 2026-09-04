@@ -276,6 +276,33 @@ func TestSessionSettings_putFor(t *testing.T) {
 	}
 }
 
+func TestSessionSettings_UsesAgent(t *testing.T) {
+	s, err := openJSONL(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Put("chat1", settings.SessionSettings{AgentID: "coding"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Put("chat2", settings.SessionSettings{AgentID: "default"}); err != nil {
+		t.Fatal(err)
+	}
+	used, err := s.UsesAgent("coding")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !used {
+		t.Fatal("UsesAgent(coding) = false")
+	}
+	used, err = s.UsesAgent("missing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if used {
+		t.Fatal("UsesAgent(missing) = true")
+	}
+}
+
 func TestSessionSettings_doesNotReadOldSetupFile(t *testing.T) {
 	s, err := openJSONL(t.TempDir())
 	if err != nil {

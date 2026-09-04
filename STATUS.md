@@ -41,6 +41,8 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的五个页面插槽基础�
 - Runner 对界面只发布稳定事件：开始、文本/推理 Delta、工具开始/完成、耐久消息、结束状态。
 - 每次 SSE 重连重新同步 History；耐久快照会覆盖已排队的旧 Delta，慢客户端被断开，不会阻塞 Run。
 - 模型与思考档位是独立选择框；每次普通发送前两者必选，换模型会清空档位并影响下一轮 Run。
+- Agent 设置已持久化为 `~/.harness/<agent-id>.agent.json`；`default` 是可编辑、不可删除的新会话默认项，首次生成时显式选中当时全部 Tool / Skill。Chat 普通发送可切换下一轮 Agent；Steer / FollowUp 不改变正在运行的 Run。
+- `plugins/web/settings/agents` 填入 Web 公共设置页，使用 HTMX 管理 Agent 的新建、编辑与删除；仍被任一会话选择的 Agent 不可删除。
 
 ### 阶段 4A：右侧面板登记处
 
