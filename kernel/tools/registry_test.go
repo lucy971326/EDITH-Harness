@@ -25,7 +25,7 @@ func TestRegistry_generatesSchemaValidatesAndCalls(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	definitions, err := registry.Definitions([]string{"test"})
+	definitions, err := registry.Definitions(context.Background(), "", []string{"test"})
 	if err != nil {
 		t.Fatal(err)
 	}

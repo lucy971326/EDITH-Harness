@@ -1,6 +1,7 @@
 package agents
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -123,7 +124,7 @@ func (s *Service) Choices() (Choices, error) {
 }
 
 // Prepare 按当前登记内容生成一轮 Run 可用的 Agent 设置和系统提示词。
-func (s *Service) Prepare(id string, workspace string) (PreparedAgent, error) {
+func (s *Service) Prepare(ctx context.Context, id string, workspace string) (PreparedAgent, error) {
 	agent, err := s.Get(id)
 	if err != nil {
 		return PreparedAgent{}, err
@@ -131,7 +132,8 @@ func (s *Service) Prepare(id string, workspace string) (PreparedAgent, error) {
 	if _, err := s.loops.Get(agent.Kind); err != nil {
 		return PreparedAgent{}, err
 	}
-	if _, err := s.tools.Definitions(agent.Tools); err != nil {
+	preparedTools, err := s.tools.Prepare(ctx, workspace, agent.Tools)
+	if err != nil {
 		return PreparedAgent{}, err
 	}
 
@@ -168,8 +170,8 @@ func (s *Service) Prepare(id string, workspace string) (PreparedAgent, error) {
 	}
 	return PreparedAgent{
 		Kind:         agent.Kind,
-		Tools:        append([]string(nil), agent.Tools...),
-		SystemPrompt: assemblePrompt(agent.SystemPrompt, skillDefinitions, workspace, agent.Tools),
+		Tools:        preparedTools.Names,
+		SystemPrompt: assemblePrompt(agent.SystemPrompt, skillDefinitions, preparedTools.Instructions, workspace, preparedTools.Names),
 	}, nil
 }
 
@@ -186,7 +188,7 @@ func (s *Service) validate(agent Agent) error {
 	if _, err := s.loops.Get(agent.Kind); err != nil {
 		return err
 	}
-	if _, err := s.tools.Definitions(agent.Tools); err != nil {
+	if _, err := s.tools.Definitions(context.Background(), "", agent.Tools); err != nil {
 		return err
 	}
 	available, err := s.skills.List("")
@@ -211,8 +213,9 @@ func (s *Service) ensureDefault() error {
 	if err != nil {
 		return err
 	}
-	toolNames := make([]string, 0, len(choices.Tools))
-	for _, tool := range choices.Tools {
+	defaults := s.tools.Defaults()
+	toolNames := make([]string, 0, len(defaults))
+	for _, tool := range defaults {
 		toolNames = append(toolNames, tool.Name)
 	}
 	skillNames := make([]string, 0, len(choices.Skills))
@@ -229,8 +232,8 @@ func (s *Service) ensureDefault() error {
 	})
 }
 
-func assemblePrompt(systemPrompt string, selected []skills.Skill, workspace string, allowedTools []string) string {
-	parts := make([]string, 0, 3)
+func assemblePrompt(systemPrompt string, selected []skills.Skill, instructions []tools.Instruction, workspace string, allowedTools []string) string {
+	parts := make([]string, 0, 4)
 	if text := strings.TrimSpace(systemPrompt); text != "" {
 		parts = append(parts, text)
 	}
@@ -242,6 +245,13 @@ func assemblePrompt(systemPrompt string, selected []skills.Skill, workspace stri
 			lines = append(lines, "  Location: "+skill.Location)
 		}
 		lines = append(lines, "", skillReadInstruction(allowedTools), "Resolve relative resources from each Skill directory.", "User instructions take priority over Skill instructions.")
+		parts = append(parts, strings.Join(lines, "\n"))
+	}
+	if len(instructions) > 0 {
+		lines := []string{"## MCP Server Instructions"}
+		for _, instruction := range instructions {
+			lines = append(lines, "### "+instruction.Source, instruction.Text)
+		}
 		parts = append(parts, strings.Join(lines, "\n"))
 	}
 	parts = append(parts, "## Workspace\n"+workspace)

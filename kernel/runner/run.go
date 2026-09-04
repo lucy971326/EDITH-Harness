@@ -97,7 +97,7 @@ func (r *Runner) Run(ctx context.Context, sessionID string, input session.UserMe
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	prepared, err := r.prepare(sessionID)
+	prepared, err := r.prepare(ctx, sessionID)
 	if err != nil {
 		return err
 	}
@@ -114,7 +114,7 @@ func (r *Runner) Start(ctx context.Context, sessionID string, input session.User
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	prepared, err := r.prepare(sessionID)
+	prepared, err := r.prepare(ctx, sessionID)
 	if err != nil {
 		return err
 	}
@@ -156,14 +156,14 @@ func (r *Runner) runOne(parent context.Context, sessionID string, input session.
 	current.setCancel(cancel)
 	defer cancel()
 
-	prepared, err := r.prepare(sessionID)
+	prepared, err := r.prepare(runCtx, sessionID)
 	if err != nil {
 		return err
 	}
 	return r.executePrepared(runCtx, sessionID, runID, input, current, prepared)
 }
 
-func (r *Runner) prepare(sessionID string) (runPreparation, error) {
+func (r *Runner) prepare(ctx context.Context, sessionID string) (runPreparation, error) {
 	sess, err := r.sessions.Get(sessionID)
 	if err != nil {
 		return runPreparation{}, err
@@ -172,7 +172,7 @@ func (r *Runner) prepare(sessionID string) (runPreparation, error) {
 	if err != nil {
 		return runPreparation{}, err
 	}
-	prepared, err := r.agents.Prepare(runSettings.AgentID, runSettings.Workspace)
+	prepared, err := r.agents.Prepare(ctx, runSettings.AgentID, runSettings.Workspace)
 	if err != nil {
 		return runPreparation{}, err
 	}

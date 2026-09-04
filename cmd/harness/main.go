@@ -29,6 +29,7 @@ import (
 	skillsfilesystem "harness/plugins/kernel/skills/filesystem"
 	bashtool "harness/plugins/kernel/tools/bash"
 	edittool "harness/plugins/kernel/tools/edit"
+	mcptool "harness/plugins/kernel/tools/mcp"
 	readtool "harness/plugins/kernel/tools/read"
 	writetool "harness/plugins/kernel/tools/write"
 	chatproduct "harness/plugins/web/chat"
@@ -98,6 +99,10 @@ func run(configPath string) error {
 		return err
 	}
 	err = h.Install(bashtool.New())
+	if err != nil {
+		return err
+	}
+	err = h.Install(mcptool.New(filepath.Join(dataDir, "mcp.json")))
 	if err != nil {
 		return err
 	}

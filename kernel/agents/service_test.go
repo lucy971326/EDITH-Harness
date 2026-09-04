@@ -42,7 +42,7 @@ func TestService_saveChoicesAndPrepare(t *testing.T) {
 	if len(choices.Loops) != 1 || len(choices.Tools) != 1 || len(choices.Skills) != 1 {
 		t.Fatalf("Choices() = %#v", choices)
 	}
-	prepared, err := service.Prepare(agent.ID, "/work")
+	prepared, err := service.Prepare(context.Background(), agent.ID, "/work")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,13 +67,13 @@ func TestService_defaultAgentKeepsInitialToolsAndSkills(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	first, err := service.Prepare(DefaultID, "/work")
+	first, err := service.Prepare(context.Background(), DefaultID, "/work")
 	if err != nil {
 		t.Fatal(err)
 	}
 	registerTool(t, toolsRegistry, "bash")
 	registerSkill(t, skillsRegistry, "second", "Second summary.")
-	second, err := service.Prepare(DefaultID, "/work")
+	second, err := service.Prepare(context.Background(), DefaultID, "/work")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +141,7 @@ func TestService_choicesOnlyUserSkillsAndPrepareAddsWorkspaceSkills(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	prepared, err := service.Prepare(agent.ID, "/work")
+	prepared, err := service.Prepare(context.Background(), agent.ID, "/work")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +172,7 @@ func TestService_prepareWithoutSkillReaderOmitsSkillsWithoutDiscoveryError(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	prepared, err := service.Prepare(agent.ID, "/work")
+	prepared, err := service.Prepare(context.Background(), agent.ID, "/work")
 	if err != nil {
 		t.Fatal(err)
 	}
