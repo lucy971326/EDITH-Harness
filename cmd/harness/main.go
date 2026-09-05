@@ -26,6 +26,7 @@ import (
 	"harness/kernel/tools"
 	"harness/plugins/kernel/loops/react"
 	machinelocal "harness/plugins/kernel/machine/local"
+	skillsbuiltin "harness/plugins/kernel/skills/builtin"
 	skillsfilesystem "harness/plugins/kernel/skills/filesystem"
 	bashtool "harness/plugins/kernel/tools/bash"
 	edittool "harness/plugins/kernel/tools/edit"
@@ -34,6 +35,7 @@ import (
 	writetool "harness/plugins/kernel/tools/write"
 	chatproduct "harness/plugins/web/chat"
 	composerdemo "harness/plugins/web/chat/composer/demo"
+	composerskills "harness/plugins/web/chat/composer/skills"
 	messagefork "harness/plugins/web/chat/message/fork"
 	paneldemo "harness/plugins/web/chat/sidepanel/demo"
 	webdemo "harness/plugins/web/demo"
@@ -122,6 +124,10 @@ func run(configPath string) error {
 	if err != nil {
 		return err
 	}
+	err = h.Install(skillsbuiltin.New())
+	if err != nil {
+		return err
+	}
 	err = h.Install(skillsfilesystem.New())
 	if err != nil {
 		return err
@@ -140,6 +146,10 @@ func run(configPath string) error {
 		return err
 	}
 	err = h.Install(chatproduct.NewPlugin())
+	if err != nil {
+		return err
+	}
+	err = h.Install(composerskills.New())
 	if err != nil {
 		return err
 	}

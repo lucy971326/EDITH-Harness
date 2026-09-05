@@ -67,6 +67,9 @@ func (h *PageHandler) ServeHTTP(w nethttp.ResponseWriter, r *nethttp.Request) {
 	case r.Method == nethttp.MethodGet && strings.HasSuffix(r.URL.Path, "/history"):
 		h.history(w, r)
 		return
+	case r.Method == nethttp.MethodGet && strings.HasSuffix(r.URL.Path, "/suggestions"):
+		h.suggestions(w, r)
+		return
 	case r.Method == nethttp.MethodGet && strings.HasSuffix(r.URL.Path, "/events"):
 		h.events(w, r)
 		return
@@ -133,6 +136,7 @@ type pageView struct {
 	AgentID            string
 	Panels             []PanelDefinition
 	Docks              []dockView
+	Suggestions        []Suggestion
 	MessageActionsJSON string
 	ComposerActions    []composerActionView
 }
@@ -194,6 +198,10 @@ func (h *PageHandler) pageData(selectedID string) (pageView, error) {
 			}
 			out.Docks = h.dockViews(DockContext{SessionID: selectedID, Workspace: setup.Workspace})
 			out.ComposerActions = h.composerActionViews(ComposerActionContext{SessionID: selectedID, Workspace: setup.Workspace})
+			out.Suggestions, err = h.registry.Suggestions("/", SuggestionContext{AgentID: setup.AgentID, Workspace: setup.Workspace})
+			if err != nil {
+				return pageView{}, fmt.Errorf("chat: list suggestions: %w", err)
+			}
 		}
 	}
 	if h.models != nil {
@@ -261,6 +269,37 @@ func (h *PageHandler) composerActionViews(composerContext ComposerActionContext)
 		views = append(views, composerActionView{Definition: definition, Content: content})
 	}
 	return views
+}
+
+func (h *PageHandler) suggestions(w nethttp.ResponseWriter, r *nethttp.Request) {
+	sessionID := r.PathValue("sessionID")
+	if _, err := h.sessions.Get(sessionID); err != nil {
+		nethttp.Error(w, err.Error(), nethttp.StatusNotFound)
+		return
+	}
+	if h.registry == nil {
+		nethttp.NotFound(w, r)
+		return
+	}
+	setup, err := h.settings.For(sessionID)
+	if err != nil {
+		nethttp.Error(w, err.Error(), nethttp.StatusInternalServerError)
+		return
+	}
+	prefix := strings.TrimSpace(r.URL.Query().Get("prefix"))
+	if prefix == "" {
+		prefix = "/"
+	}
+	agentID := strings.TrimSpace(r.URL.Query().Get("agentID"))
+	if agentID == "" {
+		agentID = setup.AgentID
+	}
+	items, err := h.registry.Suggestions(prefix, SuggestionContext{AgentID: agentID, Workspace: setup.Workspace})
+	if err != nil {
+		nethttp.Error(w, err.Error(), nethttp.StatusBadRequest)
+		return
+	}
+	templ.Handler(SuggestionItems(items)).ServeHTTP(w, r)
 }
 
 func (h *PageHandler) renderDock(dockContext DockContext, dockID string) (templ.Component, error) {
@@ -623,8 +662,13 @@ func (h *PageHandler) message(w nethttp.ResponseWriter, r *nethttp.Request) {
 		nethttp.Error(w, "消息不能为空", nethttp.StatusBadRequest)
 		return
 	}
+	mode := r.FormValue("mode")
+	if mode != "run" && mode != "steer" && mode != "followup" {
+		nethttp.Error(w, "未知消息模式", nethttp.StatusBadRequest)
+		return
+	}
 	input := session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: text}}}
-	switch r.FormValue("mode") {
+	switch mode {
 	case "run":
 		if err := h.selectRunSettings(sessionID, r.FormValue("agentID"), r.FormValue("model"), r.FormValue("reasoningEffort")); err != nil {
 			nethttp.Error(w, err.Error(), nethttp.StatusBadRequest)

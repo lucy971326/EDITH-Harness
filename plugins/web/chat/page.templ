@@ -30,7 +30,7 @@ templ ChatPage(data pageView) {
 				</div>
 			</header>
 			if data.HasActive {
-				<section id="chat-root" class="flex min-h-0 flex-1 flex-col" hx-ext="sse" sse-connect={ templ.URL("/chat/" + data.Selected.ID + "/events") } data-message-actions={ data.MessageActionsJSON } data-message-action-url={ templ.URL("/chat/" + data.Selected.ID + "/message-actions/") }>
+				<section id="chat-root" class="flex min-h-0 flex-1 flex-col" hx-ext="sse" sse-connect={ templ.URL("/chat/" + data.Selected.ID + "/events") } data-message-actions={ data.MessageActionsJSON } data-message-action-url={ templ.URL("/chat/" + data.Selected.ID + "/message-actions/") } data-suggestions-url={ templ.URL("/chat/" + data.Selected.ID + "/suggestions") }>
 					<section class="flex min-h-0 flex-1 flex-col overflow-y-auto px-6">
 						@runview.View(runview.Config{
 							ID:          "chat-run",
@@ -52,7 +52,18 @@ templ ChatPage(data pageView) {
 						</section>
 					}
 					<div class="shrink-0 px-6 pb-6">
-						<form id="composer" action={ templ.URL("/chat/" + data.Selected.ID + "/messages") } method="post" class="ui-card mx-auto w-full max-w-3xl p-3">
+						<form id="composer" action={ templ.URL("/chat/" + data.Selected.ID + "/messages") } method="post" class="ui-card ui-composer mx-auto w-full max-w-3xl p-3">
+							<template id="message-skill-template">
+								<span class="ui-message-skill">
+									@ui.Icon(ui.IconSkill)
+									<span data-message-skill-name></span>
+								</span>
+							</template>
+							<div id="composer-suggestions" class="ui-menu ui-suggestion-popover" hidden role="listbox" aria-label="输入候选">
+								<div id="skill-suggestion-items">
+									@SuggestionItems(data.Suggestions)
+								</div>
+							</div>
 							<textarea name="text" rows="2" aria-label="消息" placeholder="输入消息" class="ui-textarea border-0 bg-transparent px-1 py-1 resize-none"></textarea>
 							<div class="mt-2 flex flex-wrap items-center gap-2 ui-text-meta">
 								if len(data.ComposerActions) > 0 {
@@ -170,4 +181,18 @@ templ ChatNavigation(data pageView) {
 
 templ DockRenderError() {
 	<p class="ui-notice ui-notice-danger ui-text-meta">暂时无法加载</p>
+}
+
+templ SuggestionItems(items []Suggestion) {
+	for _, item := range items {
+		<button type="button" class="ui-menu-item ui-suggestion-item" role="option" data-suggestion-name={ item.Name } data-suggestion-source-id={ item.SourceID }>
+			@ui.Icon(item.Icon)
+			<span class="ui-suggestion-name">{ item.Name }</span>
+			<span class="ui-suggestion-description" title={ item.Description }>{ item.Description }</span>
+			<span class="ui-suggestion-scope">{ item.Scope }</span>
+		</button>
+	}
+	if len(items) == 0 {
+		<p class="ui-suggestion-empty ui-text-meta">没有可用 Skill</p>
+	}
 }

@@ -124,6 +124,29 @@ type ComposerAction interface {
 	Render(ComposerActionContext) (templ.Component, error)
 }
 
+// 数据。输入候选的显示信息。
+type Suggestion struct {
+	Name        string      `json:"name"`
+	Description string      `json:"description"`
+	Icon        ui.IconName `json:"icon"`
+	Scope       string      `json:"scope"`
+	SourceID    string      `json:"sourceID"`
+}
+
+// 数据。输入候选查询所需的当前 Agent 和工作区。
+type SuggestionContext struct {
+	AgentID   string
+	Workspace string
+}
+
+// 契约。一个可填入 Chat composer.suggestions 登记处的候选来源。
+type SuggestionSource interface {
+	ID() string
+
+	Prefixes() []string
+	List(SuggestionContext) ([]Suggestion, error)
+}
+
 // 契约。Chat 提供给页面插槽插件的登记处。
 type Service interface {
 	// 右侧面板插槽 (Sidepanel)
@@ -145,4 +168,8 @@ type Service interface {
 	RegisterComposerAction(ComposerAction) error
 	ComposerActions() []ComposerActionDefinition
 	ComposerAction(id string) (ComposerAction, bool)
+
+	// 输入候选登记处 (Composer Suggestions)
+	RegisterSuggestionSource(SuggestionSource) error
+	Suggestions(prefix string, context SuggestionContext) ([]Suggestion, error)
 }

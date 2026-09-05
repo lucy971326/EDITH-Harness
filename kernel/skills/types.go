@@ -5,6 +5,7 @@ package skills
 type Scope string
 
 const (
+	ScopeSystem    Scope = "system"
 	ScopeUser      Scope = "user"
 	ScopeWorkspace Scope = "workspace"
 )

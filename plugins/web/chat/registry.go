@@ -6,6 +6,7 @@ type registry struct {
 	docks           *DockRegistry
 	actions         *messageActionRegistry
 	composerActions *composerActionRegistry
+	suggestions     *suggestionRegistry
 }
 
 func newRegistry() *registry {
@@ -14,6 +15,7 @@ func newRegistry() *registry {
 		docks:           newDockRegistry(),
 		actions:         newMessageActionRegistry(),
 		composerActions: newComposerActionRegistry(),
+		suggestions:     newSuggestionRegistry(),
 	}
 }
 
@@ -63,4 +65,12 @@ func (r *registry) ComposerActions() []ComposerActionDefinition {
 
 func (r *registry) ComposerAction(id string) (ComposerAction, bool) {
 	return r.composerActions.ComposerAction(id)
+}
+
+func (r *registry) RegisterSuggestionSource(source SuggestionSource) error {
+	return r.suggestions.Register(source)
+}
+
+func (r *registry) Suggestions(prefix string, context SuggestionContext) ([]Suggestion, error) {
+	return r.suggestions.List(prefix, context)
 }

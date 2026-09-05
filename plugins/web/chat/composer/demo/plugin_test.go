@@ -72,3 +72,8 @@ func (s *mockChatService) RegisterComposerAction(action chat.ComposerAction) err
 
 func (*mockChatService) ComposerActions() []chat.ComposerActionDefinition  { return nil }
 func (*mockChatService) ComposerAction(string) (chat.ComposerAction, bool) { return nil, false }
+
+func (*mockChatService) RegisterSuggestionSource(chat.SuggestionSource) error { return nil }
+func (*mockChatService) Suggestions(string, chat.SuggestionContext) ([]chat.Suggestion, error) {
+	return nil, nil
+}

@@ -121,7 +121,10 @@ func TestService_choicesOnlyUserSkillsAndPrepareAddsWorkspaceSkills(t *testing.T
 	registerLoop(t, loopsRegistry, "react")
 	registerTool(t, toolsRegistry, "read")
 	err := skillsRegistry.Register(testSkillListProvider{skills: func(workspace string) []skills.Skill {
-		out := []skills.Skill{{Name: "user-skill", Description: "User skill.", Location: "/home/skills/user-skill/SKILL.md", Scope: skills.ScopeUser}}
+		out := []skills.Skill{
+			{Name: "system-skill", Description: "System skill.", Location: "/system/skills/system-skill/SKILL.md", Scope: skills.ScopeSystem},
+			{Name: "user-skill", Description: "User skill.", Location: "/home/skills/user-skill/SKILL.md", Scope: skills.ScopeUser},
+		}
 		if workspace != "" {
 			out = append(out, skills.Skill{Name: "project-skill", Description: "Project skill.", Location: "/work/.harness/skills/project-skill/SKILL.md", Scope: skills.ScopeWorkspace})
 		}
@@ -148,6 +151,8 @@ func TestService_choicesOnlyUserSkillsAndPrepareAddsWorkspaceSkills(t *testing.T
 	for _, want := range []string{
 		"- user-skill: User skill.",
 		"Location: /home/skills/user-skill/SKILL.md",
+		"- system-skill: System skill.",
+		"Location: /system/skills/system-skill/SKILL.md",
 		"- project-skill: Project skill.",
 		"Location: /work/.harness/skills/project-skill/SKILL.md",
 		"existing read tool",
@@ -172,11 +177,52 @@ func TestService_prepareWithoutSkillReaderOmitsSkillsWithoutDiscoveryError(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
+	available, err := service.AvailableSkills(agent.ID, "/work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(available) != 0 {
+		t.Fatalf("AvailableSkills() = %#v, want empty", available)
+	}
 	prepared, err := service.Prepare(context.Background(), agent.ID, "/work")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(prepared.SystemPrompt, "Available Skills") {
+		t.Fatalf("SystemPrompt = %q", prepared.SystemPrompt)
+	}
+}
+
+func TestService_availableSkillsIgnoresFormerUserSelectionNowSystem(t *testing.T) {
+	service, loopsRegistry, toolsRegistry, skillsRegistry := testService(t)
+	registerLoop(t, loopsRegistry, "react")
+	registerTool(t, toolsRegistry, "read")
+	err := skillsRegistry.Register(testSkillListProvider{skills: func(string) []skills.Skill {
+		return []skills.Skill{{
+			Name: "skill-creator", Description: "System skill.",
+			Location: "/system/skill-creator/SKILL.md", Scope: skills.ScopeSystem,
+		}}
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent := Agent{ID: "legacy", Name: "Legacy", Kind: "react", Tools: []string{"read"}, Skills: []string{"skill-creator"}}
+	err = service.store.PutAgent(agent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	available, err := service.AvailableSkills(agent.ID, "/work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(available) != 1 || available[0].Name != "skill-creator" || available[0].Scope != skills.ScopeSystem {
+		t.Fatalf("AvailableSkills() = %#v", available)
+	}
+	prepared, err := service.Prepare(context.Background(), agent.ID, "/work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(prepared.SystemPrompt, "- skill-creator: System skill.") != 1 {
 		t.Fatalf("SystemPrompt = %q", prepared.SystemPrompt)
 	}
 }

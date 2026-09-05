@@ -138,6 +138,10 @@ func (p *Plugin) Start(h *host.Host) error {
 	if err != nil {
 		return err
 	}
+	err = webService.RegisterRoute("GET /chat/{sessionID}/suggestions", handler)
+	if err != nil {
+		return err
+	}
 	err = webService.RegisterRoute("GET /chat/{sessionID}/events", handler)
 	if err != nil {
 		return err

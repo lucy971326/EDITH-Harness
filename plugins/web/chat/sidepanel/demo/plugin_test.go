@@ -75,3 +75,9 @@ func (*chatService) ComposerActions() []chat.ComposerActionDefinition {
 func (*chatService) ComposerAction(string) (chat.ComposerAction, bool) {
 	return nil, false
 }
+
+func (*chatService) RegisterSuggestionSource(chat.SuggestionSource) error { return nil }
+
+func (*chatService) Suggestions(string, chat.SuggestionContext) ([]chat.Suggestion, error) {
+	return nil, nil
+}

@@ -606,6 +606,62 @@
     background: var(--ui-color-hover);
   }
 
+  .ui-composer {
+    position: relative;
+  }
+
+  .ui-suggestion-popover {
+    position: absolute;
+    right: var(--ui-space-3);
+    bottom: calc(100% + var(--ui-space-2));
+    left: var(--ui-space-3);
+    z-index: 20;
+    max-height: 18rem;
+    overflow-y: auto;
+  }
+
+  .ui-suggestion-item {
+    min-width: 0;
+    white-space: nowrap;
+  }
+
+  .ui-suggestion-name {
+    flex: 0 0 auto;
+    font-weight: 600;
+  }
+
+  .ui-suggestion-description {
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+    color: var(--ui-color-text-secondary);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ui-suggestion-scope {
+    flex: 0 0 auto;
+    color: var(--ui-color-text-muted);
+    font-size: var(--ui-size-meta);
+  }
+
+  .ui-suggestion-item[aria-selected="true"] {
+    background: var(--ui-color-selected);
+  }
+
+  .ui-suggestion-empty {
+    margin: 0;
+    padding: var(--ui-space-3);
+  }
+
+  .ui-message-skill {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ui-space-2);
+    color: var(--ui-color-link);
+    font-weight: 600;
+  }
+
   .ui-menu-trigger {
     cursor: pointer;
     list-style: none;

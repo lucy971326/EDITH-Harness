@@ -94,7 +94,7 @@ func normalizeSkill(skill Skill) (Skill, error) {
 	if skill.Location == "" {
 		return Skill{}, fmt.Errorf("register %q with empty location", skill.Name)
 	}
-	if skill.Scope != ScopeUser && skill.Scope != ScopeWorkspace {
+	if skill.Scope != ScopeSystem && skill.Scope != ScopeUser && skill.Scope != ScopeWorkspace {
 		return Skill{}, fmt.Errorf("register %q with invalid scope %q", skill.Name, skill.Scope)
 	}
 	return skill, nil

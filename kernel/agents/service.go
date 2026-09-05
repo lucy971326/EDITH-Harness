@@ -123,6 +123,70 @@ func (s *Service) Choices() (Choices, error) {
 	}, nil
 }
 
+// AvailableSkills 返回指定 Agent 在当前工作区可见的 Skill。
+func (s *Service) AvailableSkills(id string, workspace string) ([]skills.Skill, error) {
+	agent, err := s.Get(id)
+	if err != nil {
+		return nil, err
+	}
+	return s.availableSkills(agent, workspace)
+}
+
+func (s *Service) availableSkills(agent Agent, workspace string) ([]skills.Skill, error) {
+	if !hasSkillReader(agent.Tools) {
+		return []skills.Skill{}, nil
+	}
+	discovered, err := s.skills.List(workspace)
+	if err != nil {
+		return nil, err
+	}
+	userAvailable := discovered
+	if workspace != "" {
+		userAvailable, err = s.skills.List("")
+		if err != nil {
+			return nil, err
+		}
+	}
+	selectedNames := userSkillSelections(agent.Skills, userAvailable)
+	selected, err := selectSkills(selectedNames, userAvailable, discovered)
+	if err != nil {
+		return nil, err
+	}
+
+	out := append([]skills.Skill(nil), selected...)
+	included := make(map[string]struct{}, len(out))
+	for _, skill := range out {
+		included[skill.Name] = struct{}{}
+	}
+	for _, skill := range discovered {
+		if skill.Scope != skills.ScopeSystem && skill.Scope != skills.ScopeWorkspace {
+			continue
+		}
+		if _, selected := included[skill.Name]; selected {
+			continue
+		}
+		out = append(out, skill)
+	}
+	return out, nil
+}
+
+func userSkillSelections(names []string, available []skills.Skill) []string {
+	system := make(map[string]struct{})
+	for _, skill := range available {
+		if skill.Scope == skills.ScopeSystem {
+			system[skill.Name] = struct{}{}
+		}
+	}
+	out := make([]string, 0, len(names))
+	for _, name := range names {
+		if _, automatic := system[name]; automatic {
+			continue
+		}
+		out = append(out, name)
+	}
+	return out
+}
+
 // Prepare 按当前登记内容生成一轮 Run 可用的 Agent 设置和系统提示词。
 func (s *Service) Prepare(ctx context.Context, id string, workspace string) (PreparedAgent, error) {
 	agent, err := s.Get(id)
@@ -137,36 +201,9 @@ func (s *Service) Prepare(ctx context.Context, id string, workspace string) (Pre
 		return PreparedAgent{}, err
 	}
 
-	var skillDefinitions []skills.Skill
-	if hasSkillReader(agent.Tools) {
-		discovered, err := s.skills.List(workspace)
-		if err != nil {
-			return PreparedAgent{}, err
-		}
-		userAvailable := discovered
-		if workspace != "" {
-			userAvailable, err = s.skills.List("")
-			if err != nil {
-				return PreparedAgent{}, err
-			}
-		}
-		selected, err := selectSkills(agent.Skills, userAvailable, discovered)
-		if err != nil {
-			return PreparedAgent{}, err
-		}
-		selectedNames := make(map[string]struct{}, len(selected))
-		for _, skill := range selected {
-			selectedNames[skill.Name] = struct{}{}
-		}
-		skillDefinitions = append(skillDefinitions, selected...)
-		for _, skill := range discovered {
-			if skill.Scope == skills.ScopeWorkspace {
-				if _, selected := selectedNames[skill.Name]; selected {
-					continue
-				}
-				skillDefinitions = append(skillDefinitions, skill)
-			}
-		}
+	skillDefinitions, err := s.availableSkills(agent, workspace)
+	if err != nil {
+		return PreparedAgent{}, err
 	}
 	return PreparedAgent{
 		Kind:         agent.Kind,
