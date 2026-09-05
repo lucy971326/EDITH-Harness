@@ -6,6 +6,15 @@
 
 `docs/reference/` 默认不要改。用户叫写才写。
 
+### 项目开发 Skills
+
+按本次改动读取对应指引，不必全部加载：
+
+- 新增插件、调整服务或登记处、修改启动与关闭：读 [harness-plugin-development](.agents/skills/harness-plugin-development/SKILL.md)。
+- 新增 Loop、修改 Runner / Loop 执行流程、Steer 或工具取消收尾：读 [harness-loop-development](.agents/skills/harness-loop-development/SKILL.md)。
+
+Skill 负责开发步骤与验收入口；本篇、设计书、`DATA_MODEL.md` 和 `WEB_UI.md` 仍是规则来源。普通数据或页面修改不自动触发内核开发流程。
+
 ### 参考资料与查阅规则
 
 `reference/` 目录存放第三方技术文档与参考项目：

@@ -179,6 +179,12 @@ func (p *Provider) state(ctx context.Context, workspace string) (*workspaceState
 		state.err = p.loadWorkspace(ctx, key, state)
 	})
 	if state.err != nil {
+		// 失败只属于本次发现；下次请求可以重试，成功快照仍固定复用。
+		p.mu.Lock()
+		if p.workspaces[key] == state {
+			delete(p.workspaces, key)
+		}
+		p.mu.Unlock()
 		return nil, state.err
 	}
 	return state, nil

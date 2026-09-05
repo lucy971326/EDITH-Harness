@@ -19,4 +19,9 @@ playground/
 .vscode/
 .claude/
 .codex/
-.agents/
+# 只跟踪项目开发指引，其他本地 Agent 文件继续忽略。
+.agents/*
+!.agents/skills/
+.agents/skills/*
+!.agents/skills/harness-plugin-development/
+!.agents/skills/harness-loop-development/

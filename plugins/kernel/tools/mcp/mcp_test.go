@@ -9,12 +9,67 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"harness/kernel/tools"
 )
+
+func TestProvider_retriesFailedWorkspaceAndKeepsSuccessfulSnapshot(t *testing.T) {
+	server := sdk.NewServer(&sdk.Implementation{Name: "retry-test", Version: "v1"}, nil)
+	server.AddTool(&sdk.Tool{
+		Name: "ping", Description: "Ping.", InputSchema: json.RawMessage(`{"type":"object"}`),
+	}, func(context.Context, *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
+		return &sdk.CallToolResult{}, nil
+	})
+	handler := sdk.NewStreamableHTTPHandler(func(*http.Request) *sdk.Server { return server },
+		&sdk.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
+	var available atomic.Bool
+	var requests atomic.Int32
+	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		if !available.Load() {
+			http.Error(w, "temporarily unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		handler.ServeHTTP(w, r)
+	}))
+	defer httpServer.Close()
+	workspace := t.TempDir()
+	config := `{"mcpServers":{"demo":{"type":"http","url":` + strconv.Quote(httpServer.URL) + `}}}`
+	err := os.WriteFile(filepath.Join(workspace, ".mcp.json"), []byte(config), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := newProvider(t.Context(), filepath.Join(t.TempDir(), "missing.json"), workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	_, err = p.Snapshot(t.Context(), workspace)
+	if err == nil {
+		t.Fatal("first discovery should fail")
+	}
+	available.Store(true)
+	snapshot, err := p.Snapshot(t.Context(), workspace)
+	if err != nil {
+		t.Fatalf("discovery after server recovery: %v", err)
+	}
+	if len(snapshot.Definitions) != 1 || snapshot.Definitions[0].Name != "mcp__demo__ping" {
+		t.Fatalf("snapshot = %#v", snapshot)
+	}
+	count := requests.Load()
+	available.Store(false)
+	_, err = p.Snapshot(t.Context(), workspace)
+	if err != nil {
+		t.Fatalf("successful snapshot should remain cached: %v", err)
+	}
+	if requests.Load() != count {
+		t.Fatal("cached snapshot triggered rediscovery")
+	}
+}
 
 func TestConfig_isStrictAndExpandsEnvironment(t *testing.T) {
 	t.Setenv("MCP_TEST_TOKEN", "secret")
