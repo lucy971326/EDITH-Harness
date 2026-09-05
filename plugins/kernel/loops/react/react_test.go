@@ -11,12 +11,20 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	"harness/kernel/agents"
+	"harness/kernel/events"
 	"harness/kernel/host"
 	"harness/kernel/llm"
 	"harness/kernel/loops"
+	"harness/kernel/persist"
+	"harness/kernel/runner"
 	"harness/kernel/session"
+	"harness/kernel/session/settings"
+	"harness/kernel/skills"
 	"harness/kernel/tools"
 )
 
@@ -282,6 +290,180 @@ func TestReactPersistsCancelledToolResult(t *testing.T) {
 	}
 	if !events[2].Tool.IsError {
 		t.Fatalf("finish event = %#v", events[2])
+	}
+}
+
+func TestReactCancellingOneOfMultipleToolCallsPersistsEveryResult(t *testing.T) {
+	var requests atomic.Int32
+	toolStarted := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		writeSSE(w,
+			`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"echo","arguments":"{\"value\":\"one\"}"}},{"index":1,"id":"call_2","type":"function","function":{"name":"echo","arguments":"{\"value\":\"two\"}"}}]},"index":0}]}`,
+			`{"choices":[{"delta":{},"index":0,"finish_reason":"tool_calls"}]}`,
+		)
+	}))
+	defer server.Close()
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	err := os.MkdirAll(home+"/.harness", 0o755)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := fmt.Sprintf("providers:\n  deepseek:\n    apiKey: test-key\n    baseURL: %s\n", server.URL)
+	err = os.WriteFile(home+"/.harness/config.yaml", []byte(config), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	h := host.NewHost()
+	t.Cleanup(func() {
+		err := h.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	})
+	for _, plugin := range []host.Plugin{
+		&persist.Plugin{Dir: t.TempDir()},
+		&session.Plugin{},
+		&llm.Plugin{},
+		tools.NewPlugin(),
+		events.NewPlugin(),
+		loops.NewPlugin(),
+		New(),
+	} {
+		err = h.Install(plugin)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	toolRegistry, err := host.Resolve[tools.Tools](h, "tools")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var called []string
+	var calledMu sync.Mutex
+	err = toolRegistry.Register(tools.New("echo", "Echo a value.", func(ctx context.Context, _ tools.Call, args echoArgs) (tools.Result, error) {
+		calledMu.Lock()
+		called = append(called, args.Value)
+		calledMu.Unlock()
+		if args.Value == "one" {
+			close(toolStarted)
+			<-ctx.Done()
+			return tools.Result{}, ctx.Err()
+		}
+		return tools.Result{Content: args.Value}, nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, plugin := range []host.Plugin{
+		skills.NewPlugin(),
+		agents.NewPlugin(),
+		runner.NewPlugin(),
+	} {
+		err = h.Install(plugin)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	sessions, err := host.Resolve[*session.Store](h, "sessions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := sessions.Create("session-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	settingsStore, err := host.Resolve[settings.SessionSettingsStore](h, "sessionSettings")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = settingsStore.Put("session-1", settings.SessionSettings{
+		AgentID:         agents.DefaultID,
+		Model:           "deepseek/deepseek-v4-flash",
+		ReasoningEffort: "off",
+		Workspace:       "/workspace",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := host.Resolve[*runner.Runner](h, "runner")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- r.Run(context.Background(), "session-1", session.UserMessage{
+			Blocks: []session.Block{{Kind: "text", Text: "run both"}},
+		})
+	}()
+	select {
+	case <-toolStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("first tool did not start")
+	}
+	err = r.Stop("session-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("Run() error = %v, want context canceled", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("cancelled run did not finish")
+	}
+
+	disk, err := host.Resolve[persist.Persistence](h, "sessionPersistence")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := session.NewStore(disk).Get("session-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	history := reloaded.History()
+	if !reflect.DeepEqual(history, sess.History()) {
+		t.Fatal("persisted history differs from live history")
+	}
+	if len(history) != 4 {
+		t.Fatalf("history length = %d, want user, assistant, and two tool results: %#v", len(history), history)
+	}
+	assistant := history[1]
+	if assistant.Role != session.RoleAssistant || len(assistant.Blocks) != 2 {
+		t.Fatalf("assistant message = %#v", assistant)
+	}
+	wantResults := []struct {
+		id      string
+		content string
+	}{
+		{id: "call_1", content: "已取消"},
+		{id: "call_2", content: "未执行：任务已停止"},
+	}
+	for i, want := range wantResults {
+		message := history[i+2]
+		if message.Role != session.RoleTool || len(message.Blocks) != 1 || message.Blocks[0].Result == nil {
+			t.Fatalf("history[%d] = %#v, want tool result", i+2, message)
+		}
+		result := message.Blocks[0].Result
+		if result.ID != want.id || result.Name != "echo" || result.Content != want.content || !result.IsError {
+			t.Fatalf("history[%d] result = %#v, want id=%q content=%q error", i+2, result, want.id, want.content)
+		}
+	}
+	calledMu.Lock()
+	gotCalled := append([]string(nil), called...)
+	calledMu.Unlock()
+	if !reflect.DeepEqual(gotCalled, []string{"one"}) {
+		t.Fatalf("executed tools = %#v, want only first tool", gotCalled)
+	}
+	if requests.Load() != 1 {
+		t.Fatalf("model requests = %d, want 1", requests.Load())
 	}
 }
 

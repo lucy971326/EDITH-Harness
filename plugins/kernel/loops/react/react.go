@@ -48,15 +48,23 @@ func (l *reactLoop) Run(ctx context.Context, invocation loops.Invocation) error 
 		if err != nil {
 			return err
 		}
-		err = invocation.Emit(ctx, loops.Event{Kind: loops.EventMessage, StepSeq: stepSeq, Message: &assistant})
+		err = invocation.Emit(context.WithoutCancel(ctx), loops.Event{Kind: loops.EventMessage, StepSeq: stepSeq, Message: &assistant})
 		if err != nil {
 			return err
 		}
 		history = append(history, assistant)
 
-		for _, call := range calls {
+		for index, call := range calls {
+			err = ctx.Err()
+			if err != nil {
+				return l.finishUnexecuted(ctx, invocation, assistant, calls[index:], stepSeq, err)
+			}
 			resultMessage, err := l.execute(ctx, invocation, call, stepSeq, blockForCall(assistant, call.ID))
 			if err != nil {
+				// 当前取消结果已成功落账后，补齐这批尚未执行的调用。
+				if resultMessage.Role == session.RoleTool && ctx.Err() != nil {
+					return l.finishUnexecuted(ctx, invocation, assistant, calls[index+1:], stepSeq, err)
+				}
 				return err
 			}
 			history = append(history, resultMessage)
@@ -149,7 +157,8 @@ func (l *reactLoop) execute(
 	stepSeq uint64,
 	blockSeq uint64,
 ) (session.Message, error) {
-	err := invocation.Emit(ctx, loops.Event{
+	finishCtx := context.WithoutCancel(ctx)
+	err := invocation.Emit(finishCtx, loops.Event{
 		Kind:     loops.EventToolStarted,
 		StepSeq:  stepSeq,
 		BlockSeq: blockSeq,
@@ -168,7 +177,6 @@ func (l *reactLoop) execute(
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			message := cancelledToolMessage(call)
-			finishCtx := context.Background()
 			err = invocation.Emit(finishCtx, loops.Event{Kind: loops.EventMessage, StepSeq: stepSeq, BlockSeq: blockSeq, Message: &message})
 			if err != nil {
 				return session.Message{}, err
@@ -202,11 +210,11 @@ func (l *reactLoop) execute(
 			},
 		}},
 	}
-	err = invocation.Emit(ctx, loops.Event{Kind: loops.EventMessage, StepSeq: stepSeq, BlockSeq: blockSeq, Message: &message})
+	err = invocation.Emit(finishCtx, loops.Event{Kind: loops.EventMessage, StepSeq: stepSeq, BlockSeq: blockSeq, Message: &message})
 	if err != nil {
 		return session.Message{}, err
 	}
-	err = invocation.Emit(ctx, loops.Event{
+	err = invocation.Emit(finishCtx, loops.Event{
 		Kind:     loops.EventToolFinished,
 		StepSeq:  stepSeq,
 		BlockSeq: blockSeq,
@@ -216,6 +224,28 @@ func (l *reactLoop) execute(
 		return session.Message{}, err
 	}
 	return message, nil
+}
+
+// finishUnexecuted 只补结果，不执行剩余工具；写入或通知失败时直接返回，不重复落账。
+func (l *reactLoop) finishUnexecuted(ctx context.Context, invocation loops.Invocation, assistant session.Message, calls []session.ToolCall, stepSeq uint64, cause error) error {
+	finishCtx := context.WithoutCancel(ctx)
+	for _, call := range calls {
+		message := cancelledToolMessage(call)
+		message.Blocks[0].Result.Content = "未执行：任务已停止"
+		blockSeq := blockForCall(assistant, call.ID)
+		err := invocation.Emit(finishCtx, loops.Event{Kind: loops.EventMessage, StepSeq: stepSeq, BlockSeq: blockSeq, Message: &message})
+		if err != nil {
+			return err
+		}
+		err = invocation.Emit(finishCtx, loops.Event{
+			Kind: loops.EventToolFinished, StepSeq: stepSeq, BlockSeq: blockSeq,
+			Tool: &loops.ToolEvent{ID: call.ID, Name: call.Name, IsError: true},
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return cause
 }
 
 func cancelledToolMessage(call session.ToolCall) session.Message {
