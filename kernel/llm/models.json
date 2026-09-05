@@ -3,6 +3,8 @@
     "deepseek/deepseek-v4-flash": {
       "provider": "deepseek",
       "id": "deepseek-v4-flash",
+      "contextWindow": 1000000,
+      "vision": false,
       "reasoning": {
         "off": {
           "thinking": { "type": "disabled" }
@@ -24,6 +26,8 @@
     "deepseek/deepseek-v4-pro": {
       "provider": "deepseek",
       "id": "deepseek-v4-pro",
+      "contextWindow": 1000000,
+      "vision": false,
       "reasoning": {
         "off": {
           "thinking": { "type": "disabled" }

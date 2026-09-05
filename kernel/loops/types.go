@@ -22,6 +22,7 @@ type Event struct {
 	Text     string
 	Message  *session.Message
 	Tool     *ToolEvent
+	Usage    *Usage
 }
 
 // 数据。与工具调用有关的事件内容。
@@ -29,6 +30,13 @@ type ToolEvent struct {
 	ID      string
 	Name    string
 	IsError bool
+}
+
+// 数据。最近一次模型调用的输入占用。不进账本。
+type Usage struct {
+	InputTokens     int
+	CacheReadTokens int
+	ContextWindow   int
 }
 
 // 数据。一条 Loop 事件的种类。
@@ -40,6 +48,7 @@ const (
 	EventToolStarted    EventKind = "tool-started"
 	EventToolFinished   EventKind = "tool-finished"
 	EventMessage        EventKind = "message"
+	EventUsage          EventKind = "usage"
 )
 
 // 数据。一次检查点之后 Loop 是否还必然继续。

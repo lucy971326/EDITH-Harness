@@ -246,6 +246,36 @@ func (p testRunnerSkillErrorProvider) List(string) ([]skills.Skill, error) {
 	return nil, p.err
 }
 
+func TestRunPublishesUsageWithoutPersisting(t *testing.T) {
+	loop := &runnerTestLoop{run: func(ctx context.Context, invocation loops.Invocation) error {
+		return invocation.Emit(ctx, loops.Event{
+			Kind: loops.EventUsage,
+			Usage: &loops.Usage{InputTokens: 12, CacheReadTokens: 19, ContextWindow: 1000},
+		})
+	}}
+	fixture := newRunnerFixture(t, loop)
+	var got RunEvent
+	_, err := events.Subscribe(fixture.events, func(_ context.Context, event RunEvent) error {
+		if event.Kind == ContextUsage {
+			got = event
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = fixture.runner.Run(context.Background(), "session-1", textInput("question"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Usage == nil || got.Usage.InputTokens != 12 || got.Usage.CacheReadTokens != 19 || got.Usage.ContextWindow != 1000 {
+		t.Fatalf("usage event = %#v", got)
+	}
+	if len(fixture.session.History()) != 1 {
+		t.Fatalf("history = %#v", fixture.session.History())
+	}
+}
+
 func TestRunBuildsInvocationPersistsMessagesAndPublishesInOrder(t *testing.T) {
 	var gotInvocation loops.Invocation
 	loop := &runnerTestLoop{run: func(ctx context.Context, invocation loops.Invocation) error {

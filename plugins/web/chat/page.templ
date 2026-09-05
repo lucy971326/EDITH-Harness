@@ -1,6 +1,8 @@
 package chat
 
 import (
+	"strconv"
+
 	"harness/surface/web/runview"
 	"harness/surface/web/ui"
 )
@@ -78,10 +80,26 @@ templ ChatPage(data pageView) {
 										<option value={ agent.ID } selected?={ data.AgentID == agent.ID }>{ agent.Name }</option>
 									}
 								</select>
+								<button type="button" id="context-usage" class="chat-usage" aria-label="背景信息窗口">
+									<svg class="chat-usage-ring" viewBox="0 0 20 20" aria-hidden="true">
+										<circle class="chat-usage-track" cx="10" cy="10" r="7" fill="none" pathLength="100"></circle>
+										<circle id="context-usage-fill" class="chat-usage-fill" cx="10" cy="10" r="7" fill="none" pathLength="100" transform="rotate(-90 10 10)" stroke-dasharray="0 100"></circle>
+									</svg>
+									<span id="context-usage-tip" class="chat-usage-tip" role="tooltip">
+										<span class="chat-usage-tip-title">背景信息窗口</span>
+										<span id="context-usage-percent">0% 已用（剩余 100%）</span>
+										<span id="context-usage-counts">已用 0 标记，共 0</span>
+									</span>
+								</button>
 								<select name="model" id="model" class="ui-select w-auto">
 									<option value="">选择模型</option>
 									for _, model := range data.Models {
-										<option value={ model.ID } selected?={ data.Model == model.ID }>{ model.ID }</option>
+										<option
+											value={ model.ID }
+											selected?={ data.Model == model.ID }
+											data-context-window={ strconv.Itoa(model.ContextWindow) }
+											data-vision={ strconv.FormatBool(model.Vision) }
+										>{ model.ID }</option>
 									}
 								</select>
 								<select name="reasoningEffort" id="reasoning-effort" class="ui-select w-auto">
@@ -99,6 +117,7 @@ templ ChatPage(data pageView) {
 						</form>
 					</div>
 				</section>
+				<link rel="stylesheet" href="/assets/chat/chat.css"/>
 				<script src="/assets/chat/chat.js"></script>
 			} else {
 				<section class="flex min-h-0 flex-1 items-center justify-center px-6">

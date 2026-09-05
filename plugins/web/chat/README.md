@@ -18,7 +18,7 @@
 
 【谁在用】浏览器使用 Chat 路由与 SSE；`sidepanel/*`、`dock/*`、`message/*`、`composer/*` 下的填充插件 Resolve `chat` 并登记对应条目。
 
-【不做】不保存 Run、Dock 或其他插件业务状态；Session 只保存对话。
+【不做】不保存 Run、Dock 或其他插件业务状态；Session 只保存对话。用量球是 Chat 页面自己的状态显示，不填 composer 插槽。
 
 ## 目录形状
 

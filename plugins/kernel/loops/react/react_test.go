@@ -109,11 +109,13 @@ func TestReactRunsToolRoundTrip(t *testing.T) {
 	wantKinds := []loops.EventKind{
 		loops.EventReasoningDelta,
 		loops.EventTextDelta,
+		loops.EventUsage,
 		loops.EventMessage,
 		loops.EventToolStarted,
 		loops.EventMessage,
 		loops.EventToolFinished,
 		loops.EventTextDelta,
+		loops.EventUsage,
 		loops.EventMessage,
 	}
 	gotKinds := make([]loops.EventKind, 0, len(events))
@@ -123,8 +125,14 @@ func TestReactRunsToolRoundTrip(t *testing.T) {
 	if !reflect.DeepEqual(gotKinds, wantKinds) {
 		t.Fatalf("event kinds = %#v, want %#v", gotKinds, wantKinds)
 	}
-	result := events[4].Message.Blocks[0].Result
-	if result.ID != "call_1" || result.Name != "echo" || result.Content != "hello" || result.IsError {
+	var result *session.ToolResult
+	for _, event := range events {
+		if event.Message != nil && event.Message.Role == session.RoleTool && len(event.Message.Blocks) > 0 {
+			result = event.Message.Blocks[0].Result
+			break
+		}
+	}
+	if result == nil || result.ID != "call_1" || result.Name != "echo" || result.Content != "hello" || result.IsError {
 		t.Fatalf("tool result = %#v", result)
 	}
 
@@ -142,6 +150,59 @@ func TestReactRunsToolRoundTrip(t *testing.T) {
 	toolMessage := messages[len(messages)-1].(map[string]any)
 	if toolMessage["role"] != "tool" || toolMessage["tool_call_id"] != "call_1" || toolMessage["content"] != "hello" {
 		t.Fatalf("tool message = %#v", toolMessage)
+	}
+}
+
+func TestReactEmitsUsageAfterEachStream(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeSSE(w,
+			`{"choices":[{"delta":{"content":"ok"},"index":0}]}`,
+			`{"choices":[{"delta":{},"index":0,"finish_reason":"stop"}],"usage":{"prompt_tokens":31000,"completion_tokens":20,"total_tokens":31020,"prompt_tokens_details":{"cached_tokens":19000}}}`,
+		)
+	}))
+	defer server.Close()
+
+	loop, _ := installReact(t, server.URL)
+	var usages []*loops.Usage
+	invocation := testInvocation(nil)
+	invocation.Emit = func(_ context.Context, event loops.Event) error {
+		if event.Kind == loops.EventUsage {
+			usages = append(usages, event.Usage)
+		}
+		return nil
+	}
+	if err := loop.Run(t.Context(), invocation); err != nil {
+		t.Fatal(err)
+	}
+	if len(usages) != 1 || usages[0] == nil {
+		t.Fatalf("usages = %#v", usages)
+	}
+	got := usages[0]
+	if got.InputTokens != 12000 || got.CacheReadTokens != 19000 || got.ContextWindow != 1000000 {
+		t.Fatalf("usage = %#v", got)
+	}
+}
+
+func TestReactEmitsZeroUsageWhenProviderOmitsIt(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeSSE(w, `{"choices":[{"delta":{"content":"ok"},"index":0,"finish_reason":"stop"}]}`)
+	}))
+	defer server.Close()
+
+	loop, _ := installReact(t, server.URL)
+	var got *loops.Usage
+	invocation := testInvocation(nil)
+	invocation.Emit = func(_ context.Context, event loops.Event) error {
+		if event.Kind == loops.EventUsage {
+			got = event.Usage
+		}
+		return nil
+	}
+	if err := loop.Run(t.Context(), invocation); err != nil {
+		t.Fatal(err)
+	}
+	if got == nil || got.InputTokens != 0 || got.CacheReadTokens != 0 || got.ContextWindow != 1000000 {
+		t.Fatalf("usage = %#v", got)
 	}
 }
 

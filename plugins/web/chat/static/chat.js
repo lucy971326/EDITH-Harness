@@ -10,6 +10,10 @@
     const agent = document.getElementById("agent");
     const model = document.getElementById("model");
     const effort = document.getElementById("reasoning-effort");
+    const usageButton = document.getElementById("context-usage");
+    const usageFill = document.getElementById("context-usage-fill");
+    const usagePercent = document.getElementById("context-usage-percent");
+    const usageCounts = document.getElementById("context-usage-counts");
     const send = document.getElementById("send-button");
     const liveSend = document.getElementById("live-send");
     const stop = document.getElementById("stop-button");
@@ -29,6 +33,38 @@
     function escapeHTML(value) {
       if (value == null) return "";
       return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;");
+    }
+
+    function formatTokens(value) {
+      const count = Number(value) || 0;
+      if (count < 1000) return String(count);
+      if (count < 1000000) return `${Math.round(count / 1000)}k`;
+      const millions = count / 1000000;
+      if (Number.isInteger(millions)) return `${millions}M`;
+      return `${Math.round(millions * 10) / 10}M`;
+    }
+
+    function formatPercent(used, windowSize) {
+      if (windowSize <= 0 || used <= 0) {
+        return { label: "0%", remaining: "100%", ring: 0 };
+      }
+      const raw = Math.min(100, (used / windowSize) * 100);
+      if (raw < 1) {
+        const tenths = Math.max(0.1, Math.round(raw * 10) / 10);
+        return { label: `${tenths}%`, remaining: `${(100 - tenths).toFixed(1)}%`, ring: Math.max(1, raw) };
+      }
+      const percent = Math.round(raw);
+      return { label: `${percent}%`, remaining: `${100 - percent}%`, ring: percent };
+    }
+
+    function paintUsage(inputTokens, cacheReadTokens, contextWindow) {
+      const used = (Number(inputTokens) || 0) + (Number(cacheReadTokens) || 0);
+      const windowSize = Number(contextWindow) || 0;
+      const percent = formatPercent(used, windowSize);
+      if (usageFill) usageFill.setAttribute("stroke-dasharray", `${percent.ring} 100`);
+      if (usagePercent) usagePercent.textContent = `${percent.label} 已用（剩余 ${percent.remaining}）`;
+      if (usageCounts) usageCounts.textContent = `已用 ${formatTokens(used)} 标记，共 ${formatTokens(windowSize)}`;
+      if (usageButton) usageButton.setAttribute("aria-label", `背景信息窗口：${percent.label} 已用`);
     }
 
     function setRunning(value) {
@@ -241,6 +277,16 @@
       setRunning(event.detail.running);
       renderMessageSkills();
       renderMessageActions();
+    });
+    document.addEventListener("htmx:sseBeforeMessage", (event) => {
+      if (!root.contains(event.target)) return;
+      if (event.detail.type !== "run") return;
+      try {
+        const item = JSON.parse(event.detail.data);
+        if (item.kind !== "usage") return;
+        const usage = item.usage || {};
+        paintUsage(usage.inputTokens, usage.cacheReadTokens, usage.contextWindow);
+      } catch { /* malformed usage events are ignored */ }
     });
     root.addEventListener("click", async (event) => {
       const button = event.target.closest(".message-action");

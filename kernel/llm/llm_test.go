@@ -57,6 +57,62 @@ func TestPluginStart(t *testing.T) {
 	}
 }
 
+func TestParseModelsRequiresContextWindow(t *testing.T) {
+	_, err := parseModels([]byte(`{"models":{"x":{"provider":"deepseek","id":"x","reasoning":{"off":{}}}}}`))
+	if err == nil {
+		t.Fatal("want invalid contextWindow error")
+	}
+}
+
+func TestParseModelsAllowsMissingVision(t *testing.T) {
+	got, err := parseModels([]byte(`{"models":{"x":{"provider":"deepseek","id":"x","contextWindow":100,"reasoning":{"off":{}}}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition := got["x"]
+	if definition.ContextWindow != 100 || definition.Vision {
+		t.Fatalf("model = %#v", definition)
+	}
+}
+
+func TestLoadModels(t *testing.T) {
+	got, err := loadModels()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"deepseek/deepseek-v4-flash", "deepseek/deepseek-v4-pro"} {
+		definition := got[id]
+		if definition.ContextWindow != 1000000 || definition.Vision {
+			t.Fatalf("%s = %#v", id, definition)
+		}
+	}
+}
+
+func TestContextWindow(t *testing.T) {
+	client := &Client{models: map[string]model{
+		"deepseek/a": {ContextWindow: 1000},
+	}}
+	if client.ContextWindow("deepseek/a") != 1000 {
+		t.Fatalf("window = %d", client.ContextWindow("deepseek/a"))
+	}
+	if client.ContextWindow("missing") != 0 {
+		t.Fatal("missing model should return 0")
+	}
+}
+
+func TestModelsExposesWindowAndVision(t *testing.T) {
+	client := &Client{
+		config: config{Providers: map[string]providerConfig{"deepseek": {APIKey: "k"}}},
+		models: map[string]model{
+			"deepseek/a": {Provider: "deepseek", ID: "a", ContextWindow: 1000, Vision: true},
+		},
+	}
+	got := client.Models()
+	if len(got) != 1 || got[0].ID != "deepseek/a" || got[0].ContextWindow != 1000 || !got[0].Vision {
+		t.Fatalf("models = %#v", got)
+	}
+}
+
 func TestReasoningOptions(t *testing.T) {
 	definition := model{ID: "chat", Reasoning: map[string]map[string]any{
 		"off": {"thinking": map[string]any{"type": "disabled"}},

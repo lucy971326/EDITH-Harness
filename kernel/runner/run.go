@@ -326,6 +326,16 @@ func mapEvent(sessionID, runID string, event loops.Event) (RunEvent, error) {
 		out.Kind = ToolStarted
 	case loops.EventToolFinished:
 		out.Kind = ToolFinished
+	case loops.EventUsage:
+		out.Kind = ContextUsage
+		if event.Usage != nil {
+			usage := Usage{
+				InputTokens:     event.Usage.InputTokens,
+				CacheReadTokens: event.Usage.CacheReadTokens,
+				ContextWindow:   event.Usage.ContextWindow,
+			}
+			out.Usage = &usage
+		}
 	default:
 		return RunEvent{}, fmt.Errorf("runner: unsupported loop event %q", event.Kind)
 	}

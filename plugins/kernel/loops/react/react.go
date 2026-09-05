@@ -105,6 +105,7 @@ func (l *reactLoop) request(
 
 	message := session.Message{Role: session.RoleAssistant}
 	var calls []session.ToolCall
+	var usage provider.Usage
 	for {
 		select {
 		case <-ctx.Done():
@@ -112,6 +113,10 @@ func (l *reactLoop) request(
 		case chunk, ok := <-stream:
 			if !ok {
 				if err := ctx.Err(); err != nil {
+					return session.Message{}, nil, err
+				}
+				err = l.emitUsage(ctx, invocation, stepSeq, usage)
+				if err != nil {
 					return session.Message{}, nil, err
 				}
 				return message, calls, nil
@@ -140,6 +145,8 @@ func (l *reactLoop) request(
 				}
 				calls = append(calls, call)
 				message.Blocks = append(message.Blocks, session.Block{Kind: "tool-call", Tool: &call})
+			case provider.ChunkFinish:
+				usage = chunk.Usage
 			case provider.ChunkError:
 				if chunk.Error == nil {
 					return session.Message{}, nil, fmt.Errorf("react: model stream failed")
@@ -148,6 +155,18 @@ func (l *reactLoop) request(
 			}
 		}
 	}
+}
+
+func (l *reactLoop) emitUsage(ctx context.Context, invocation loops.Invocation, stepSeq uint64, usage provider.Usage) error {
+	return invocation.Emit(ctx, loops.Event{
+		Kind:    loops.EventUsage,
+		StepSeq: stepSeq,
+		Usage: &loops.Usage{
+			InputTokens:     usage.InputTokens,
+			CacheReadTokens: usage.CacheReadTokens,
+			ContextWindow:   l.llm.ContextWindow(invocation.LLMConfig.Model),
+		},
+	})
 }
 
 func (l *reactLoop) execute(

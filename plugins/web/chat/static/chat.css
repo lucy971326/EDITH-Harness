@@ -1,0 +1,64 @@
+.chat-usage {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ui-color-text-muted);
+  cursor: default;
+}
+
+.chat-usage-ring {
+  display: block;
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.chat-usage-track,
+.chat-usage-fill {
+  stroke-width: 2.25;
+}
+
+.chat-usage-track {
+  stroke: var(--ui-color-border-strong);
+}
+
+.chat-usage-fill {
+  stroke: var(--ui-color-text);
+  stroke-linecap: round;
+}
+
+.chat-usage-tip {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + var(--ui-space-2));
+  z-index: 20;
+  display: none;
+  width: max-content;
+  min-width: 10.5rem;
+  padding: var(--ui-space-3);
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-card);
+  background: var(--ui-color-surface-raised);
+  box-shadow: var(--ui-shadow-popover);
+  color: var(--ui-color-text);
+  font-size: var(--ui-size-meta);
+  line-height: var(--ui-line-tight);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.chat-usage-tip-title {
+  display: block;
+  margin-bottom: var(--ui-space-1);
+  color: var(--ui-color-text-muted);
+}
+
+.chat-usage:hover .chat-usage-tip,
+.chat-usage:focus-visible .chat-usage-tip {
+  display: block;
+}

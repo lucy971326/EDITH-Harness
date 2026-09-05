@@ -13,6 +13,7 @@ const (
 	ToolStarted    RunEventKind = "tool-started"
 	ToolFinished   RunEventKind = "tool-finished"
 	Message        RunEventKind = "message"
+	ContextUsage   RunEventKind = "usage"
 	RunEnded       RunEventKind = "run-ended"
 )
 
@@ -38,6 +39,13 @@ type ToolEvent struct {
 	IsError bool   `json:"isError"`
 }
 
+// 数据。最近一次模型调用的输入占用。不进账本。
+type Usage struct {
+	InputTokens     int `json:"inputTokens"`
+	CacheReadTokens int `json:"cacheReadTokens"`
+	ContextWindow   int `json:"contextWindow"`
+}
+
 // 数据。Runner 发布给界面的一条本轮事件。
 type RunEvent struct {
 	SessionID     string         `json:"sessionID"`
@@ -49,6 +57,7 @@ type RunEvent struct {
 	Text          string         `json:"text,omitempty"`
 	Entry         *session.Entry `json:"entry,omitempty"`
 	Tool          *ToolEvent     `json:"tool,omitempty"`
+	Usage         *Usage         `json:"usage,omitempty"`
 	Status        RunStatus      `json:"status,omitempty"`
 	Error         string         `json:"error,omitempty"`
 }

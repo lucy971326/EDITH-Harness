@@ -19,16 +19,27 @@ type modelFile struct {
 
 // 数据。一条模型定义。
 type model struct {
-	Provider  string                    `json:"provider"`
-	ID        string                    `json:"id"`
-	Reasoning map[string]map[string]any `json:"reasoning"`
+	Provider      string                    `json:"provider"`
+	ID            string                    `json:"id"`
+	ContextWindow int                       `json:"contextWindow"`
+	Vision        bool                      `json:"vision"`
+	Reasoning     map[string]map[string]any `json:"reasoning"`
 }
 
 func loadModels() (map[string]model, error) {
+	return parseModels(modelsJSON)
+}
+
+func parseModels(data []byte) (map[string]model, error) {
 	var file modelFile
-	err := json.Unmarshal(modelsJSON, &file)
+	err := json.Unmarshal(data, &file)
 	if err != nil {
 		return nil, fmt.Errorf("llm: parse models.json: %w", err)
+	}
+	for id, definition := range file.Models {
+		if definition.ContextWindow <= 0 {
+			return nil, fmt.Errorf("llm: model %q has invalid contextWindow", id)
+		}
 	}
 	return file.Models, nil
 }

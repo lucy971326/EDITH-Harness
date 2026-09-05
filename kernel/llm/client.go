@@ -8,7 +8,7 @@ import (
 	"github.com/zendev-sh/goai/provider"
 )
 
-// Models 返回当前已配置 Provider 可用的模型及其思考档位。
+// Models 返回当前已配置 Provider 可用的模型、窗口、是否看图和思考档位。
 func (c *Client) Models() []ModelChoice {
 	out := make([]ModelChoice, 0, len(c.models))
 	for id, definition := range c.models {
@@ -20,10 +20,27 @@ func (c *Client) Models() []ModelChoice {
 			efforts = append(efforts, effort)
 		}
 		sort.Strings(efforts)
-		out = append(out, ModelChoice{ID: id, ReasoningEfforts: efforts})
+		out = append(out, ModelChoice{
+			ID:               id,
+			ContextWindow:    definition.ContextWindow,
+			Vision:           definition.Vision,
+			ReasoningEfforts: efforts,
+		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
+}
+
+// ContextWindow 返回指定模型的窗口大小；未知模型返回 0。
+func (c *Client) ContextWindow(id string) int {
+	if c == nil {
+		return 0
+	}
+	definition, ok := c.models[id]
+	if !ok {
+		return 0
+	}
+	return definition.ContextWindow
 }
 
 // 活对象。用启动时读取的本机配置和模型定义发起模型调用。

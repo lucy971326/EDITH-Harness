@@ -111,6 +111,9 @@ func TestCreateProjectAndCancel(t *testing.T) {
 	if response.Request.URL.Path == "/chat" || !strings.Contains(string(body), `id="composer"`) {
 		t.Fatalf("create response path=%q body=%q", response.Request.URL.Path, body)
 	}
+	if !strings.Contains(string(body), `id="context-usage"`) || !strings.Contains(string(body), "/assets/chat/chat.css") {
+		t.Fatalf("composer missing usage ball: %q", body)
+	}
 
 	selectWorkspace = func(context.Context) (string, error) { return "", ErrCanceled }
 	response, err = client.Post(webPlugin.URL()+"/chat/projects", "", nil)
