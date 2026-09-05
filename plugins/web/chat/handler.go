@@ -657,9 +657,9 @@ func (h *PageHandler) message(w nethttp.ResponseWriter, r *nethttp.Request) {
 		nethttp.Error(w, err.Error(), nethttp.StatusBadRequest)
 		return
 	}
-	text := strings.TrimSpace(r.FormValue("text"))
-	if text == "" {
-		nethttp.Error(w, "消息不能为空", nethttp.StatusBadRequest)
+	input, err := userMessageFromRequest(r)
+	if err != nil {
+		nethttp.Error(w, err.Error(), nethttp.StatusBadRequest)
 		return
 	}
 	mode := r.FormValue("mode")
@@ -667,10 +667,18 @@ func (h *PageHandler) message(w nethttp.ResponseWriter, r *nethttp.Request) {
 		nethttp.Error(w, "未知消息模式", nethttp.StatusBadRequest)
 		return
 	}
-	input := session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: text}}}
 	switch mode {
 	case "run":
 		if err := h.selectRunSettings(sessionID, r.FormValue("agentID"), r.FormValue("model"), r.FormValue("reasoningEffort")); err != nil {
+			nethttp.Error(w, err.Error(), nethttp.StatusBadRequest)
+			return
+		}
+		setup, err := h.settings.For(sessionID)
+		if err != nil {
+			nethttp.Error(w, err.Error(), nethttp.StatusInternalServerError)
+			return
+		}
+		if err := h.ensureVision(setup.Model, input); err != nil {
 			nethttp.Error(w, err.Error(), nethttp.StatusBadRequest)
 			return
 		}
@@ -679,6 +687,15 @@ func (h *PageHandler) message(w nethttp.ResponseWriter, r *nethttp.Request) {
 			return
 		}
 	case "steer":
+		setup, err := h.settings.For(sessionID)
+		if err != nil {
+			nethttp.Error(w, err.Error(), nethttp.StatusInternalServerError)
+			return
+		}
+		if err := h.ensureVision(setup.Model, input); err != nil {
+			nethttp.Error(w, err.Error(), nethttp.StatusBadRequest)
+			return
+		}
 		if err := h.runner.Steer(sessionID, input); err != nil {
 			nethttp.Error(w, err.Error(), nethttp.StatusConflict)
 			return
@@ -700,6 +717,16 @@ func (h *PageHandler) stop(w nethttp.ResponseWriter, r *nethttp.Request) {
 
 func (h *PageHandler) startRun(sessionID string, input session.UserMessage) error {
 	return h.runner.Start(context.Background(), sessionID, input)
+}
+
+func (h *PageHandler) ensureVision(model string, input session.UserMessage) error {
+	if !hasImages(input) {
+		return nil
+	}
+	if h.models != nil && h.models.Vision(model) {
+		return nil
+	}
+	return fmt.Errorf("当前模型无法识别图片")
 }
 
 func (h *PageHandler) selectRunSettings(sessionID, agentID, model, effort string) error {

@@ -218,7 +218,16 @@
   }
 
   function userCard(entry) {
-    return `<article data-runview-card="user" data-entry-id="${escapeHTML(entry.id)}" class="ui-message-user ui-text-body ui-markdown">${renderMarkdown(textBlocks(entry.message.blocks))}</article>`;
+    const parts = (entry.message.blocks || []).map((block) => {
+      if (block.kind === "image" && block.media?.data && block.media?.mime) {
+        return `<img class="ui-message-image" src="data:${escapeHTML(block.media.mime)};base64,${block.media.data}" alt="图片">`;
+      }
+      if (block.kind === "text" && block.text) {
+        return `<div class="ui-markdown">${renderMarkdown(block.text)}</div>`;
+      }
+      return "";
+    }).join("");
+    return `<article data-runview-card="user" data-entry-id="${escapeHTML(entry.id)}" class="ui-message-user ui-text-body">${parts}</article>`;
   }
 
   function initialize() {

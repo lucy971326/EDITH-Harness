@@ -62,3 +62,44 @@
 .chat-usage:focus-visible .chat-usage-tip {
   display: block;
 }
+
+.chat-composer-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ui-space-2);
+  margin: 0 0 var(--ui-space-2);
+}
+
+.chat-composer-image {
+  position: relative;
+  display: block;
+  width: 4.5rem;
+  height: 4.5rem;
+}
+
+.chat-composer-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-control);
+  object-fit: cover;
+}
+
+.chat-composer-image-remove {
+  position: absolute;
+  top: -0.35rem;
+  right: -0.35rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.125rem;
+  height: 1.125rem;
+  padding: 0;
+  border: 1px solid var(--ui-color-border);
+  border-radius: 999px;
+  background: var(--ui-color-surface-raised);
+  color: var(--ui-color-text-secondary);
+  font-size: 0.75rem;
+  line-height: 1;
+}

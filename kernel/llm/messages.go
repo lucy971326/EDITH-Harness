@@ -10,7 +10,9 @@ import (
 	"harness/kernel/tools"
 )
 
-func toProviderMessages(history []session.Message) ([]provider.Message, error) {
+const unrecognizedImageText = "当前模型无法识别图片"
+
+func toProviderMessages(history []session.Message, vision bool) ([]provider.Message, error) {
 	out := make([]provider.Message, 0, len(history))
 	for _, message := range history {
 		role, err := toProviderRole(message.Role)
@@ -22,7 +24,7 @@ func toProviderMessages(history []session.Message) ([]provider.Message, error) {
 		}
 		parts := make([]provider.Part, 0, len(message.Blocks))
 		for _, block := range message.Blocks {
-			part, err := toProviderPart(message.Role, block)
+			part, err := toProviderPart(message.Role, block, vision)
 			if err != nil {
 				return nil, err
 			}
@@ -48,7 +50,7 @@ func toProviderRole(role session.Role) (provider.Role, error) {
 	}
 }
 
-func toProviderPart(role session.Role, block session.Block) (provider.Part, error) {
+func toProviderPart(role session.Role, block session.Block, vision bool) (provider.Part, error) {
 	if role == session.RoleTool && block.Kind != "tool-result" {
 		return provider.Part{}, fmt.Errorf("llm: tool message contains %q block", block.Kind)
 	}
@@ -60,6 +62,9 @@ func toProviderPart(role session.Role, block session.Block) (provider.Part, erro
 	case "image":
 		if block.Media == nil {
 			return provider.Part{}, fmt.Errorf("llm: image block has no media")
+		}
+		if !vision {
+			return provider.Part{Type: provider.PartText, Text: unrecognizedImageText}, nil
 		}
 		return provider.Part{
 			Type:      provider.PartImage,

@@ -378,6 +378,25 @@ func TestImageStoresBase64(t *testing.T) {
 	}
 }
 
+func TestImageOnlyMessageNamesSession(t *testing.T) {
+	store, p := newTestStore(t)
+	s, err := store.Create("chat1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.Append(Message{Role: RoleUser, Blocks: []Block{{Kind: "image", Media: &Media{MIME: "image/png", Data: "abc"}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta, err := p.LoadMeta("chat1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta.Title != "图片" {
+		t.Fatalf("title = %q", meta.Title)
+	}
+}
+
 func TestImageNeedsMIMEAndData(t *testing.T) {
 	store, _ := newTestStore(t)
 	s, err := store.Create("chat1")

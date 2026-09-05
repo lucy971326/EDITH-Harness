@@ -86,6 +86,10 @@ func TestLoadModels(t *testing.T) {
 			t.Fatalf("%s = %#v", id, definition)
 		}
 	}
+	gemini := got["google/gemini-3.5-flash-lite"]
+	if gemini.Provider != "google" || gemini.ID != "gemini-3.5-flash-lite" || gemini.ContextWindow != 1048576 || !gemini.Vision {
+		t.Fatalf("gemini = %#v", gemini)
+	}
 }
 
 func TestContextWindow(t *testing.T) {
@@ -97,6 +101,16 @@ func TestContextWindow(t *testing.T) {
 	}
 	if client.ContextWindow("missing") != 0 {
 		t.Fatal("missing model should return 0")
+	}
+}
+
+func TestVision(t *testing.T) {
+	client := &Client{models: map[string]model{
+		"sees": {Vision: true},
+		"text": {Vision: false},
+	}}
+	if !client.Vision("sees") || client.Vision("text") || client.Vision("missing") {
+		t.Fatalf("vision sees=%v text=%v missing=%v", client.Vision("sees"), client.Vision("text"), client.Vision("missing"))
 	}
 }
 
@@ -162,7 +176,7 @@ func TestToProviderMessages(t *testing.T) {
 		},
 	}
 
-	got, err := toProviderMessages(history)
+	got, err := toProviderMessages(history, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,13 +199,36 @@ func TestToProviderMessages(t *testing.T) {
 	}
 }
 
+func TestToProviderMessagesDehydratesImagesWithoutVision(t *testing.T) {
+	got, err := toProviderMessages([]session.Message{{
+		Role: session.RoleUser,
+		Blocks: []session.Block{
+			{Kind: "image", Media: &session.Media{MIME: "image/png", Data: "abc"}},
+			{Kind: "text", Text: "look"},
+		},
+	}}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []provider.Message{{
+		Role: provider.RoleUser,
+		Content: []provider.Part{
+			{Type: provider.PartText, Text: unrecognizedImageText},
+			{Type: provider.PartText, Text: "look"},
+		},
+	}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("messages = %#v, want %#v", got, want)
+	}
+}
+
 func TestMalformedToolHistoryIsRejected(t *testing.T) {
 	cases := []session.Message{
 		{Role: session.RoleTool},
 		{Role: session.RoleTool, Blocks: []session.Block{{Kind: "text", Text: "missing call id"}}},
 	}
 	for _, message := range cases {
-		if _, err := toProviderMessages([]session.Message{message}); err == nil {
+		if _, err := toProviderMessages([]session.Message{message}, false); err == nil {
 			t.Fatal("want tool history error")
 		}
 	}
@@ -205,7 +242,7 @@ func TestToolCallWithInvalidArgumentsIsKeptForToolErrorRecovery(t *testing.T) {
 			Tool: &session.ToolCall{ID: "call_1", Name: "search", Args: "not-json"},
 		}},
 	}}
-	messages, err := toProviderMessages(history)
+	messages, err := toProviderMessages(history, false)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -45,6 +45,46 @@
           "reasoning_effort": "max"
         }
       }
+    },
+    "google/gemini-3.5-flash-lite": {
+      "provider": "google",
+      "id": "gemini-3.5-flash-lite",
+      "contextWindow": 1048576,
+      "vision": true,
+      "reasoning": {
+        "off": {
+          "google": {
+            "thinkingConfig": {
+              "thinkingLevel": "minimal",
+              "includeThoughts": false
+            }
+          }
+        },
+        "low": {
+          "google": {
+            "thinkingConfig": {
+              "thinkingLevel": "low",
+              "includeThoughts": true
+            }
+          }
+        },
+        "high": {
+          "google": {
+            "thinkingConfig": {
+              "thinkingLevel": "medium",
+              "includeThoughts": true
+            }
+          }
+        },
+        "max": {
+          "google": {
+            "thinkingConfig": {
+              "thinkingLevel": "high",
+              "includeThoughts": true
+            }
+          }
+        }
+      }
     }
   }
 }

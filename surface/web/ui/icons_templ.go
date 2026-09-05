@@ -20,6 +20,7 @@ const (
 	IconSidebar  IconName = "sidebar"
 	IconZap      IconName = "zap"
 	IconSkill    IconName = "skill"
+	IconImage    IconName = "image"
 )
 
 // Icon 渲染静态编译的 Lucide 图标。
@@ -82,6 +83,11 @@ func Icon(name IconName) templ.Component {
 			}
 		case IconSkill:
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<svg class=\"ui-icon\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" focusable=\"false\"><path d=\"m12 3 7 4.5v9L12 21l-7-4.5v-9L12 3Z\"></path> <path d=\"m5 7.5 7 4.5 7-4.5M12 12v9\"></path></svg>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		case IconImage:
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<svg class=\"ui-icon\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" focusable=\"false\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"></rect> <circle cx=\"8.5\" cy=\"8.5\" r=\"1.5\"></circle> <path d=\"m21 15-5-5L5 21\"></path></svg>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

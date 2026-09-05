@@ -18,6 +18,11 @@
     const liveSend = document.getElementById("live-send");
     const stop = document.getElementById("stop-button");
     const textInput = composer.querySelector('textarea[name="text"]');
+    const imageButton = document.getElementById("composer-image-button");
+    const imageInput = document.getElementById("composer-images-input");
+    const imagePreviews = document.getElementById("composer-image-previews");
+    const pendingImages = [];
+    const pendingImageURLs = [];
     const messageSkillTemplate = document.getElementById("message-skill-template");
     const suggestionPopover = document.getElementById("composer-suggestions");
     const suggestionItems = document.getElementById("skill-suggestion-items");
@@ -218,30 +223,95 @@
       }
     }
 
-    function filterEfforts() {
-      for (const option of effort.options) option.hidden = Boolean(option.dataset.model && option.dataset.model !== model.value);
-      if (effort.selectedOptions[0]?.dataset.model && effort.selectedOptions[0].dataset.model !== model.value) effort.value = "";
+    function fillEfforts() {
+      const selected = model.selectedOptions[0];
+      const efforts = (selected?.dataset.reasoningEfforts || "").split(",").filter(Boolean);
+      const previous = effort.value;
+      effort.replaceChildren();
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = "选择思考档位";
+      effort.append(placeholder);
+      for (const name of efforts) {
+        const option = document.createElement("option");
+        option.value = name;
+        option.textContent = name;
+        effort.append(option);
+      }
+      effort.value = efforts.includes(previous) ? previous : "";
+    }
+
+    function modelSupportsVision() {
+      return model?.selectedOptions[0]?.dataset.vision === "true";
+    }
+
+    function clearPendingImages() {
+      pendingImages.splice(0);
+      pendingImageURLs.forEach((url) => URL.revokeObjectURL(url));
+      pendingImageURLs.length = 0;
+      if (imageInput) imageInput.value = "";
+      paintPendingImages();
+    }
+
+    function paintPendingImages() {
+      if (!imagePreviews) return;
+      pendingImageURLs.forEach((url) => URL.revokeObjectURL(url));
+      pendingImageURLs.length = 0;
+      imagePreviews.replaceChildren();
+      imagePreviews.hidden = pendingImages.length === 0;
+      pendingImages.forEach((file, index) => {
+        const url = URL.createObjectURL(file);
+        pendingImageURLs.push(url);
+        const wrap = document.createElement("span");
+        wrap.className = "chat-composer-image";
+        const image = document.createElement("img");
+        image.src = url;
+        image.alt = file.name || "图片";
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "chat-composer-image-remove";
+        remove.setAttribute("aria-label", "移除图片");
+        remove.textContent = "×";
+        remove.addEventListener("click", () => {
+          pendingImages.splice(index, 1);
+          paintPendingImages();
+        });
+        wrap.append(image, remove);
+        imagePreviews.append(wrap);
+      });
+    }
+
+    function addPendingImages(files) {
+      if (!modelSupportsVision()) return;
+      for (const file of files) {
+        if (!file.type.startsWith("image/")) continue;
+        pendingImages.push(file);
+      }
+      paintPendingImages();
+    }
+
+    function syncVision() {
+      const on = modelSupportsVision();
+      if (imageButton) imageButton.disabled = !on;
+      if (imageInput) imageInput.disabled = !on;
+      if (textInput) textInput.placeholder = on ? "输入消息或粘贴图片" : "输入消息";
+      if (!on) clearPendingImages();
     }
 
     composer.addEventListener("submit", async (event) => {
       event.preventDefault();
       const fields = new FormData(composer, event.submitter);
       fields.set("mode", runview.dataset.running === "true" ? "steer" : "run");
-      let hasFile = false;
-      for (const value of fields.values()) {
-        if (value instanceof File && value.name !== "") {
-          hasFile = true;
-          break;
-        }
-      }
-      const body = hasFile ? fields : new URLSearchParams(fields);
+      fields.delete("images");
+      for (const file of pendingImages) fields.append("images", file);
+      const body = pendingImages.length > 0 ? fields : new URLSearchParams(fields);
       const response = await fetch(composer.action, { method: "POST", body });
       if (!response.ok) {
         status.textContent = await response.text();
       } else {
         textInput.value = "";
         closeSuggestions();
-        composer.querySelectorAll('input[type="file"]').forEach((input) => { input.value = ""; });
+        clearPendingImages();
       }
     });
 
@@ -323,8 +393,24 @@
       const response = await fetch(stop.dataset.stop, { method: "POST" });
       if (!response.ok) status.textContent = await response.text();
     });
-    model.addEventListener("change", filterEfforts);
-    filterEfforts();
+    model.addEventListener("change", () => {
+      fillEfforts();
+      syncVision();
+    });
+    imageButton?.addEventListener("click", () => {
+      if (!imageButton.disabled) imageInput?.click();
+    });
+    imageInput?.addEventListener("change", () => {
+      addPendingImages(imageInput.files || []);
+      imageInput.value = "";
+    });
+    composer.addEventListener("paste", (event) => {
+      const files = Array.from(event.clipboardData?.files || []).filter((file) => file.type.startsWith("image/"));
+      if (!files.length) return;
+      addPendingImages(files);
+    });
+    fillEfforts();
+    syncVision();
     closeSuggestions();
     setRunning(runview.dataset.running === "true");
     renderMessageSkills();

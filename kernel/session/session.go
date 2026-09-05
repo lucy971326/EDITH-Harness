@@ -86,6 +86,11 @@ func titleFromMessage(message Message) string {
 		}
 		return title
 	}
+	for _, block := range message.Blocks {
+		if block.Kind == "image" {
+			return "图片"
+		}
+	}
 	return ""
 }
 

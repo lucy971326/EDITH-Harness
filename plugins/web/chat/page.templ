@@ -2,6 +2,7 @@ package chat
 
 import (
 	"strconv"
+	"strings"
 
 	"harness/surface/web/runview"
 	"harness/surface/web/ui"
@@ -66,8 +67,13 @@ templ ChatPage(data pageView) {
 									@SuggestionItems(data.Suggestions)
 								</div>
 							</div>
+							<div id="composer-image-previews" class="chat-composer-images" hidden></div>
 							<textarea name="text" rows="2" aria-label="消息" placeholder="输入消息" class="ui-textarea border-0 bg-transparent px-1 py-1 resize-none"></textarea>
 							<div class="mt-2 flex flex-wrap items-center gap-2 ui-text-meta">
+								<button type="button" id="composer-image-button" class="ui-icon-button" aria-label="添加图片" disabled>
+									@ui.Icon(ui.IconImage)
+								</button>
+								<input id="composer-images-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
 								if len(data.ComposerActions) > 0 {
 									<div id="composer-actions" class="flex items-center gap-1.5">
 										for _, action := range data.ComposerActions {
@@ -99,14 +105,17 @@ templ ChatPage(data pageView) {
 											selected?={ data.Model == model.ID }
 											data-context-window={ strconv.Itoa(model.ContextWindow) }
 											data-vision={ strconv.FormatBool(model.Vision) }
+											data-reasoning-efforts={ strings.Join(model.ReasoningEfforts, ",") }
 										>{ model.ID }</option>
 									}
 								</select>
 								<select name="reasoningEffort" id="reasoning-effort" class="ui-select w-auto">
 									<option value="">选择思考档位</option>
 									for _, model := range data.Models {
-										for _, effort := range model.ReasoningEfforts {
-											<option value={ effort } data-model={ model.ID } selected?={ data.Model == model.ID && data.ReasoningEffort == effort }>{ effort }</option>
+										if data.Model == model.ID {
+											for _, effort := range model.ReasoningEfforts {
+												<option value={ effort } selected?={ data.ReasoningEffort == effort }>{ effort }</option>
+											}
 										}
 									}
 								</select>

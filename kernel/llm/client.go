@@ -43,6 +43,15 @@ func (c *Client) ContextWindow(id string) int {
 	return definition.ContextWindow
 }
 
+// Vision 返回指定模型是否能看图；未知模型返回 false。
+func (c *Client) Vision(id string) bool {
+	if c == nil {
+		return false
+	}
+	definition, ok := c.models[id]
+	return ok && definition.Vision
+}
+
 // 活对象。用启动时读取的本机配置和模型定义发起模型调用。
 type Client struct {
 	config config
@@ -71,7 +80,7 @@ func (c *Client) Stream(ctx context.Context, config RunConfig, input Input) (<-c
 		return nil, fmt.Errorf("llm: provider %q has no API key", definition.Provider)
 	}
 
-	messages, err := toProviderMessages(input.History)
+	messages, err := toProviderMessages(input.History, definition.Vision)
 	if err != nil {
 		return nil, err
 	}

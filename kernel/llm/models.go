@@ -7,6 +7,7 @@ import (
 
 	"github.com/zendev-sh/goai/provider"
 	"github.com/zendev-sh/goai/provider/deepseek"
+	"github.com/zendev-sh/goai/provider/google"
 )
 
 //go:embed models.json
@@ -63,6 +64,12 @@ func newModel(definition model, config providerConfig) (provider.LanguageModel, 
 			options = append(options, deepseek.WithBaseURL(config.BaseURL))
 		}
 		return deepseek.Chat(definition.ID, options...), nil
+	case "google":
+		options := []google.Option{google.WithAPIKey(config.APIKey)}
+		if config.BaseURL != "" {
+			options = append(options, google.WithBaseURL(config.BaseURL))
+		}
+		return google.Chat(definition.ID, options...), nil
 	default:
 		return nil, fmt.Errorf("llm: provider %q is not supported", definition.Provider)
 	}
