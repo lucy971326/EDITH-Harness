@@ -102,6 +102,46 @@ func TestConfig_isStrictAndExpandsEnvironment(t *testing.T) {
 	}
 }
 
+func TestProvider_userToolsJoinPrepareWithoutSelection(t *testing.T) {
+	server := sdk.NewServer(&sdk.Implementation{Name: "user-test", Version: "v1"}, nil)
+	server.AddTool(&sdk.Tool{
+		Name: "search", Description: "Search.", InputSchema: json.RawMessage(`{"type":"object"}`),
+	}, func(context.Context, *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
+		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "hits"}}}, nil
+	})
+	httpServer := httptest.NewServer(sdk.NewStreamableHTTPHandler(
+		func(*http.Request) *sdk.Server { return server },
+		&sdk.StreamableHTTPOptions{Stateless: true, JSONResponse: true},
+	))
+	defer httpServer.Close()
+
+	userConfig := filepath.Join(t.TempDir(), "mcp.json")
+	err := os.WriteFile(userConfig, []byte(`{"mcpServers":{"tavily":{"type":"http","url":`+strconv.Quote(httpServer.URL)+`}}}`), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := newProvider(context.Background(), userConfig, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer provider.Close()
+	registry := tools.NewRegistry()
+	err = registry.RegisterProvider(provider)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(registry.List()) != 0 {
+		t.Fatalf("List() = %#v", registry.List())
+	}
+	prepared, err := registry.Prepare(context.Background(), "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prepared.Names) != 1 || prepared.Names[0] != "mcp__tavily__search" {
+		t.Fatalf("prepared = %#v", prepared)
+	}
+}
+
 func TestProvider_projectToolsAreAutomaticAndCallable(t *testing.T) {
 	server := sdk.NewServer(
 		&sdk.Implementation{Name: "test", Version: "v1"},

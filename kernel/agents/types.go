@@ -4,7 +4,6 @@ package agents
 import (
 	"harness/kernel/agents/config"
 	"harness/kernel/loops"
-	"harness/kernel/skills"
 	"harness/kernel/tools"
 )
 
@@ -15,9 +14,8 @@ type Agent = config.Agent
 
 // 数据。Agent 设置界面可展示的候选项。
 type Choices struct {
-	Loops  []loops.Definition
-	Tools  []tools.Definition
-	Skills []skills.Skill
+	Loops []loops.Definition
+	Tools []tools.Definition
 }
 
 // 数据。Runner 使用的一份已准备 Agent。

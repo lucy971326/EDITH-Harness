@@ -6,11 +6,11 @@ Skills、Commands、MCP 保留各自的职责；Chat 只统一候选的查询与
 
 ```mermaid
 flowchart LR
-    Skills[Skills] --> Agent[Agent 可用范围]
-    MCP[MCP / Tools] --> Agent
+    Skills[Skills] --> Scope[当前作用域]
+    MCP[MCP] --> Scope
 
-    Agent --> SkillSource[Skill 候选来源]
-    Agent --> MCPSource[MCP 候选来源]
+    Scope --> SkillSource[Skill 候选来源]
+    Scope --> MCPSource[MCP 候选来源]
     Commands[Commands] --> CommandSource[Command 候选来源]
 
     SkillSource --> Suggestions[Chat composer.suggestions]
@@ -19,9 +19,9 @@ flowchart LR
     Suggestions --> Composer[输入框候选面板]
 ```
 
-- Skills 负责发现；Agent 决定当前 Agent 可用的 Skill。
+- Skills 负责发现；系统、个人与当前项目 Skill 都自动可用，不经 Agent 勾选。
 - Commands 负责定义命令；列出命令不经过 Agent。
-- MCP 工具仍作为普通 Tool 交给 Agent；需要展示时转换为候选。
+- MCP 转为普通 Tool 后自动加入本轮；需要展示时再转换为候选。
 - 候选来源插件负责转换格式，并填入 Chat 的 `composer.suggestions` 登记处。
 - Runner、Loop、Session 不认识输入候选。
 
@@ -47,7 +47,7 @@ type Suggestion struct {
 
 ```text
 系统  Harness 自带，所有 Agent 自动可用
-个人  用户安装，必须先在 Agent 设置中选中
+个人  用户安装，所有 Agent 自动可用
 项目  当前工作区提供，所有 Agent 自动可用
 ```
 
@@ -58,7 +58,7 @@ type Suggestion struct {
 Skill 候选统一查询：
 
 ```go
-agents.AvailableSkills(agentID, workspace)
+agents.AvailableSkills(workspace)
 ```
 
 `agents.Prepare` 和 Chat 共用这份结果，避免“界面显示可用，运行时却不可用”。

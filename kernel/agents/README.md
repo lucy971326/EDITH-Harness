@@ -5,9 +5,9 @@
 【使用能力】
 
 - `agentStore`：读取和保存 Agent 设置，由 `persist` 提供；
-- `loops`、`tools`、`skills`：校验 Kind、Tool、用户级 Skill 名称，并取得本轮动态 Skill 事实。
+- `loops`、`tools`、`skills`：校验 Kind 与普通 Tool，并取得本轮 Skill 与动态 Tool 事实。
 
-【提供能力】注册服务 `agents`：保存设置，并在每轮 `Prepare` 时产出 Kind、Tool 名单与最终 System Prompt。项目 Skill 自动对工作区所有 Agent 可用；只有有 `read` 或 `bash` 时才注入 Skill 目录。
+【提供能力】注册服务 `agents`：保存设置，并在每轮 `Prepare` 时产出 Kind、Tool 名单与最终 System Prompt。当前作用域的 Skills 与 MCP 自动加入；普通 Tool 仍按 Agent 勾选。
 
 【填充插槽】不填。
 

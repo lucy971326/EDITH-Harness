@@ -70,17 +70,12 @@ func newProvider(ctx context.Context, userConfigPath string, launchDir string) (
 	provider := &Provider{
 		workspaces: make(map[string]*workspaceState),
 	}
-	provider.user = stateFromConnections(connections, false)
+	provider.user = stateFromConnections(connections)
 	provider.user.owned = connections
 	return provider, nil
 }
 
 func (p *Provider) Name() string { return "mcp" }
-
-// Choices 返回用户级 MCP Tool，供 Agent 设置选择。
-func (p *Provider) Choices() []tools.Definition {
-	return append([]tools.Definition(nil), p.user.snapshot.Definitions...)
-}
 
 // Snapshot 返回用户配置和当前项目配置合成的稳定快照。
 func (p *Provider) Snapshot(ctx context.Context, workspace string) (tools.Snapshot, error) {
@@ -228,7 +223,7 @@ func (p *Provider) loadWorkspace(ctx context.Context, workspace string, state *w
 		}
 	}
 	combined = append(combined, connections...)
-	state.snapshot, state.routes = snapshotFromConnections(combined, projectNames)
+	state.snapshot, state.routes = snapshotFromConnections(combined)
 	return nil
 }
 
@@ -334,18 +329,12 @@ func discoverServer(ctx context.Context, spec serverSpec, session *sdk.ClientSes
 	}, nil
 }
 
-func stateFromConnections(connections []*serverConnection, automatic bool) *workspaceState {
-	automaticNames := make(map[string]struct{})
-	if automatic {
-		for _, connection := range connections {
-			automaticNames[connection.name] = struct{}{}
-		}
-	}
-	snapshot, routes := snapshotFromConnections(connections, automaticNames)
+func stateFromConnections(connections []*serverConnection) *workspaceState {
+	snapshot, routes := snapshotFromConnections(connections)
 	return &workspaceState{snapshot: snapshot, routes: routes}
 }
 
-func snapshotFromConnections(connections []*serverConnection, automaticServers map[string]struct{}) (tools.Snapshot, map[string]*serverConnection) {
+func snapshotFromConnections(connections []*serverConnection) (tools.Snapshot, map[string]*serverConnection) {
 	var snapshot tools.Snapshot
 	routes := make(map[string]*serverConnection)
 	for _, connection := range connections {
@@ -354,9 +343,6 @@ func snapshotFromConnections(connections []*serverConnection, automaticServers m
 			snapshot.Definitions = append(snapshot.Definitions, definition)
 			toolNames = append(toolNames, definition.Name)
 			routes[definition.Name] = connection
-			if _, automatic := automaticServers[connection.name]; automatic {
-				snapshot.Automatic = append(snapshot.Automatic, definition.Name)
-			}
 		}
 		if connection.instructions != "" && len(toolNames) > 0 {
 			snapshot.Instructions = append(snapshot.Instructions, tools.Instruction{
@@ -367,14 +353,12 @@ func snapshotFromConnections(connections []*serverConnection, automaticServers m
 		}
 	}
 	sort.Slice(snapshot.Definitions, func(i, j int) bool { return snapshot.Definitions[i].Name < snapshot.Definitions[j].Name })
-	sort.Strings(snapshot.Automatic)
 	return snapshot, routes
 }
 
 func copySnapshot(snapshot tools.Snapshot) tools.Snapshot {
 	out := tools.Snapshot{
 		Definitions: append([]tools.Definition(nil), snapshot.Definitions...),
-		Automatic:   append([]string(nil), snapshot.Automatic...),
 	}
 	for _, instruction := range snapshot.Instructions {
 		instruction.ToolNames = append([]string(nil), instruction.ToolNames...)

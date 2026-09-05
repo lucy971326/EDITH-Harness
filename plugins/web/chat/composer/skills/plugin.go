@@ -45,7 +45,7 @@ func (p *Plugin) Close() error {
 	return nil
 }
 
-// 活对象。按当前 Agent 查询 Skill 候选的来源。
+// 活对象。按当前工作区查询 Skill 候选的来源。
 type source struct {
 	agents *agents.Service
 }
@@ -58,7 +58,7 @@ func (s *source) List(context chat.SuggestionContext) ([]chat.Suggestion, error)
 	if s == nil || s.agents == nil {
 		return nil, fmt.Errorf("chat-composer-skills: source is not ready")
 	}
-	available, err := s.agents.AvailableSkills(context.AgentID, context.Workspace)
+	available, err := s.agents.AvailableSkills(context.Workspace)
 	if err != nil {
 		return nil, err
 	}

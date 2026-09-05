@@ -30,7 +30,6 @@ type Result struct {
 // 数据。一个动态 Tool 来源为当前工作区准备的稳定快照。
 type Snapshot struct {
 	Definitions  []Definition
-	Automatic    []string
 	Instructions []Instruction
 }
 
@@ -54,7 +53,6 @@ type Tools interface {
 	RegisterProvider(provider Provider) error
 
 	// Agent 设置与本轮准备
-	Defaults() []Definition
 	List() []Definition
 	Prepare(ctx context.Context, workspace string, selected []string) (Prepared, error)
 
@@ -68,11 +66,8 @@ type Provider interface {
 	// 来源身份
 	Name() string
 
-	// Tool 发现
-	Choices() []Definition
+	// Tool 发现与调用
 	Snapshot(ctx context.Context, workspace string) (Snapshot, error)
-
-	// Tool 调用
 	Call(ctx context.Context, call Call) (Result, error)
 }
 

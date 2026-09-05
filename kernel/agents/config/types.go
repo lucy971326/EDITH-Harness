@@ -8,7 +8,6 @@ type Agent struct {
 	Kind         string   `json:"kind"`
 	SystemPrompt string   `json:"systemPrompt"`
 	Tools        []string `json:"tools"`
-	Skills       []string `json:"skills"`
 }
 
 // 契约。自建 Agent 的持久化读写。

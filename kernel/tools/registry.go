@@ -15,31 +15,15 @@ type Registry struct {
 	mu        sync.RWMutex
 	entries   map[string]entry
 	providers []providerEntry
-	owners    map[string]string
 }
 
-// Defaults 按名称稳定列出默认 Agent 自动选择的固定工具。
-func (r *Registry) Defaults() []Definition {
+// List 按名称稳定列出 Agent 可勾选的普通 Tool。
+func (r *Registry) List() []Definition {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	out := make([]Definition, 0, len(r.entries))
 	for _, entry := range r.entries {
 		out = append(out, entry.tool.Definition())
-	}
-	sort.Slice(out, func(i, j int) bool {
-		return out[i].Name < out[j].Name
-	})
-	return out
-}
-
-// List 按名称稳定列出 Agent 设置可选择的全部工具定义。
-func (r *Registry) List() []Definition {
-	out := r.Defaults()
-	r.mu.RLock()
-	providers := append([]providerEntry(nil), r.providers...)
-	r.mu.RUnlock()
-	for _, entry := range providers {
-		out = append(out, entry.provider.Choices()...)
 	}
 	sort.Slice(out, func(i, j int) bool {
 		return out[i].Name < out[j].Name
@@ -70,7 +54,6 @@ type dynamicEntry struct {
 func NewRegistry() *Registry {
 	return &Registry{
 		entries: make(map[string]entry),
-		owners:  make(map[string]string),
 	}
 }
 
@@ -95,9 +78,6 @@ func (r *Registry) Register(tool Tool) error {
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if owner, exists := r.owners[definition.Name]; exists {
-		return fmt.Errorf("tools: %q already registered by %s", definition.Name, owner)
-	}
 	if _, exists := r.entries[definition.Name]; exists {
 		return fmt.Errorf("tools: %q already registered", definition.Name)
 	}
@@ -114,18 +94,6 @@ func (r *Registry) RegisterProvider(provider Provider) error {
 	if name == "" {
 		return fmt.Errorf("tools: register provider with empty name")
 	}
-	choices := provider.Choices()
-	seen := make(map[string]struct{}, len(choices))
-	for _, definition := range choices {
-		if _, duplicate := seen[definition.Name]; duplicate {
-			return fmt.Errorf("tools: provider %q returned duplicate %q", name, definition.Name)
-		}
-		seen[definition.Name] = struct{}{}
-		_, err := validateDefinition(definition)
-		if err != nil {
-			return fmt.Errorf("tools: provider %q: %w", name, err)
-		}
-	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -134,22 +102,11 @@ func (r *Registry) RegisterProvider(provider Provider) error {
 			return fmt.Errorf("tools: provider %q already registered", name)
 		}
 	}
-	for toolName := range seen {
-		if _, exists := r.entries[toolName]; exists {
-			return fmt.Errorf("tools: %q already registered", toolName)
-		}
-		if owner, exists := r.owners[toolName]; exists {
-			return fmt.Errorf("tools: %q already registered by %s", toolName, owner)
-		}
-	}
 	r.providers = append(r.providers, providerEntry{name: name, provider: provider})
-	for toolName := range seen {
-		r.owners[toolName] = name
-	}
 	return nil
 }
 
-// Prepare 合并 Agent 已选 Tool 和当前工作区自动 Tool。
+// Prepare 合并 Agent 已选普通 Tool 和当前工作区的动态 Tool。
 func (r *Registry) Prepare(ctx context.Context, workspace string, selected []string) (Prepared, error) {
 	_, err := r.definitions(ctx, "", selected)
 	if err != nil {
@@ -166,12 +123,12 @@ func (r *Registry) Prepare(ctx context.Context, workspace string, selected []str
 	}
 	var instructions []Instruction
 	for _, snapshot := range snapshots {
-		for _, name := range snapshot.Automatic {
-			if _, exists := seen[name]; exists {
+		for _, definition := range snapshot.Definitions {
+			if _, exists := seen[definition.Name]; exists {
 				continue
 			}
-			seen[name] = struct{}{}
-			names = append(names, name)
+			seen[definition.Name] = struct{}{}
+			names = append(names, definition.Name)
 		}
 		instructions = append(instructions, snapshot.Instructions...)
 	}
@@ -313,11 +270,6 @@ func (r *Registry) dynamic(ctx context.Context, workspace string) (map[string]dy
 				return nil, nil, fmt.Errorf("tools: provider %q: %w", provider.name, err)
 			}
 			all[definition.Name] = dynamicEntry{definition: definition, schema: schema, provider: provider.provider}
-		}
-		for _, name := range snapshot.Automatic {
-			if _, exists := seen[name]; !exists {
-				return nil, nil, fmt.Errorf("tools: provider %q marked unknown tool %q automatic", provider.name, name)
-			}
 		}
 		snapshots = append(snapshots, snapshot)
 	}

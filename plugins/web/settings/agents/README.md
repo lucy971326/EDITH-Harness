@@ -10,4 +10,4 @@
 
 【谁在用】浏览器通过 `/settings/agents` 路由管理 Agent；Chat 在下一轮 Run 前读取用户保存的 Agent 选择。
 
-【不做】不拥有 Session、Runner、Tool 或 Skill；不绕过 `agents` 服务直接读写 Agent 文件。
+【不做】不拥有 Session、Runner、Tool 或 Skill；不在 Agent 里勾选 Skills / MCP；不绕过 `agents` 服务直接读写 Agent 文件。

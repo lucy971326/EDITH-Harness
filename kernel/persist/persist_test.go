@@ -83,6 +83,36 @@ func TestAgentStore_roundTripListAndDelete(t *testing.T) {
 	}
 }
 
+func TestAgentStore_ignoresLegacySkillsField(t *testing.T) {
+	dir := t.TempDir()
+	s, err := openJSONL(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "legacy.agent.json")
+	err = os.WriteFile(path, []byte(`{"id":"legacy","name":"Legacy","kind":"react","systemPrompt":"Be careful.","tools":["bash","mcp__tavily__search"],"skills":["git"]}`), 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.ForAgent("legacy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Name != "Legacy" || !slices.Equal(got.Tools, []string{"bash", "mcp__tavily__search"}) {
+		t.Fatalf("ForAgent() = %#v", got)
+	}
+	if err := s.PutAgent(config.Agent{ID: "legacy", Name: "Legacy", Kind: "react", Tools: []string{"bash"}}); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "skills") || strings.Contains(string(raw), "mcp__tavily__search") {
+		t.Fatalf("saved = %s", raw)
+	}
+}
+
 func TestAdd_thenLoad(t *testing.T) {
 	dir := t.TempDir()
 	s, err := openJSONL(dir)

@@ -40,11 +40,11 @@ SessionSettings
 
 Agent 设置
 └─ 一个 Agent 怎样工作
-   Kind、System Prompt、允许的 Tool / 用户级 Skill 名单；不进对话账本
+   Kind、System Prompt、允许的普通 Tool；不进对话账本
 
 Skill 发现
 └─ 文件系统上的 Skill 定义，不复制进 Agent 或 Session
-   项目 Skill 对该工作区所有 Agent 自动可用；用户 Skill 名称才写入 Agent
+   系统、个人与当前项目 Skill 对该作用域所有 Agent 自动可用
 
 插件状态
 └─ 插件自己的业务事实
@@ -76,7 +76,7 @@ Session
 
 Skill 正文
   保留在各自 Skill 目录的 SKILL.md 和相对资源中
-  Prepare 只把摘要与 SKILL.md 绝对路径写入本轮提示词；模型用已有 read / bash 按需读取
+  Prepare 只把摘要与 SKILL.md 绝对路径写入本轮提示词；模型按需使用已启用的普通 Tool 读取正文
 ```
 
 ## 对话账本

@@ -58,6 +58,7 @@ func (s *Service) List() ([]Agent, error) {
 	}
 	out := make([]Agent, 0, len(registered))
 	for _, agent := range registered {
+		agent = s.normalize(agent)
 		if agent.ID == DefaultID {
 			out = append([]Agent{agent}, out...)
 			continue
@@ -69,7 +70,11 @@ func (s *Service) List() ([]Agent, error) {
 
 // Get 按 ID 取一份 Agent 设置。
 func (s *Service) Get(id string) (Agent, error) {
-	return s.store.ForAgent(id)
+	agent, err := s.store.ForAgent(id)
+	if err != nil {
+		return Agent{}, err
+	}
+	return s.normalize(agent), nil
 }
 
 // Save 新建或更新一份 Agent。空 ID 会生成一个新 ID。
@@ -110,81 +115,17 @@ func (s *Service) InUse(id string) (bool, error) {
 	return s.settings.UsesAgent(id)
 }
 
-// Choices 返回此刻可被 Agent 选择的 Loop、Tool 和用户级 Skill。
-func (s *Service) Choices() (Choices, error) {
-	available, err := s.skills.List("")
-	if err != nil {
-		return Choices{}, err
-	}
+// Choices 返回此刻可被 Agent 选择的 Loop 和普通 Tool。
+func (s *Service) Choices() Choices {
 	return Choices{
-		Loops:  s.loops.Definitions(),
-		Tools:  s.tools.List(),
-		Skills: userSkills(available),
-	}, nil
+		Loops: s.loops.Definitions(),
+		Tools: s.tools.List(),
+	}
 }
 
-// AvailableSkills 返回指定 Agent 在当前工作区可见的 Skill。
-func (s *Service) AvailableSkills(id string, workspace string) ([]skills.Skill, error) {
-	agent, err := s.Get(id)
-	if err != nil {
-		return nil, err
-	}
-	return s.availableSkills(agent, workspace)
-}
-
-func (s *Service) availableSkills(agent Agent, workspace string) ([]skills.Skill, error) {
-	if !hasSkillReader(agent.Tools) {
-		return []skills.Skill{}, nil
-	}
-	discovered, err := s.skills.List(workspace)
-	if err != nil {
-		return nil, err
-	}
-	userAvailable := discovered
-	if workspace != "" {
-		userAvailable, err = s.skills.List("")
-		if err != nil {
-			return nil, err
-		}
-	}
-	selectedNames := userSkillSelections(agent.Skills, userAvailable)
-	selected, err := selectSkills(selectedNames, userAvailable, discovered)
-	if err != nil {
-		return nil, err
-	}
-
-	out := append([]skills.Skill(nil), selected...)
-	included := make(map[string]struct{}, len(out))
-	for _, skill := range out {
-		included[skill.Name] = struct{}{}
-	}
-	for _, skill := range discovered {
-		if skill.Scope != skills.ScopeSystem && skill.Scope != skills.ScopeWorkspace {
-			continue
-		}
-		if _, selected := included[skill.Name]; selected {
-			continue
-		}
-		out = append(out, skill)
-	}
-	return out, nil
-}
-
-func userSkillSelections(names []string, available []skills.Skill) []string {
-	system := make(map[string]struct{})
-	for _, skill := range available {
-		if skill.Scope == skills.ScopeSystem {
-			system[skill.Name] = struct{}{}
-		}
-	}
-	out := make([]string, 0, len(names))
-	for _, name := range names {
-		if _, automatic := system[name]; automatic {
-			continue
-		}
-		out = append(out, name)
-	}
-	return out
+// AvailableSkills 返回当前工作区可见的全部 Skill，与 Prepare 共用同一份范围。
+func (s *Service) AvailableSkills(workspace string) ([]skills.Skill, error) {
+	return s.skills.List(workspace)
 }
 
 // Prepare 按当前登记内容生成一轮 Run 可用的 Agent 设置和系统提示词。
@@ -201,7 +142,7 @@ func (s *Service) Prepare(ctx context.Context, id string, workspace string) (Pre
 		return PreparedAgent{}, err
 	}
 
-	skillDefinitions, err := s.availableSkills(agent, workspace)
+	skillDefinitions, err := s.AvailableSkills(workspace)
 	if err != nil {
 		return PreparedAgent{}, err
 	}
@@ -225,17 +166,38 @@ func (s *Service) validate(agent Agent) error {
 	if _, err := s.loops.Get(agent.Kind); err != nil {
 		return err
 	}
-	if _, err := s.tools.Definitions(context.Background(), "", agent.Tools); err != nil {
-		return err
+	known := make(map[string]struct{})
+	for _, tool := range s.tools.List() {
+		known[tool.Name] = struct{}{}
 	}
-	available, err := s.skills.List("")
-	if err != nil {
-		return err
-	}
-	if _, err := selectSkills(agent.Skills, available, available); err != nil {
-		return err
+	seen := make(map[string]struct{}, len(agent.Tools))
+	for _, name := range agent.Tools {
+		if _, duplicate := seen[name]; duplicate {
+			return fmt.Errorf("tools: allowed tool %q appears more than once", name)
+		}
+		seen[name] = struct{}{}
+		if _, ok := known[name]; !ok {
+			return fmt.Errorf("tools: allowed tool %q is not registered", name)
+		}
 	}
 	return nil
+}
+
+func (s *Service) normalize(agent Agent) Agent {
+	agent = copyAgent(agent)
+	known := make(map[string]struct{})
+	for _, tool := range s.tools.List() {
+		known[tool.Name] = struct{}{}
+	}
+	filtered := make([]string, 0, len(agent.Tools))
+	for _, name := range agent.Tools {
+		if _, ok := known[name]; !ok {
+			continue
+		}
+		filtered = append(filtered, name)
+	}
+	agent.Tools = filtered
+	return agent
 }
 
 func (s *Service) ensureDefault() error {
@@ -246,18 +208,10 @@ func (s *Service) ensureDefault() error {
 	if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	choices, err := s.Choices()
-	if err != nil {
-		return err
-	}
-	defaults := s.tools.Defaults()
+	defaults := s.tools.List()
 	toolNames := make([]string, 0, len(defaults))
 	for _, tool := range defaults {
 		toolNames = append(toolNames, tool.Name)
-	}
-	skillNames := make([]string, 0, len(choices.Skills))
-	for _, skill := range choices.Skills {
-		skillNames = append(skillNames, skill.Name)
 	}
 	return s.store.PutAgent(Agent{
 		ID:           DefaultID,
@@ -265,7 +219,6 @@ func (s *Service) ensureDefault() error {
 		Kind:         "react",
 		SystemPrompt: defaultSystemPrompt,
 		Tools:        toolNames,
-		Skills:       skillNames,
 	})
 }
 
@@ -281,7 +234,11 @@ func assemblePrompt(systemPrompt string, selected []skills.Skill, instructions [
 			lines = append(lines, "- "+skill.Name+": "+skill.Description)
 			lines = append(lines, "  Location: "+skill.Location)
 		}
-		lines = append(lines, "", skillReadInstruction(allowedTools), "Resolve relative resources from each Skill directory.", "User instructions take priority over Skill instructions.")
+		lines = append(lines, "")
+		if instruction := skillReadInstruction(allowedTools); instruction != "" {
+			lines = append(lines, instruction)
+		}
+		lines = append(lines, "Resolve relative resources from each Skill directory.", "User instructions take priority over Skill instructions.")
 		parts = append(parts, strings.Join(lines, "\n"))
 	}
 	if len(instructions) > 0 {
@@ -293,25 +250,6 @@ func assemblePrompt(systemPrompt string, selected []skills.Skill, instructions [
 	}
 	parts = append(parts, "## Workspace\n"+workspace)
 	return strings.Join(parts, "\n\n")
-}
-
-func userSkills(available []skills.Skill) []skills.Skill {
-	out := make([]skills.Skill, 0, len(available))
-	for _, skill := range available {
-		if skill.Scope == skills.ScopeUser {
-			out = append(out, skill)
-		}
-	}
-	return out
-}
-
-func hasSkillReader(allowed []string) bool {
-	for _, name := range allowed {
-		if name == "read" || name == "bash" {
-			return true
-		}
-	}
-	return false
 }
 
 func skillReadInstruction(allowed []string) string {
@@ -326,44 +264,15 @@ func skillReadInstruction(allowed []string) string {
 		return "Read the complete SKILL.md with the existing read or bash tool before using the Skill."
 	case hasRead:
 		return "Read the complete SKILL.md with the existing read tool before using the Skill."
-	default:
+	case hasBash:
 		return "Read the complete SKILL.md with the existing bash tool before using the Skill."
+	default:
+		return ""
 	}
-}
-
-func selectSkills(names []string, userAvailable []skills.Skill, available []skills.Skill) ([]skills.Skill, error) {
-	users := make(map[string]skills.Skill, len(userAvailable))
-	for _, skill := range userAvailable {
-		if skill.Scope == skills.ScopeUser {
-			users[skill.Name] = skill
-		}
-	}
-	effective := make(map[string]skills.Skill, len(available))
-	for _, skill := range available {
-		effective[skill.Name] = skill
-	}
-	out := make([]skills.Skill, 0, len(names))
-	seen := make(map[string]struct{}, len(names))
-	for _, name := range names {
-		if _, duplicate := seen[name]; duplicate {
-			return nil, fmt.Errorf("skills: %q appears more than once", name)
-		}
-		seen[name] = struct{}{}
-		if _, ok := users[name]; !ok {
-			return nil, fmt.Errorf("skills: %q is not a user skill", name)
-		}
-		skill, ok := effective[name]
-		if !ok {
-			skill = users[name]
-		}
-		out = append(out, skill)
-	}
-	return out, nil
 }
 
 func copyAgent(agent Agent) Agent {
 	agent.Tools = append([]string(nil), agent.Tools...)
-	agent.Skills = append([]string(nil), agent.Skills...)
 	return agent
 }
 

@@ -140,6 +140,56 @@ func TestRegistry_listReturnsAllDefinitionsByName(t *testing.T) {
 	}
 }
 
+func TestRegistry_prepareAddsProviderToolsWithoutListingThem(t *testing.T) {
+	registry := NewRegistry()
+	tool := New("bash", "Bash tool.", func(_ context.Context, _ Call, _ testArgs) (Result, error) {
+		return Result{}, nil
+	})
+	err := registry.Register(tool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = registry.RegisterProvider(testToolProvider{
+		name: "mcp",
+		snapshot: Snapshot{
+			Definitions: []Definition{{
+				Name:        "mcp__demo__greet",
+				Description: "Greet.",
+				InputSchema: json.RawMessage(`{"type":"object"}`),
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	list := registry.List()
+	if len(list) != 1 || list[0].Name != "bash" {
+		t.Fatalf("List() = %#v", list)
+	}
+	prepared, err := registry.Prepare(context.Background(), "/work", []string{"bash"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prepared.Names) != 2 || prepared.Names[0] != "bash" || prepared.Names[1] != "mcp__demo__greet" {
+		t.Fatalf("Prepare() = %#v", prepared)
+	}
+}
+
+type testToolProvider struct {
+	name     string
+	snapshot Snapshot
+}
+
+func (p testToolProvider) Name() string { return p.name }
+
+func (p testToolProvider) Snapshot(context.Context, string) (Snapshot, error) {
+	return p.snapshot, nil
+}
+
+func (p testToolProvider) Call(context.Context, Call) (Result, error) {
+	return Result{Content: "ok"}, nil
+}
+
 func TestTruncate(t *testing.T) {
 	head := TruncateHead(strings.Repeat("a", maxOutputBytes+1))
 	if !strings.HasSuffix(head, truncatedNotice) {

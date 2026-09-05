@@ -85,7 +85,7 @@ func TestPluginManagesAgentsAndProtectsUsedAgent(t *testing.T) {
 	if err := component.Render(context.Background(), &rendered); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(rendered.String(), "Harness") || !strings.Contains(rendered.String(), "不可删除") {
+	if !strings.Contains(rendered.String(), "Harness") || !strings.Contains(rendered.String(), "不可删除") || !strings.Contains(rendered.String(), "高级配置") || strings.Contains(rendered.String(), "启用的 Skill") {
 		t.Fatalf("initial section = %s", rendered.String())
 	}
 	newHandler := mock.routes["GET /settings/agents/{agentID}"]

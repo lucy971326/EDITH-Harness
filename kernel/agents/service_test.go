@@ -27,7 +27,6 @@ func TestService_saveChoicesAndPrepare(t *testing.T) {
 		Kind:         "react",
 		SystemPrompt: "Work carefully.",
 		Tools:        []string{"bash"},
-		Skills:       []string{"git"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -35,11 +34,8 @@ func TestService_saveChoicesAndPrepare(t *testing.T) {
 	if agent.ID == "" {
 		t.Fatal("Save() did not generate ID")
 	}
-	choices, err := service.Choices()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(choices.Loops) != 1 || len(choices.Tools) != 1 || len(choices.Skills) != 1 {
+	choices := service.Choices()
+	if len(choices.Loops) != 1 || len(choices.Tools) != 1 {
 		t.Fatalf("Choices() = %#v", choices)
 	}
 	prepared, err := service.Prepare(context.Background(), agent.ID, "/work")
@@ -55,7 +51,7 @@ func TestService_saveChoicesAndPrepare(t *testing.T) {
 	}
 }
 
-func TestService_defaultAgentKeepsInitialToolsAndSkills(t *testing.T) {
+func TestService_defaultAgentKeepsInitialToolsAndAddsNewSkills(t *testing.T) {
 	loopsRegistry := loops.NewRegistry()
 	toolsRegistry := tools.NewRegistry()
 	skillsRegistry := skills.NewRegistry()
@@ -83,32 +79,30 @@ func TestService_defaultAgentKeepsInitialToolsAndSkills(t *testing.T) {
 	if !slices.Equal(second.Tools, []string{"read"}) {
 		t.Fatalf("second tools = %#v", second.Tools)
 	}
-	if strings.Contains(second.SystemPrompt, "- second: Second summary.") {
+	if !strings.Contains(second.SystemPrompt, "- first: First summary.") || !strings.Contains(second.SystemPrompt, "- second: Second summary.") {
 		t.Fatalf("second prompt = %q", second.SystemPrompt)
 	}
 }
 
 func TestService_rejectsInvalidConfigurationAndAllowsDefaultChanges(t *testing.T) {
-	service, loopsRegistry, toolsRegistry, skillsRegistry := testService(t)
+	service, loopsRegistry, toolsRegistry, _ := testService(t)
 	registerLoop(t, loopsRegistry, "react")
 	registerTool(t, toolsRegistry, "bash")
-	registerSkill(t, skillsRegistry, "git", "Git workflow.")
 
 	for _, agent := range []Agent{
 		{Name: "bad", Kind: "missing"},
 		{Name: "bad", Kind: "react", Tools: []string{"missing"}},
-		{Name: "bad", Kind: "react", Skills: []string{"missing"}},
 		{Name: "bad", Kind: "react", Tools: []string{"bash", "bash"}},
 	} {
 		if _, err := service.Save(agent); err == nil {
 			t.Fatalf("Save(%#v) error = nil", agent)
 		}
 	}
-	updated, err := service.Save(Agent{ID: DefaultID, Name: "Harness", Kind: "react", Tools: []string{"bash"}, Skills: []string{"git"}})
+	updated, err := service.Save(Agent{ID: DefaultID, Name: "Harness", Kind: "react", Tools: []string{"bash"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(updated.Tools, []string{"bash"}) || !slices.Equal(updated.Skills, []string{"git"}) {
+	if !slices.Equal(updated.Tools, []string{"bash"}) {
 		t.Fatalf("updated default = %#v", updated)
 	}
 	if err := service.Delete(DefaultID); err == nil {
@@ -116,7 +110,7 @@ func TestService_rejectsInvalidConfigurationAndAllowsDefaultChanges(t *testing.T
 	}
 }
 
-func TestService_choicesOnlyUserSkillsAndPrepareAddsWorkspaceSkills(t *testing.T) {
+func TestService_prepareIncludesAllScopedSkillsWithoutSelecting(t *testing.T) {
 	service, loopsRegistry, toolsRegistry, skillsRegistry := testService(t)
 	registerLoop(t, loopsRegistry, "react")
 	registerTool(t, toolsRegistry, "read")
@@ -133,14 +127,11 @@ func TestService_choicesOnlyUserSkillsAndPrepareAddsWorkspaceSkills(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	choices, err := service.Choices()
-	if err != nil {
-		t.Fatal(err)
+	choices := service.Choices()
+	if len(choices.Tools) != 1 || choices.Tools[0].Name != "read" {
+		t.Fatalf("Choices() = %#v", choices)
 	}
-	if len(choices.Skills) != 1 || choices.Skills[0].Name != "user-skill" {
-		t.Fatalf("Choices() = %#v", choices.Skills)
-	}
-	agent, err := service.Save(Agent{ID: "coding", Name: "Coding", Kind: "react", Tools: []string{"read"}, Skills: []string{"user-skill"}})
+	agent, err := service.Save(Agent{ID: "coding", Name: "Coding", Kind: "react", Tools: []string{"read"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,35 +156,34 @@ func TestService_choicesOnlyUserSkillsAndPrepareAddsWorkspaceSkills(t *testing.T
 	}
 }
 
-func TestService_prepareWithoutSkillReaderOmitsSkillsWithoutDiscoveryError(t *testing.T) {
+func TestService_prepareWithoutSkillReaderStillListsSkills(t *testing.T) {
 	service, loopsRegistry, _, skillsRegistry := testService(t)
 	registerLoop(t, loopsRegistry, "react")
-	err := skillsRegistry.Register(testSkillErrorProvider{err: errors.New("broken skill root")})
+	registerSkill(t, skillsRegistry, "git", "Git workflow.")
+	agent, err := service.Save(Agent{ID: "plain", Name: "Plain", Kind: "react"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	agent := Agent{ID: "plain", Name: "Plain", Kind: "react"}
-	err = service.store.PutAgent(agent)
+	available, err := service.AvailableSkills("/work")
 	if err != nil {
 		t.Fatal(err)
 	}
-	available, err := service.AvailableSkills(agent.ID, "/work")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(available) != 0 {
-		t.Fatalf("AvailableSkills() = %#v, want empty", available)
+	if len(available) != 1 || available[0].Name != "git" {
+		t.Fatalf("AvailableSkills() = %#v", available)
 	}
 	prepared, err := service.Prepare(context.Background(), agent.ID, "/work")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(prepared.SystemPrompt, "Available Skills") {
+	if !strings.Contains(prepared.SystemPrompt, "- git: Git workflow.") {
 		t.Fatalf("SystemPrompt = %q", prepared.SystemPrompt)
+	}
+	if strings.Contains(prepared.SystemPrompt, "existing") || slices.Contains(prepared.Tools, "read") || slices.Contains(prepared.Tools, "bash") {
+		t.Fatalf("PreparedAgent = %#v", prepared)
 	}
 }
 
-func TestService_availableSkillsIgnoresFormerUserSelectionNowSystem(t *testing.T) {
+func TestService_availableSkillsIgnoresAgentAndStripsLegacyTools(t *testing.T) {
 	service, loopsRegistry, toolsRegistry, skillsRegistry := testService(t)
 	registerLoop(t, loopsRegistry, "react")
 	registerTool(t, toolsRegistry, "read")
@@ -206,37 +196,37 @@ func TestService_availableSkillsIgnoresFormerUserSelectionNowSystem(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	agent := Agent{ID: "legacy", Name: "Legacy", Kind: "react", Tools: []string{"read"}, Skills: []string{"skill-creator"}}
+	agent := Agent{ID: "legacy", Name: "Legacy", Kind: "react", Tools: []string{"read", "mcp__tavily__search"}}
 	err = service.store.PutAgent(agent)
 	if err != nil {
 		t.Fatal(err)
 	}
-	available, err := service.AvailableSkills(agent.ID, "/work")
+	got, err := service.Get(agent.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(available) != 1 || available[0].Name != "skill-creator" || available[0].Scope != skills.ScopeSystem {
+	if !slices.Equal(got.Tools, []string{"read"}) {
+		t.Fatalf("Get() = %#v", got)
+	}
+	available, err := service.AvailableSkills("/work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(available) != 1 || available[0].Name != "skill-creator" {
 		t.Fatalf("AvailableSkills() = %#v", available)
-	}
-	prepared, err := service.Prepare(context.Background(), agent.ID, "/work")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Count(prepared.SystemPrompt, "- skill-creator: System skill.") != 1 {
-		t.Fatalf("SystemPrompt = %q", prepared.SystemPrompt)
 	}
 }
 
-func TestService_choicesPropagatesSkillDiscoveryError(t *testing.T) {
+func TestService_availableSkillsPropagatesDiscoveryError(t *testing.T) {
 	service, loopsRegistry, _, skillsRegistry := testService(t)
 	registerLoop(t, loopsRegistry, "react")
 	err := skillsRegistry.Register(testSkillErrorProvider{err: errors.New("broken skill root")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = service.Choices()
+	_, err = service.AvailableSkills("/work")
 	if err == nil || !strings.Contains(err.Error(), "broken skill root") {
-		t.Fatalf("Choices() error = %v", err)
+		t.Fatalf("AvailableSkills() error = %v", err)
 	}
 }
 
