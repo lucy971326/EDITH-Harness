@@ -7,12 +7,13 @@
 - `web`：登记 Chat 产品和 HTTP 路由；
 - `sessions`、`sessionSettings`：列出会话，读取本轮配置；
 - `agents`：列出可选 Agent，并在普通发送前保存此会话下一轮使用的 Agent；
-- `runner`：发送、Steer、Stop；
+- `runner`：发送、Steer、Stop、Compact；
+- `commands`：按名执行平台命令；
 - `llm`：列出模型和思考档位；
 - `events`：订阅 `RunEvent` 与 `DockChanged`，转成浏览器 SSE。
 - `surface/web/runview`：统一投影历史、思考、Tool 与最终回答；Chat 不维护运行 reducer。
 
-【提供能力】注册服务 `chat`：提供 `sidepanel`、`dock`、`message.actions`、`composer.actions` 四个 Chat 内部登记处；内置 `copy` 消息动作。
+【提供能力】注册服务 `chat`：提供 `sidepanel`、`dock`、`message.actions`、`composer.actions`、`composer.suggestions` 五个 Chat 内部登记处；内置 `copy` 消息动作。
 
 【填充插槽】向 `web` 填入 Chat 产品和全部 `/chat` 路由。
 

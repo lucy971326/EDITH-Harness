@@ -17,6 +17,7 @@ import (
 	"github.com/a-h/templ"
 
 	"harness/kernel/agents"
+	"harness/kernel/commands"
 	"harness/kernel/llm"
 	"harness/kernel/runner"
 	"harness/kernel/session"
@@ -32,6 +33,7 @@ type PageHandler struct {
 	sessions *session.Store
 	settings settings.SessionSettingsStore
 	agents   *agents.Service
+	commands commands.Commands
 	runner   *runner.Runner
 	models   *llm.Client
 	hub      *eventHub
@@ -45,6 +47,7 @@ func newPageHandler(
 	sessions *session.Store,
 	settingsStore settings.SessionSettingsStore,
 	agentService *agents.Service,
+	commandService commands.Commands,
 	runService *runner.Runner,
 	modelService *llm.Client,
 	hub *eventHub,
@@ -52,7 +55,7 @@ func newPageHandler(
 ) *PageHandler {
 	return &PageHandler{
 		web: webService, product: product, sessions: sessions, settings: settingsStore, agents: agentService,
-		runner: runService, models: modelService, hub: hub, registry: registry,
+		commands: commandService, runner: runService, models: modelService, hub: hub, registry: registry,
 	}
 }
 
@@ -78,6 +81,9 @@ func (h *PageHandler) ServeHTTP(w nethttp.ResponseWriter, r *nethttp.Request) {
 		return
 	case r.Method == nethttp.MethodPost && strings.Contains(r.URL.Path, "/message-actions/"):
 		h.messageAction(w, r)
+		return
+	case r.Method == nethttp.MethodPost && strings.Contains(r.URL.Path, "/commands/"):
+		h.command(w, r)
 		return
 	case r.Method == nethttp.MethodPost && strings.HasSuffix(r.URL.Path, "/stop"):
 		h.stop(w, r)
@@ -702,6 +708,29 @@ func (h *PageHandler) message(w nethttp.ResponseWriter, r *nethttp.Request) {
 		}
 	default:
 		nethttp.Error(w, "未知消息模式", nethttp.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(nethttp.StatusNoContent)
+}
+
+func (h *PageHandler) command(w nethttp.ResponseWriter, r *nethttp.Request) {
+	sessionID := r.PathValue("sessionID")
+	if _, err := h.sessions.Get(sessionID); err != nil {
+		nethttp.Error(w, err.Error(), nethttp.StatusNotFound)
+		return
+	}
+	if h.commands == nil {
+		nethttp.NotFound(w, r)
+		return
+	}
+	name := strings.TrimSpace(r.PathValue("command"))
+	err := h.commands.Call(context.Background(), name, sessionID)
+	if err != nil {
+		status := nethttp.StatusBadRequest
+		if strings.Contains(err.Error(), "already running") {
+			status = nethttp.StatusConflict
+		}
+		nethttp.Error(w, err.Error(), status)
 		return
 	}
 	w.WriteHeader(nethttp.StatusNoContent)

@@ -32,7 +32,7 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的五个页面插槽基础�
 
 ### 阶段 3：真实聊天
 
-- 启动链已完整组装：`persist → session → llm → machine-local → tools → events → loops/react → skills → skills-builtin → skills-filesystem → agents → runner → web → chat → chat-composer-skills → panel-demo`。
+- 启动链已完整组装：`persist → session → llm → machine-local → tools → events → loops/react → skills → skills-builtin → skills-filesystem → agents → commands → runner → compact → web → chat → chat-composer-skills → chat-composer-commands → panel-demo`。
 - 每轮生成 `RunID`，写入本轮耐久消息与 SSE；History Snapshot 和 SSE 共用 RunView reducer / `paint()`。同一 Run 默认合并为一张助手卡，只有耐久 Steer 才切成前后片段；落账完成不会让实时卡片跳位。
 - 时间线的耐久顺序使用 `Entry.Seq`；运行中卡片用 `AfterEntrySeq` 定位，Run 内按 `StepSeq / BlockSeq` 排列，工具结果按原始调用块回填。
 - Chat 支持普通发送、停止和 Steer；已移除 FollowUp 入口与等待队列，每个活 Run 只执行当前一轮。
@@ -61,7 +61,9 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的五个页面插槽基础�
 - `agents.Service.AvailableSkills(agentID, workspace)` 统一计算系统、已选个人和当前项目 Skill；`Prepare` 与 Chat 候选共用同一套可用范围。
 - Chat 增加自身的 `composer.suggestions` 登记处；`plugins/web/chat/composer/skills` 把同一 Skill 来源登记给 `/` 与 `$`，内核 Skills 不依赖 Chat。
 - 输入 `/` 或 `$` 显示单行 Skill 候选；选择后在 textarea 当前光标处插入 `$skill-name`，发送顺序与文字顺序一致，消息卡在原位置显示图标和名称。
-- 第一版未实现真实 Commands、MCP 展示以及 `@`、`!` 输入来源。
+- `kernel/commands` 是平台命令登记处。`compact` 填入后，Chat `/` 列出命令；选中立刻 `Call`，不插入 `/compact`。
+- `Runner.Compact` 占用空闲会话，用当前模型生成摘要；只有正常结束且正文非空才追加 `Kind=summary`。`History()` 从最近摘要开始发给模型。聊天区仍画完整账本，压缩卡只作标记。
+- 第一版未实现 MCP 展示以及 `@`、`!` 输入来源。
 
 ### 阶段 4A：右侧面板登记处
 

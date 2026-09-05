@@ -106,3 +106,33 @@ func (r *suggestionRegistry) List(prefix string, context SuggestionContext) ([]S
 	}
 	return all, nil
 }
+
+type suggestionGroup struct {
+	SourceID string
+	Title    string
+	Items    []Suggestion
+}
+
+func suggestionGroups(items []Suggestion) []suggestionGroup {
+	groups := make([]suggestionGroup, 0)
+	for _, item := range items {
+		title := suggestionGroupTitle(item.SourceID)
+		if len(groups) == 0 || groups[len(groups)-1].SourceID != item.SourceID {
+			groups = append(groups, suggestionGroup{SourceID: item.SourceID, Title: title})
+		}
+		last := &groups[len(groups)-1]
+		last.Items = append(last.Items, item)
+	}
+	return groups
+}
+
+func suggestionGroupTitle(sourceID string) string {
+	switch sourceID {
+	case "commands":
+		return "命令"
+	case "skills":
+		return "技能"
+	default:
+		return sourceID
+	}
+}

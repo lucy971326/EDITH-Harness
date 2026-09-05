@@ -80,6 +80,17 @@
       .join("");
   }
 
+  function answerBlocks(blocks) {
+    return (blocks || [])
+      .filter((block) => block.kind === "text" || block.kind === "summary")
+      .map((block) => block.text || "")
+      .join("");
+  }
+
+  function isCompactSegment(segment) {
+    return sortedSteps(segment).some((step) => sortedBlocks(step).some((block) => block.kind === "summary"));
+  }
+
   function hasToolCall(step) {
     return [...step.blocks.values()].some((block) => block.kind === "tool-call");
   }
@@ -161,7 +172,7 @@
     let toolCount = 0;
     for (const step of sortedSteps(segment)) {
       for (const block of sortedBlocks(step)) {
-        if (step === answer && block.kind === "text") continue;
+        if (step === answer && (block.kind === "text" || block.kind === "summary")) continue;
         if ((block.kind === "reasoning" || block.kind === "text") && block.text) {
           content += `<p class="ui-workflow-note ${block.kind === "reasoning" ? "ui-workflow-note-reasoning" : ""}">${escapeHTML(block.text)}</p>`;
         } else if (block.kind === "tool-call") {
@@ -202,9 +213,19 @@
     return "";
   }
 
-  function assistantCard(run, segment, live) {
+  function compactCard(run, segment, live) {
     const parts = workflowContent(segment);
-    const answerText = parts.answer ? textBlocks(sortedBlocks(parts.answer)) : "";
+    const answerText = parts.answer ? answerBlocks(sortedBlocks(parts.answer)) : "";
+    const label = live ? "正在压缩" : "已压缩";
+    const error = run.latestSegment === segment.id && run.status === "failed" && run.error ? `<p class="ui-workflow-error ui-text-body">${escapeHTML(run.error)}</p>` : "";
+    const answer = answerText ? `<div class="ui-message-answer ui-text-body ui-markdown">${renderMarkdown(answerText)}</div>` : "";
+    return `<article data-runview-card="compact" data-run-id="${escapeHTML(segment.runID)}" data-segment-id="${escapeHTML(segment.id)}" data-boundary-entry-id="${escapeHTML(segment.boundaryEntryID)}" data-runview-live="${live}" class="ui-message-compact"><p class="ui-text-meta">${escapeHTML(label)}</p>${answer}${error}</article>`;
+  }
+
+  function assistantCard(run, segment, live) {
+    if (isCompactSegment(segment)) return compactCard(run, segment, live);
+    const parts = workflowContent(segment);
+    const answerText = parts.answer ? answerBlocks(sortedBlocks(parts.answer)) : "";
     const summary = workflowSummary(run, segment, live, Boolean(parts.content), parts.toolCount);
     const showWorkflow = Boolean(summary);
     const error = run.latestSegment === segment.id && run.status === "failed" && run.error ? `<p class="ui-workflow-error ui-text-body">${escapeHTML(run.error)}</p>` : "";
@@ -453,10 +474,13 @@
     function orderedItems() {
       const items = [];
       for (const entry of state.entries.values()) {
-        if (entry.message?.role === "user") items.push({ kind: "entry", seq: entry.seq, entry });
+        if (entry.message?.role !== "user") continue;
+        items.push({ kind: "entry", seq: entry.seq, entry });
       }
       for (const run of state.runs.values()) {
-        for (const segment of run.segments.values()) items.push({ kind: "segment", seq: segment.boundarySeq, run, segment });
+        for (const segment of run.segments.values()) {
+          items.push({ kind: "segment", seq: segment.boundarySeq, run, segment });
+        }
       }
       return items.sort((left, right) => {
         const leftSeq = left.seq * 2 + (left.kind === "segment" ? 1 : 0);

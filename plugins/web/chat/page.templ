@@ -33,7 +33,7 @@ templ ChatPage(data pageView) {
 				</div>
 			</header>
 			if data.HasActive {
-				<section id="chat-root" class="flex min-h-0 flex-1 flex-col" hx-ext="sse" sse-connect={ templ.URL("/chat/" + data.Selected.ID + "/events") } data-message-actions={ data.MessageActionsJSON } data-message-action-url={ templ.URL("/chat/" + data.Selected.ID + "/message-actions/") } data-suggestions-url={ templ.URL("/chat/" + data.Selected.ID + "/suggestions") }>
+				<section id="chat-root" class="flex min-h-0 flex-1 flex-col" hx-ext="sse" sse-connect={ templ.URL("/chat/" + data.Selected.ID + "/events") } data-message-actions={ data.MessageActionsJSON } data-message-action-url={ templ.URL("/chat/" + data.Selected.ID + "/message-actions/") } data-suggestions-url={ templ.URL("/chat/" + data.Selected.ID + "/suggestions") } data-commands-url={ templ.URL("/chat/" + data.Selected.ID + "/commands/") }>
 					<section class="flex min-h-0 flex-1 flex-col overflow-y-auto px-6">
 						@runview.View(runview.Config{
 							ID:          "chat-run",
@@ -208,15 +208,20 @@ templ DockRenderError() {
 }
 
 templ SuggestionItems(items []Suggestion) {
-	for _, item := range items {
-		<button type="button" class="ui-menu-item ui-suggestion-item" role="option" data-suggestion-name={ item.Name } data-suggestion-source-id={ item.SourceID }>
-			@ui.Icon(item.Icon)
-			<span class="ui-suggestion-name">{ item.Name }</span>
-			<span class="ui-suggestion-description" title={ item.Description }>{ item.Description }</span>
-			<span class="ui-suggestion-scope">{ item.Scope }</span>
-		</button>
+	for _, group := range suggestionGroups(items) {
+		<section data-suggestion-group={ group.SourceID }>
+			<p class="ui-suggestion-group ui-text-meta">{ group.Title }</p>
+			for _, item := range group.Items {
+				<button type="button" class="ui-menu-item ui-suggestion-item" role="option" data-suggestion-name={ item.Name } data-suggestion-source-id={ item.SourceID }>
+					@ui.Icon(item.Icon)
+					<span class="ui-suggestion-name">{ item.Name }</span>
+					<span class="ui-suggestion-description" title={ item.Description }>{ item.Description }</span>
+					<span class="ui-suggestion-scope">{ item.Scope }</span>
+				</button>
+			}
+		</section>
 	}
 	if len(items) == 0 {
-		<p class="ui-suggestion-empty ui-text-meta">没有可用 Skill</p>
+		<p class="ui-suggestion-empty ui-text-meta">没有候选</p>
 	}
 }

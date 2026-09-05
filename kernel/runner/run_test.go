@@ -12,6 +12,7 @@ import (
 	"harness/kernel/agents"
 	"harness/kernel/agents/config"
 	"harness/kernel/events"
+	"harness/kernel/llm"
 	"harness/kernel/loops"
 	"harness/kernel/persist"
 	"harness/kernel/session"
@@ -175,6 +176,7 @@ func (s *emptyAgentStore) DeleteAgent(id string) error {
 
 type runnerFixture struct {
 	runner      *Runner
+	sessions    *session.Store
 	session     *session.Session
 	persistence *memoryPersistence
 	settings    *memorySettings
@@ -185,6 +187,11 @@ type runnerFixture struct {
 }
 
 func newRunnerFixture(t *testing.T, loop loops.Loop) runnerFixture {
+	t.Helper()
+	return newRunnerFixtureWithLLM(t, loop, &llm.Client{})
+}
+
+func newRunnerFixtureWithLLM(t *testing.T, loop loops.Loop, client *llm.Client) runnerFixture {
 	t.Helper()
 	persistence := newMemoryPersistence()
 	sessions := session.NewStore(persistence)
@@ -216,12 +223,13 @@ func newRunnerFixture(t *testing.T, loop loops.Loop) runnerFixture {
 		t.Fatal(err)
 	}
 	eventRegistry := events.NewRegistry()
-	r, err := NewRunner(sessions, settingsStore, agentService, loopRegistry, eventRegistry)
+	r, err := NewRunner(sessions, settingsStore, agentService, loopRegistry, eventRegistry, client, toolRegistry)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return runnerFixture{
 		runner:      r,
+		sessions:    sessions,
 		session:     sess,
 		persistence: persistence,
 		settings:    settingsStore,
@@ -249,7 +257,7 @@ func (p testRunnerSkillErrorProvider) List(string) ([]skills.Skill, error) {
 func TestRunPublishesUsageWithoutPersisting(t *testing.T) {
 	loop := &runnerTestLoop{run: func(ctx context.Context, invocation loops.Invocation) error {
 		return invocation.Emit(ctx, loops.Event{
-			Kind: loops.EventUsage,
+			Kind:  loops.EventUsage,
 			Usage: &loops.Usage{InputTokens: 12, CacheReadTokens: 19, ContextWindow: 1000},
 		})
 	}}

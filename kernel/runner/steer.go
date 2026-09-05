@@ -114,6 +114,18 @@ func (r *liveRun) openSteering(runID string) bool {
 	return true
 }
 
+func (r *liveRun) startExclusive(runID string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closing {
+		return false
+	}
+	r.stopped = false
+	r.steeringClosed = true
+	r.runID = runID
+	return true
+}
+
 func (r *liveRun) setAfterEntrySeq(seq uint64) {
 	r.mu.Lock()
 	r.afterEntrySeq = seq

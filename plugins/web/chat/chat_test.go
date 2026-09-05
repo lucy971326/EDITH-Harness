@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"harness/kernel/agents"
+	"harness/kernel/commands"
 	"harness/kernel/events"
 	"harness/kernel/host"
 	"harness/kernel/llm"
@@ -525,6 +526,10 @@ func installChat(t *testing.T) (*host.Host, *web.Plugin) {
 		t.Fatal(err)
 	}
 	err = h.Install(agents.NewPlugin())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = h.Install(commands.NewPlugin())
 	if err != nil {
 		t.Fatal(err)
 	}

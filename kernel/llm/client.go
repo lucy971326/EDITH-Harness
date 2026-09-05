@@ -93,12 +93,14 @@ func (c *Client) Stream(ctx context.Context, config RunConfig, input Input) (<-c
 		return nil, err
 	}
 	toolDefinitions := toProviderTools(input.Tools)
-	stream, err := model.DoStream(ctx, provider.GenerateParams{
+	params := provider.GenerateParams{
 		System:          input.System,
 		Messages:        messages,
 		Tools:           toolDefinitions,
+		ToolChoice:      input.ToolChoice,
 		ProviderOptions: options,
-	})
+	}
+	stream, err := model.DoStream(ctx, params)
 	if err != nil {
 		return nil, err
 	}

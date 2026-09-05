@@ -4,9 +4,11 @@ import (
 	"harness/kernel/agents"
 	"harness/kernel/events"
 	"harness/kernel/host"
+	"harness/kernel/llm"
 	"harness/kernel/loops"
 	"harness/kernel/session"
 	"harness/kernel/session/settings"
+	"harness/kernel/tools"
 )
 
 // 活对象。把 Runner 挂到 Host 的 runner 键。
@@ -42,7 +44,15 @@ func (p *Plugin) Start(h *host.Host) error {
 	if err != nil {
 		return err
 	}
-	p.runner, err = NewRunner(sessions, settingsStore, agentService, loopRegistry, eventRegistry)
+	llmClient, err := host.Resolve[*llm.Client](h, "llm")
+	if err != nil {
+		return err
+	}
+	toolRegistry, err := host.Resolve[tools.Tools](h, "tools")
+	if err != nil {
+		return err
+	}
+	p.runner, err = NewRunner(sessions, settingsStore, agentService, loopRegistry, eventRegistry, llmClient, toolRegistry)
 	if err != nil {
 		return err
 	}

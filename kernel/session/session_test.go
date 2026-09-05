@@ -30,6 +30,10 @@ func textMessage(role Role, text string) Message {
 	return Message{Role: role, Blocks: []Block{{Kind: "text", Text: text}}}
 }
 
+func summaryMessage(text string) Message {
+	return Message{Role: RoleAssistant, Blocks: []Block{{Kind: "summary", Text: text}}}
+}
+
 func TestCreateAppendHistory(t *testing.T) {
 	store, _ := newTestStore(t)
 	s, err := store.Create("chat1")
@@ -250,6 +254,176 @@ func TestForkCopiesPrefixIntoIndependentSession(t *testing.T) {
 	}
 	if len(source.Entries()) != 3 || len(child.Entries()) != 3 {
 		t.Fatalf("source = %#v child = %#v", source.Entries(), child.Entries())
+	}
+}
+
+func TestHistoryStartsFromLatestSummary(t *testing.T) {
+	store, _ := newTestStore(t)
+	s, err := store.Create("chat1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, message := range []Message{
+		textMessage(RoleUser, "one"),
+		textMessage(RoleAssistant, "a"),
+		textMessage(RoleUser, "two"),
+		summaryMessage("sum-1"),
+		textMessage(RoleUser, "three"),
+		textMessage(RoleAssistant, "b"),
+	} {
+		_, err = s.Append(message)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := s.History()
+	if len(got) != 3 ||
+		got[0].Role != RoleAssistant || got[0].Blocks[0].Kind != "text" || got[0].Blocks[0].Text != "sum-1" ||
+		got[1].Blocks[0].Text != "three" ||
+		got[2].Blocks[0].Text != "b" {
+		t.Fatalf("history = %#v", got)
+	}
+	if len(s.Entries()) != 6 {
+		t.Fatalf("entries = %d", len(s.Entries()))
+	}
+}
+
+func TestHistoryRecompactUsesLatestSummary(t *testing.T) {
+	store, _ := newTestStore(t)
+	s, err := store.Create("chat1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, message := range []Message{
+		textMessage(RoleUser, "one"),
+		summaryMessage("sum-1"),
+		textMessage(RoleUser, "two"),
+		summaryMessage("sum-2"),
+	} {
+		_, err = s.Append(message)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := s.History()
+	if len(got) != 1 || got[0].Blocks[0].Kind != "text" || got[0].Blocks[0].Text != "sum-2" {
+		t.Fatalf("history = %#v", got)
+	}
+}
+
+func TestHistoryBranchBeforeSummaryKeepsFullPath(t *testing.T) {
+	store, _ := newTestStore(t)
+	s, err := store.Create("chat1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := s.Append(textMessage(RoleUser, "one"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.Append(textMessage(RoleAssistant, "a"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.Append(summaryMessage("sum-1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.Branch(first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := s.History()
+	if len(got) != 1 || got[0].Blocks[0].Text != "one" {
+		t.Fatalf("history = %#v", got)
+	}
+}
+
+func TestSummarySurvivesReload(t *testing.T) {
+	dir := t.TempDir()
+	h := host.NewHost()
+	err := h.Install(&persist.Plugin{Dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := host.Resolve[persist.Persistence](h, "sessionPersistence")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := NewStore(p)
+	s, err := first.Create("chat1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.Append(textMessage(RoleUser, "one"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.Append(summaryMessage("sum-1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := NewStore(p).Get("chat1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := loaded.History()
+	if len(got) != 1 || got[0].Blocks[0].Kind != "text" || got[0].Blocks[0].Text != "sum-1" {
+		t.Fatalf("history = %#v", got)
+	}
+	if len(loaded.Entries()) != 2 || loaded.Entries()[1].Message.Blocks[0].Kind != "summary" {
+		t.Fatalf("entries = %#v", loaded.Entries())
+	}
+}
+
+func TestForkKeepsSummaryProjection(t *testing.T) {
+	store, _ := newTestStore(t)
+	source, err := store.Create("source")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = source.Append(textMessage(RoleUser, "one"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum, err := source.Append(summaryMessage("sum-1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := source.Append(textMessage(RoleUser, "two"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := store.Fork("source", "child", after.ID, "分叉")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := child.History()
+	if len(got) != 2 || got[0].Blocks[0].Text != "sum-1" || got[1].Blocks[0].Text != "two" {
+		t.Fatalf("fork history = %#v", got)
+	}
+	before, err := store.Fork("source", "before", sum.ID, "压前")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(before.History()) != 1 || before.History()[0].Blocks[0].Text != "sum-1" {
+		t.Fatalf("fork at summary = %#v", before.History())
+	}
+}
+
+func TestSummaryRejectsEmptyAndUserRole(t *testing.T) {
+	store, _ := newTestStore(t)
+	s, err := store.Create("chat1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.Append(Message{Role: RoleUser, Blocks: []Block{{Kind: "summary", Text: "nope"}}})
+	if err == nil {
+		t.Fatal("user summary was accepted")
+	}
+	_, err = s.Append(Message{Role: RoleAssistant, Blocks: []Block{{Kind: "summary", Text: "  "}}})
+	if err == nil {
+		t.Fatal("empty summary was accepted")
 	}
 }
 

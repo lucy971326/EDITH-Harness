@@ -284,6 +284,7 @@ kernel/
   loops/             空登记处 + Loop / Invocation
   skills/            空登记处 + Skill Provider / Skill 摘要
   agents/            Agent 设置服务
+  commands/          空登记处 + Command
   runner/            整份 A；live
 
 surface/
@@ -295,8 +296,11 @@ plugins/
     loops/react/     必装默认 Loop；使用 llm、tools，填 loops
     skills/filesystem/  扫描用户与工作区 Skill 根，填 skills
     tools/read/ write/ edit/ bash/   各填 tools
+    commands/compact/ 填 compact 命令
   web/
     chat/            Chat 产品；填 Web products 和 routes
+      composer/skills/ 填 Chat composer.suggestions
+      composer/commands/ 把命令名单转成 / 候选
       composer/demo/ 填 Chat composer.actions
       dock/demo/     填 Chat dock（仅测试安装）
       sidepanel/demo/ 填 Chat sidepanel
@@ -316,7 +320,7 @@ enable: [web, read, write, edit, bash]
 ```
 main:
   host.New()
-  必装：persist（挂 sessionPersistence + sessionSettings + agentStore）→ session → llm → tools → loops → react → skills → skills-filesystem → agents → runner
+  必装：persist（挂 sessionPersistence + sessionSettings + agentStore）→ session → llm → tools → loops → react → skills → skills-filesystem → agents → commands → runner → compact
   必装提供者：yaml machine 选出的那一个，在 tools 前面 Start
   再按 enable：plugins/* 、 surface/*
   Close 倒序

@@ -15,6 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"harness/kernel/agents"
+	"harness/kernel/commands"
 	"harness/kernel/events"
 	"harness/kernel/host"
 	"harness/kernel/llm"
@@ -24,6 +25,7 @@ import (
 	"harness/kernel/session"
 	"harness/kernel/skills"
 	"harness/kernel/tools"
+	compactcmd "harness/plugins/kernel/commands/compact"
 	"harness/plugins/kernel/loops/react"
 	machinelocal "harness/plugins/kernel/machine/local"
 	skillsbuiltin "harness/plugins/kernel/skills/builtin"
@@ -34,6 +36,7 @@ import (
 	readtool "harness/plugins/kernel/tools/read"
 	writetool "harness/plugins/kernel/tools/write"
 	chatproduct "harness/plugins/web/chat"
+	composercommands "harness/plugins/web/chat/composer/commands"
 	composerdemo "harness/plugins/web/chat/composer/demo"
 	composerskills "harness/plugins/web/chat/composer/skills"
 	messagefork "harness/plugins/web/chat/message/fork"
@@ -136,7 +139,15 @@ func run(configPath string) error {
 	if err != nil {
 		return err
 	}
+	err = h.Install(commands.NewPlugin())
+	if err != nil {
+		return err
+	}
 	err = h.Install(runner.NewPlugin())
+	if err != nil {
+		return err
+	}
+	err = h.Install(compactcmd.New())
 	if err != nil {
 		return err
 	}
@@ -150,6 +161,10 @@ func run(configPath string) error {
 		return err
 	}
 	err = h.Install(composerskills.New())
+	if err != nil {
+		return err
+	}
+	err = h.Install(composercommands.New())
 	if err != nil {
 		return err
 	}

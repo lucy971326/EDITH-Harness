@@ -14,6 +14,7 @@ import (
 	"harness/kernel/loops"
 	"harness/kernel/session"
 	"harness/kernel/session/settings"
+	"harness/kernel/tools"
 )
 
 // 活对象。一本 Session 当前尚未结束的一轮运行。
@@ -50,6 +51,8 @@ type Runner struct {
 	agents   *agents.Service
 	loops    loops.Loops
 	events   *events.Registry
+	llm      *llm.Client
+	tools    tools.Tools
 
 	mu           sync.Mutex
 	live         map[string]*liveRun
@@ -64,6 +67,8 @@ func NewRunner(
 	agentService *agents.Service,
 	loopRegistry loops.Loops,
 	eventRegistry *events.Registry,
+	llmClient *llm.Client,
+	toolRegistry tools.Tools,
 ) (*Runner, error) {
 	if sessions == nil {
 		return nil, fmt.Errorf("runner: nil sessions")
@@ -80,12 +85,20 @@ func NewRunner(
 	if eventRegistry == nil {
 		return nil, fmt.Errorf("runner: nil events")
 	}
+	if llmClient == nil {
+		return nil, fmt.Errorf("runner: nil llm")
+	}
+	if toolRegistry == nil {
+		return nil, fmt.Errorf("runner: nil tools")
+	}
 	return &Runner{
 		sessions: sessions,
 		settings: settingsStore,
 		agents:   agentService,
 		loops:    loopRegistry,
 		events:   eventRegistry,
+		llm:      llmClient,
+		tools:    toolRegistry,
 		live:     make(map[string]*liveRun),
 	}, nil
 }

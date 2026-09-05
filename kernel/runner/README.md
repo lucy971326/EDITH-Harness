@@ -8,9 +8,11 @@
 - `sessionSettings`：读取本轮模型、思考档位、Agent 与工作区；
 - `agents`：准备本轮输入；
 - `loops`：按 Kind 运行 Loop；
+- `llm`：压缩时直接 Stream；
+- `tools`：压缩时取当前工具 schema；
 - `events`：发布稳定 `RunEvent`。
 
-【提供能力】注册服务 `runner`：`Start`、`Run`、`Steer`、`Stop`，并管理活 Run。
+【提供能力】注册服务 `runner`：`Start`、`Run`、`Steer`、`Stop`、`Compact`，并管理活 Run。
 
 【填充插槽】不填。
 

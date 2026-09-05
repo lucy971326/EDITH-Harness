@@ -27,6 +27,7 @@
     const suggestionPopover = document.getElementById("composer-suggestions");
     const suggestionItems = document.getElementById("skill-suggestion-items");
     const suggestionsURL = root.dataset.suggestionsUrl;
+    const commandsURL = root.dataset.commandsUrl;
     let activeSuggestionIndex = -1;
     let suggestionsRequest = 0;
     let loadedSuggestionPrefix = "/";
@@ -128,6 +129,10 @@
         item.hidden = !name.includes(state.query);
         item.setAttribute("aria-selected", "false");
       });
+      suggestionItems.querySelectorAll("[data-suggestion-group]").forEach((group) => {
+        const visible = Array.from(group.querySelectorAll("button[data-suggestion-name]")).some((item) => !item.hidden);
+        group.hidden = !visible;
+      });
       if (!visibleSuggestions().length) {
         closeSuggestions();
         return;
@@ -154,9 +159,32 @@
       const name = item.dataset.suggestionName;
       const state = triggerState();
       if (!state) return;
+      if (item.dataset.suggestionSourceId === "commands") {
+        executeCommand(name, state);
+        return;
+      }
       textInput.setRangeText(`$${name} `, state.start, state.end, "end");
       closeSuggestions();
       textInput.focus();
+    }
+
+    async function executeCommand(name, state) {
+      textInput.setRangeText("", state.start, state.end, "end");
+      closeSuggestions();
+      if (!commandsURL) {
+        status.textContent = "命令入口不可用";
+        return;
+      }
+      try {
+        const response = await fetch(`${commandsURL}${encodeURIComponent(name)}`, { method: "POST" });
+        if (!response.ok) {
+          status.textContent = await response.text();
+          return;
+        }
+        status.textContent = "";
+      } catch (error) {
+        status.textContent = error.message || "命令执行失败";
+      }
     }
 
     async function refreshSuggestions(prefix = loadedSuggestionPrefix) {

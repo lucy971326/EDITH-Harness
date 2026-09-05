@@ -100,7 +100,7 @@ messages.jsonl
 └─ #6 助手最终回答
 ```
 
-`blocks` 只记录实际发生的对话内容：`text`、`reasoning`、`tool-call`、`tool-result`。页面长什么样、哪些内容展开，不是账本事实。
+`blocks` 只记录实际发生的对话内容：`text`、`reasoning`、`tool-call`、`tool-result`、`summary`。页面长什么样、哪些内容展开，不是账本事实。`summary` 是压缩落账的助手块；`History()` 把它收成普通文本再发给模型。
 
 ## 修改前四问
 

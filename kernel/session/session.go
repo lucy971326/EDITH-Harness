@@ -94,14 +94,49 @@ func titleFromMessage(message Message) string {
 	return ""
 }
 
-// History 沿当前分叉回到根，再按对话顺序返回。不按模型裁切图。
+// History 沿当前分叉回到根，再按对话顺序返回发给模型的有效历史。
+// 从当前分支最近一次摘要开始：摘要收成普通文本，其后消息原样保留。不按模型裁切图。
 func (s *Session) History() []Message {
 	entries := s.Entries()
-	out := make([]Message, 0, len(entries))
-	for _, entry := range entries {
-		out = append(out, entry.Message)
+	start := 0
+	for index, entry := range entries {
+		if isSummary(entry.Message) {
+			start = index
+		}
+	}
+	out := make([]Message, 0, len(entries)-start)
+	for index := start; index < len(entries); index++ {
+		message := entries[index].Message
+		if index == start && isSummary(message) {
+			out = append(out, projectSummary(message))
+			continue
+		}
+		out = append(out, message)
 	}
 	return out
+}
+
+func isSummary(message Message) bool {
+	for _, block := range message.Blocks {
+		if block.Kind == "summary" {
+			return true
+		}
+	}
+	return false
+}
+
+func projectSummary(message Message) Message {
+	text := ""
+	for _, block := range message.Blocks {
+		if block.Kind == "summary" || block.Kind == "text" {
+			text += block.Text
+		}
+	}
+	return Message{
+		RunID:  message.RunID,
+		Role:   RoleAssistant,
+		Blocks: []Block{{Kind: "text", Text: text}},
+	}
 }
 
 // Entries 沿当前分叉回到根，再按对话顺序返回已落账消息和节点身份。
@@ -159,6 +194,13 @@ func checkMessage(m Message) error {
 	}
 	for _, b := range m.Blocks {
 		switch b.Kind {
+		case "summary":
+			if m.Role != RoleAssistant {
+				return fmt.Errorf("session: summary block needs assistant role")
+			}
+			if strings.TrimSpace(b.Text) == "" {
+				return fmt.Errorf("session: summary block needs text")
+			}
 		case "image":
 			if b.Media == nil || b.Media.MIME == "" || b.Media.Data == "" {
 				return fmt.Errorf("session: image block needs mime and data")

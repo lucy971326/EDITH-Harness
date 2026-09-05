@@ -306,6 +306,14 @@
     color: var(--ui-color-text);
   }
 
+  .ui-message-compact {
+    max-width: 48rem;
+    margin: var(--ui-space-3) 0;
+    padding: var(--ui-space-3) 0;
+    border-top: 1px solid var(--ui-color-border);
+    color: var(--ui-color-text);
+  }
+
   .ui-message-answer {
     min-width: 0;
   }
@@ -666,6 +674,12 @@
   .ui-suggestion-empty {
     margin: 0;
     padding: var(--ui-space-3);
+  }
+
+  .ui-suggestion-group {
+    margin: var(--ui-space-2) 0 0;
+    padding: var(--ui-space-2) var(--ui-space-3) var(--ui-space-1);
+    color: var(--ui-color-text-muted);
   }
 
   .ui-message-skill {

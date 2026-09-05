@@ -21,7 +21,8 @@ type RunConfig struct {
 
 // 数据。一次模型调用的提示词、历史和工具定义。
 type Input struct {
-	System  string
-	History []session.Message
-	Tools   []tools.Definition
+	System     string
+	History    []session.Message
+	Tools      []tools.Definition
+	ToolChoice string
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"harness/kernel/agents"
+	"harness/kernel/commands"
 	"harness/kernel/events"
 	"harness/kernel/host"
 	"harness/kernel/llm"
@@ -29,6 +30,7 @@ type Plugin struct {
 	sessions *session.Store
 	settings settings.SessionSettingsStore
 	agents   *agents.Service
+	commands commands.Commands
 	runner   *runner.Runner
 	models   *llm.Client
 	hub      *eventHub
@@ -61,6 +63,10 @@ func (p *Plugin) Start(h *host.Host) error {
 	p.agents, err = host.Resolve[*agents.Service](h, "agents")
 	if err != nil {
 		return fmt.Errorf("chat: resolve agents: %w", err)
+	}
+	p.commands, err = host.Resolve[commands.Commands](h, "commands")
+	if err != nil {
+		return fmt.Errorf("chat: resolve commands: %w", err)
 	}
 	p.runner, err = host.Resolve[*runner.Runner](h, "runner")
 	if err != nil {
@@ -117,7 +123,7 @@ func (p *Plugin) Start(h *host.Host) error {
 	if err != nil {
 		return err
 	}
-	handler := newPageHandler(webService, chatProduct, sessions, settingsStore, p.agents, p.runner, p.models, p.hub, p.registry)
+	handler := newPageHandler(webService, chatProduct, sessions, settingsStore, p.agents, p.commands, p.runner, p.models, p.hub, p.registry)
 	err = webService.RegisterRoute("GET /chat", handler)
 	if err != nil {
 		return err
@@ -154,6 +160,10 @@ func (p *Plugin) Start(h *host.Host) error {
 	if err != nil {
 		return err
 	}
+	err = webService.RegisterRoute("POST /chat/{sessionID}/commands/{command}", handler)
+	if err != nil {
+		return err
+	}
 	err = webService.RegisterRoute("POST /chat/{sessionID}/stop", handler)
 	if err != nil {
 		return err
@@ -175,6 +185,7 @@ func (p *Plugin) Close() error {
 	p.sessions = nil
 	p.settings = nil
 	p.agents = nil
+	p.commands = nil
 	p.runner = nil
 	p.models = nil
 	p.hub = nil
