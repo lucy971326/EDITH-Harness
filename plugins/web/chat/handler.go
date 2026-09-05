@@ -663,7 +663,7 @@ func (h *PageHandler) message(w nethttp.ResponseWriter, r *nethttp.Request) {
 		return
 	}
 	mode := r.FormValue("mode")
-	if mode != "run" && mode != "steer" && mode != "followup" {
+	if mode != "run" && mode != "steer" {
 		nethttp.Error(w, "未知消息模式", nethttp.StatusBadRequest)
 		return
 	}
@@ -680,11 +680,6 @@ func (h *PageHandler) message(w nethttp.ResponseWriter, r *nethttp.Request) {
 		}
 	case "steer":
 		if err := h.runner.Steer(sessionID, input); err != nil {
-			nethttp.Error(w, err.Error(), nethttp.StatusConflict)
-			return
-		}
-	case "followup":
-		if err := h.runner.FollowUp(sessionID, input); err != nil {
 			nethttp.Error(w, err.Error(), nethttp.StatusConflict)
 			return
 		}

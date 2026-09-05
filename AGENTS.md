@@ -56,7 +56,7 @@ Host（桌子）
 1. 参考 DSH / pi，**不照抄**。Go。静态编译。无动态插件。无热加载。无 AI 自改代码。
 2. **根是插件宿主，不是 Runner。** 聊天只是宿主里的一摊。电影播放器可以零依赖对话。
 3. 对话：`Runner.Run` → `Loop.Run` →（仅 LLM 类）`llm.Stream`。Runner 在 Loop 外面。换 loop = 换 Agent Kind，不是换 Runner。
-4. Loop 是一种程序，不是一场焊死的对话。session 在 `Run` 的参数上。接着问 = 闲着再 `Run`（FollowUp）。还在转时插一句 = `Runner.Steer`。不要 `Chat.Followup`，不要 Inbox。
+4. Loop 是一种程序，不是一场焊死的对话。session 在 `Run` 的参数上。接着问 = 闲着再 `Run`。还在转时插一句 = `Runner.Steer`。不要 `Chat.Followup`，不要 Inbox。
 5. 自定义：Loop / Kind（开发者代码，要编译）vs Agent 设置（用户数据：SystemPrompt、已有 Tool / 用户级 Skill 名）vs SessionSettings（会话数据：AgentID、模型、思考档位、工作区）。项目 Skill 属于工作区，不写进全局 Agent。用户不热加载 Go。Agent 设置和 SessionSettings 都是实时事实来源；Runner 每轮读取一次。
 6. 系统提示词属于 Agent 设置。`agents.Prepare` 现取已选用户 Skill、工作区 Skill 摘要和本轮工作区，拼成最终 System Prompt；Runner 只拿成品交给 Loop。LLM 类 Loop 插件在 `Start` 时自己 Resolve `llm`、`tools`，运行时按本轮工具名单现取 schema。不要另设提示词登记处。
 7. Session **只记对话**，可以分叉。todo / 审批 / 游戏状态放插件自己的结构体。别往账本塞。

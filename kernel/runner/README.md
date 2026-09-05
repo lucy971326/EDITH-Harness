@@ -10,7 +10,7 @@
 - `loops`：按 Kind 运行 Loop；
 - `events`：发布稳定 `RunEvent`。
 
-【提供能力】注册服务 `runner`：`Start`、`Run`、`Steer`、`FollowUp`、`Stop`，并管理活 Run。
+【提供能力】注册服务 `runner`：`Start`、`Run`、`Steer`、`Stop`，并管理活 Run。
 
 【填充插槽】不填。
 

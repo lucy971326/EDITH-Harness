@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -186,50 +185,6 @@ func TestSteerAndStopRejectIdleSession(t *testing.T) {
 	}
 }
 
-func TestFollowUpStartsNextRunAfterCurrentRunEnds(t *testing.T) {
-	ready := make(chan struct{})
-	release := make(chan struct{})
-	var invocations []loops.Invocation
-	var mu sync.Mutex
-	loop := &runnerTestLoop{run: func(ctx context.Context, invocation loops.Invocation) error {
-		mu.Lock()
-		invocations = append(invocations, invocation)
-		count := len(invocations)
-		mu.Unlock()
-		if count == 1 {
-			close(ready)
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-release:
-			}
-		}
-		return nil
-	}}
-	fixture := newRunnerFixture(t, loop)
-	done := make(chan error, 1)
-	go func() { done <- fixture.runner.Run(context.Background(), "session-1", textInput("first")) }()
-	<-ready
-	if err := fixture.runner.FollowUp("session-1", textInput("second")); err != nil {
-		t.Fatal(err)
-	}
-	close(release)
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatal(err)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("follow up did not finish")
-	}
-	if len(invocations) != 2 {
-		t.Fatalf("invocations = %d", len(invocations))
-	}
-	if got := invocations[1].History; len(got) != 2 || got[1].Blocks[0].Text != "second" {
-		t.Fatalf("second history = %#v", got)
-	}
-}
-
 func TestCloseCancelsAndWaitsForManagedRun(t *testing.T) {
 	ready := make(chan struct{})
 	loop := &runnerTestLoop{run: func(ctx context.Context, _ loops.Invocation) error {
@@ -261,7 +216,7 @@ func TestClosePreventsRunFromOpeningAfterItStarts(t *testing.T) {
 	fixture := newRunnerFixture(t, loop)
 	current := &liveRun{toolBlocks: make(map[string]toolBlock)}
 	current.shutdown()
-	err := fixture.runner.runOne(context.Background(), "session-1", textInput("first"), current)
+	err := fixture.runner.runOnePrepared(context.Background(), "session-1", textInput("first"), current, runPreparation{})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("run error = %v", err)
 	}

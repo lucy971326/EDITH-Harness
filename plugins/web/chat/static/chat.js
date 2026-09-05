@@ -10,7 +10,6 @@
     const agent = document.getElementById("agent");
     const model = document.getElementById("model");
     const effort = document.getElementById("reasoning-effort");
-    const mode = document.getElementById("live-mode");
     const send = document.getElementById("send-button");
     const liveSend = document.getElementById("live-send");
     const stop = document.getElementById("stop-button");
@@ -35,8 +34,6 @@
     function setRunning(value) {
       send.classList.toggle("hidden", value);
       send.disabled = value;
-      mode.classList.toggle("hidden", !value);
-      mode.disabled = !value;
       liveSend.classList.toggle("hidden", !value);
       liveSend.disabled = !value;
       stop.classList.toggle("hidden", !value);
@@ -193,7 +190,7 @@
     composer.addEventListener("submit", async (event) => {
       event.preventDefault();
       const fields = new FormData(composer, event.submitter);
-      fields.set("mode", runview.dataset.running === "true" ? mode.value : "run");
+      fields.set("mode", runview.dataset.running === "true" ? "steer" : "run");
       let hasFile = false;
       for (const value of fields.values()) {
         if (value instanceof File && value.name !== "") {

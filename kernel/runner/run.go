@@ -18,17 +18,15 @@ import (
 
 // 活对象。一本 Session 当前尚未结束的一轮运行。
 type liveRun struct {
-	mu              sync.Mutex
-	cancel          context.CancelFunc
-	stopped         bool
-	closing         bool
-	steeringClosed  bool
-	followUpsClosed bool
-	steers          []session.Message
-	followUps       []session.UserMessage
-	afterEntrySeq   uint64
-	runID           string
-	toolBlocks      map[string]toolBlock
+	mu             sync.Mutex
+	cancel         context.CancelFunc
+	stopped        bool
+	closing        bool
+	steeringClosed bool
+	steers         []session.Message
+	afterEntrySeq  uint64
+	runID          string
+	toolBlocks     map[string]toolBlock
 }
 
 // 数据。一轮 Run 在进入 Loop 前读取的一致配置快照。
@@ -92,7 +90,7 @@ func NewRunner(
 	}, nil
 }
 
-// Run 同步执行同一本 Session 的一轮对话，以及已排入的 FollowUp。
+// Run 同步执行同一本 Session 的一轮对话。
 func (r *Runner) Run(ctx context.Context, sessionID string, input session.UserMessage) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -106,7 +104,7 @@ func (r *Runner) Run(ctx context.Context, sessionID string, input session.UserMe
 		return err
 	}
 	defer r.end(sessionID, current)
-	return r.run(ctx, sessionID, input, current, prepared)
+	return r.runOnePrepared(ctx, sessionID, input, current, prepared)
 }
 
 // Start 启动一轮对话并在 Runner 自己的 goroutine 中执行。
@@ -124,43 +122,9 @@ func (r *Runner) Start(ctx context.Context, sessionID string, input session.User
 	}
 	go func() {
 		defer r.end(sessionID, current)
-		_ = r.run(ctx, sessionID, input, current, prepared)
+		_ = r.runOnePrepared(ctx, sessionID, input, current, prepared)
 	}()
 	return nil
-}
-
-func (r *Runner) run(ctx context.Context, sessionID string, input session.UserMessage, current *liveRun, prepared runPreparation) error {
-	err := r.runOnePrepared(ctx, sessionID, input, current, prepared)
-	for {
-		if r.isClosing() {
-			return err
-		}
-		followUp, ok := current.takeFollowUp()
-		if !ok {
-			return err
-		}
-		err = r.runOne(ctx, sessionID, followUp, current)
-	}
-}
-
-// runOne 为下一轮建立可停止的运行身份，再读取这一轮配置。
-func (r *Runner) runOne(parent context.Context, sessionID string, input session.UserMessage, current *liveRun) (err error) {
-	runID, err := newRunID()
-	if err != nil {
-		return err
-	}
-	if !current.openSteering(runID) {
-		return context.Canceled
-	}
-	runCtx, cancel := context.WithCancel(parent)
-	current.setCancel(cancel)
-	defer cancel()
-
-	prepared, err := r.prepare(runCtx, sessionID)
-	if err != nil {
-		return err
-	}
-	return r.executePrepared(runCtx, sessionID, runID, input, current, prepared)
 }
 
 func (r *Runner) prepare(ctx context.Context, sessionID string) (runPreparation, error) {
@@ -271,7 +235,6 @@ func (r *Runner) begin(sessionID string, current *liveRun) error {
 func (r *Runner) end(sessionID string, current *liveRun) {
 	current.mu.Lock()
 	current.steeringClosed = true
-	current.followUpsClosed = true
 	cancel := current.cancel
 	current.mu.Unlock()
 	if cancel != nil {
@@ -348,12 +311,6 @@ func (r *Runner) close() {
 		current.shutdown()
 	}
 	r.wg.Wait()
-}
-
-func (r *Runner) isClosing() bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.closeStarted
 }
 
 func mapEvent(sessionID, runID string, event loops.Event) (RunEvent, error) {
