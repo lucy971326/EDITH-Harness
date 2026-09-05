@@ -1,10 +1,10 @@
 # AGENTS.md
 
-压缩会话、换人、新开对话：先读这篇，再读 `STATUS.md`。方案细节：`docs/设计书.md`。Web UI 细则：`WEB_UI.md`。数据归属与运行文件：`DATA_MODEL.md`。Cordis 对照：`docs/reference/DSH项目心得.md`。不要先翻 DSH / pi 源码。`docs/reference/` 只是偶尔参考，不是我们的方案。
+压缩会话、换人、新开对话：先读这篇，再读 `STATUS.md`。方案细节：`docs/设计书.md`。Web UI 细则：`WEB_UI.md`。数据归属与运行文件：`DATA_MODEL.md`。未完成工作：`docs/plan/future_plan.md`。Cordis 对照：`docs/reference/DSH项目心得.md`。不要先翻 DSH / pi 源码。
 
-冲突：铁律以这篇为准，产品形状以设计书为准。
+冲突：铁律以这篇为准，产品形状以设计书为准。已完成事实只写 STATUS，不另留施工稿。
 
-`docs/reference/` 默认不要改。用户叫写才写。
+`docs/plan/` 只放尚未做完的计划；做完即删，结论写入设计书和 STATUS。`docs/reference/` 只留别人的对照，默认不要改，用户叫写才写。
 
 ### 项目开发 Skills
 
