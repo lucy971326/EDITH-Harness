@@ -41,7 +41,7 @@ func toolEntries(s *delegation.Subagents) []tools.Tool {
 			result.IsError = err != nil
 			return result, marshalErr
 		}),
-		withIdentity("subagent_wait", "Wait for one child's current turn, or query immediately with timeoutSeconds=0. Returns status and result location, not the answer text; use subagent_list to read saved answers. Timeout does not stop the child. Automatic notification and interruption by user steer are not yet available.", func(ctx context.Context, call tools.Call, args waitArgs) (tools.Result, error) {
+		withIdentity("subagent_wait", "Wait for any specified child's new completion (current or later turn). Pass seenNotificationIDs to skip already observed completions. Default 60 seconds; 0 queries immediately. User input wakes this wait; timeout does not stop children. Returns status, turn and notification ID only. Answer text arrives separately as a sourced collaboration message in this same run.", func(ctx context.Context, call tools.Call, args waitArgs) (tools.Result, error) {
 			seconds := 60
 			if args.TimeoutSeconds != nil {
 				seconds = *args.TimeoutSeconds
@@ -49,7 +49,7 @@ func toolEntries(s *delegation.Subagents) []tools.Tool {
 			if seconds < 0 || seconds > 60 {
 				return tools.Result{}, fmt.Errorf("timeoutSeconds must be between 0 and 60")
 			}
-			value, err := s.Wait(ctx, call.SessionID, args.TaskID, time.Duration(seconds)*time.Second)
+			value, err := s.Wait(ctx, call.SessionID, delegation.WaitInput{TaskIDs: args.TaskIDs, SeenNotificationIDs: args.SeenNotificationIDs, Timeout: time.Duration(seconds) * time.Second, InputSignal: call.InputSignal})
 			return jsonResult(value, err)
 		}),
 		withIdentity("subagent_stop", "Request cancellation of your child's current run, not the parent. Records remain available. Use subagent_list or subagent_wait to observe completion.", func(ctx context.Context, call tools.Call, args stopArgs) (tools.Result, error) {

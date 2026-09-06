@@ -45,8 +45,9 @@ type TurnRecord struct {
 	UpdatedAt     time.Time  `json:"updatedAt"`
 }
 
-// 数据。待投递通知记录（本步仅持久化保存，不投递父账本）。
+// 数据。协作通知与投递确认；消息正文从子账本读取。
 type Notification struct {
+	Delivered      bool       `json:"delivered,omitempty"`
 	NotificationID string     `json:"notificationID"`
 	TaskID         string     `json:"taskID"`
 	ChildSessionID string     `json:"childSessionID"`
@@ -127,10 +128,26 @@ type OptionsResult struct {
 
 // 数据。Wait 查询与等待结果。
 type WaitResult struct {
-	TaskID        string     `json:"taskID"`
-	Status        TaskStatus `json:"status"`
-	Turn          int        `json:"turn"`
-	RunID         string     `json:"runID"`
-	ResultEntryID string     `json:"resultEntryID,omitempty"`
-	Error         string     `json:"error,omitempty"`
+	NotificationID string     `json:"notificationID,omitempty"`
+	TaskID         string     `json:"taskID"`
+	Status         TaskStatus `json:"status"`
+	Turn           int        `json:"turn"`
+	RunID          string     `json:"runID"`
+	ResultEntryID  string     `json:"resultEntryID,omitempty"`
+	Error          string     `json:"error,omitempty"`
+}
+
+// 数据。等待指定任务的新完成通知；已见 ID 由调用者显式传回，不确认通知投递。
+type WaitInput struct {
+	TaskIDs             []string
+	SeenNotificationIDs []string
+	Timeout             time.Duration
+	InputSignal         <-chan struct{}
+}
+
+// 数据。等待结束原因及状态快照；正文仍经 Runner 的协作消息路径交付。
+type WaitResponse struct {
+	Reason        string       `json:"reason"`
+	Tasks         []WaitResult `json:"tasks"`
+	Notifications []WaitResult `json:"notifications"`
 }

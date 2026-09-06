@@ -7,74 +7,96 @@ import (
 	"time"
 )
 
-// Wait 等待服务层持久化完成/失败信号，针对指定轮次返回结果，防并发新轮干扰。
-func (s *Subagents) Wait(ctx context.Context, parentSessionID, taskID string, timeout time.Duration) (WaitResult, error) {
+// Wait 等待任一指定任务的新完成通知；不消费协作正文，也不启动或停止 Run。
+func (s *Subagents) Wait(ctx context.Context, parentSessionID string, input WaitInput) (WaitResponse, error) {
 	err := ctx.Err()
 	if err != nil {
-		return WaitResult{}, err
+		return WaitResponse{}, err
 	}
-	if taskID == "" {
-		return WaitResult{}, fmt.Errorf("subagents: empty task id")
+	if parentSessionID == "" || len(input.TaskIDs) == 0 || input.Timeout < 0 || input.Timeout > 60*time.Second {
+		return WaitResponse{}, fmt.Errorf("subagents: parent, task IDs and timeout between 0 and 60 seconds required")
 	}
-
 	s.mu.RLock()
 	if s.closed {
 		s.mu.RUnlock()
-		return WaitResult{}, ErrClosed
+		return WaitResponse{}, ErrClosed
 	}
 	s.inFlight.Add(1)
-	coord := s.coords[taskID]
+	coords := make([]*taskCoord, 0, len(input.TaskIDs))
+	seenTasks := make(map[string]bool)
+	for _, id := range input.TaskIDs {
+		if !seenTasks[id] {
+			coords = append(coords, s.coords[id])
+			seenTasks[id] = true
+		}
+	}
 	s.mu.RUnlock()
 	defer s.inFlight.Done()
-
-	if coord == nil {
-		return WaitResult{}, ErrTaskNotFound
+	seen := make(map[string]bool)
+	for _, id := range input.SeenNotificationIDs {
+		seen[id] = true
 	}
-
-	coord.mu.Lock()
-	if coord.task.ParentSessionID != parentSessionID {
-		coord.mu.Unlock()
-		return WaitResult{}, ErrOwnershipMismatch
-	}
-
-	targetTurn := coord.task.Turn
-	// 若已经不是运行中或超时时间 <= 0，立即返回当前目标轮次的状态
-	if (coord.task.Status != StatusRunning && coord.task.Status != StatusPending) || timeout <= 0 {
-		res, pErr := makeWaitResult(coord.task, targetTurn, coord.persistErr)
-		coord.mu.Unlock()
-		if pErr != nil {
-			return WaitResult{}, fmt.Errorf("%w: %v", ErrPersistFailed, pErr)
-		}
-		return res, nil
-	}
-
-	waitCh := coord.waitCh
-	coord.mu.Unlock()
-
-	timer := time.NewTimer(timeout)
+	timer := time.NewTimer(input.Timeout)
 	defer timer.Stop()
-
-	select {
-	case <-ctx.Done():
-		return WaitResult{}, ctx.Err()
-	case <-s.ctx.Done():
-		return WaitResult{}, ErrClosed
-	case <-timer.C:
-		coord.mu.Lock()
-		res, pErr := makeWaitResult(coord.task, targetTurn, coord.persistErr)
-		coord.mu.Unlock()
-		if pErr != nil {
-			return WaitResult{}, fmt.Errorf("%w: %v", ErrPersistFailed, pErr)
+	wakeReason := ""
+	targetTurns := make(map[*taskCoord]int)
+	for {
+		changed := s.changeSignal()
+		response := WaitResponse{Tasks: []WaitResult{}, Notifications: []WaitResult{}}
+		for _, coord := range coords {
+			if coord == nil {
+				return WaitResponse{}, ErrTaskNotFound
+			}
+			coord.mu.Lock()
+			if coord.task.ParentSessionID != parentSessionID {
+				coord.mu.Unlock()
+				return WaitResponse{}, ErrOwnershipMismatch
+			}
+			if targetTurns[coord] == 0 {
+				targetTurns[coord] = coord.task.Turn
+			}
+			res, pErr := makeWaitResult(coord.task, coord.task.Turn, coord.persistErr)
+			response.Tasks = append(response.Tasks, res)
+			for _, n := range coord.task.Notifications {
+				if n.Turn >= targetTurns[coord] && !seen[n.NotificationID] {
+					response.Notifications = append(response.Notifications, WaitResult{TaskID: n.TaskID, Status: n.Status, Turn: n.Turn, RunID: n.RunID, NotificationID: n.NotificationID, Error: n.Error})
+				}
+			}
+			coord.mu.Unlock()
+			if pErr != nil {
+				return response, fmt.Errorf("%w: %v", ErrPersistFailed, pErr)
+			}
 		}
-		return res, nil
-	case <-waitCh:
-		coord.mu.Lock()
-		res, pErr := makeWaitResult(coord.task, targetTurn, coord.persistErr)
-		coord.mu.Unlock()
-		if pErr != nil {
-			return WaitResult{}, fmt.Errorf("%w: %v", ErrPersistFailed, pErr)
+		if ctx.Err() != nil {
+			return response, ctx.Err()
 		}
-		return res, nil
+		if s.ctx.Err() != nil {
+			return response, ErrClosed
+		}
+		if len(response.Notifications) > 0 {
+			response.Reason = "completed"
+			err = s.deliver(parentSessionID)
+			return response, err
+		}
+		if input.Timeout == 0 {
+			response.Reason = "query"
+			return response, nil
+		}
+		if wakeReason != "" {
+			response.Reason = wakeReason
+			return response, nil
+		}
+		select {
+		case <-ctx.Done():
+			return response, ctx.Err()
+		case <-s.ctx.Done():
+			return response, ErrClosed
+		case <-timer.C:
+			wakeReason = "timeout"
+		case <-input.InputSignal:
+			wakeReason = "input"
+		case <-changed:
+		}
 	}
 }
 
@@ -149,6 +171,9 @@ func (s *Subagents) List(parentSessionID, taskID string) ([]TaskView, error) {
 		task := deepCopyTask(coord.task)
 		if coord.persistErr != nil {
 			persistErrs = append(persistErrs, fmt.Errorf("task %s persist error: %w", coord.task.ID, coord.persistErr))
+		}
+		if coord.deliveryErr != nil {
+			persistErrs = append(persistErrs, coord.deliveryErr)
 		}
 		coord.mu.Unlock()
 		results, err := s.readResults(task)

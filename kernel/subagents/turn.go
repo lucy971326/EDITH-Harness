@@ -43,6 +43,7 @@ func (s *Subagents) startTurn(coord *taskCoord, input session.UserMessage) (stri
 
 // failTurn 收尾未能启动的轮次。调用方持有 coord.mu；错误与唤醒均不依赖后台回调。
 func (s *Subagents) failTurn(coord *taskCoord, cause error) error {
+	defer s.signalChange()
 	task := &coord.task
 	task.Status = StatusFailed
 	if errors.Is(cause, ErrClosed) {
@@ -67,7 +68,6 @@ func (s *Subagents) failTurn(coord *taskCoord, cause error) error {
 	if err != nil {
 		coord.persistErr = errors.Join(coord.persistErr, fmt.Errorf("%w: %w", ErrPersistFailed, err))
 	}
-	close(coord.waitCh)
 	close(coord.finalizingCh)
 	return errors.Join(cause, coord.persistErr)
 }

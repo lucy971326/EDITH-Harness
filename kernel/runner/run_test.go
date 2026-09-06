@@ -1114,7 +1114,7 @@ func TestRunInitialHistoryPrecedesAcceptedSteer(t *testing.T) {
 	}
 	select {
 	case invocation := <-invocationSeen:
-		if len(invocation.History) != 1 || invocation.History[0].Blocks[0].Text != "initial" {
+		if len(invocation.History) != 2 || invocation.History[0].Blocks[0].Text != "initial" || invocation.History[1].Blocks[0].Text != "steer after start" {
 			t.Fatalf("initial history = %#v", invocation.History)
 		}
 	case <-time.After(time.Second):
@@ -1122,7 +1122,7 @@ func TestRunInitialHistoryPrecedesAcceptedSteer(t *testing.T) {
 	}
 	select {
 	case messages := <-checkpointMessages:
-		if len(messages) != 1 || messages[0].Blocks[0].Text != "steer after start" {
+		if len(messages) != 0 {
 			t.Fatalf("checkpoint messages = %#v", messages)
 		}
 	case <-time.After(time.Second):

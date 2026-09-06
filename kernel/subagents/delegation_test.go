@@ -22,7 +22,7 @@ func TestSendRejectsBlankBeforeStartingTurn(t *testing.T) {
 	}
 	f.loop.waitStarted(t)
 	f.loop.release()
-	_, err = f.subagents.Wait(context.Background(), parent, child.TaskID, time.Second)
+	_, err = f.subagents.Wait(context.Background(), parent, WaitInput{TaskIDs: []string{child.TaskID}, Timeout: time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}

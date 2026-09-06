@@ -33,6 +33,7 @@ type subagentsFixture struct {
 	settings  settings.SessionSettingsStore
 	loop      *testLoop
 	dataDir   string
+	events    *events.Registry
 }
 
 func newSubagentsFixture(t *testing.T) subagentsFixture {
@@ -104,7 +105,12 @@ func newSubagentsFixture(t *testing.T) subagentsFixture {
 		t.Fatal(err)
 	}
 
+	eventRegistry, err := host.Resolve[*events.Registry](h, "events")
+	if err != nil {
+		t.Fatal(err)
+	}
 	return subagentsFixture{
+		events:    eventRegistry,
 		host:      h,
 		subagents: subService,
 		runner:    runSvc,
@@ -117,18 +123,20 @@ func newSubagentsFixture(t *testing.T) subagentsFixture {
 
 // 活对象。测试用 Loop 实现。
 type testLoop struct {
-	started         chan struct{}
-	releaseCh       chan struct{}
-	parentStarted   chan struct{}
-	parentReleaseCh chan struct{}
+	parentInvocations chan loops.Invocation
+	started           chan struct{}
+	releaseCh         chan struct{}
+	parentStarted     chan struct{}
+	parentReleaseCh   chan struct{}
 }
 
 func newTestLoop() *testLoop {
 	return &testLoop{
-		started:         make(chan struct{}, 32),
-		releaseCh:       make(chan struct{}, 32),
-		parentStarted:   make(chan struct{}, 32),
-		parentReleaseCh: make(chan struct{}, 32),
+		parentInvocations: make(chan loops.Invocation, 32),
+		started:           make(chan struct{}, 32),
+		releaseCh:         make(chan struct{}, 32),
+		parentStarted:     make(chan struct{}, 32),
+		parentReleaseCh:   make(chan struct{}, 32),
 	}
 }
 
@@ -138,6 +146,7 @@ func (l *testLoop) Definition() loops.Definition {
 
 func (l *testLoop) Run(ctx context.Context, invocation loops.Invocation) error {
 	if invocation.SessionID == "parent-session" {
+		l.parentInvocations <- invocation
 		l.parentStarted <- struct{}{}
 		select {
 		case <-ctx.Done():
@@ -408,7 +417,7 @@ func TestStoreValidationAndIntegrity(t *testing.T) {
 
 	f := newSubagentsFixture(t)
 	defer f.host.Close()
-	_, err = newSubagentsWithStore(f.sessions, f.settings, f.subagents.agents, f.subagents.models, f.runner, store)
+	_, err = newSubagentsWithStore(f.sessions, f.settings, f.subagents.agents, f.subagents.models, f.runner, f.events, store)
 	if err == nil {
 		t.Fatal("expected newSubagentsWithStore to fail on duplicate childSessionID, got nil")
 	}
@@ -624,18 +633,18 @@ func TestSubagentsFastCompletionAndResultBinding(t *testing.T) {
 	f.loop.waitStarted(t)
 	f.loop.release()
 
-	waitRes, err := f.subagents.Wait(context.Background(), parentSessionID, spawnRes.TaskID, 3*time.Second)
+	waitRes, err := f.subagents.Wait(context.Background(), parentSessionID, WaitInput{TaskIDs: []string{spawnRes.TaskID}, Timeout: 3 * time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if waitRes.Status != StatusCompleted {
-		t.Fatalf("expected completed status, got %s", waitRes.Status)
+	if waitRes.Tasks[0].Status != StatusCompleted {
+		t.Fatalf("expected completed status, got %s", waitRes.Tasks[0].Status)
 	}
-	if waitRes.ResultEntryID == "" {
+	if waitRes.Tasks[0].ResultEntryID == "" {
 		t.Fatal("expected non-empty ResultEntryID for completed assistant response")
 	}
-	if waitRes.Turn != 1 {
-		t.Fatalf("expected turn 1, got %d", waitRes.Turn)
+	if waitRes.Tasks[0].Turn != 1 {
+		t.Fatalf("expected turn 1, got %d", waitRes.Tasks[0].Turn)
 	}
 
 	tasks, err := f.subagents.List(parentSessionID, spawnRes.TaskID)
@@ -696,9 +705,9 @@ func TestSubagentsSendIdleAndMultiTurn(t *testing.T) {
 	f.loop.waitStarted(t)
 	f.loop.release()
 
-	waitRes, err := f.subagents.Wait(context.Background(), parentSessionID, spawnRes.TaskID, 3*time.Second)
-	if err != nil || waitRes.Status != StatusCompleted {
-		t.Fatalf("turn 1 wait failed: %v, status=%s", err, waitRes.Status)
+	waitRes, err := f.subagents.Wait(context.Background(), parentSessionID, WaitInput{TaskIDs: []string{spawnRes.TaskID}, Timeout: 3 * time.Second})
+	if err != nil || waitRes.Tasks[0].Status != StatusCompleted {
+		t.Fatalf("turn 1 wait failed: %v, status=%s", err, waitRes.Tasks[0].Status)
 	}
 
 	// 闲时 Send 开启 Turn 2
@@ -718,12 +727,12 @@ func TestSubagentsSendIdleAndMultiTurn(t *testing.T) {
 	f.loop.waitStarted(t)
 	f.loop.release()
 
-	waitRes2, err := f.subagents.Wait(context.Background(), parentSessionID, spawnRes.TaskID, 3*time.Second)
-	if err != nil || waitRes2.Status != StatusCompleted {
-		t.Fatalf("turn 2 wait failed: %v, status=%s", err, waitRes2.Status)
+	waitRes2, err := f.subagents.Wait(context.Background(), parentSessionID, WaitInput{TaskIDs: []string{spawnRes.TaskID}, Timeout: 3 * time.Second})
+	if err != nil || waitRes2.Tasks[0].Status != StatusCompleted {
+		t.Fatalf("turn 2 wait failed: %v, status=%s", err, waitRes2.Tasks[0].Status)
 	}
-	if waitRes2.Turn != 2 {
-		t.Fatalf("expected wait result turn 2, got %d", waitRes2.Turn)
+	if waitRes2.Tasks[0].Turn != 2 {
+		t.Fatalf("expected wait result turn 2, got %d", waitRes2.Tasks[0].Turn)
 	}
 }
 
@@ -747,12 +756,12 @@ func TestTaskPerTurnHistoryAndNotificationsAndDeepCopy(t *testing.T) {
 	f.loop.waitStarted(t)
 	f.loop.release()
 
-	waitRes1, err := f.subagents.Wait(context.Background(), parentSessionID, spawnRes.TaskID, 3*time.Second)
+	waitRes1, err := f.subagents.Wait(context.Background(), parentSessionID, WaitInput{TaskIDs: []string{spawnRes.TaskID}, Timeout: 3 * time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if waitRes1.Status != StatusCompleted {
-		t.Fatalf("turn 1 status: %s", waitRes1.Status)
+	if waitRes1.Tasks[0].Status != StatusCompleted {
+		t.Fatalf("turn 1 status: %s", waitRes1.Tasks[0].Status)
 	}
 
 	// 开启 Turn 2
@@ -769,12 +778,12 @@ func TestTaskPerTurnHistoryAndNotificationsAndDeepCopy(t *testing.T) {
 	f.loop.waitStarted(t)
 	f.loop.release()
 
-	waitRes2, err := f.subagents.Wait(context.Background(), parentSessionID, spawnRes.TaskID, 3*time.Second)
+	waitRes2, err := f.subagents.Wait(context.Background(), parentSessionID, WaitInput{TaskIDs: []string{spawnRes.TaskID}, Timeout: 3 * time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if waitRes2.Status != StatusCompleted {
-		t.Fatalf("turn 2 status: %s", waitRes2.Status)
+	if waitRes2.Tasks[0].Status != StatusCompleted {
+		t.Fatalf("turn 2 status: %s", waitRes2.Tasks[0].Status)
 	}
 
 	tasks, err := f.subagents.List(parentSessionID, spawnRes.TaskID)
@@ -854,8 +863,8 @@ func TestSubagentsSendRunningSteers(t *testing.T) {
 	}
 
 	f.loop.release()
-	waitRes, err := f.subagents.Wait(context.Background(), parentSessionID, spawnRes.TaskID, 3*time.Second)
-	if err != nil || waitRes.Status != StatusCompleted {
+	waitRes, err := f.subagents.Wait(context.Background(), parentSessionID, WaitInput{TaskIDs: []string{spawnRes.TaskID}, Timeout: 3 * time.Second})
+	if err != nil || waitRes.Tasks[0].Status != StatusCompleted {
 		t.Fatalf("wait after steer failed: %v", err)
 	}
 }
@@ -929,7 +938,7 @@ func TestSendBarrierPreventsOldTurnDropped(t *testing.T) {
 		t.Fatalf("expected turn 2, got %d", sendRes.Turn)
 	}
 
-	// 此时验证：Turn 1 已经完整落盘，保留在 Turns 中且状态为 Completed，并且旧 waitCh 已被关闭
+	// 此时验证：Turn 1 已经完整落盘并广播变化，历史状态仍为 Completed。
 	tasks, err := f.subagents.List(parentSessionID, spawnRes.TaskID)
 	if err != nil {
 		t.Fatal(err)
@@ -952,12 +961,12 @@ func TestSendBarrierPreventsOldTurnDropped(t *testing.T) {
 	f.loop.waitStarted(t)
 	f.loop.release()
 
-	waitRes2, err := f.subagents.Wait(context.Background(), parentSessionID, spawnRes.TaskID, 3*time.Second)
+	waitRes2, err := f.subagents.Wait(context.Background(), parentSessionID, WaitInput{TaskIDs: []string{spawnRes.TaskID}, Timeout: 3 * time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if waitRes2.Status != StatusCompleted {
-		t.Fatalf("turn 2 status: %s", waitRes2.Status)
+	if waitRes2.Tasks[0].Status != StatusCompleted {
+		t.Fatalf("turn 2 status: %s", waitRes2.Tasks[0].Status)
 	}
 }
 
@@ -980,11 +989,11 @@ func TestWaitReturnsCompletedTurnDespiteImmediateSend(t *testing.T) {
 	f.loop.waitStarted(t)
 
 	// 启动一个正在等待 Turn 1 完成的 Wait
-	waitDone := make(chan WaitResult, 1)
+	waitDone := make(chan WaitResponse, 1)
 	waitErrCh := make(chan error, 1)
 	waitCtx := &observedWaitContext{Context: context.Background(), entered: make(chan struct{})}
 	go func() {
-		res, err := f.subagents.Wait(waitCtx, parentSessionID, spawnRes.TaskID, 3*time.Second)
+		res, err := f.subagents.Wait(waitCtx, parentSessionID, WaitInput{TaskIDs: []string{spawnRes.TaskID}, Timeout: 3 * time.Second})
 		if err != nil {
 			waitErrCh <- err
 			return
@@ -1014,16 +1023,16 @@ func TestWaitReturnsCompletedTurnDespiteImmediateSend(t *testing.T) {
 		t.Fatalf("expected turn 2, got %d", sendRes.Turn)
 	}
 
-	// 验证先前发起的 Wait 依然精准返回 Turn 1 的 Completed 结果，而不是 Turn 2 的 Running 状态
+	// 新一轮可以更新 Tasks 状态，但不能覆盖先前等待的 Turn 1 完成通知。
 	select {
 	case err := <-waitErrCh:
 		t.Fatalf("Wait failed: %v", err)
 	case res := <-waitDone:
-		if res.Turn != 1 {
-			t.Fatalf("Wait was waiting for turn 1, but returned turn %d", res.Turn)
+		if len(res.Notifications) != 1 || res.Notifications[0].Turn != 1 {
+			t.Fatalf("Wait lost turn 1 notification: %+v", res)
 		}
-		if res.Status != StatusCompleted {
-			t.Fatalf("Wait expected status completed, got %s", res.Status)
+		if res.Notifications[0].Status != StatusCompleted {
+			t.Fatalf("Wait expected status completed, got %s", res.Notifications[0].Status)
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("Wait timed out")
@@ -1071,7 +1080,7 @@ func TestListConcurrentWithSendAndFinish(t *testing.T) {
 
 	f.loop.release()
 
-	_, err = f.subagents.Wait(context.Background(), parentSessionID, spawnRes.TaskID, 3*time.Second)
+	_, err = f.subagents.Wait(context.Background(), parentSessionID, WaitInput{TaskIDs: []string{spawnRes.TaskID}, Timeout: 3 * time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1085,7 +1094,7 @@ func TestListConcurrentWithSendAndFinish(t *testing.T) {
 	f.loop.waitStarted(t)
 	f.loop.release()
 
-	_, err = f.subagents.Wait(context.Background(), parentSessionID, spawnRes.TaskID, 3*time.Second)
+	_, err = f.subagents.Wait(context.Background(), parentSessionID, WaitInput{TaskIDs: []string{spawnRes.TaskID}, Timeout: 3 * time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1117,14 +1126,14 @@ func TestSubagentsStopAndStopFamily(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	waitRes, err := f.subagents.Wait(context.Background(), parentSessionID, spawnRes.TaskID, 3*time.Second)
+	waitRes, err := f.subagents.Wait(context.Background(), parentSessionID, WaitInput{TaskIDs: []string{spawnRes.TaskID}, Timeout: 3 * time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if waitRes.Status != StatusCancelled {
-		t.Fatalf("expected cancelled status, got %s", waitRes.Status)
+	if waitRes.Tasks[0].Status != StatusCancelled {
+		t.Fatalf("expected cancelled status, got %s", waitRes.Tasks[0].Status)
 	}
-	if waitRes.ResultEntryID != "" {
+	if waitRes.Tasks[0].ResultEntryID != "" {
 		t.Fatal("cancelled run must not have ResultEntryID")
 	}
 
@@ -1317,7 +1326,7 @@ func TestOnRunFinishedSaveFailure(t *testing.T) {
 	f.loop.release()
 
 	// Wait 必须感知落盘失败并唤醒退出，绝不能死等
-	waitRes, waitErr := f.subagents.Wait(context.Background(), parentSessionID, spawnRes.TaskID, 3*time.Second)
+	waitRes, waitErr := f.subagents.Wait(context.Background(), parentSessionID, WaitInput{TaskIDs: []string{spawnRes.TaskID}, Timeout: 3 * time.Second})
 	if waitErr == nil {
 		t.Fatalf("expected Wait to fail with ErrPersistFailed, got res=%+v", waitRes)
 	}
@@ -1357,8 +1366,8 @@ func TestSendPendingSaveFailure(t *testing.T) {
 	f.loop.waitStarted(t)
 	f.loop.release()
 
-	waitRes, err := f.subagents.Wait(context.Background(), parentSessionID, spawnRes.TaskID, 3*time.Second)
-	if err != nil || waitRes.Status != StatusCompleted {
+	waitRes, err := f.subagents.Wait(context.Background(), parentSessionID, WaitInput{TaskIDs: []string{spawnRes.TaskID}, Timeout: 3 * time.Second})
+	if err != nil || waitRes.Tasks[0].Status != StatusCompleted {
 		t.Fatalf("turn 1 wait failed: %v", err)
 	}
 
@@ -1381,7 +1390,7 @@ func TestSendPendingSaveFailure(t *testing.T) {
 	if !errors.Is(err, ErrPersistFailed) {
 		t.Fatalf("expected ErrPersistFailed, got %v", err)
 	}
-	_, err = f.subagents.Wait(context.Background(), parentSessionID, spawnRes.TaskID, time.Second)
+	_, err = f.subagents.Wait(context.Background(), parentSessionID, WaitInput{TaskIDs: []string{spawnRes.TaskID}, Timeout: time.Second})
 	if !errors.Is(err, ErrPersistFailed) {
 		t.Fatalf("pending failure not reported by Wait: %v", err)
 	}

@@ -30,10 +30,11 @@ type listArgs struct {
 	TaskID string `json:"taskID,omitempty" jsonschema:"minLength=1"`
 }
 
-// 数据。本步仅支持等待一个孩子的当前轮；0 秒立即查询，省略为 60 秒。
+// 数据。等待任一孩子的新完成结果；已见通知 ID 可避免重复报告。
 type waitArgs struct {
-	TaskID         string `json:"taskID" jsonschema:"minLength=1"`
-	TimeoutSeconds *int   `json:"timeoutSeconds,omitempty" jsonschema:"minimum=0,maximum=60,description=Wait duration in seconds. Default 60; 0 returns immediately. Timeout does not stop the child."`
+	TaskIDs             []string `json:"taskIDs" jsonschema:"minItems=1"`
+	SeenNotificationIDs []string `json:"seenNotificationIDs,omitempty"`
+	TimeoutSeconds      *int     `json:"timeoutSeconds,omitempty" jsonschema:"minimum=0,maximum=60,description=Wait duration in seconds. Default 60; 0 returns immediately. Timeout does not stop the child."`
 }
 
 // 数据。停止单个孩子的参数。

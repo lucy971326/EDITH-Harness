@@ -28,13 +28,15 @@ const (
 
 // 活对象。一本 Session 当前尚未结束的一轮运行。
 type liveRun struct {
-	mu            sync.Mutex
-	cancel        context.CancelFunc
-	steeringState steeringState
-	steers        []session.Message
-	afterEntrySeq uint64
-	runID         string
-	settings      settings.SessionSettings
+	mu                sync.Mutex
+	cancel            context.CancelFunc
+	steeringState     steeringState
+	steers            []session.Message
+	inputErr          error
+	inputPublications sync.WaitGroup
+	afterEntrySeq     uint64
+	runID             string
+	settings          settings.SessionSettings
 	// 当前代次的通道在有待处理 Steer 时关闭广播；Checkpoint 消费后才换代次。
 	inputSignal chan struct{}
 	toolBlocks  map[string]toolBlock
@@ -255,6 +257,12 @@ func (r *Runner) executePrepared(runCtx context.Context, sessionID, runID string
 	loop := preparation.loop
 	runStartedAttempted := false
 	defer func() {
+		// 不再接收协作输入后，等待已落账输入的事件发布结束，保留迟到的发布错误。
+		current.closeSteering()
+		current.inputPublications.Wait()
+		current.mu.Lock()
+		err = errors.Join(err, current.inputErr)
+		current.mu.Unlock()
 		if !runStartedAttempted {
 			return
 		}
@@ -299,6 +307,12 @@ func (r *Runner) executePrepared(runCtx context.Context, sessionID, runID string
 	if err = r.publish(runCtx, RunEvent{SessionID: sessionID, RunID: runID, Kind: RunStarted, AfterEntrySeq: entry.Seq}); err != nil {
 		return err
 	}
+	// 启动通知投递的协作输入进入初始历史，所有 Loop 的首次请求都能看到。
+	initial, err := r.checkpoint(current, loops.CheckpointContinue)
+	if err != nil {
+		return err
+	}
+	history = append(history, initial...)
 
 	invocation := loops.Invocation{
 		SessionID:    sessionID,

@@ -236,9 +236,9 @@ func TestSchemaAndCallerIdentity(t *testing.T) {
 		{"subagent_spawn", `{"description":"job","reasoningEffort":"unknown"}`},
 		{"subagent_send", `{"taskID":"x","text":"hi","model":"other"}`},
 		{"subagent_send", `{"taskID":"x","text":"   "}`},
-		{"subagent_wait", `{"taskID":"x","timeoutSeconds":-1}`},
-		{"subagent_wait", `{"taskID":"x","timeoutSeconds":61}`},
-		{"subagent_wait", `{"taskID":"x","timeoutSeconds":0.5}`},
+		{"subagent_wait", `{"taskIDs":["x"],"timeoutSeconds":-1}`},
+		{"subagent_wait", `{"taskIDs":["x"],"timeoutSeconds":61}`},
+		{"subagent_wait", `{"taskIDs":["x"],"timeoutSeconds":0.5}`},
 		{"subagent_stop", "{}"},
 	} {
 		result := f.call(t, tc.name, tc.args)
@@ -286,8 +286,9 @@ func TestToolLifecycleAndIsolation(t *testing.T) {
 		t.Fatalf("wrong inheritance or copied parent history: %+v", invocation)
 	}
 	taskArgs := `{"taskID":"` + child.TaskID + `"}`
-	wait := decode[delegation.WaitResult](t, f.call(t, "subagent_wait", `{"taskID":"`+child.TaskID+`","timeoutSeconds":0}`))
-	if wait.Status != delegation.StatusRunning {
+	waitArgs := `{"taskIDs":["` + child.TaskID + `"]}`
+	wait := decode[delegation.WaitResponse](t, f.call(t, "subagent_wait", `{"taskIDs":["`+child.TaskID+`"],"timeoutSeconds":0}`))
+	if wait.Tasks[0].Status != delegation.StatusRunning {
 		t.Fatalf("immediate wait: %+v", wait)
 	}
 	// 孩子即使有工具权限也不能派孙子。
@@ -299,7 +300,11 @@ func TestToolLifecycleAndIsolation(t *testing.T) {
 	intruder := f
 	intruder.parent.SessionID = "intruder"
 	for _, name := range []string{"subagent_list", "subagent_wait", "subagent_stop"} {
-		if !intruder.call(t, name, taskArgs).IsError {
+		args := taskArgs
+		if name == "subagent_wait" {
+			args = waitArgs
+		}
+		if !intruder.call(t, name, args).IsError {
 			t.Fatalf("%s allowed another parent's child", name)
 		}
 	}
@@ -312,8 +317,8 @@ func TestToolLifecycleAndIsolation(t *testing.T) {
 		t.Fatalf("busy send: %+v", busy)
 	}
 	f.loop.release <- struct{}{}
-	wait = decode[delegation.WaitResult](t, f.call(t, "subagent_wait", taskArgs))
-	if wait.Status != delegation.StatusCompleted || wait.ResultEntryID == "" {
+	wait = decode[delegation.WaitResponse](t, f.call(t, "subagent_wait", waitArgs))
+	if wait.Tasks[0].Status != delegation.StatusCompleted || wait.Tasks[0].ResultEntryID == "" {
 		t.Fatalf("completion: %+v", wait)
 	}
 	list := decode[listResult](t, f.call(t, "subagent_list", taskArgs))
@@ -331,7 +336,7 @@ func TestToolLifecycleAndIsolation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err = f.registry.Call(ctx, tools.Call{Name: "subagent_wait", Allow: []string{"subagent_wait"},
-		Arguments: json.RawMessage(taskArgs), SessionID: "parent", RunID: f.parent.RunID, ToolCallID: "wait"})
+		Arguments: json.RawMessage(waitArgs), SessionID: "parent", RunID: f.parent.RunID, ToolCallID: "wait"})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("wait swallowed cancellation: %v", err)
 	}
@@ -339,8 +344,8 @@ func TestToolLifecycleAndIsolation(t *testing.T) {
 	if !stopped.StopRequested {
 		t.Fatal("stop request missing")
 	}
-	wait = decode[delegation.WaitResult](t, f.call(t, "subagent_wait", taskArgs))
-	if wait.Status != delegation.StatusCancelled || wait.Turn != 2 {
+	wait = decode[delegation.WaitResponse](t, f.call(t, "subagent_wait", waitArgs))
+	if wait.Tasks[0].Status != delegation.StatusCancelled || wait.Tasks[0].Turn != 2 {
 		t.Fatalf("cancelled result: %+v", wait)
 	}
 	_, active := f.runner.State("parent")
@@ -379,7 +384,7 @@ func TestIndependentSettingOverrides(t *testing.T) {
 			t.Fatalf("runner received wrong settings: %+v", invocation.LLMConfig)
 		}
 		f.loop.release <- struct{}{}
-		decode[delegation.WaitResult](t, f.call(t, "subagent_wait", `{"taskID":"`+child.TaskID+`"}`))
+		decode[delegation.WaitResponse](t, f.call(t, "subagent_wait", `{"taskIDs":["`+child.TaskID+`"]}`))
 	}
 }
 
@@ -402,8 +407,8 @@ func TestSendPublicationFailureDoesNotRepeatInput(t *testing.T) {
 	if !result.IsError {
 		t.Fatal("send hid publication failure")
 	}
-	wait := decode[delegation.WaitResult](t, f.call(t, "subagent_wait", `{"taskID":"`+child.TaskID+`"}`))
-	if wait.Turn != 1 || wait.Status != delegation.StatusCancelled {
+	wait := decode[delegation.WaitResponse](t, f.call(t, "subagent_wait", `{"taskIDs":["`+child.TaskID+`"]}`))
+	if wait.Tasks[0].Turn != 1 || wait.Tasks[0].Status != delegation.StatusCancelled {
 		t.Fatalf("send started a replacement run after ambiguous error: %+v", wait)
 	}
 	sess, err := f.sessions.Get(child.ChildSessionID)
@@ -434,7 +439,7 @@ func TestListKeepsRecordsWhenPersistenceFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.loop.release <- struct{}{}
-	if !f.call(t, "subagent_wait", `{"taskID":"`+child.TaskID+`"}`).IsError {
+	if !f.call(t, "subagent_wait", `{"taskIDs":["`+child.TaskID+`"]}`).IsError {
 		t.Fatal("wait hid persistence failure")
 	}
 	result := f.call(t, "subagent_list", "{}")

@@ -146,7 +146,7 @@ func (s *Subagents) Send(ctx context.Context, parentSessionID, taskID string, in
 	coord.task.Turns = append(coord.task.Turns, turnRec)
 
 	taskToSave := deepCopyTask(coord.task)
-	coord.waitCh = make(chan struct{})
+	defer s.signalChange()
 	coord.finalizingCh = make(chan struct{})
 	coord.persistErr = nil
 

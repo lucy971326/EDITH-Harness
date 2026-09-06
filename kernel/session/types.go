@@ -13,10 +13,11 @@ type SessionMeta struct {
 type Role string
 
 const (
-	RoleUser      Role = "user"
-	RoleAssistant Role = "assistant"
-	RoleTool      Role = "tool"
-	RoleSystem    Role = "system"
+	RoleUser          Role = "user"
+	RoleAssistant     Role = "assistant"
+	RoleTool          Role = "tool"
+	RoleSystem        Role = "system"
+	RoleCollaboration Role = "collaboration"
 )
 
 // 数据。粘贴进来的图。Data 是 base64。工作区路径不当 Media，以后走 read_image。
@@ -52,9 +53,12 @@ type Block struct {
 
 // 数据。账本中的一个完整节点内容。
 type Message struct {
-	RunID  string  `json:"runID,omitempty"`
-	Role   Role    `json:"role"`
-	Blocks []Block `json:"blocks"`
+	MessageID       string  `json:"messageID,omitempty"`
+	SourceSessionID string  `json:"sourceSessionID,omitempty"`
+	SourceRunID     string  `json:"sourceRunID,omitempty"`
+	RunID           string  `json:"runID,omitempty"`
+	Role            Role    `json:"role"`
+	Blocks          []Block `json:"blocks"`
 }
 
 // 数据。当前分叉上一条已落账消息及其稳定位置。

@@ -18,6 +18,7 @@
 │
 ├─ subagents/tasks/<task-id>.json
 │  委派关系、逐轮状态与结果位置、待投递通知；版本化 JSON 原子替换
+│  通知的 delivered 只在 Runner 确认父账本已有该消息 ID 后保存；失败保留待重试
 │
 └─ sessions/<session-id>/
    ├─ messages.jsonl
@@ -36,6 +37,7 @@
 Session
 └─ 对话发生过什么
    用户、助手、工具调用、工具结果；可分叉
+   collaboration 是带来源的协作消息，不是用户输入或系统指令
 
 SessionSettings
 └─ 这场会话怎样运行
@@ -96,7 +98,7 @@ Skill 正文
 id      这一条是谁
 parent  接在前一条哪里；支持分叉
 seq     全局写入顺序
-body    本条事实：role、runID、blocks
+body    本条事实：role、runID、blocks；协作消息另带 messageID、sourceSessionID、sourceRunID
 ```
 
 ```text
@@ -110,6 +112,8 @@ messages.jsonl
 ```
 
 `blocks` 只记录实际发生的对话内容：`text`、`reasoning`、`tool-call`、`tool-result`、`summary`。页面长什么样、哪些内容展开，不是账本事实。`summary` 是压缩落账的助手块；`History()` 把它收成普通文本再发给模型。
+
+协作消息在账本使用 `role=collaboration`，`runID` 是接收它的父 Run，`sourceSessionID/sourceRunID` 是孩子的来源。启动前失败没有真实子 Run，来源 RunID 留空，不捏造身份。发给模型时转换成带来源说明的普通输入，不提升为系统指令。通知重试按父账本中实际存在的 `messageID` 去重，不靠内存中的“已发送”判断。
 
 ## 修改前四问
 

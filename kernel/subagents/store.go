@@ -84,6 +84,17 @@ func validateTask(task Task, expectedID string) error {
 	if last.Status != task.Status || last.RunID != task.CurrentRunID || last.ResultEntryID != task.ResultEntryID {
 		return fmt.Errorf("%w: current task disagrees with turn history", ErrInvalidTaskData)
 	}
+	seenNotifications := make(map[string]bool)
+	for _, notification := range task.Notifications {
+		if notification.Turn < 1 || notification.Turn > len(task.Turns) || notification.TaskID != task.ID || notification.ChildSessionID != task.ChildSessionID || notification.NotificationID != notificationID(task.ID, notification.Turn) || seenNotifications[notification.NotificationID] {
+			return fmt.Errorf("%w: mismatched or duplicate notification identity", ErrInvalidTaskData)
+		}
+		seenNotifications[notification.NotificationID] = true
+		rec := task.Turns[notification.Turn-1]
+		if rec.Status == StatusPending || rec.Status == StatusRunning || notification.RunID != rec.RunID || notification.Status != rec.Status || notification.ResultEntryID != rec.ResultEntryID || notification.Error != rec.Error {
+			return fmt.Errorf("%w: notification disagrees with completed turn", ErrInvalidTaskData)
+		}
+	}
 	return nil
 }
 

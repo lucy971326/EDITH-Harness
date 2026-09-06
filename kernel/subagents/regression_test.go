@@ -70,7 +70,7 @@ func TestCloseWhileSendReadsSettings(t *testing.T) {
 	}
 	f.loop.waitStarted(t)
 	f.loop.release()
-	_, err = f.subagents.Wait(context.Background(), parent, child.TaskID, time.Second)
+	_, err = f.subagents.Wait(context.Background(), parent, WaitInput{TaskIDs: []string{child.TaskID}, Timeout: time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +144,7 @@ func TestSpawnSaveFailuresRemainObservable(t *testing.T) {
 			if listErr == nil || len(tasks) != 1 {
 				t.Fatalf("list lost failure: %v, %+v", listErr, tasks)
 			}
-			_, err = f.subagents.Wait(context.Background(), parent, tasks[0].ID, time.Second)
+			_, err = f.subagents.Wait(context.Background(), parent, WaitInput{TaskIDs: []string{tasks[0].ID}, Timeout: time.Second})
 			if !errors.Is(err, ErrPersistFailed) {
 				t.Fatalf("wait lost failure: %v", err)
 			}
@@ -170,8 +170,8 @@ func TestFastCompletionPersistsTerminalState(t *testing.T) {
 			t.Fatal(err)
 		}
 		f.loop.waitStarted(t)
-		res, err := f.subagents.Wait(context.Background(), parent, child.TaskID, time.Second)
-		if err != nil || res.Status != StatusCompleted {
+		res, err := f.subagents.Wait(context.Background(), parent, WaitInput{TaskIDs: []string{child.TaskID}, Timeout: time.Second})
+		if err != nil || res.Tasks[0].Status != StatusCompleted {
 			t.Fatalf("wait: %+v, %v", res, err)
 		}
 		task, err := f.subagents.store.loadTask(child.TaskID)
@@ -196,7 +196,7 @@ func TestRecoveryKeepsHistoryWithoutResuming(t *testing.T) {
 	}
 	f.loop.waitStarted(t)
 	f.loop.release()
-	_, err = f.subagents.Wait(context.Background(), parent, child.TaskID, time.Second)
+	_, err = f.subagents.Wait(context.Background(), parent, WaitInput{TaskIDs: []string{child.TaskID}, Timeout: time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +220,7 @@ func TestRecoveryKeepsHistoryWithoutResuming(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	recovered, err := NewSubagents(f.sessions, f.settings, f.subagents.agents, f.subagents.models, f.runner, dir)
+	recovered, err := NewSubagents(f.sessions, f.settings, f.subagents.agents, f.subagents.models, f.runner, f.events, dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,7 +232,7 @@ func TestRecoveryKeepsHistoryWithoutResuming(t *testing.T) {
 	task := tasks[0]
 	if task.Status != StatusInterrupted || task.Turns[1].Status != StatusInterrupted ||
 		task.Turns[0].Status != StatusCompleted || task.Turns[0].ResultEntryID == "" ||
-		len(task.Notifications) != 1 || task.Notifications[0] != snapshot.Notifications[0] {
+		len(task.Notifications) != 2 || task.Notifications[0].NotificationID != snapshot.Notifications[0].NotificationID || task.Notifications[1].Status != StatusInterrupted {
 		t.Fatalf("recovery lost history: %+v", task)
 	}
 	if !recovered.IsChildSession(child.ChildSessionID) || recovered.coords[child.TaskID].activeHandle != nil {

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"harness/kernel/agents"
+	"harness/kernel/events"
 	"harness/kernel/llm"
 	"harness/kernel/runner"
 	"harness/kernel/session"
@@ -23,7 +24,7 @@ type taskCoord struct {
 	task         Task
 	activeHandle *runner.RunHandle
 	persistErr   error
-	waitCh       chan struct{}
+	deliveryErr  error
 	finalizingCh chan struct{}
 }
 
@@ -49,7 +50,10 @@ type Subagents struct {
 	parentTasks   map[string][]string // parentSessionID -> []taskID
 	coords        map[string]*taskCoord
 
-	wg sync.WaitGroup
+	wg          sync.WaitGroup
+	deliveryMu  sync.Mutex
+	changed     chan struct{}
+	unsubscribe func()
 }
 
 // NewSubagents 组装子会话委派服务并恢复已有状态。subagentsDir 为 ~/.harness/subagents 目录。
@@ -59,13 +63,14 @@ func NewSubagents(
 	agentService *agents.Service,
 	modelClient *llm.Client,
 	runnerService *runner.Runner,
+	eventRegistry *events.Registry,
 	subagentsDir string,
 ) (*Subagents, error) {
 	store, err := newTaskStore(subagentsDir)
 	if err != nil {
 		return nil, fmt.Errorf("subagents: init store: %w", err)
 	}
-	return newSubagentsWithStore(sessions, settingsStore, agentService, modelClient, runnerService, store)
+	return newSubagentsWithStore(sessions, settingsStore, agentService, modelClient, runnerService, eventRegistry, store)
 }
 
 func newSubagentsWithStore(
@@ -74,6 +79,7 @@ func newSubagentsWithStore(
 	agentService *agents.Service,
 	modelClient *llm.Client,
 	runnerService *runner.Runner,
+	eventRegistry *events.Registry,
 	store *taskStore,
 ) (*Subagents, error) {
 	if sessions == nil {
@@ -94,6 +100,9 @@ func newSubagentsWithStore(
 	if store == nil {
 		return nil, fmt.Errorf("subagents: nil store")
 	}
+	if eventRegistry == nil {
+		return nil, fmt.Errorf("subagents: nil events")
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Subagents{
@@ -109,6 +118,7 @@ func newSubagentsWithStore(
 		childSessions: make(map[string]string),
 		parentTasks:   make(map[string][]string),
 		coords:        make(map[string]*taskCoord),
+		changed:       make(chan struct{}),
 	}
 
 	// 启动恢复：加载所有持久化任务，未完成运行标记中断
@@ -130,7 +140,9 @@ func newSubagentsWithStore(
 			return nil, fmt.Errorf("subagents: duplicate child session ID %q in tasks %q and %q during recovery", task.ChildSessionID, prevID, task.ID)
 		}
 
+		recovered := false
 		if task.Status == StatusPending || task.Status == StatusRunning {
+			recovered = true
 			task.Status = StatusInterrupted
 			task.Error = "interrupted by restart"
 			now := time.Now().UTC()
@@ -140,6 +152,22 @@ func newSubagentsWithStore(
 				task.Turns[len(task.Turns)-1].Error = task.Error
 				task.Turns[len(task.Turns)-1].UpdatedAt = now
 			}
+		}
+		// 兼容较早记录：中断等终态可能还没有生成通知，按同一轮稳定 ID 补齐。
+		for _, rec := range task.Turns {
+			found := false
+			for _, n := range task.Notifications {
+				if n.Turn == rec.Turn {
+					found = true
+					break
+				}
+			}
+			if !found {
+				task.Notifications = append(task.Notifications, Notification{NotificationID: notificationID(task.ID, rec.Turn), TaskID: task.ID, ChildSessionID: task.ChildSessionID, RunID: rec.RunID, Turn: rec.Turn, Status: rec.Status, ResultEntryID: rec.ResultEntryID, Error: rec.Error, CreatedAt: rec.UpdatedAt})
+				recovered = true
+			}
+		}
+		if recovered {
 			err = store.saveTask(task)
 			if err != nil {
 				cancel()
@@ -153,11 +181,22 @@ func newSubagentsWithStore(
 		close(closedCh)
 		s.coords[task.ID] = &taskCoord{
 			task:         task,
-			waitCh:       closedCh,
 			finalizingCh: closedCh,
 		}
 	}
 
+	s.unsubscribe, err = events.Subscribe(eventRegistry, func(ctx context.Context, event runner.RunEvent) error {
+		if event.Kind != runner.RunStarted {
+			return nil
+		}
+		return s.deliver(event.SessionID)
+	})
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	s.wg.Add(1)
+	go s.deliverLoop()
 	return s, nil
 }
 
@@ -203,6 +242,7 @@ func (s *Subagents) Close() error {
 	s.closeOnce.Do(func() {
 		// 1. 取消服务生命周期 context，立即使所有待运行/进行中启动操作感知关闭
 		s.cancel()
+		s.unsubscribe()
 
 		s.mu.Lock()
 		s.closed = true
@@ -226,6 +266,9 @@ func (s *Subagents) Close() error {
 			coord.mu.Lock()
 			if coord.persistErr != nil {
 				persistErrs = append(persistErrs, fmt.Errorf("task %s persist error: %w", coord.task.ID, coord.persistErr))
+			}
+			if coord.deliveryErr != nil {
+				persistErrs = append(persistErrs, coord.deliveryErr)
 			}
 			coord.mu.Unlock()
 		}
@@ -324,20 +367,15 @@ func (s *Subagents) onRunFinished(taskID string, turn int, res runner.RunResult,
 
 	// 同一任务的状态更新与落盘串行，查询只能看到已完成的落盘尝试。
 	saveErr := s.store.saveTask(coord.task)
-	defer coord.mu.Unlock()
+	defer func() {
+		coord.mu.Unlock()
+		s.signalChange()
+	}()
 	if saveErr != nil {
 		coord.persistErr = errors.Join(coord.persistErr, saveErr)
 		coord.task.Error = fmt.Sprintf("persist completed task: %v", saveErr)
 	}
 
-	// 解除 Wait 等待通道
-	if coord.waitCh != nil {
-		select {
-		case <-coord.waitCh:
-		default:
-			close(coord.waitCh)
-		}
-	}
 	// 解除 finalizingCh 通道，通知 Send 等待方旧轮次已完全落盘收尾
 	if coord.finalizingCh != nil {
 		select {

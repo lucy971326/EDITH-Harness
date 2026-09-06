@@ -189,6 +189,16 @@ func (s *Session) Head() string {
 }
 
 func checkMessage(m Message) error {
+	if m.Role == RoleCollaboration {
+		if m.MessageID == "" || m.SourceSessionID == "" {
+			return fmt.Errorf("session: collaboration requires message and source identity")
+		}
+		for _, block := range m.Blocks {
+			if block.Kind != "text" {
+				return fmt.Errorf("session: collaboration only accepts text")
+			}
+		}
+	}
 	if m.Role == RoleTool && (len(m.Blocks) != 1 || m.Blocks[0].Kind != "tool-result") {
 		return fmt.Errorf("session: tool message needs exactly one tool-result block")
 	}

@@ -136,7 +136,6 @@ func (s *Subagents) Spawn(ctx context.Context, input SpawnInput) (SpawnResult, e
 
 	coord := &taskCoord{
 		task:         task,
-		waitCh:       make(chan struct{}),
 		finalizingCh: make(chan struct{}),
 	}
 	coord.mu.Lock()

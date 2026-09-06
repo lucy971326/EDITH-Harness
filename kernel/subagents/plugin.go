@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"harness/kernel/agents"
+	"harness/kernel/events"
 	"harness/kernel/host"
 	"harness/kernel/llm"
 	"harness/kernel/runner"
@@ -48,7 +49,11 @@ func (p *Plugin) Start(h *host.Host) error {
 	}
 
 	subagentsDir := filepath.Join(p.dir, "subagents")
-	s, err := NewSubagents(sessions, settingsStore, agentService, modelClient, runService, subagentsDir)
+	eventRegistry, err := host.Resolve[*events.Registry](h, "events")
+	if err != nil {
+		return err
+	}
+	s, err := NewSubagents(sessions, settingsStore, agentService, modelClient, runService, eventRegistry, subagentsDir)
 	if err != nil {
 		return fmt.Errorf("subagents plugin: new subagents: %w", err)
 	}
