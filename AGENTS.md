@@ -55,7 +55,7 @@ Host（桌子）
 
 1. 参考 DSH / pi，**不照抄**。Go。静态编译。无动态插件。无热加载。无 AI 自改代码。
 2. **根是插件宿主，不是 Runner。** 聊天只是宿主里的一摊。电影播放器可以零依赖对话。
-3. 聊天产品通过 `ChatService` 做创建、发送、Steer、停止、分叉与聊天查询；它再调用 `Runner.Start` / `Steer` / `Stop`。Runner 在 Loop 外面：`Runner.Run` → `Loop.Run` →（仅 LLM 类）`llm.Stream`。换 loop = 换 Agent Kind，不是换 Runner。
+3. 聊天产品通过 `ChatService` 做创建、发送、Steer、停止、分叉与聊天查询；发送与插话调用 `Runner.Start` / `Steer`，用户停止经 `Subagents.StopFamily` 取消父与孩子。Runner 在 Loop 外面：`Runner.Run` → `Loop.Run` →（仅 LLM 类）`llm.Stream`。换 loop = 换 Agent Kind，不是换 Runner。
 4. Loop 是一种程序，不是一场焊死的对话。session 在 `Run` 的参数上。接着问 = 闲着再 `Run`。还在转时插一句 = `Runner.Steer`。不要 `Chat.Followup`，不要 Inbox。
 5. 自定义：Loop / Kind（开发者代码，要编译）vs Agent 设置（用户数据：SystemPrompt、已有普通 Tool）vs SessionSettings（会话数据：AgentID、模型、思考档位、工作区）。Skills 与 MCP 按来源自动可用，不写进 Agent。用户不热加载 Go。Agent 设置和 SessionSettings 都是实时事实来源；Runner 每轮读取一次。
 6. 系统提示词属于 Agent 设置。`agents.Prepare` 现取当前作用域 Skills 摘要、已启用 MCP 说明和本轮工作区，拼成最终 System Prompt；Runner 只拿成品交给 Loop。LLM 类 Loop 插件在 `Start` 时自己 Resolve `llm`、`tools`，运行时按本轮工具名单现取 schema。不要另设提示词登记处。

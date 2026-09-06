@@ -10,7 +10,7 @@ import (
 )
 
 // Send 向指定孩子追加要求：空闲时开启新轮次并先存意图，忙时 Steer 且报错时不盲目重发。
-func (s *Subagents) Send(ctx context.Context, parentSessionID, taskID string, input session.UserMessage) (SendResult, error) {
+func (s *Subagents) Send(ctx context.Context, parentSessionID, parentRunID, taskID string, input session.UserMessage) (SendResult, error) {
 	err := ctx.Err()
 	if err != nil {
 		return SendResult{}, err
@@ -36,11 +36,19 @@ func (s *Subagents) Send(ctx context.Context, parentSessionID, taskID string, in
 	}
 	s.inFlight.Add(1)
 	coord := s.coords[taskID]
+	var stopGeneration uint64
+	if coord != nil {
+		stopGeneration = coord.stopGeneration
+	}
 	s.mu.RUnlock()
 	defer s.inFlight.Done()
 
 	if coord == nil {
 		return SendResult{}, ErrTaskNotFound
+	}
+	permit, err := s.admit(parentSessionID, parentRunID)
+	if err != nil {
+		return SendResult{}, err
 	}
 
 	coord.mu.Lock()
@@ -52,6 +60,17 @@ func (s *Subagents) Send(ctx context.Context, parentSessionID, taskID string, in
 		}
 		if coord.task.ParentSessionID != parentSessionID {
 			return SendResult{}, ErrOwnershipMismatch
+		}
+		s.mu.RLock()
+		err = s.admissionErrorLocked(permit)
+		childStopped := coord.stopRequested
+		crossedChildStop := coord.stopGeneration != stopGeneration
+		s.mu.RUnlock()
+		if err != nil {
+			return SendResult{}, err
+		}
+		if crossedChildStop {
+			return SendResult{}, ErrTaskStopped
 		}
 
 		// 检查是否有活跃的 handle
@@ -91,6 +110,9 @@ func (s *Subagents) Send(ctx context.Context, parentSessionID, taskID string, in
 					coord.activeHandle = nil
 				}
 			default:
+				if childStopped {
+					return SendResult{}, ErrTaskStopped
+				}
 				// 孩子正在运行中：通过 Steer 追加
 				err := s.runner.Steer(coord.task.ChildSessionID, input)
 				if err != nil {
@@ -126,6 +148,19 @@ func (s *Subagents) Send(ctx context.Context, parentSessionID, taskID string, in
 	}
 
 	// 孩子当前处于空闲状态（正常完成 / 运行失败 / 取消 / 重启中断）：开启新轮次
+	s.mu.Lock()
+	err = s.admissionErrorLocked(permit)
+	if err == nil && coord.stopGeneration != stopGeneration {
+		err = ErrTaskStopped
+	}
+	if err == nil {
+		coord.admission = permit
+		coord.stopRequested = false
+	}
+	s.mu.Unlock()
+	if err != nil {
+		return SendResult{}, err
+	}
 	newTurn := coord.task.Turn + 1
 
 	// 新轮次先保存 starting/pending 意图（保证重启知道未完成）

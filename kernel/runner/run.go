@@ -36,7 +36,7 @@ type liveRun struct {
 	inputPublications sync.WaitGroup
 	afterEntrySeq     uint64
 	runID             string
-	settings          settings.SessionSettings
+	settings          *settings.SessionSettings // 准备完成前为空，不能拿半成品当配置快照。
 	// 当前代次的通道在有待处理 Steer 时关闭广播；Checkpoint 消费后才换代次。
 	inputSignal chan struct{}
 	toolBlocks  map[string]toolBlock
@@ -156,14 +156,11 @@ func NewRunner(
 
 // Run 同步执行同一本 Session 的一轮对话。
 func (r *Runner) Run(ctx context.Context, sessionID string, input session.UserMessage) (err error) {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	prepared, err := r.prepare(ctx, sessionID)
+	err = ctx.Err()
 	if err != nil {
 		return err
 	}
-	handle, current, runCtx, err := r.openRun(ctx, sessionID, prepared.settings)
+	handle, current, runCtx, err := r.openRun(ctx, sessionID)
 	if err != nil {
 		return err
 	}
@@ -172,20 +169,28 @@ func (r *Runner) Run(ctx context.Context, sessionID string, input session.UserMe
 		handle.complete(runResult(handle.RunID(), err))
 		r.wg.Done()
 	}()
+	prepared, err := r.prepareActive(runCtx, sessionID, current, handle)
+	if err != nil {
+		return err
+	}
 	return r.executePrepared(runCtx, sessionID, handle.RunID(), input, current, prepared)
 }
 
 // Start 启动一轮对话并在 Runner 自己的 goroutine 中执行。
 func (r *Runner) Start(ctx context.Context, sessionID string, input session.UserMessage) (*RunHandle, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	prepared, err := r.prepare(ctx, sessionID)
+	err := ctx.Err()
 	if err != nil {
 		return nil, err
 	}
-	handle, current, runCtx, err := r.openRun(ctx, sessionID, prepared.settings)
+	handle, current, runCtx, err := r.openRun(ctx, sessionID)
 	if err != nil {
+		return nil, err
+	}
+	prepared, err := r.prepareActive(runCtx, sessionID, current, handle)
+	if err != nil {
+		r.release(sessionID, current)
+		handle.complete(runResult(handle.RunID(), err))
+		r.wg.Done()
 		return nil, err
 	}
 	go func() {
@@ -200,15 +205,15 @@ func (r *Runner) Start(ctx context.Context, sessionID string, input session.User
 	return handle, nil
 }
 
-func (r *Runner) openRun(ctx context.Context, sessionID string, runSettings settings.SessionSettings) (*RunHandle, *liveRun, context.Context, error) {
-	runID, current, runCtx, err := r.openLive(ctx, sessionID, runSettings)
+func (r *Runner) openRun(ctx context.Context, sessionID string) (*RunHandle, *liveRun, context.Context, error) {
+	runID, current, runCtx, err := r.openLive(ctx, sessionID)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	return newRunHandle(runID, runSettings), current, runCtx, nil
+	return newRunHandle(runID, settings.SessionSettings{}), current, runCtx, nil
 }
 
-func (r *Runner) openLive(ctx context.Context, sessionID string, runSettings settings.SessionSettings) (string, *liveRun, context.Context, error) {
+func (r *Runner) openLive(ctx context.Context, sessionID string) (string, *liveRun, context.Context, error) {
 	runID, err := newRunID()
 	if err != nil {
 		return "", nil, nil, err
@@ -218,7 +223,6 @@ func (r *Runner) openLive(ctx context.Context, sessionID string, runSettings set
 		cancel:        cancel,
 		steeringState: steeringInitializing,
 		runID:         runID,
-		settings:      runSettings,
 		inputSignal:   make(chan struct{}),
 		toolBlocks:    make(map[string]toolBlock),
 	}
@@ -228,6 +232,23 @@ func (r *Runner) openLive(ctx context.Context, sessionID string, runSettings set
 		return "", nil, nil, err
 	}
 	return runID, current, runCtx, nil
+}
+
+// prepareActive 在已登记的运行占用内准备设置，停止或关闭能覆盖这段准备期。
+func (r *Runner) prepareActive(ctx context.Context, sessionID string, current *liveRun, handle *RunHandle) (runPreparation, error) {
+	prepared, err := r.prepare(ctx, sessionID)
+	if err != nil {
+		return runPreparation{}, err
+	}
+	err = ctx.Err()
+	if err != nil {
+		return runPreparation{}, err
+	}
+	current.mu.Lock()
+	current.settings = &prepared.settings
+	current.mu.Unlock()
+	handle.settings = prepared.settings
+	return prepared, nil
 }
 
 func (r *Runner) prepare(ctx context.Context, sessionID string) (runPreparation, error) {
@@ -313,6 +334,10 @@ func (r *Runner) executePrepared(runCtx context.Context, sessionID, runID string
 		return err
 	}
 	history = append(history, initial...)
+	err = runCtx.Err()
+	if err != nil {
+		return err
+	}
 
 	invocation := loops.Invocation{
 		SessionID:    sessionID,

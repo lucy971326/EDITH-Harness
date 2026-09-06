@@ -1,6 +1,7 @@
 package subagents
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -12,6 +13,10 @@ import (
 func (s *Subagents) startTurn(coord *taskCoord, input session.UserMessage) (string, error) {
 	if s.ctx.Err() != nil {
 		return "", s.failTurn(coord, ErrClosed)
+	}
+	err := s.childStartError(coord)
+	if err != nil {
+		return "", s.failTurn(coord, err)
 	}
 	handle, err := s.runner.Start(s.ctx, coord.task.ChildSessionID, input)
 	if err != nil {
@@ -28,6 +33,10 @@ func (s *Subagents) startTurn(coord *taskCoord, input session.UserMessage) (stri
 
 	// 成功启动就必须追踪。回调先等待 coord.mu，不能抢先写入完成状态。
 	s.trackRun(coord.task.ID, coord.task.Turn, handle, coord)
+	stopErr := s.childStartError(coord)
+	if stopErr != nil {
+		s.runner.StopRun(coord.task.ChildSessionID, handle.RunID())
+	}
 	err = s.store.saveTask(coord.task)
 	if err != nil {
 		coord.persistErr = fmt.Errorf("%w: save running task: %w", ErrPersistFailed, err)
@@ -38,6 +47,9 @@ func (s *Subagents) startTurn(coord *taskCoord, input session.UserMessage) (stri
 		// Start 使用服务 context，关闭已取消该 Run；仍等待正常回调收尾。
 		return "", ErrClosed
 	}
+	if stopErr != nil {
+		return "", stopErr
+	}
 	return handle.RunID(), nil
 }
 
@@ -46,7 +58,7 @@ func (s *Subagents) failTurn(coord *taskCoord, cause error) error {
 	defer s.signalChange()
 	task := &coord.task
 	task.Status = StatusFailed
-	if errors.Is(cause, ErrClosed) {
+	if errors.Is(cause, ErrClosed) || errors.Is(cause, ErrFamilyStopped) || errors.Is(cause, ErrTaskStopped) || errors.Is(cause, context.Canceled) {
 		task.Status = StatusCancelled
 	}
 	task.Error = cause.Error()

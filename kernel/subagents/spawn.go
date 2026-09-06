@@ -37,6 +37,10 @@ func (s *Subagents) Spawn(ctx context.Context, input SpawnInput) (SpawnResult, e
 	}
 	s.mu.RUnlock()
 	defer s.inFlight.Done()
+	permit, err := s.admit(input.ParentSessionID, input.ParentRunID)
+	if err != nil {
+		return SpawnResult{}, err
+	}
 
 	// 从可信 SessionID + RunID 读取父 Run 配置快照
 	parentSettings, err := s.runner.RunSettings(input.ParentSessionID, input.ParentRunID)
@@ -135,15 +139,17 @@ func (s *Subagents) Spawn(ctx context.Context, input SpawnInput) (SpawnResult, e
 	}
 
 	coord := &taskCoord{
+		admission:    permit,
 		task:         task,
 		finalizingCh: make(chan struct{}),
 	}
 	coord.mu.Lock()
 	defer coord.mu.Unlock()
 	s.mu.Lock()
-	if s.closed {
+	err = s.admissionErrorLocked(permit)
+	if err != nil {
 		s.mu.Unlock()
-		return SpawnResult{}, ErrClosed
+		return SpawnResult{}, err
 	}
 	s.childSessions[childSessionID] = taskID
 	s.parentTasks[input.ParentSessionID] = append(s.parentTasks[input.ParentSessionID], taskID)

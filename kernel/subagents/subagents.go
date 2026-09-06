@@ -20,12 +20,16 @@ import (
 
 // 活对象。任务级别协调器，保证单个任务的操作与状态变迁串行化，防止并发与竞态。
 type taskCoord struct {
-	mu           sync.Mutex
-	task         Task
-	activeHandle *runner.RunHandle
-	persistErr   error
-	deliveryErr  error
-	finalizingCh chan struct{}
+	// 启动许可与单孩子停止标记由 Subagents.mu 保护，不随 coord.mu 的磁盘操作阻塞停止。
+	admission      admission
+	stopRequested  bool
+	stopGeneration uint64
+	mu             sync.Mutex
+	task           Task
+	activeHandle   *runner.RunHandle
+	persistErr     error
+	deliveryErr    error
+	finalizingCh   chan struct{}
 }
 
 // 活对象。挂在 Host 的 subagents 键上的子会话委派服务。
@@ -49,6 +53,7 @@ type Subagents struct {
 	childSessions map[string]string   // childSessionID -> taskID
 	parentTasks   map[string][]string // parentSessionID -> []taskID
 	coords        map[string]*taskCoord
+	families      map[string]familyState
 
 	wg          sync.WaitGroup
 	deliveryMu  sync.Mutex
@@ -118,6 +123,7 @@ func newSubagentsWithStore(
 		childSessions: make(map[string]string),
 		parentTasks:   make(map[string][]string),
 		coords:        make(map[string]*taskCoord),
+		families:      make(map[string]familyState),
 		changed:       make(chan struct{}),
 	}
 
@@ -180,6 +186,7 @@ func newSubagentsWithStore(
 		closedCh := make(chan struct{})
 		close(closedCh)
 		s.coords[task.ID] = &taskCoord{
+			admission:    admission{parentSessionID: task.ParentSessionID, parentRunID: task.ParentRunID},
 			task:         task,
 			finalizingCh: closedCh,
 		}
@@ -189,7 +196,7 @@ func newSubagentsWithStore(
 		if event.Kind != runner.RunStarted {
 			return nil
 		}
-		return s.deliver(event.SessionID)
+		return s.onRunStarted(event)
 	})
 	if err != nil {
 		cancel()

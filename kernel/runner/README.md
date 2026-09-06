@@ -12,10 +12,10 @@
 - `tools`：压缩时取当前工具 schema；
 - `events`：发布稳定 `RunEvent`。
 
-【提供能力】注册服务 `runner`：`Start`、`Run`、`Steer`、`Receive`、`Stop`、`Compact`，并管理活 Run。`Receive` 接收带来源的协作消息，以账本中的消息 ID 去重；不接收时返回待投递，不启动新 Run。
+【提供能力】注册服务 `runner`：`Start`、`Run`、`Steer`、`Receive`、`Stop`、`StopRun`、`Compact`，并管理活 Run。准备设置前就占用 live，停止与关闭覆盖准备期；`StopRun` 只取消匹配 RunID 的运行。`Receive` 接收带来源的协作消息，以账本中的消息 ID 去重；不接收时返回待投递，不启动新 Run。
 
 【填充插槽】不填。
 
-【谁在用】`chat` 发起、插话与停止对话，也经 `events` 接收 Run 事件；`subagents` 启动和停止孩子，并向正在运行的父会话投递协作消息。
+【谁在用】`chat` 发起、插话，也经 `events` 接收 Run 事件；用户停止交给 `subagents.StopFamily`，由它取消父与孩子。`subagents` 还负责启动孩子，并向正在运行的父会话投递协作消息。
 
 【不做】不自己决定怎么思考；具体推理与工具循环属于 Loop。

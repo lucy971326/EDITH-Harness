@@ -711,7 +711,7 @@ func TestSubagentsSendIdleAndMultiTurn(t *testing.T) {
 	}
 
 	// 闲时 Send 开启 Turn 2
-	sendRes, err := f.subagents.Send(context.Background(), parentSessionID, spawnRes.TaskID, session.UserMessage{
+	sendRes, err := f.subagents.Send(context.Background(), parentSessionID, parentRunID, spawnRes.TaskID, session.UserMessage{
 		Blocks: []session.Block{{Kind: "text", Text: "turn 2 prompt"}},
 	})
 	if err != nil {
@@ -765,7 +765,7 @@ func TestTaskPerTurnHistoryAndNotificationsAndDeepCopy(t *testing.T) {
 	}
 
 	// 开启 Turn 2
-	sendRes, err := f.subagents.Send(context.Background(), parentSessionID, spawnRes.TaskID, session.UserMessage{
+	sendRes, err := f.subagents.Send(context.Background(), parentSessionID, parentRunID, spawnRes.TaskID, session.UserMessage{
 		Blocks: []session.Block{{Kind: "text", Text: "turn 2 prompt"}},
 	})
 	if err != nil {
@@ -852,7 +852,7 @@ func TestSubagentsSendRunningSteers(t *testing.T) {
 	f.loop.waitStarted(t)
 
 	// 忙碌时 Send：必须通过 Steer
-	sendRes, err := f.subagents.Send(context.Background(), parentSessionID, spawnRes.TaskID, session.UserMessage{
+	sendRes, err := f.subagents.Send(context.Background(), parentSessionID, parentRunID, spawnRes.TaskID, session.UserMessage{
 		Blocks: []session.Block{{Kind: "text", Text: "steer child"}},
 	})
 	if err != nil {
@@ -907,7 +907,7 @@ func TestSendBarrierPreventsOldTurnDropped(t *testing.T) {
 	var sendErr error
 	go func() {
 		defer close(sendDone)
-		sendRes, sendErr = f.subagents.Send(context.Background(), parentSessionID, spawnRes.TaskID, session.UserMessage{
+		sendRes, sendErr = f.subagents.Send(context.Background(), parentSessionID, parentRunID, spawnRes.TaskID, session.UserMessage{
 			Blocks: []session.Block{{Kind: "text", Text: "turn 2 prompt"}},
 		})
 	}()
@@ -1008,7 +1008,7 @@ func TestWaitReturnsCompletedTurnDespiteImmediateSend(t *testing.T) {
 	// 在 Turn 1 刚完成后立即并发发起 Send 开启 Turn 2
 	var sendRes SendResult
 	for i := 0; i < 50; i++ {
-		sendRes, err = f.subagents.Send(context.Background(), parentSessionID, spawnRes.TaskID, session.UserMessage{
+		sendRes, err = f.subagents.Send(context.Background(), parentSessionID, parentRunID, spawnRes.TaskID, session.UserMessage{
 			Blocks: []session.Block{{Kind: "text", Text: "turn 2 prompt"}},
 		})
 		if err == nil && !sendRes.Steered {
@@ -1085,7 +1085,7 @@ func TestListConcurrentWithSendAndFinish(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = f.subagents.Send(context.Background(), parentSessionID, spawnRes.TaskID, session.UserMessage{
+	_, err = f.subagents.Send(context.Background(), parentSessionID, parentRunID, spawnRes.TaskID, session.UserMessage{
 		Blocks: []session.Block{{Kind: "text", Text: "turn 2"}},
 	})
 	if err != nil {
@@ -1138,7 +1138,7 @@ func TestSubagentsStopAndStopFamily(t *testing.T) {
 	}
 
 	// 取消后依然允许明确 Send 开启新轮次
-	sendRes, err := f.subagents.Send(context.Background(), parentSessionID, spawnRes.TaskID, session.UserMessage{
+	sendRes, err := f.subagents.Send(context.Background(), parentSessionID, parentRunID, spawnRes.TaskID, session.UserMessage{
 		Blocks: []session.Block{{Kind: "text", Text: "new turn after cancel"}},
 	})
 	if err != nil {
@@ -1381,7 +1381,7 @@ func TestSendPendingSaveFailure(t *testing.T) {
 	defer func() { _ = os.Remove(tmpDirPath) }()
 
 	// Send 开启 Turn 2 应在 saveTask pending 时失败
-	_, err = f.subagents.Send(context.Background(), parentSessionID, spawnRes.TaskID, session.UserMessage{
+	_, err = f.subagents.Send(context.Background(), parentSessionID, parentRunID, spawnRes.TaskID, session.UserMessage{
 		Blocks: []session.Block{{Kind: "text", Text: "turn 2 prompt"}},
 	})
 	if err == nil {

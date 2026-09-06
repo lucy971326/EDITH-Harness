@@ -222,8 +222,17 @@ func (s *Service) Steer(sessionID string, message session.UserMessage) error {
 	return nil
 }
 
-// Stop 取消当前尚未结束的 Run。
-func (s *Service) Stop(sessionID string) error { return s.runner.Stop(sessionID) }
+// Stop 取消父会话与它的孩子；父已闲置时也不能漏掉仍在运行的孩子。
+func (s *Service) Stop(sessionID string) error {
+	if s.subagents.IsChildSession(sessionID) {
+		return fmt.Errorf("%w: session %q", os.ErrNotExist, sessionID)
+	}
+	_, err := s.sessions.Get(sessionID)
+	if err != nil {
+		return err
+	}
+	return s.subagents.StopFamily(context.Background(), sessionID)
+}
 
 // Fork 复制账本中一段已结束助手回答之前的历史与会话设置。
 func (s *Service) Fork(input ForkInput) (string, error) {

@@ -26,7 +26,7 @@ func TestSendRejectsBlankBeforeStartingTurn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = f.subagents.Send(context.Background(), parent, child.TaskID, session.UserMessage{
+	_, err = f.subagents.Send(context.Background(), parent, run, child.TaskID, session.UserMessage{
 		Blocks: []session.Block{{Kind: "text", Text: "   "}},
 	})
 	if err == nil {

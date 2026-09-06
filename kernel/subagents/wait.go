@@ -22,6 +22,7 @@ func (s *Subagents) Wait(ctx context.Context, parentSessionID string, input Wait
 		return WaitResponse{}, ErrClosed
 	}
 	s.inFlight.Add(1)
+	generation := s.families[parentSessionID].generation
 	coords := make([]*taskCoord, 0, len(input.TaskIDs))
 	seenTasks := make(map[string]bool)
 	for _, id := range input.TaskIDs {
@@ -72,6 +73,12 @@ func (s *Subagents) Wait(ctx context.Context, parentSessionID string, input Wait
 		}
 		if s.ctx.Err() != nil {
 			return response, ErrClosed
+		}
+		s.mu.RLock()
+		stopped := s.families[parentSessionID].generation != generation
+		s.mu.RUnlock()
+		if stopped {
+			return response, ErrFamilyStopped
 		}
 		if len(response.Notifications) > 0 {
 			response.Reason = "completed"

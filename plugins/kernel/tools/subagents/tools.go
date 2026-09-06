@@ -26,7 +26,7 @@ func toolEntries(s *delegation.Subagents) []tools.Tool {
 			return jsonResult(value, err)
 		}),
 		withIdentity("subagent_send", "Append text instructions to your child. A busy child receives a steer; an idle child starts a new turn in the same session. Settings do not change. An error may occur after acceptance: inspect status before retrying.", func(ctx context.Context, call tools.Call, args sendArgs) (tools.Result, error) {
-			value, err := s.Send(ctx, call.SessionID, args.TaskID, session.UserMessage{
+			value, err := s.Send(ctx, call.SessionID, call.RunID, args.TaskID, session.UserMessage{
 				Blocks: []session.Block{{Kind: "text", Text: args.Text}},
 			})
 			return jsonResult(value, err)

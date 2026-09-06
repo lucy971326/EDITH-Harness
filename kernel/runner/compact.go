@@ -32,17 +32,26 @@ type compactPreparation struct {
 
 // Compact 占用空闲会话，用当前模型生成摘要并落账。失败或停止不改有效上下文。
 func (r *Runner) Compact(ctx context.Context, sessionID string) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	prepared, err := r.prepareCompact(ctx, sessionID)
+	err := ctx.Err()
 	if err != nil {
 		return err
 	}
-	runID, current, runCtx, err := r.openLive(ctx, sessionID, prepared.settings)
+	runID, current, runCtx, err := r.openLive(ctx, sessionID)
 	if err != nil {
 		return err
 	}
+	prepared, err := r.prepareCompact(runCtx, sessionID)
+	if err == nil {
+		err = runCtx.Err()
+	}
+	if err != nil {
+		r.release(sessionID, current)
+		r.wg.Done()
+		return err
+	}
+	current.mu.Lock()
+	current.settings = &prepared.settings
+	current.mu.Unlock()
 	go func() {
 		defer func() {
 			r.release(sessionID, current)

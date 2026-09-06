@@ -70,6 +70,13 @@ func (s *Subagents) deliver(parentID string) error {
 		if parentID != "" && task.ParentSessionID != parentID {
 			continue
 		}
+		s.mu.RLock()
+		state, active := s.runner.State(task.ParentSessionID)
+		stopped := active && s.families[task.ParentSessionID].stoppedRunID == state.RunID
+		s.mu.RUnlock()
+		if stopped {
+			continue
+		}
 		if pErr != nil {
 			errs = append(errs, pErr)
 			continue // 未可靠保存的结果不得投递。

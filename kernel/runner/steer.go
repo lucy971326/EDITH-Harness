@@ -61,6 +61,16 @@ func (r *Runner) Stop(sessionID string) error {
 	return nil
 }
 
+// StopRun 仅取消指定身份的运行；已经结束或换轮时返回 false，不误停新一轮。
+func (r *Runner) StopRun(sessionID, runID string) bool {
+	current, err := r.current(sessionID)
+	if err != nil || current.runID != runID {
+		return false
+	}
+	current.stop()
+	return true
+}
+
 func (r *Runner) current(sessionID string) (*liveRun, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -91,7 +101,10 @@ func (r *Runner) RunSettings(sessionID, runID string) (settings.SessionSettings,
 	if current.runID != runID {
 		return settings.SessionSettings{}, fmt.Errorf("runner: run %q is not active for session %q", runID, sessionID)
 	}
-	return current.settings, nil
+	if current.settings == nil {
+		return settings.SessionSettings{}, fmt.Errorf("runner: run %q is still preparing", runID)
+	}
+	return *current.settings, nil
 }
 
 func (r *liveRun) takeSteers(phase loops.CheckpointPhase) ([]session.Message, error) {

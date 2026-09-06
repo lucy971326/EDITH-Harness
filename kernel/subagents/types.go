@@ -11,6 +11,8 @@ import (
 
 var (
 	ErrClosed             = errors.New("subagents: service is closed")
+	ErrFamilyStopped      = errors.New("subagents: this parent collaboration was stopped")
+	ErrTaskStopped        = errors.New("subagents: this child run was stopped")
 	ErrTaskNotFound       = errors.New("subagents: task not found")
 	ErrParentRequired     = errors.New("subagents: parent session and run id are required")
 	ErrDescriptionEmpty   = errors.New("subagents: description cannot be empty")
