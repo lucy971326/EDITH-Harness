@@ -10,6 +10,7 @@ import (
 
 	"harness/kernel/llm"
 	"harness/kernel/session"
+	"harness/kernel/session/settings"
 )
 
 const compactInstruction = "请把到目前为止的对话压缩成一份后续可继续使用的摘要。保留目标、约束、已完成事项、关键结论和未完成工作。不要调用工具。只输出摘要正文。"
@@ -21,6 +22,7 @@ const (
 
 type compactPreparation struct {
 	sess         *session.Session
+	settings     settings.SessionSettings
 	systemPrompt string
 	toolNames    []string
 	workspace    string
@@ -37,13 +39,16 @@ func (r *Runner) Compact(ctx context.Context, sessionID string) error {
 	if err != nil {
 		return err
 	}
-	current := &liveRun{toolBlocks: make(map[string]toolBlock)}
-	if err := r.begin(sessionID, current); err != nil {
+	runID, current, runCtx, err := r.openLive(ctx, sessionID, prepared.settings)
+	if err != nil {
 		return err
 	}
 	go func() {
-		defer r.end(sessionID, current)
-		_ = r.runCompact(ctx, sessionID, current, prepared)
+		defer func() {
+			r.release(sessionID, current)
+			r.wg.Done()
+		}()
+		_ = r.runCompact(runCtx, sessionID, runID, current, prepared)
 	}()
 	return nil
 }
@@ -69,6 +74,7 @@ func (r *Runner) prepareCompact(ctx context.Context, sessionID string) (compactP
 	}
 	return compactPreparation{
 		sess:         sess,
+		settings:     runSettings,
 		systemPrompt: prepared.SystemPrompt,
 		toolNames:    append([]string(nil), prepared.Tools...),
 		workspace:    runSettings.Workspace,
@@ -77,32 +83,18 @@ func (r *Runner) prepareCompact(ctx context.Context, sessionID string) (compactP
 	}, nil
 }
 
-func (r *Runner) runCompact(parent context.Context, sessionID string, current *liveRun, prepared compactPreparation) (err error) {
-	runID, err := newRunID()
-	if err != nil {
-		return err
-	}
-	if !current.startExclusive(runID) {
-		return context.Canceled
-	}
-	runCtx, cancel := context.WithCancel(parent)
-	current.setCancel(cancel)
-	defer cancel()
+func (r *Runner) runCompact(runCtx context.Context, sessionID, runID string, current *liveRun, prepared compactPreparation) (err error) {
 
 	sess := prepared.sess
 	entries := sess.Entries()
 	current.setAfterEntrySeq(entries[len(entries)-1].Seq)
-	if err := r.publish(runCtx, RunEvent{
-		SessionID:     sessionID,
-		RunID:         runID,
-		Kind:          RunStarted,
-		AfterEntrySeq: current.afterSeq(),
-	}); err != nil {
-		return err
-	}
+	runStartedAttempted := false
 	defer func() {
+		if !runStartedAttempted {
+			return
+		}
 		status := RunSucceeded
-		if errors.Is(err, context.Canceled) {
+		if isCancellationOnly(err) {
 			status = RunCancelled
 		} else if err != nil {
 			status = RunFailed
@@ -115,10 +107,20 @@ func (r *Runner) runCompact(parent context.Context, sessionID string, current *l
 			Status:        status,
 			Error:         errorText(err),
 		})
-		if err == nil && endErr != nil {
-			err = endErr
+		if endErr != nil {
+			err = errors.Join(err, endErr)
 		}
 	}()
+	runStartedAttempted = true
+	err = r.publish(runCtx, RunEvent{
+		SessionID:     sessionID,
+		RunID:         runID,
+		Kind:          RunStarted,
+		AfterEntrySeq: current.afterSeq(),
+	})
+	if err != nil {
+		return err
+	}
 
 	definitions, err := r.tools.Definitions(runCtx, prepared.workspace, prepared.toolNames)
 	if err != nil {

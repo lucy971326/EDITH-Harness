@@ -3,7 +3,9 @@ package runner
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -530,7 +532,7 @@ func TestStateReportsLiveRunAfterInputIsDurable(t *testing.T) {
 		return ctx.Err()
 	}}
 	fixture := newRunnerFixture(t, loop)
-	err := fixture.runner.Start(context.Background(), "session-1", textInput("question"))
+	_, err := fixture.runner.Start(context.Background(), "session-1", textInput("question"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -546,6 +548,597 @@ func TestStateReportsLiveRunAfterInputIsDurable(t *testing.T) {
 	err = fixture.runner.Stop("session-1")
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestStartReturnsStableHandleForFastCompletion(t *testing.T) {
+	fixture := newRunnerFixture(t, &runnerTestLoop{run: func(context.Context, loops.Invocation) error { return nil }})
+	handle, err := fixture.runner.Start(context.Background(), "session-1", textInput("question"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if handle == nil || handle.RunID() == "" {
+		t.Fatalf("handle = %#v", handle)
+	}
+	result := handle.Wait()
+	if result.RunID != handle.RunID() || result.Status != RunSucceeded || result.Err != nil {
+		t.Fatalf("result = %#v", result)
+	}
+	select {
+	case <-handle.Done():
+	default:
+		t.Fatal("handle is not done")
+	}
+	_, ok := fixture.runner.State("session-1")
+	if ok {
+		t.Fatal("session remained live after handle completed")
+	}
+}
+
+func TestStartReportsLoopFailureThroughHandle(t *testing.T) {
+	loopErr := errors.New("loop failed")
+	fixture := newRunnerFixture(t, &runnerTestLoop{run: func(context.Context, loops.Invocation) error {
+		return loopErr
+	}})
+	handle, err := fixture.runner.Start(context.Background(), "session-1", textInput("question"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := handle.Wait()
+	if result.Status != RunFailed || !errors.Is(result.Err, loopErr) {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestStartReportsEarlyAppendFailureThroughHandle(t *testing.T) {
+	appendErr := errors.New("disk failed")
+	loopStartedErr := errors.New("loop started after append failure")
+	fixture := newRunnerFixture(t, &runnerTestLoop{run: func(context.Context, loops.Invocation) error {
+		return loopStartedErr
+	}})
+	fixture.persistence.addFail = appendErr
+
+	handle, err := fixture.runner.Start(context.Background(), "session-1", textInput("question"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := handle.Wait()
+	if result.Status != RunFailed || !errors.Is(result.Err, appendErr) {
+		t.Fatalf("result = %#v", result)
+	}
+	_, ok := fixture.runner.State("session-1")
+	if ok {
+		t.Fatal("session remained live after early failure")
+	}
+}
+
+func TestStartReportsInitialPublishFailureWithoutInventingRunEnded(t *testing.T) {
+	publishErr := errors.New("subscriber failed")
+	loopStartedErr := errors.New("loop started after publish failure")
+	fixture := newRunnerFixture(t, &runnerTestLoop{run: func(context.Context, loops.Invocation) error {
+		return loopStartedErr
+	}})
+	var kinds []RunEventKind
+	_, err := events.Subscribe(fixture.events, func(_ context.Context, event RunEvent) error {
+		kinds = append(kinds, event.Kind)
+		if event.Kind == Message {
+			return publishErr
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	handle, err := fixture.runner.Start(context.Background(), "session-1", textInput("question"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := handle.Wait()
+	if result.Status != RunFailed || !errors.Is(result.Err, publishErr) {
+		t.Fatalf("result = %#v", result)
+	}
+	if !reflect.DeepEqual(kinds, []RunEventKind{Message}) {
+		t.Fatalf("events = %v", kinds)
+	}
+}
+
+func TestStartPairsRunStartedPublishFailureWithRunEnded(t *testing.T) {
+	publishErr := errors.New("start subscriber failed")
+	endErr := errors.New("end subscriber failed")
+	fixture := newRunnerFixture(t, &runnerTestLoop{run: func(context.Context, loops.Invocation) error { return nil }})
+	var observed []RunEventKind
+	var delivered []RunEventKind
+	_, err := events.Subscribe(fixture.events, func(_ context.Context, event RunEvent) error {
+		observed = append(observed, event.Kind)
+		if event.Kind == RunStarted {
+			return publishErr
+		}
+		if event.Kind == RunEnded {
+			return endErr
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = events.Subscribe(fixture.events, func(_ context.Context, event RunEvent) error {
+		delivered = append(delivered, event.Kind)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	handle, err := fixture.runner.Start(context.Background(), "session-1", textInput("question"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := handle.Wait()
+	if result.Status != RunFailed || !errors.Is(result.Err, publishErr) || !errors.Is(result.Err, endErr) {
+		t.Fatalf("result = %#v", result)
+	}
+	if !reflect.DeepEqual(observed, []RunEventKind{Message, RunStarted, RunEnded}) {
+		t.Fatalf("events = %v", observed)
+	}
+	if !reflect.DeepEqual(delivered, []RunEventKind{Message, RunStarted, RunEnded}) {
+		t.Fatalf("successful subscriber events = %v", delivered)
+	}
+}
+
+func TestRunEndedPublishFailureIsNotSwallowed(t *testing.T) {
+	publishErr := errors.New("end subscriber failed")
+	fixture := newRunnerFixture(t, &runnerTestLoop{run: func(context.Context, loops.Invocation) error { return nil }})
+	_, err := events.Subscribe(fixture.events, func(_ context.Context, event RunEvent) error {
+		if event.Kind == RunEnded {
+			return publishErr
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	handle, err := fixture.runner.Start(context.Background(), "session-1", textInput("question"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := handle.Wait()
+	if result.Status != RunFailed || !errors.Is(result.Err, publishErr) {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestStartStopRaceReportsCancellation(t *testing.T) {
+	signals := make(chan (<-chan struct{}), 1)
+	fixture := newRunnerFixture(t, &runnerTestLoop{run: func(ctx context.Context, invocation loops.Invocation) error {
+		if invocation.InputSignal == nil {
+			return errors.New("missing input signal")
+		}
+		signals <- invocation.InputSignal()
+		<-ctx.Done()
+		return ctx.Err()
+	}})
+	handle, err := fixture.runner.Start(context.Background(), "session-1", textInput("question"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = fixture.runner.Stop("session-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := handle.Wait()
+	if result.Status != RunCancelled || !errors.Is(result.Err, context.Canceled) {
+		t.Fatalf("result = %#v", result)
+	}
+	select {
+	case signal := <-signals:
+		select {
+		case <-signal:
+			t.Fatal("Stop produced an input signal")
+		default:
+		}
+	default:
+	}
+}
+
+func TestInitialMessageStopDoesNotReopenSteering(t *testing.T) {
+	messageEntered := make(chan struct{})
+	releaseMessage := make(chan struct{})
+	steerAttempted := make(chan error, 1)
+	fixture := newRunnerFixture(t, &runnerTestLoop{run: func(ctx context.Context, _ loops.Invocation) error {
+		<-ctx.Done()
+		return ctx.Err()
+	}})
+	_, err := events.Subscribe(fixture.events, func(_ context.Context, event RunEvent) error {
+		if event.Kind == Message && event.Entry != nil && len(event.Entry.Message.Blocks) > 0 && event.Entry.Message.Blocks[0].Text == "initial" {
+			close(messageEntered)
+			<-releaseMessage
+		}
+		if event.Kind == RunStarted {
+			steerAttempted <- fixture.runner.Steer("session-1", textInput("must not enter"))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handle, err := fixture.runner.Start(context.Background(), "session-1", textInput("initial"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-messageEntered:
+	case <-time.After(time.Second):
+		t.Fatal("initial Message event did not block")
+	}
+	err = fixture.runner.Stop("session-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = fixture.runner.Steer("session-1", textInput("must not enter while stopped"))
+	if err == nil || !strings.Contains(err.Error(), "not running") {
+		close(releaseMessage)
+		t.Fatalf("Steer after Stop error = %v", err)
+	}
+	close(releaseMessage)
+	result := handle.Wait()
+	if result.Status != RunCancelled || !errors.Is(result.Err, context.Canceled) {
+		t.Fatalf("result = %#v", result)
+	}
+	select {
+	case err = <-steerAttempted:
+		t.Fatalf("RunStarted was published and accepted Steer: %v", err)
+	default:
+	}
+	history := fixture.session.History()
+	if len(history) != 1 || history[0].Blocks[0].Text != "initial" {
+		t.Fatalf("history after cancelled startup = %#v", history)
+	}
+}
+
+func TestInitialMessageCloseDoesNotReopenSteering(t *testing.T) {
+	messageEntered := make(chan struct{})
+	releaseMessage := make(chan struct{})
+	steerAttempted := make(chan error, 1)
+	fixture := newRunnerFixture(t, &runnerTestLoop{run: func(ctx context.Context, _ loops.Invocation) error {
+		<-ctx.Done()
+		return ctx.Err()
+	}})
+	_, err := events.Subscribe(fixture.events, func(_ context.Context, event RunEvent) error {
+		if event.Kind == Message && event.Entry != nil && len(event.Entry.Message.Blocks) > 0 && event.Entry.Message.Blocks[0].Text == "initial" {
+			close(messageEntered)
+			<-releaseMessage
+		}
+		if event.Kind == RunStarted {
+			steerAttempted <- fixture.runner.Steer("session-1", textInput("must not enter"))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handle, err := fixture.runner.Start(context.Background(), "session-1", textInput("initial"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-messageEntered:
+	case <-time.After(time.Second):
+		t.Fatal("initial Message event did not block")
+	}
+	current, err := fixture.runner.current("session-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	closeDone := make(chan struct{})
+	go func() {
+		fixture.runner.close()
+		close(closeDone)
+	}()
+	deadline := time.NewTimer(time.Second)
+	defer deadline.Stop()
+	for {
+		current.mu.Lock()
+		closed := current.steeringState == steeringClosed
+		current.mu.Unlock()
+		if closed {
+			break
+		}
+		select {
+		case <-deadline.C:
+			t.Fatal("Runner.Close did not close steering")
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+	err = fixture.runner.Steer("session-1", textInput("must not enter while closed"))
+	if err == nil || !strings.Contains(err.Error(), "not running") {
+		close(releaseMessage)
+		t.Fatalf("Steer after Close cancellation error = %v", err)
+	}
+	close(releaseMessage)
+	select {
+	case <-closeDone:
+	case <-time.After(time.Second):
+		t.Fatal("Runner.Close did not finish")
+	}
+	result := handle.Wait()
+	if result.Status != RunCancelled || !errors.Is(result.Err, context.Canceled) {
+		t.Fatalf("result = %#v", result)
+	}
+	select {
+	case err = <-steerAttempted:
+		t.Fatalf("RunStarted was published and accepted Steer: %v", err)
+	default:
+	}
+	history := fixture.session.History()
+	if len(history) != 1 || history[0].Blocks[0].Text != "initial" {
+		t.Fatalf("history after closed startup = %#v", history)
+	}
+}
+
+func TestCloseWaitsUntilStartedHandleIsDone(t *testing.T) {
+	started := make(chan struct{})
+	fixture := newRunnerFixture(t, &runnerTestLoop{run: func(ctx context.Context, _ loops.Invocation) error {
+		close(started)
+		<-ctx.Done()
+		return ctx.Err()
+	}})
+	handle, err := fixture.runner.Start(context.Background(), "session-1", textInput("question"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("loop did not start")
+	}
+	fixture.runner.close()
+	select {
+	case <-handle.Done():
+	default:
+		t.Fatal("Runner.Close returned before the handle completed")
+	}
+	result := handle.Wait()
+	if result.Status != RunCancelled || !errors.Is(result.Err, context.Canceled) {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestRunSettingsUsesLiveRunSnapshot(t *testing.T) {
+	started := make(chan struct{})
+	fixture := newRunnerFixture(t, &runnerTestLoop{run: func(ctx context.Context, _ loops.Invocation) error {
+		close(started)
+		<-ctx.Done()
+		return ctx.Err()
+	}})
+	original := fixture.settings.value
+	handle, err := fixture.runner.Start(context.Background(), "session-1", textInput("question"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("loop did not start")
+	}
+	err = fixture.settings.Put("session-1", settings.SessionSettings{
+		AgentID:         agents.DefaultID,
+		Model:           "model-b",
+		ReasoningEffort: "low",
+		Workspace:       "/workspace/b",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := fixture.runner.RunSettings("session-1", handle.RunID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot != original {
+		t.Fatalf("snapshot = %#v, want %#v", snapshot, original)
+	}
+	got := handle.Settings()
+	if got != original {
+		t.Fatalf("handle settings = %#v, want %#v", got, original)
+	}
+	_, err = fixture.runner.RunSettings("session-1", "other-run")
+	if err == nil {
+		t.Fatal("RunSettings accepted a different run id")
+	}
+	err = fixture.runner.Stop("session-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := handle.Wait()
+	if result.Status != RunCancelled {
+		t.Fatalf("result = %#v", result)
+	}
+	_, err = fixture.runner.RunSettings("session-1", handle.RunID())
+	if err == nil {
+		t.Fatal("RunSettings returned a snapshot after the run ended")
+	}
+}
+
+func TestRunPassesProgramIdentityToInvocation(t *testing.T) {
+	invocationSeen := make(chan loops.Invocation, 1)
+	fixture := newRunnerFixture(t, &runnerTestLoop{run: func(_ context.Context, invocation loops.Invocation) error {
+		invocationSeen <- invocation
+		return nil
+	}})
+	handle, err := fixture.runner.Start(context.Background(), "session-1", textInput("question"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := handle.Wait()
+	if result.Status != RunSucceeded {
+		t.Fatalf("result = %#v", result)
+	}
+	select {
+	case invocation := <-invocationSeen:
+		if invocation.SessionID != "session-1" || invocation.RunID != handle.RunID() {
+			t.Fatalf("invocation identity = %q/%q, want %q/%q", invocation.SessionID, invocation.RunID, "session-1", handle.RunID())
+		}
+		if invocation.InputSignal == nil {
+			t.Fatal("invocation has no input signal")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("loop did not receive invocation")
+	}
+}
+
+func TestSteerInputSignalStaysVisibleUntilCheckpointConsumesSteer(t *testing.T) {
+	signalReady := make(chan (<-chan struct{}), 1)
+	secondSignalReady := make(chan (<-chan struct{}), 1)
+	releaseCheckpoint := make(chan struct{})
+	finishRun := make(chan struct{})
+	checkpointMessages := make(chan []session.Message, 1)
+	fixture := newRunnerFixture(t, &runnerTestLoop{run: func(ctx context.Context, invocation loops.Invocation) error {
+		if invocation.InputSignal == nil {
+			return errors.New("missing input signal")
+		}
+		signalReady <- invocation.InputSignal()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-releaseCheckpoint:
+		}
+		messages, err := invocation.Checkpoint(ctx, loops.CheckpointContinue)
+		if err != nil {
+			return err
+		}
+		checkpointMessages <- messages
+		secondSignalReady <- invocation.InputSignal()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-finishRun:
+			return nil
+		}
+	}})
+	handle, err := fixture.runner.Start(context.Background(), "session-1", textInput("question"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var signal <-chan struct{}
+	select {
+	case signal = <-signalReady:
+	case <-time.After(time.Second):
+		t.Fatal("loop did not expose input signal")
+	}
+	err = fixture.runner.Steer("session-1", textInput("steer"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = fixture.runner.Steer("session-1", textInput("second steer"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for observation := 0; observation < 2; observation++ {
+		select {
+		case <-signal:
+		default:
+			t.Fatalf("Steer signal was not visible on observation %d", observation+1)
+		}
+	}
+	close(releaseCheckpoint)
+	select {
+	case messages := <-checkpointMessages:
+		if len(messages) != 2 || messages[0].Blocks[0].Text != "steer" || messages[1].Blocks[0].Text != "second steer" {
+			t.Fatalf("checkpoint messages = %#v", messages)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("checkpoint did not consume Steer")
+	}
+	var secondSignal <-chan struct{}
+	select {
+	case secondSignal = <-secondSignalReady:
+	case <-time.After(time.Second):
+		t.Fatal("loop did not expose the next input signal")
+	}
+	select {
+	case <-secondSignal:
+		t.Fatal("checkpoint left a pending input signal")
+	default:
+	}
+	err = fixture.runner.Steer("session-1", textInput("after checkpoint"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-secondSignal:
+	case <-time.After(time.Second):
+		t.Fatal("next Steer did not wake the next signal generation")
+	}
+	close(finishRun)
+	result := handle.Wait()
+	if result.Status != RunSucceeded || result.Err != nil {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestRunInitialHistoryPrecedesAcceptedSteer(t *testing.T) {
+	invocationSeen := make(chan loops.Invocation, 1)
+	checkpointMessages := make(chan []session.Message, 1)
+	fixture := newRunnerFixture(t, &runnerTestLoop{run: func(ctx context.Context, invocation loops.Invocation) error {
+		invocationSeen <- invocation
+		messages, err := invocation.Checkpoint(ctx, loops.CheckpointContinue)
+		if err != nil {
+			return err
+		}
+		checkpointMessages <- messages
+		return nil
+	}})
+	var steerErr error
+	_, err := events.Subscribe(fixture.events, func(_ context.Context, event RunEvent) error {
+		if event.Kind != RunStarted {
+			return nil
+		}
+		steerErr = fixture.runner.Steer("session-1", textInput("steer after start"))
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handle, err := fixture.runner.Start(context.Background(), "session-1", textInput("initial"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := handle.Wait()
+	if result.Status != RunSucceeded || result.Err != nil {
+		t.Fatalf("result = %#v", result)
+	}
+	if steerErr != nil {
+		t.Fatalf("RunStarted subscriber Steer error = %v", steerErr)
+	}
+	select {
+	case invocation := <-invocationSeen:
+		if len(invocation.History) != 1 || invocation.History[0].Blocks[0].Text != "initial" {
+			t.Fatalf("initial history = %#v", invocation.History)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("loop did not receive invocation")
+	}
+	select {
+	case messages := <-checkpointMessages:
+		if len(messages) != 1 || messages[0].Blocks[0].Text != "steer after start" {
+			t.Fatalf("checkpoint messages = %#v", messages)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("checkpoint did not consume Steer")
+	}
+}
+
+func TestRunResultKeepsWrappedJoinedFailureFailed(t *testing.T) {
+	diskErr := errors.New("disk failed")
+	err := fmt.Errorf("outer: %w", errors.Join(context.Canceled, diskErr))
+	result := runResult("run-1", err)
+	if result.Status != RunFailed {
+		t.Fatalf("status = %s, want %s", result.Status, RunFailed)
+	}
+	if !errors.Is(result.Err, diskErr) {
+		t.Fatalf("result error = %v, want disk error", result.Err)
 	}
 }
 
@@ -572,7 +1165,7 @@ func TestStartReturnsSkillDiscoveryErrorBeforeStartingLoop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = fixture.runner.Start(context.Background(), "session-1", textInput("question"))
+	_, err = fixture.runner.Start(context.Background(), "session-1", textInput("question"))
 	if err == nil || !strings.Contains(err.Error(), "skill discovery failed") {
 		t.Fatalf("Start() error = %v", err)
 	}

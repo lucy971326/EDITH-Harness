@@ -1,6 +1,6 @@
 # 项目状态
 
-更新日期：2026-09-05
+更新日期：2026-09-06
 
 ## 现在是什么
 
@@ -141,6 +141,15 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的五个页面插槽基础�
 - Chat 改用 RunView；Chat 私有脚本只保留 Composer、停止、消息动作和右侧面板交互，资源由 `/assets/chat/` 路由提供。
 - Chat 保持一条 SSE：`run` JSON 交给 RunView，`dock-*` HTML 继续由 HTMX `sse-swap` 处理。
 - 新的 Runner 驱动 Web 产品可以直接使用 `runview.View`，不必重写流式投影 JavaScript；Snapshot 与 SSE HTTP 路由仍归产品自己。
+
+### 子会话委派第 1 步：Runner 运行接口
+
+- `Runner.Start` 返回稳定的 `RunHandle`：可获取 RunID、配置快照、完成信号与最终状态/错误；Chat 对 Web 仍只返回启动错误，不保存句柄。
+- 活跃运行可按 SessionID、RunID 查询本轮配置快照；Runner 不缓存已结束运行。工具调用上下文增加 SessionID、RunID、协议 ToolCallID，身份不从工具 Arguments 读取。
+- Steer 使用可重复观察的广播信号，只有检查点消费消息后才换代次；ReAct 每次调用工具时获取当前信号，停止仍通过 Context 取消。
+- 初始化历史与后续 Steer 分离，避免重复消费；Compact 始终拒绝 Steer。取消/关闭后不重新开放输入，收尾依次释放 live、完成句柄、结束后台工作。
+- 开始事件部分投递失败仍尝试结束通知，错误保留在最终结果。已验收全量 Go 测试、相关 race、vet 和 diff 检查。
+- 此步只完成运行基础；子会话委派服务、父子关系及平台工具尚未实现。后续执行计划见 `docs/Nowplan.md`，本次停在第 1 步审核通过处。
 
 ## 验证
 

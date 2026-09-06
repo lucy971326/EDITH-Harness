@@ -26,6 +26,13 @@ const (
 	RunFailed    RunStatus = "failed"
 )
 
+// 数据。异步 Run 的最终稳定结果。
+type RunResult struct {
+	RunID  string
+	Status RunStatus
+	Err    error
+}
+
 // 数据。一场尚未结束 Run 的可恢复运行事实。
 type RunState struct {
 	RunID         string `json:"runID"`

@@ -17,17 +17,27 @@ import (
 	"harness/kernel/tools"
 )
 
+// 数据。一轮运行接收 Steer 的阶段；关闭后不再重新开放。
+type steeringState uint8
+
+const (
+	steeringInitializing steeringState = iota
+	steeringOpen
+	steeringClosed
+)
+
 // 活对象。一本 Session 当前尚未结束的一轮运行。
 type liveRun struct {
-	mu             sync.Mutex
-	cancel         context.CancelFunc
-	stopped        bool
-	closing        bool
-	steeringClosed bool
-	steers         []session.Message
-	afterEntrySeq  uint64
-	runID          string
-	toolBlocks     map[string]toolBlock
+	mu            sync.Mutex
+	cancel        context.CancelFunc
+	steeringState steeringState
+	steers        []session.Message
+	afterEntrySeq uint64
+	runID         string
+	settings      settings.SessionSettings
+	// 当前代次的通道在有待处理 Steer 时关闭广播；Checkpoint 消费后才换代次。
+	inputSignal chan struct{}
+	toolBlocks  map[string]toolBlock
 }
 
 // 数据。一轮 Run 在进入 Loop 前读取的一致配置快照。
@@ -58,6 +68,45 @@ type Runner struct {
 	live         map[string]*liveRun
 	closeStarted bool
 	wg           sync.WaitGroup
+}
+
+// 活对象。一场异步 Run 的身份、配置和完成通知句柄。
+type RunHandle struct {
+	runID    string
+	settings settings.SessionSettings
+	done     chan struct{}
+	result   RunResult
+	once     sync.Once
+}
+
+// RunID 返回这场 Run 的稳定身份。
+func (h *RunHandle) RunID() string { return h.runID }
+
+// Done 返回 Run 完成时关闭的信号。
+func (h *RunHandle) Done() <-chan struct{} { return h.done }
+
+// Wait 等待 Run 完成并返回最终结果。
+func (h *RunHandle) Wait() RunResult {
+	<-h.done
+	return h.result
+}
+
+// Settings 返回启动时保存的本轮配置快照。
+func (h *RunHandle) Settings() settings.SessionSettings { return h.settings }
+
+func newRunHandle(runID string, runSettings settings.SessionSettings) *RunHandle {
+	return &RunHandle{
+		runID:    runID,
+		settings: runSettings,
+		done:     make(chan struct{}),
+	}
+}
+
+func (h *RunHandle) complete(result RunResult) {
+	h.once.Do(func() {
+		h.result = result
+		close(h.done)
+	})
 }
 
 // NewRunner 组装一份 Runner。
@@ -104,7 +153,7 @@ func NewRunner(
 }
 
 // Run 同步执行同一本 Session 的一轮对话。
-func (r *Runner) Run(ctx context.Context, sessionID string, input session.UserMessage) error {
+func (r *Runner) Run(ctx context.Context, sessionID string, input session.UserMessage) (err error) {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -112,32 +161,71 @@ func (r *Runner) Run(ctx context.Context, sessionID string, input session.UserMe
 	if err != nil {
 		return err
 	}
-	current := &liveRun{toolBlocks: make(map[string]toolBlock)}
-	if err := r.begin(sessionID, current); err != nil {
+	handle, current, runCtx, err := r.openRun(ctx, sessionID, prepared.settings)
+	if err != nil {
 		return err
 	}
-	defer r.end(sessionID, current)
-	return r.runOnePrepared(ctx, sessionID, input, current, prepared)
+	defer func() {
+		r.release(sessionID, current)
+		handle.complete(runResult(handle.RunID(), err))
+		r.wg.Done()
+	}()
+	return r.executePrepared(runCtx, sessionID, handle.RunID(), input, current, prepared)
 }
 
 // Start 启动一轮对话并在 Runner 自己的 goroutine 中执行。
-func (r *Runner) Start(ctx context.Context, sessionID string, input session.UserMessage) error {
+func (r *Runner) Start(ctx context.Context, sessionID string, input session.UserMessage) (*RunHandle, error) {
 	if err := ctx.Err(); err != nil {
-		return err
+		return nil, err
 	}
 	prepared, err := r.prepare(ctx, sessionID)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	current := &liveRun{toolBlocks: make(map[string]toolBlock)}
-	if err := r.begin(sessionID, current); err != nil {
-		return err
+	handle, current, runCtx, err := r.openRun(ctx, sessionID, prepared.settings)
+	if err != nil {
+		return nil, err
 	}
 	go func() {
-		defer r.end(sessionID, current)
-		_ = r.runOnePrepared(ctx, sessionID, input, current, prepared)
+		var runErr error
+		defer func() {
+			r.release(sessionID, current)
+			handle.complete(runResult(handle.RunID(), runErr))
+			r.wg.Done()
+		}()
+		runErr = r.executePrepared(runCtx, sessionID, handle.RunID(), input, current, prepared)
 	}()
-	return nil
+	return handle, nil
+}
+
+func (r *Runner) openRun(ctx context.Context, sessionID string, runSettings settings.SessionSettings) (*RunHandle, *liveRun, context.Context, error) {
+	runID, current, runCtx, err := r.openLive(ctx, sessionID, runSettings)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return newRunHandle(runID, runSettings), current, runCtx, nil
+}
+
+func (r *Runner) openLive(ctx context.Context, sessionID string, runSettings settings.SessionSettings) (string, *liveRun, context.Context, error) {
+	runID, err := newRunID()
+	if err != nil {
+		return "", nil, nil, err
+	}
+	runCtx, cancel := context.WithCancel(ctx)
+	current := &liveRun{
+		cancel:        cancel,
+		steeringState: steeringInitializing,
+		runID:         runID,
+		settings:      runSettings,
+		inputSignal:   make(chan struct{}),
+		toolBlocks:    make(map[string]toolBlock),
+	}
+	err = r.begin(sessionID, current)
+	if err != nil {
+		cancel()
+		return "", nil, nil, err
+	}
+	return runID, current, runCtx, nil
 }
 
 func (r *Runner) prepare(ctx context.Context, sessionID string) (runPreparation, error) {
@@ -160,41 +248,18 @@ func (r *Runner) prepare(ctx context.Context, sessionID string) (runPreparation,
 	return runPreparation{sess: sess, settings: runSettings, prepared: prepared, loop: loop}, nil
 }
 
-func (r *Runner) runOnePrepared(parent context.Context, sessionID string, input session.UserMessage, current *liveRun, preparation runPreparation) (err error) {
-	runID, err := newRunID()
-	if err != nil {
-		return err
-	}
-	if !current.openSteering(runID) {
-		return context.Canceled
-	}
-	runCtx, cancel := context.WithCancel(parent)
-	current.setCancel(cancel)
-	defer cancel()
-	return r.executePrepared(runCtx, sessionID, runID, input, current, preparation)
-}
-
 func (r *Runner) executePrepared(runCtx context.Context, sessionID, runID string, input session.UserMessage, current *liveRun, preparation runPreparation) (err error) {
 	sess := preparation.sess
 	runSettings := preparation.settings
 	prepared := preparation.prepared
 	loop := preparation.loop
-
-	message := messageFromInput(runID, input)
-	entry, err := sess.Append(message)
-	if err != nil {
-		return err
-	}
-	current.setAfterEntrySeq(entry.Seq)
-	if err = r.publish(runCtx, RunEvent{SessionID: sessionID, RunID: runID, Kind: Message, Entry: &entry}); err != nil {
-		return err
-	}
-	if err = r.publish(runCtx, RunEvent{SessionID: sessionID, RunID: runID, Kind: RunStarted, AfterEntrySeq: entry.Seq}); err != nil {
-		return err
-	}
+	runStartedAttempted := false
 	defer func() {
+		if !runStartedAttempted {
+			return
+		}
 		status := RunSucceeded
-		if errors.Is(err, context.Canceled) {
+		if isCancellationOnly(err) {
 			status = RunCancelled
 		} else if err != nil {
 			status = RunFailed
@@ -207,20 +272,46 @@ func (r *Runner) executePrepared(runCtx context.Context, sessionID, runID string
 			Status:        status,
 			Error:         errorText(err),
 		})
-		if err == nil && endErr != nil {
-			err = endErr
+		if endErr != nil {
+			err = errors.Join(err, endErr)
 		}
 	}()
 
+	message := messageFromInput(runID, input)
+	entry, err := sess.Append(message)
+	if err != nil {
+		return err
+	}
+	current.setAfterEntrySeq(entry.Seq)
+	if err = r.publish(runCtx, RunEvent{SessionID: sessionID, RunID: runID, Kind: Message, Entry: &entry}); err != nil {
+		return err
+	}
+	history := sess.History()
+	opened := current.openSteering(runCtx)
+	if !opened {
+		err = runCtx.Err()
+		if err == nil {
+			err = context.Canceled
+		}
+		return err
+	}
+	runStartedAttempted = true
+	if err = r.publish(runCtx, RunEvent{SessionID: sessionID, RunID: runID, Kind: RunStarted, AfterEntrySeq: entry.Seq}); err != nil {
+		return err
+	}
+
 	invocation := loops.Invocation{
-		History:      sess.History(),
+		SessionID:    sessionID,
+		RunID:        runID,
+		History:      history,
 		SystemPrompt: prepared.SystemPrompt,
 		LLMConfig: llm.RunConfig{
 			Model:           runSettings.Model,
 			ReasoningEffort: runSettings.ReasoningEffort,
 		},
-		ToolNames: append([]string(nil), prepared.Tools...),
-		Workspace: runSettings.Workspace,
+		ToolNames:   append([]string(nil), prepared.Tools...),
+		Workspace:   runSettings.Workspace,
+		InputSignal: current.inputSignalForWait,
 		Emit: func(eventCtx context.Context, event loops.Event) error {
 			return r.emit(eventCtx, sessionID, runID, sess, current, event)
 		},
@@ -229,6 +320,41 @@ func (r *Runner) executePrepared(runCtx context.Context, sessionID, runID string
 		},
 	}
 	return loop.Run(runCtx, invocation)
+}
+
+func runResult(runID string, err error) RunResult {
+	status := RunSucceeded
+	if isCancellationOnly(err) {
+		status = RunCancelled
+	} else if err != nil {
+		status = RunFailed
+	}
+	return RunResult{RunID: runID, Status: status, Err: err}
+}
+
+func isCancellationOnly(err error) bool {
+	if err == nil {
+		return false
+	}
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		causes := joined.Unwrap()
+		if len(causes) == 0 {
+			return false
+		}
+		for _, cause := range causes {
+			if !isCancellationOnly(cause) {
+				return false
+			}
+		}
+		return true
+	}
+	if unwrapped, ok := err.(interface{ Unwrap() error }); ok {
+		cause := unwrapped.Unwrap()
+		if cause != nil {
+			return isCancellationOnly(cause)
+		}
+	}
+	return errors.Is(err, context.Canceled)
 }
 
 func (r *Runner) begin(sessionID string, current *liveRun) error {
@@ -245,21 +371,13 @@ func (r *Runner) begin(sessionID string, current *liveRun) error {
 	return nil
 }
 
-func (r *Runner) end(sessionID string, current *liveRun) {
-	current.mu.Lock()
-	current.steeringClosed = true
-	cancel := current.cancel
-	current.mu.Unlock()
-	if cancel != nil {
-		cancel()
-	}
-
+func (r *Runner) release(sessionID string, current *liveRun) {
+	current.closeSteering()
 	r.mu.Lock()
 	if r.live[sessionID] == current {
 		delete(r.live, sessionID)
 	}
 	r.mu.Unlock()
-	r.wg.Done()
 }
 
 func (r *Runner) emit(ctx context.Context, sessionID, runID string, sess *session.Session, current *liveRun, event loops.Event) error {

@@ -19,6 +19,12 @@ type Call struct {
 	Arguments json.RawMessage
 	Workspace string
 	Allow     []string
+	// 由 Runner / Loop 提供的调用身份，不从 Arguments 读取。
+	SessionID  string
+	RunID      string
+	ToolCallID string
+	// 只唤醒等待中的工具，不承载 Steer 消息。
+	InputSignal <-chan struct{}
 }
 
 // 数据。工具调用后交还给模型的文本结果。

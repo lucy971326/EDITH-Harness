@@ -207,18 +207,17 @@ func TestCloseCancelsAndWaitsForManagedRun(t *testing.T) {
 	}
 }
 
-func TestClosePreventsRunFromOpeningAfterItStarts(t *testing.T) {
+func TestStartRejectsRunAfterClose(t *testing.T) {
 	called := false
 	loop := &runnerTestLoop{run: func(context.Context, loops.Invocation) error {
 		called = true
 		return nil
 	}}
 	fixture := newRunnerFixture(t, loop)
-	current := &liveRun{toolBlocks: make(map[string]toolBlock)}
-	current.shutdown()
-	err := fixture.runner.runOnePrepared(context.Background(), "session-1", textInput("first"), current, runPreparation{})
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("run error = %v", err)
+	fixture.runner.close()
+	_, err := fixture.runner.Start(context.Background(), "session-1", textInput("first"))
+	if err == nil || !strings.Contains(err.Error(), "closing") {
+		t.Fatalf("Start error = %v", err)
 	}
 	if called {
 		t.Fatal("loop started after Runner.Close")

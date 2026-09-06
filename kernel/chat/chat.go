@@ -174,7 +174,7 @@ func (s *Service) Start(ctx context.Context, input RunInput) error {
 	if err != nil {
 		return err
 	}
-	err = s.runner.Start(ctx, input.SessionID, input.Message)
+	_, err = s.runner.Start(ctx, input.SessionID, input.Message)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrRunStart, err)
 	}

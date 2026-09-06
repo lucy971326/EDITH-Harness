@@ -187,11 +187,19 @@ func (l *reactLoop) execute(
 		return session.Message{}, err
 	}
 
+	var inputSignal <-chan struct{}
+	if invocation.InputSignal != nil {
+		inputSignal = invocation.InputSignal()
+	}
 	result, err := l.tools.Call(ctx, tools.Call{
-		Name:      call.Name,
-		Arguments: json.RawMessage(call.Args),
-		Workspace: invocation.Workspace,
-		Allow:     invocation.ToolNames,
+		Name:        call.Name,
+		Arguments:   json.RawMessage(call.Args),
+		Workspace:   invocation.Workspace,
+		Allow:       invocation.ToolNames,
+		SessionID:   invocation.SessionID,
+		RunID:       invocation.RunID,
+		ToolCallID:  call.ID,
+		InputSignal: inputSignal,
 	})
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {

@@ -15,7 +15,7 @@
 
 ### 3. 多 Agent 与可追溯性
 
-- 实现 Subagent：它拥有自己的运行与业务状态，不写入父 Session。
+- 实现 [Subagent 系统](subagentsystem.md)：异步委派、多次交流、完成通知与等待唤醒；孩子的完整过程与业务状态不写入父 Session。
 - Subagent、MCP 已产生足够真实事实后，再实现轨迹页。
 
 ### 4. 完整验收

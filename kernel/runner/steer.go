@@ -6,6 +6,7 @@ import (
 
 	"harness/kernel/loops"
 	"harness/kernel/session"
+	"harness/kernel/session/settings"
 )
 
 // Steer 先把一条用户输入落账，再交给当前 Run 的下一个检查点。
@@ -16,7 +17,7 @@ func (r *Runner) Steer(sessionID string, input session.UserMessage) error {
 	}
 
 	current.mu.Lock()
-	if current.steeringClosed || current.runID == "" {
+	if current.steeringState != steeringOpen || current.runID == "" {
 		current.mu.Unlock()
 		return fmt.Errorf("runner: session %q is not running", sessionID)
 	}
@@ -32,6 +33,7 @@ func (r *Runner) Steer(sessionID string, input session.UserMessage) error {
 		return err
 	}
 	current.steers = append(current.steers, message)
+	current.signalInputLocked()
 	afterEntrySeq := current.afterEntrySeq
 	current.mu.Unlock()
 
@@ -78,6 +80,20 @@ func (r *Runner) State(sessionID string) (RunState, bool) {
 	return current.state(), true
 }
 
+// RunSettings 返回指定活跃 Run 启动时保存的配置快照。
+func (r *Runner) RunSettings(sessionID, runID string) (settings.SessionSettings, error) {
+	current, err := r.current(sessionID)
+	if err != nil {
+		return settings.SessionSettings{}, err
+	}
+	current.mu.Lock()
+	defer current.mu.Unlock()
+	if current.runID != runID {
+		return settings.SessionSettings{}, fmt.Errorf("runner: run %q is not active for session %q", runID, sessionID)
+	}
+	return current.settings, nil
+}
+
 func (r *liveRun) takeSteers(phase loops.CheckpointPhase) ([]session.Message, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -86,44 +102,34 @@ func (r *liveRun) takeSteers(phase loops.CheckpointPhase) ([]session.Message, er
 	}
 	steers := r.steers
 	r.steers = nil
+	if len(steers) > 0 {
+		r.inputSignal = make(chan struct{})
+	}
 	if phase == loops.CheckpointFinal && len(steers) == 0 {
-		r.steeringClosed = true
+		r.steeringState = steeringClosed
 	}
 	return steers, nil
 }
 
-func (r *liveRun) setCancel(cancel func()) {
-	r.mu.Lock()
-	r.cancel = cancel
-	stopped := r.stopped
-	r.mu.Unlock()
-	if stopped {
-		cancel()
-	}
-}
-
-func (r *liveRun) openSteering(runID string) bool {
+func (r *liveRun) openSteering(ctx context.Context) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.closing {
+	if r.steeringState != steeringInitializing {
 		return false
 	}
-	r.stopped = false
-	r.steeringClosed = false
-	r.runID = runID
+	err := ctx.Err()
+	if err != nil {
+		r.steeringState = steeringClosed
+		return false
+	}
+	r.steeringState = steeringOpen
 	return true
 }
 
-func (r *liveRun) startExclusive(runID string) bool {
+func (r *liveRun) inputSignalForWait() <-chan struct{} {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.closing {
-		return false
-	}
-	r.stopped = false
-	r.steeringClosed = true
-	r.runID = runID
-	return true
+	return r.inputSignal
 }
 
 func (r *liveRun) setAfterEntrySeq(seq uint64) {
@@ -168,23 +174,32 @@ func (r *liveRun) toolBlockForMessage(message session.Message, stepSeq, blockSeq
 	return r.toolBlock(message.Blocks[0].Result.ID)
 }
 
-func (r *liveRun) stop() {
-	r.mu.Lock()
-	r.stopped = true
-	cancel := r.cancel
-	r.mu.Unlock()
-	if cancel != nil {
-		cancel()
+func (r *liveRun) signalInputLocked() {
+	if r.inputSignal == nil {
+		r.inputSignal = make(chan struct{})
+		return
+	}
+	select {
+	case <-r.inputSignal:
+	default:
+		close(r.inputSignal)
 	}
 }
 
+func (r *liveRun) stop() {
+	r.closeSteering()
+}
+
 func (r *liveRun) shutdown() {
+	r.closeSteering()
+}
+
+func (r *liveRun) closeSteering() {
 	r.mu.Lock()
-	r.closing = true
-	r.stopped = true
+	r.steeringState = steeringClosed
 	cancel := r.cancel
-	r.mu.Unlock()
 	if cancel != nil {
 		cancel()
 	}
+	r.mu.Unlock()
 }

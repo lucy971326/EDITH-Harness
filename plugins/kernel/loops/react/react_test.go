@@ -153,6 +153,108 @@ func TestReactRunsToolRoundTrip(t *testing.T) {
 	}
 }
 
+func TestReactPassesProgramIdentityAndInputSignalToTool(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		if requests == 1 {
+			writeSSE(w,
+				`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"echo","arguments":"{\"value\":\"hello\"}"}}]},"index":0}]}`,
+				`{"choices":[{"delta":{},"index":0,"finish_reason":"tool_calls"}]}`,
+			)
+			return
+		}
+		writeSSE(w, `{"choices":[{"delta":{"content":"done"},"index":0,"finish_reason":"stop"}]}`)
+	}))
+	defer server.Close()
+
+	loop, toolRegistry := installReact(t, server.URL)
+	inputSignal := make(chan struct{})
+	var got tools.Call
+	err := toolRegistry.Register(tools.New("echo", "Echo a value.", func(_ context.Context, call tools.Call, args echoArgs) (tools.Result, error) {
+		got = call
+		return tools.Result{Content: args.Value}, nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	invocation := testInvocation([]string{"echo"})
+	invocation.SessionID = "session-1"
+	invocation.RunID = "run-1"
+	invocation.InputSignal = func() <-chan struct{} { return inputSignal }
+	err = loop.Run(t.Context(), invocation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SessionID != "session-1" || got.RunID != "run-1" || got.ToolCallID != "call_1" {
+		t.Fatalf("tool identity = %#v", got)
+	}
+	if got.InputSignal == nil || got.InputSignal != inputSignal {
+		t.Fatal("tool did not receive the invocation input signal")
+	}
+	if string(got.Arguments) != `{"value":"hello"}` {
+		t.Fatalf("tool arguments = %s", got.Arguments)
+	}
+}
+
+func TestReactGetsCurrentInputSignalForEachToolCall(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		if requests == 1 {
+			writeSSE(w,
+				`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"echo","arguments":"{\"value\":\"one\"}"}},{"index":1,"id":"call_2","type":"function","function":{"name":"echo","arguments":"{\"value\":\"two\"}"}}]},"index":0}]}`,
+				`{"choices":[{"delta":{},"index":0,"finish_reason":"tool_calls"}]}`,
+			)
+			return
+		}
+		writeSSE(w, `{"choices":[{"delta":{"content":"done"},"index":0,"finish_reason":"stop"}]}`)
+	}))
+	defer server.Close()
+
+	loop, toolRegistry := installReact(t, server.URL)
+	var got []tools.Call
+	err := toolRegistry.Register(tools.New("echo", "Echo a value.", func(_ context.Context, call tools.Call, args echoArgs) (tools.Result, error) {
+		got = append(got, call)
+		return tools.Result{Content: args.Value}, nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	firstSignal := make(chan struct{})
+	close(firstSignal)
+	secondSignal := make(chan struct{})
+	close(secondSignal)
+	signalCalls := 0
+	invocation := testInvocation([]string{"echo"})
+	invocation.InputSignal = func() <-chan struct{} {
+		signalCalls++
+		if signalCalls == 1 {
+			return firstSignal
+		}
+		return secondSignal
+	}
+	err = loop.Run(t.Context(), invocation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if signalCalls != 2 || len(got) != 2 {
+		t.Fatalf("signal calls = %d, tool calls = %d", signalCalls, len(got))
+	}
+	if got[0].InputSignal != firstSignal || got[1].InputSignal != secondSignal {
+		t.Fatalf("tool input signals = %#v", got)
+	}
+	for index, signal := range []<-chan struct{}{got[0].InputSignal, got[1].InputSignal} {
+		select {
+		case <-signal:
+		default:
+			t.Fatalf("tool %d did not observe pending input", index+1)
+		}
+	}
+}
+
 func TestReactEmitsUsageAfterEachStream(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		writeSSE(w,

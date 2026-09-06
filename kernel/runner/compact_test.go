@@ -40,7 +40,7 @@ func TestCompactRejectsRunningSession(t *testing.T) {
 		return ctx.Err()
 	}})
 	t.Cleanup(func() { close(block) })
-	err := fixture.runner.Start(context.Background(), "session-1", textInput("hi"))
+	_, err := fixture.runner.Start(context.Background(), "session-1", textInput("hi"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,6 +142,18 @@ func TestCompactStopDoesNotCommit(t *testing.T) {
 	case <-started:
 	case <-time.After(2 * time.Second):
 		t.Fatal("compact request did not start")
+	}
+	err = fixture.runner.Steer("session-1", textInput("must not enter compact"))
+	if err == nil || !strings.Contains(err.Error(), "not running") {
+		stopErr := fixture.runner.Stop("session-1")
+		if stopErr != nil {
+			t.Error(stopErr)
+		}
+		t.Fatalf("Steer during Compact error = %v", err)
+	}
+	history := fixture.session.History()
+	if len(history) != 1 {
+		t.Fatalf("history after rejected Compact Steer = %#v", history)
 	}
 	err = fixture.runner.Stop("session-1")
 	if err != nil {

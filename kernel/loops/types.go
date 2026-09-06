@@ -61,13 +61,18 @@ const (
 
 // 数据。Runner 已准备好、交给 Loop 的本轮输入。
 type Invocation struct {
+	// 本轮由 Runner 提供的稳定身份。
+	SessionID    string
+	RunID        string
 	History      []session.Message
 	SystemPrompt string
 	LLMConfig    llm.RunConfig
 	ToolNames    []string
 	Workspace    string
-	Emit         func(context.Context, Event) error
-	Checkpoint   func(context.Context, CheckpointPhase) ([]session.Message, error)
+	// Steer 到达时唤醒等待者；调用时取得当前代次，消息仍由 Checkpoint 消费。
+	InputSignal func() <-chan struct{}
+	Emit        func(context.Context, Event) error
+	Checkpoint  func(context.Context, CheckpointPhase) ([]session.Message, error)
 }
 
 // 契约。一种已编译的运行范式。
