@@ -286,6 +286,7 @@ kernel/
   agents/            Agent 设置服务
   commands/          空登记处 + Command
   runner/            整份 A；live
+  subagents/         整份 A；子会话委派关系、逐轮状态与独立存储
   chat/              整份 A；聊天业务入口，不拥有账本或 Run
 
 surface/
@@ -321,7 +322,7 @@ enable: [web, read, write, edit, bash]
 ```
 main:
   host.New()
-  必装：persist（挂 sessionPersistence + sessionSettings + agentStore）→ session → llm → tools → loops → react → skills → skills-filesystem → agents → commands → runner → chat-service → compact
+  必装：persist（挂 sessionPersistence + sessionSettings + agentStore）→ session → llm → tools → loops → react → skills → skills-filesystem → agents → commands → runner → subagents → chat-service → compact
   必装提供者：yaml machine 选出的那一个，在 tools 前面 Start
   再按 enable：plugins/* 、 surface/*
   Close 倒序

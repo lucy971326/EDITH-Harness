@@ -17,23 +17,25 @@ import (
 	"harness/kernel/session"
 	"harness/kernel/session/settings"
 	"harness/kernel/skills"
+	"harness/kernel/subagents"
 )
 
 // 活对象。聊天业务的统一入口；不拥有账本、Run 或事件登记处。
 type Service struct {
-	sessions *session.Store
-	settings settings.SessionSettingsStore
-	agents   *agents.Service
-	models   *llm.Client
-	runner   *runner.Runner
-	commands commands.Commands
-	events   *events.Registry
+	sessions  *session.Store
+	settings  settings.SessionSettingsStore
+	agents    *agents.Service
+	models    *llm.Client
+	runner    *runner.Runner
+	commands  commands.Commands
+	events    *events.Registry
+	subagents *subagents.Subagents
 
 	createMu sync.Mutex
 }
 
 // NewService 组装聊天业务服务。
-func NewService(sessions *session.Store, settingsStore settings.SessionSettingsStore, agentService *agents.Service, modelClient *llm.Client, runService *runner.Runner, commandService commands.Commands, eventRegistry *events.Registry) (*Service, error) {
+func NewService(sessions *session.Store, settingsStore settings.SessionSettingsStore, agentService *agents.Service, modelClient *llm.Client, runService *runner.Runner, commandService commands.Commands, eventRegistry *events.Registry, subagentService *subagents.Subagents) (*Service, error) {
 	if sessions == nil {
 		return nil, fmt.Errorf("chat service: nil sessions")
 	}
@@ -55,7 +57,10 @@ func NewService(sessions *session.Store, settingsStore settings.SessionSettingsS
 	if eventRegistry == nil {
 		return nil, fmt.Errorf("chat service: nil events")
 	}
-	return &Service{sessions: sessions, settings: settingsStore, agents: agentService, models: modelClient, runner: runService, commands: commandService, events: eventRegistry}, nil
+	if subagentService == nil {
+		return nil, fmt.Errorf("chat service: nil subagents")
+	}
+	return &Service{sessions: sessions, settings: settingsStore, agents: agentService, models: modelClient, runner: runService, commands: commandService, events: eventRegistry, subagents: subagentService}, nil
 }
 
 // Create 创建或复用指定工作区中的空会话。
@@ -109,6 +114,9 @@ func (s *Service) List() ([]SessionInfo, error) {
 	}
 	out := make([]SessionInfo, 0, len(metas))
 	for _, meta := range metas {
+		if s.subagents.IsChildSession(meta.ID) {
+			continue
+		}
 		setup, err := s.settings.For(meta.ID)
 		if err != nil {
 			return nil, fmt.Errorf("%w: settings for %q: %w", ErrSessionSettings, meta.ID, err)
@@ -120,6 +128,9 @@ func (s *Service) List() ([]SessionInfo, error) {
 
 // Session 返回一场已存在会话的元数据与运行设置。
 func (s *Service) Session(id string) (SessionInfo, error) {
+	if s.subagents.IsChildSession(id) {
+		return SessionInfo{}, fmt.Errorf("%w: session %q", os.ErrNotExist, id)
+	}
 	metas, err := s.sessions.List()
 	if err != nil {
 		return SessionInfo{}, err
@@ -151,6 +162,9 @@ func (s *Service) Snapshot(sessionID string) (Snapshot, error) {
 
 // Start 保存下一轮设置并启动 Runner 自己管理的后台 Run。
 func (s *Service) Start(ctx context.Context, input RunInput) error {
+	if s.subagents.IsChildSession(input.SessionID) {
+		return fmt.Errorf("%w: session %q", os.ErrNotExist, input.SessionID)
+	}
 	if _, err := s.sessions.Get(input.SessionID); err != nil {
 		return err
 	}
@@ -183,6 +197,9 @@ func (s *Service) Start(ctx context.Context, input RunInput) error {
 
 // Steer 将一条输入交给当前 Run；不修改下一轮设置。
 func (s *Service) Steer(sessionID string, message session.UserMessage) error {
+	if s.subagents.IsChildSession(sessionID) {
+		return fmt.Errorf("%w: session %q", os.ErrNotExist, sessionID)
+	}
 	if _, err := s.sessions.Get(sessionID); err != nil {
 		return err
 	}

@@ -22,6 +22,7 @@ import (
 	"harness/kernel/session"
 	"harness/kernel/session/settings"
 	"harness/kernel/skills"
+	"harness/kernel/subagents"
 	"harness/kernel/tools"
 	compactcmd "harness/plugins/kernel/commands/compact"
 	chat "harness/plugins/web/chat"
@@ -108,6 +109,7 @@ func installChatWithCommands(t *testing.T) (*host.Host, string) {
 		agents.NewPlugin(),
 		kerncommands.NewPlugin(),
 		runner.NewPlugin(),
+		subagents.NewPlugin(home),
 		chatservice.NewPlugin(),
 		compactcmd.New(),
 	} {

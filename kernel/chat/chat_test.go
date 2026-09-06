@@ -21,6 +21,7 @@ import (
 	"harness/kernel/session"
 	"harness/kernel/session/settings"
 	"harness/kernel/skills"
+	"harness/kernel/subagents"
 	"harness/kernel/tools"
 )
 
@@ -122,7 +123,7 @@ func TestServiceRunsWithoutWebAndForksCompletedSegment(t *testing.T) {
 func TestServiceCreateDiscardsSessionWhenSettingsSaveFails(t *testing.T) {
 	fixture := newTestFixture(t)
 	defer fixture.host.Close()
-	service, err := NewService(fixture.sessions, failingSettings{store: fixture.settings}, fixture.agents, fixture.models, fixture.runner, fixture.commands, fixture.events)
+	service, err := NewService(fixture.sessions, failingSettings{store: fixture.settings}, fixture.agents, fixture.models, fixture.runner, fixture.commands, fixture.events, fixture.subagents)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +156,7 @@ func TestServiceSessionDoesNotReadOtherSessionSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service, err := NewService(fixture.sessions, selectiveFailSettings{store: fixture.settings, badID: "bad"}, fixture.agents, fixture.models, fixture.runner, fixture.commands, fixture.events)
+	service, err := NewService(fixture.sessions, selectiveFailSettings{store: fixture.settings, badID: "bad"}, fixture.agents, fixture.models, fixture.runner, fixture.commands, fixture.events, fixture.subagents)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,16 +170,17 @@ func TestServiceSessionDoesNotReadOtherSessionSettings(t *testing.T) {
 }
 
 type testFixture struct {
-	host     *host.Host
-	service  *Service
-	sessions *session.Store
-	settings settings.SessionSettingsStore
-	agents   *agents.Service
-	models   *llm.Client
-	runner   *runner.Runner
-	commands commands.Commands
-	events   *events.Registry
-	loop     *testLoop
+	host      *host.Host
+	service   *Service
+	sessions  *session.Store
+	settings  settings.SessionSettingsStore
+	agents    *agents.Service
+	models    *llm.Client
+	runner    *runner.Runner
+	commands  commands.Commands
+	events    *events.Registry
+	subagents *subagents.Subagents
+	loop      *testLoop
 }
 
 func newTestFixture(t *testing.T) testFixture {
@@ -200,7 +202,7 @@ func newTestFixture(t *testing.T) testFixture {
 	t.Cleanup(func() { _ = os.Setenv("HOME", previousHome) })
 
 	h := host.NewHost()
-	plugins := []host.Plugin{&persist.Plugin{Dir: t.TempDir()}, &session.Plugin{}, &llm.Plugin{}, events.NewPlugin(), loops.NewPlugin(), skills.NewPlugin(), tools.NewPlugin(), agents.NewPlugin(), commands.NewPlugin(), runner.NewPlugin(), NewPlugin()}
+	plugins := []host.Plugin{&persist.Plugin{Dir: t.TempDir()}, &session.Plugin{}, &llm.Plugin{}, events.NewPlugin(), loops.NewPlugin(), skills.NewPlugin(), tools.NewPlugin(), agents.NewPlugin(), commands.NewPlugin(), runner.NewPlugin(), subagents.NewPlugin(t.TempDir()), NewPlugin()}
 	for _, plugin := range plugins {
 		err = h.Install(plugin)
 		if err != nil {
@@ -250,6 +252,10 @@ func newTestFixture(t *testing.T) testFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
+	subagentService, err := host.Resolve[*subagents.Subagents](h, "subagents")
+	if err != nil {
+		t.Fatal(err)
+	}
 	loopRegistry, err := host.Resolve[loops.Loops](h, "loops")
 	if err != nil {
 		t.Fatal(err)
@@ -262,7 +268,7 @@ func newTestFixture(t *testing.T) testFixture {
 	if !ok {
 		t.Fatal("test loop unavailable")
 	}
-	return testFixture{host: h, service: service, sessions: sessions, settings: settingsStore, agents: agentService, models: models, runner: runService, commands: commandService, events: eventRegistry, loop: loop}
+	return testFixture{host: h, service: service, sessions: sessions, settings: settingsStore, agents: agentService, models: models, runner: runService, commands: commandService, events: eventRegistry, subagents: subagentService, loop: loop}
 }
 
 type testLoop struct {
@@ -346,3 +352,81 @@ func waitEnded(t *testing.T, received <-chan runner.RunEvent, sessionID string) 
 }
 
 func containsRunsArray(value string) bool { return strings.Contains(value, "\"runs\":[]") }
+
+func TestSubagentsChatIsolation(t *testing.T) {
+	fixture := newTestFixture(t)
+	defer fixture.host.Close()
+
+	workspace := t.TempDir()
+	created, err := fixture.service.Create(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = fixture.service.Start(context.Background(), RunInput{
+		SessionID: created.Meta.ID, Model: "deepseek/deepseek-v4-flash", ReasoningEffort: "high",
+		Message: session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "parent prompt"}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.loop.waitStarted(t)
+	defer fixture.loop.release()
+
+	state, ok := fixture.runner.State(created.Meta.ID)
+	if !ok {
+		t.Fatal("expected parent running")
+	}
+
+	spawnRes, err := fixture.subagents.Spawn(context.Background(), subagents.SpawnInput{
+		ParentSessionID: created.Meta.ID,
+		ParentRunID:     state.RunID,
+		Description:     "isolated child",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.loop.waitStarted(t)
+	fixture.loop.release()
+
+	// 1. ChatService.List 绝不包含子会话
+	chatList, err := fixture.service.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range chatList {
+		if item.Meta.ID == spawnRes.ChildSessionID {
+			t.Fatalf("child session %q leaked into chat list", spawnRes.ChildSessionID)
+		}
+	}
+
+	// 2. ChatService.Create 绝不复用空子会话
+	newChat, err := fixture.service.Create(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if newChat.Meta.ID == spawnRes.ChildSessionID {
+		t.Fatalf("child session %q was reused by chatService.Create", spawnRes.ChildSessionID)
+	}
+
+	// 3. ChatService.Session 拒绝访问子会话
+	_, err = fixture.service.Session(spawnRes.ChildSessionID)
+	if !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected ErrNotExist, got %v", err)
+	}
+
+	// 4. ChatService.Start / Steer 拒绝操作子会话
+	err = fixture.service.Start(context.Background(), RunInput{
+		SessionID: spawnRes.ChildSessionID,
+		Message:   session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "hi"}}},
+	})
+	if !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected ErrNotExist, got %v", err)
+	}
+	err = fixture.service.Steer(spawnRes.ChildSessionID, session.UserMessage{
+		Blocks: []session.Block{{Kind: "text", Text: "steer"}},
+	})
+	if !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected ErrNotExist, got %v", err)
+	}
+}

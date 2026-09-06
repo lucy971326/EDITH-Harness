@@ -25,6 +25,7 @@ import (
 	"harness/kernel/runner"
 	"harness/kernel/session"
 	"harness/kernel/skills"
+	"harness/kernel/subagents"
 	"harness/kernel/tools"
 	compactcmd "harness/plugins/kernel/commands/compact"
 	"harness/plugins/kernel/loops/react"
@@ -145,6 +146,10 @@ func run(configPath string) error {
 		return err
 	}
 	err = h.Install(runner.NewPlugin())
+	if err != nil {
+		return err
+	}
+	err = h.Install(subagents.NewPlugin(dataDir))
 	if err != nil {
 		return err
 	}

@@ -32,7 +32,7 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的五个页面插槽基础�
 
 ### 阶段 3：真实聊天
 
-- 启动链已完整组装：`persist → session → llm → machine-local → tools → events → loops/react → skills → skills-builtin → skills-filesystem → agents → commands → runner → chat-service → compact → web → chat → chat-composer-skills → chat-composer-commands → panel-demo`。
+- 启动链已完整组装：`persist → session → llm → machine-local → tools → events → loops/react → skills → skills-builtin → skills-filesystem → agents → commands → runner → subagents → chat-service → compact → web → chat → chat-composer-skills → chat-composer-commands → panel-demo`。
 - 每轮生成 `RunID`，写入本轮耐久消息与 SSE；History Snapshot 和 SSE 共用 RunView reducer / `paint()`。同一 Run 默认合并为一张助手卡，只有耐久 Steer 才切成前后片段；落账完成不会让实时卡片跳位。
 - 时间线的耐久顺序使用 `Entry.Seq`；运行中卡片用 `AfterEntrySeq` 定位，Run 内按 `StepSeq / BlockSeq` 排列，工具结果按原始调用块回填。
 - Chat 支持普通发送、停止和 Steer；已移除 FollowUp 入口与等待队列，每个活 Run 只执行当前一轮。
@@ -149,7 +149,16 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的五个页面插槽基础�
 - Steer 使用可重复观察的广播信号，只有检查点消费消息后才换代次；ReAct 每次调用工具时获取当前信号，停止仍通过 Context 取消。
 - 初始化历史与后续 Steer 分离，避免重复消费；Compact 始终拒绝 Steer。取消/关闭后不重新开放输入，收尾依次释放 live、完成句柄、结束后台工作。
 - 开始事件部分投递失败仍尝试结束通知，错误保留在最终结果。已验收全量 Go 测试、相关 race、vet 和 diff 检查。
-- 此步只完成运行基础；子会话委派服务、父子关系及平台工具尚未实现。后续执行计划见 `docs/Nowplan.md`，本次停在第 1 步审核通过处。
+- 此步完成运行基础；委派服务的后续进展见下节，平台工具仍未实现。
+
+### 子会话委派第 2 步：服务与独立存储
+
+- 必装 `kernel/subagents` 整份服务，启动顺序为 Runner → Subagents → ChatService；提供 Options / Spawn / Send / List / Wait / Stop / StopFamily。
+- 使用父 Run 快照继承设置，独立创建子 Session；关系先保存，随后创建会话与设置、启动 Runner。子会话不进入普通聊天列表或空会话复用。
+- `subagents/tasks/<task-id>.json` 保存版本化任务、逐轮 RunID / 状态 / 最终正文位置和通知集合；重启保留历史，未完成轮次标记中断，不自动执行。
+- 单任务状态与写盘串行，旧轮完整收尾后才能开新轮；关闭取消服务上下文并等待在途启动和运行回调。持久化失败由调用、查询、等待及关闭明确报告。
+- 已通过全量 Go 测试、相关包 race、vet 与 diff 检查，覆盖极快完成、旧轮收尾、启动中关闭、实际写盘失败和恢复。
+- 尚未接入平台工具、父账本通知、等待插话和 Chat 父子停止；StopFamily 与并发派生的完整协调留在第 5 步。后续按 `docs/Nowplan.md` 逐步授权。
 
 ## 验证
 

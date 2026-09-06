@@ -28,6 +28,7 @@ import (
 	"harness/kernel/session"
 	"harness/kernel/session/settings"
 	"harness/kernel/skills"
+	"harness/kernel/subagents"
 	"harness/kernel/tools"
 	"harness/surface/web"
 	"harness/surface/web/ui"
@@ -365,7 +366,11 @@ func TestTargetSettingsFailureReturnsServerError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	business, err := chatservice.NewService(sessions, brokenSettings{store: settingsStore}, agentService, models, runService, commandService, eventRegistry)
+	subagentService, err := host.Resolve[*subagents.Subagents](h, "subagents")
+	if err != nil {
+		t.Fatal(err)
+	}
+	business, err := chatservice.NewService(sessions, brokenSettings{store: settingsStore}, agentService, models, runService, commandService, eventRegistry, subagentService)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -565,6 +570,10 @@ func installChat(t *testing.T) (*host.Host, *web.Plugin) {
 		t.Fatal(err)
 	}
 	err = h.Install(runner.NewPlugin())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = h.Install(subagents.NewPlugin(t.TempDir()))
 	if err != nil {
 		t.Fatal(err)
 	}

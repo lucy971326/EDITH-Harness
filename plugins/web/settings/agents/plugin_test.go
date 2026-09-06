@@ -20,6 +20,7 @@ import (
 	"harness/kernel/session"
 	"harness/kernel/session/settings"
 	"harness/kernel/skills"
+	"harness/kernel/subagents"
 	"harness/kernel/tools"
 	"harness/surface/web"
 )
@@ -87,6 +88,10 @@ func TestPluginManagesAgentsAndProtectsUsedAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = h.Install(runner.NewPlugin())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = h.Install(subagents.NewPlugin(t.TempDir()))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -23,6 +23,7 @@ import (
 	"harness/kernel/session"
 	"harness/kernel/session/settings"
 	"harness/kernel/skills"
+	"harness/kernel/subagents"
 	"harness/kernel/tools"
 	"harness/plugins/web/chat"
 	"harness/surface/web"
@@ -138,6 +139,7 @@ func installChatWithDemo(t *testing.T) (*host.Host, *web.Plugin, *Plugin) {
 		agents.NewPlugin(),
 		commands.NewPlugin(),
 		runner.NewPlugin(),
+		subagents.NewPlugin(home),
 		chatservice.NewPlugin(),
 	} {
 		if err := h.Install(plugin); err != nil {

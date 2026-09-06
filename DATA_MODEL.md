@@ -16,6 +16,9 @@
 ├─ <agent-id>.agent.json
 │  其他用户创建的 Agent 配置
 │
+├─ subagents/tasks/<task-id>.json
+│  委派关系、逐轮状态与结果位置、待投递通知；版本化 JSON 原子替换
+│
 └─ sessions/<session-id>/
    ├─ messages.jsonl
    │  对话账本
@@ -49,6 +52,11 @@ Skill 发现
 插件状态
 └─ 插件自己的业务事实
    Todo、审批、游戏状态、插件设置等
+
+Subagents
+└─ 父子 Session 关系、稳定任务 ID、每轮 RunID 与结果 EntryID、错误和通知
+   子会话仍使用普通账本及 SessionSettings，但不进入普通聊天列表或空会话复用
+   重启只恢复记录，将未完成轮次标记中断，不自动启动
 
 浏览器状态
 └─ 当前设备上的临时界面状态

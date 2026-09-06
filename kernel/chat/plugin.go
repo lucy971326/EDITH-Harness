@@ -9,6 +9,7 @@ import (
 	"harness/kernel/runner"
 	"harness/kernel/session"
 	"harness/kernel/session/settings"
+	"harness/kernel/subagents"
 )
 
 // 活对象。把 ChatService 挂到 Host 的 chatService 键。
@@ -48,7 +49,11 @@ func (p *Plugin) Start(h *host.Host) error {
 	if err != nil {
 		return err
 	}
-	p.service, err = NewService(sessions, settingsStore, agentService, modelClient, runService, commandService, eventRegistry)
+	subagentService, err := host.Resolve[*subagents.Subagents](h, "subagents")
+	if err != nil {
+		return err
+	}
+	p.service, err = NewService(sessions, settingsStore, agentService, modelClient, runService, commandService, eventRegistry, subagentService)
 	if err != nil {
 		return err
 	}
