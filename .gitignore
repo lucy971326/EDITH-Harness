@@ -8,6 +8,7 @@ reference/*
 .DS_Store
 .forward/
 .harness-data/
+.agy/
 
 # Tailwind 的本地编译工具；产物 site.css 会提交并嵌入二进制。
 node_modules/

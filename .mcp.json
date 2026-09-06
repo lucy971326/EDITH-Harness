@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "agy": {
+      "command": "/Users/lucy/.local/bin/agy-mcp",
+      "args": [
+        "--proxy-host",
+        "127.0.0.1",
+        "--proxy-port",
+        "7897"
+      ]
+    }
+  }
+}
