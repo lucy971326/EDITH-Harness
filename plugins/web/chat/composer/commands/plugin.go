@@ -4,7 +4,7 @@ package commands
 import (
 	"fmt"
 
-	"harness/kernel/commands"
+	chatservice "harness/kernel/chat"
 	"harness/kernel/host"
 	chat "harness/plugins/web/chat"
 	"harness/surface/web/ui"
@@ -21,15 +21,15 @@ func New() *Plugin { return &Plugin{} }
 func (p *Plugin) Name() string { return "chat-composer-commands" }
 
 func (p *Plugin) Start(h *host.Host) error {
-	registry, err := host.Resolve[commands.Commands](h, "commands")
+	business, err := host.Resolve[*chatservice.Service](h, "chatService")
 	if err != nil {
-		return fmt.Errorf("chat-composer-commands: resolve commands: %w", err)
+		return fmt.Errorf("chat-composer-commands: resolve chat service: %w", err)
 	}
 	chatService, err := host.Resolve[chat.Service](h, "chat")
 	if err != nil {
 		return fmt.Errorf("chat-composer-commands: resolve chat: %w", err)
 	}
-	p.source = &source{commands: registry}
+	p.source = &source{business: business}
 	if err := chatService.RegisterSuggestionSource(p.source); err != nil {
 		p.source = nil
 		return err
@@ -44,7 +44,7 @@ func (p *Plugin) Close() error {
 
 // 活对象。按当前命令名单生成 / 候选。
 type source struct {
-	commands commands.Commands
+	business *chatservice.Service
 }
 
 func (s *source) ID() string { return "commands" }
@@ -52,10 +52,10 @@ func (s *source) ID() string { return "commands" }
 func (s *source) Prefixes() []string { return []string{"/"} }
 
 func (s *source) List(chat.SuggestionContext) ([]chat.Suggestion, error) {
-	if s == nil || s.commands == nil {
+	if s == nil || s.business == nil {
 		return nil, fmt.Errorf("chat-composer-commands: source is not ready")
 	}
-	definitions := s.commands.List()
+	definitions := s.business.Commands()
 	items := make([]chat.Suggestion, 0, len(definitions))
 	for _, definition := range definitions {
 		items = append(items, chat.Suggestion{

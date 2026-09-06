@@ -9,7 +9,10 @@ import (
 	"strings"
 	"testing"
 
+	"harness/kernel/agents"
+	"harness/kernel/host"
 	"harness/kernel/session"
+	"harness/kernel/session/settings"
 )
 
 var tinyPNG = []byte{
@@ -72,12 +75,56 @@ func TestUserMessageFromRequestRejectsEmpty(t *testing.T) {
 }
 
 func TestEnsureVisionRejectsImages(t *testing.T) {
-	handler := &PageHandler{}
-	input := session.UserMessage{Blocks: []session.Block{{Kind: "image", Media: &session.Media{MIME: "image/png", Data: "abc"}}}}
-	if err := handler.ensureVision("deepseek/deepseek-v4-flash", input); err == nil {
-		t.Fatal("want vision error")
-	}
-	if err := handler.ensureVision("deepseek/deepseek-v4-flash", session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "hi"}}}); err != nil {
+	h, webPlugin := installChat(t)
+	defer h.Close()
+	sessions, err := host.Resolve[*session.Store](h, "sessions")
+	if err != nil {
 		t.Fatal(err)
+	}
+	_, err = sessions.Create("session-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	settingsStore, err := host.Resolve[settings.SessionSettingsStore](h, "sessionSettings")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = settingsStore.Put("session-1", settings.SessionSettings{AgentID: agents.DefaultID, Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body bytes.Buffer
+	form := multipart.NewWriter(&body)
+	part, err := form.CreateFormFile("images", "dot.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write(tinyPNG); err != nil {
+		t.Fatal(err)
+	}
+	for name, value := range map[string]string{
+		"mode": "steer",
+	} {
+		err = form.WriteField(name, value)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	err = form.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err := nethttp.NewRequest(nethttp.MethodPost, webPlugin.URL()+"/chat/session-1/messages", &body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Content-Type", form.FormDataContentType())
+	response, err := nethttp.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != nethttp.StatusBadRequest {
+		t.Fatalf("status = %d", response.StatusCode)
 	}
 }

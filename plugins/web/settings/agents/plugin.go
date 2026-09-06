@@ -4,7 +4,7 @@ package agents
 import (
 	"fmt"
 
-	kernelagents "harness/kernel/agents"
+	chatservice "harness/kernel/chat"
 	"harness/kernel/host"
 	"harness/surface/web"
 )
@@ -24,11 +24,11 @@ func (p *Plugin) Start(h *host.Host) error {
 	if err != nil {
 		return fmt.Errorf("settings-agents: resolve web: %w", err)
 	}
-	agentService, err := host.Resolve[*kernelagents.Service](h, "agents")
+	business, err := host.Resolve[*chatservice.Service](h, "chatService")
 	if err != nil {
-		return fmt.Errorf("settings-agents: resolve agents: %w", err)
+		return fmt.Errorf("settings-agents: resolve chat service: %w", err)
 	}
-	page := newPage(agentService)
+	page := newPage(business)
 	if err := webService.RegisterSettingsSection(page); err != nil {
 		return err
 	}

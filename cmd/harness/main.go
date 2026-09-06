@@ -15,6 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"harness/kernel/agents"
+	chatservice "harness/kernel/chat"
 	"harness/kernel/commands"
 	"harness/kernel/events"
 	"harness/kernel/host"
@@ -144,6 +145,10 @@ func run(configPath string) error {
 		return err
 	}
 	err = h.Install(runner.NewPlugin())
+	if err != nil {
+		return err
+	}
+	err = h.Install(chatservice.NewPlugin())
 	if err != nil {
 		return err
 	}

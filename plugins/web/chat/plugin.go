@@ -5,14 +5,10 @@ import (
 	"context"
 	"fmt"
 
-	"harness/kernel/agents"
-	"harness/kernel/commands"
+	chatservice "harness/kernel/chat"
 	"harness/kernel/events"
 	"harness/kernel/host"
-	"harness/kernel/llm"
 	"harness/kernel/runner"
-	"harness/kernel/session"
-	"harness/kernel/session/settings"
 	"harness/surface/web"
 	"harness/surface/web/ui"
 )
@@ -27,12 +23,7 @@ var chatProduct = web.Product{
 
 // 活对象。Plugin 把 Chat 产品及其路由填入 Web 登记处。
 type Plugin struct {
-	sessions *session.Store
-	settings settings.SessionSettingsStore
-	agents   *agents.Service
-	commands commands.Commands
-	runner   *runner.Runner
-	models   *llm.Client
+	business *chatservice.Service
 	hub      *eventHub
 	registry *registry
 	unlisten func()
@@ -50,31 +41,9 @@ func (p *Plugin) Start(h *host.Host) error {
 	if err != nil {
 		return fmt.Errorf("chat: resolve web: %w", err)
 	}
-	sessions, err := host.Resolve[*session.Store](h, "sessions")
+	p.business, err = host.Resolve[*chatservice.Service](h, "chatService")
 	if err != nil {
-		return fmt.Errorf("chat: resolve sessions: %w", err)
-	}
-	settingsStore, err := host.Resolve[settings.SessionSettingsStore](h, "sessionSettings")
-	if err != nil {
-		return fmt.Errorf("chat: resolve session settings: %w", err)
-	}
-	p.sessions = sessions
-	p.settings = settingsStore
-	p.agents, err = host.Resolve[*agents.Service](h, "agents")
-	if err != nil {
-		return fmt.Errorf("chat: resolve agents: %w", err)
-	}
-	p.commands, err = host.Resolve[commands.Commands](h, "commands")
-	if err != nil {
-		return fmt.Errorf("chat: resolve commands: %w", err)
-	}
-	p.runner, err = host.Resolve[*runner.Runner](h, "runner")
-	if err != nil {
-		return fmt.Errorf("chat: resolve runner: %w", err)
-	}
-	p.models, err = host.Resolve[*llm.Client](h, "llm")
-	if err != nil {
-		return fmt.Errorf("chat: resolve llm: %w", err)
+		return fmt.Errorf("chat: resolve chat service: %w", err)
 	}
 	eventRegistry, err := host.Resolve[*events.Registry](h, "events")
 	if err != nil {
@@ -90,15 +59,16 @@ func (p *Plugin) Start(h *host.Host) error {
 	if err != nil {
 		return err
 	}
-	p.unlisten, err = events.Subscribe(eventRegistry, func(_ context.Context, event runner.RunEvent) error {
-		p.hub.publishRun(event)
+	hub := p.hub
+	p.unlisten, err = p.business.SubscribeRun(func(_ context.Context, event runner.RunEvent) error {
+		hub.publishRun(event)
 		return nil
 	})
 	if err != nil {
 		return fmt.Errorf("chat: subscribe run events: %w", err)
 	}
 	unlistenDock, err := events.Subscribe(eventRegistry, func(_ context.Context, event DockChanged) error {
-		p.hub.publishDock(event)
+		hub.publishDock(event)
 		return nil
 	})
 	if err != nil {
@@ -123,7 +93,7 @@ func (p *Plugin) Start(h *host.Host) error {
 	if err != nil {
 		return err
 	}
-	handler := newPageHandler(webService, chatProduct, sessions, settingsStore, p.agents, p.commands, p.runner, p.models, p.hub, p.registry)
+	handler := newPageHandler(webService, chatProduct, p.business, p.hub, p.registry)
 	err = webService.RegisterRoute("GET /chat", handler)
 	if err != nil {
 		return err
@@ -182,12 +152,7 @@ func (p *Plugin) Close() error {
 	if p.hub != nil {
 		p.hub.close()
 	}
-	p.sessions = nil
-	p.settings = nil
-	p.agents = nil
-	p.commands = nil
-	p.runner = nil
-	p.models = nil
+	p.business = nil
 	p.hub = nil
 	p.registry = nil
 	p.unlisten = nil

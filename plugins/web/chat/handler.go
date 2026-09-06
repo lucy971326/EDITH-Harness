@@ -11,51 +11,35 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/a-h/templ"
 
 	"harness/kernel/agents"
-	"harness/kernel/commands"
+	chatservice "harness/kernel/chat"
 	"harness/kernel/llm"
-	"harness/kernel/runner"
 	"harness/kernel/session"
-	"harness/kernel/session/settings"
 	"harness/surface/web"
-	"harness/surface/web/runview"
 )
 
 // 活对象。PageHandler 渲染 Chat 完整页面或 HTMX 主区域片段。
 type PageHandler struct {
 	web      web.Service
 	product  web.Product
-	sessions *session.Store
-	settings settings.SessionSettingsStore
-	agents   *agents.Service
-	commands commands.Commands
-	runner   *runner.Runner
-	models   *llm.Client
+	business *chatservice.Service
 	hub      *eventHub
 	registry Service
-	createMu sync.Mutex
 }
 
 func newPageHandler(
 	webService web.Service,
 	product web.Product,
-	sessions *session.Store,
-	settingsStore settings.SessionSettingsStore,
-	agentService *agents.Service,
-	commandService commands.Commands,
-	runService *runner.Runner,
-	modelService *llm.Client,
+	business *chatservice.Service,
 	hub *eventHub,
 	registry Service,
 ) *PageHandler {
 	return &PageHandler{
-		web: webService, product: product, sessions: sessions, settings: settingsStore, agents: agentService,
-		commands: commandService, runner: runService, models: modelService, hub: hub, registry: registry,
+		web: webService, product: product, business: business, hub: hub, registry: registry,
 	}
 }
 
@@ -162,18 +146,16 @@ type composerActionView struct {
 var selectWorkspace = chooseWorkspace
 
 func (h *PageHandler) pageData(selectedID string) (pageView, error) {
-	metas, err := h.sessions.List()
+	infos, err := h.business.List()
 	if err != nil {
 		return pageView{}, fmt.Errorf("chat: list sessions: %w", err)
 	}
 	projects := make(map[string]*projectView)
 	var selected sessionView
 	found := selectedID == ""
-	for _, meta := range metas {
-		setup, err := h.settings.For(meta.ID)
-		if err != nil {
-			return pageView{}, fmt.Errorf("chat: settings for %q: %w", meta.ID, err)
-		}
+	for _, info := range infos {
+		meta := info.Meta
+		setup := info.Settings
 		item := sessionView{ID: meta.ID, Title: meta.Title, CreatedAt: meta.CreatedAt}
 		project := projects[setup.Workspace]
 		if project == nil {
@@ -198,35 +180,31 @@ func (h *PageHandler) pageData(selectedID string) (pageView, error) {
 		}
 		out.MessageActionsJSON = string(actionsJSON)
 		if selectedID != "" {
-			setup, err := h.settings.For(selectedID)
+			selectedInfo, err := h.business.Session(selectedID)
 			if err != nil {
 				return pageView{}, fmt.Errorf("chat: settings for %q: %w", selectedID, err)
 			}
-			out.Docks = h.dockViews(DockContext{SessionID: selectedID, Workspace: setup.Workspace})
-			out.ComposerActions = h.composerActionViews(ComposerActionContext{SessionID: selectedID, Workspace: setup.Workspace})
-			out.Suggestions, err = h.registry.Suggestions("/", SuggestionContext{AgentID: setup.AgentID, Workspace: setup.Workspace})
+			out.Docks = h.dockViews(DockContext{SessionID: selectedID, Workspace: selectedInfo.Settings.Workspace})
+			out.ComposerActions = h.composerActionViews(ComposerActionContext{SessionID: selectedID, Workspace: selectedInfo.Settings.Workspace})
+			out.Suggestions, err = h.registry.Suggestions("/", SuggestionContext{AgentID: selectedInfo.Settings.AgentID, Workspace: selectedInfo.Settings.Workspace})
 			if err != nil {
 				return pageView{}, fmt.Errorf("chat: list suggestions: %w", err)
 			}
 		}
 	}
-	if h.models != nil {
-		out.Models = h.models.Models()
-	}
-	if h.agents != nil {
-		out.Agents, err = h.agents.List()
-		if err != nil {
-			return pageView{}, fmt.Errorf("chat: list agents: %w", err)
-		}
+	out.Models = h.business.Models()
+	out.Agents, err = h.business.ListAgents()
+	if err != nil {
+		return pageView{}, fmt.Errorf("chat: list agents: %w", err)
 	}
 	if selectedID != "" {
-		setup, err := h.settings.For(selectedID)
+		selectedInfo, err := h.business.Session(selectedID)
 		if err != nil {
 			return pageView{}, fmt.Errorf("chat: settings for %q: %w", selectedID, err)
 		}
-		out.Model = setup.Model
-		out.ReasoningEffort = setup.ReasoningEffort
-		out.AgentID = setup.AgentID
+		out.Model = selectedInfo.Settings.Model
+		out.ReasoningEffort = selectedInfo.Settings.ReasoningEffort
+		out.AgentID = selectedInfo.Settings.AgentID
 	}
 	for _, project := range projects {
 		sort.Slice(project.Sessions, func(i, j int) bool {
@@ -279,17 +257,13 @@ func (h *PageHandler) composerActionViews(composerContext ComposerActionContext)
 
 func (h *PageHandler) suggestions(w nethttp.ResponseWriter, r *nethttp.Request) {
 	sessionID := r.PathValue("sessionID")
-	if _, err := h.sessions.Get(sessionID); err != nil {
-		nethttp.Error(w, err.Error(), nethttp.StatusNotFound)
+	info, err := h.business.Session(sessionID)
+	if err != nil {
+		nethttp.Error(w, err.Error(), chatSessionStatus(err))
 		return
 	}
 	if h.registry == nil {
 		nethttp.NotFound(w, r)
-		return
-	}
-	setup, err := h.settings.For(sessionID)
-	if err != nil {
-		nethttp.Error(w, err.Error(), nethttp.StatusInternalServerError)
 		return
 	}
 	prefix := strings.TrimSpace(r.URL.Query().Get("prefix"))
@@ -298,9 +272,9 @@ func (h *PageHandler) suggestions(w nethttp.ResponseWriter, r *nethttp.Request) 
 	}
 	agentID := strings.TrimSpace(r.URL.Query().Get("agentID"))
 	if agentID == "" {
-		agentID = setup.AgentID
+		agentID = info.Settings.AgentID
 	}
-	items, err := h.registry.Suggestions(prefix, SuggestionContext{AgentID: agentID, Workspace: setup.Workspace})
+	items, err := h.registry.Suggestions(prefix, SuggestionContext{AgentID: agentID, Workspace: info.Settings.Workspace})
 	if err != nil {
 		nethttp.Error(w, err.Error(), nethttp.StatusBadRequest)
 		return
@@ -330,8 +304,9 @@ func renderComponent(component templ.Component) (string, error) {
 
 func (h *PageHandler) panel(w nethttp.ResponseWriter, r *nethttp.Request) {
 	sessionID := r.PathValue("sessionID")
-	if _, err := h.sessions.Get(sessionID); err != nil {
-		nethttp.Error(w, err.Error(), nethttp.StatusNotFound)
+	info, err := h.business.Session(sessionID)
+	if err != nil {
+		nethttp.Error(w, err.Error(), chatSessionStatus(err))
 		return
 	}
 	if h.registry == nil {
@@ -348,12 +323,7 @@ func (h *PageHandler) panel(w nethttp.ResponseWriter, r *nethttp.Request) {
 		nethttp.Error(w, "缺少面板实例", nethttp.StatusBadRequest)
 		return
 	}
-	setup, err := h.settings.For(sessionID)
-	if err != nil {
-		nethttp.Error(w, err.Error(), nethttp.StatusInternalServerError)
-		return
-	}
-	content, err := panel.Render(PanelContext{SessionID: sessionID, Workspace: setup.Workspace}, PanelTab{
+	content, err := panel.Render(PanelContext{SessionID: sessionID, Workspace: info.Settings.Workspace}, PanelTab{
 		Type:        r.PathValue("panelType"),
 		InstanceKey: instanceKey,
 	})
@@ -366,7 +336,7 @@ func (h *PageHandler) panel(w nethttp.ResponseWriter, r *nethttp.Request) {
 
 func (h *PageHandler) messageAction(w nethttp.ResponseWriter, r *nethttp.Request) {
 	sessionID := r.PathValue("sessionID")
-	sess, err := h.sessions.Get(sessionID)
+	snapshot, err := h.business.Snapshot(sessionID)
 	if err != nil {
 		nethttp.Error(w, err.Error(), nethttp.StatusNotFound)
 		return
@@ -391,16 +361,18 @@ func (h *PageHandler) messageAction(w nethttp.ResponseWriter, r *nethttp.Request
 		RunID:           strings.TrimSpace(r.FormValue("runID")),
 		BoundaryEntryID: strings.TrimSpace(r.FormValue("boundaryEntryID")),
 	}
-	entries := sess.Entries()
+	entries := snapshot.Entries
 	err = validateMessageActionTarget(action.Definition(), entries, target)
 	if err != nil {
 		nethttp.Error(w, err.Error(), nethttp.StatusBadRequest)
 		return
 	}
-	if target.CardType == MessageCardAssistant && h.runner != nil {
-		if state, running := h.runner.State(sessionID); running && state.RunID == target.RunID {
-			nethttp.Error(w, "助手回答仍在生成", nethttp.StatusConflict)
-			return
+	if target.CardType == MessageCardAssistant {
+		for _, state := range snapshot.Runs {
+			if state.RunID == target.RunID {
+				nethttp.Error(w, "助手回答仍在生成", nethttp.StatusConflict)
+				return
+			}
 		}
 	}
 	result, err := action.Execute(r.Context(), MessageActionContext{
@@ -463,92 +435,34 @@ func (h *PageHandler) createProject(w nethttp.ResponseWriter, r *nethttp.Request
 		h.renderError(w, r, fmt.Errorf("选择工作区目录失败：%w", err))
 		return
 	}
-	err = checkWorkspace(workspace)
-	if err != nil {
-		h.renderError(w, r, err)
-		return
-	}
 	h.createSession(w, r, workspace)
 }
 
 func (h *PageHandler) createSessionInProject(w nethttp.ResponseWriter, r *nethttp.Request) {
-	setup, err := h.settings.For(r.PathValue("sessionID"))
+	info, err := h.business.Session(r.PathValue("sessionID"))
 	if err != nil {
 		nethttp.Error(w, "未找到该项目", nethttp.StatusNotFound)
 		return
 	}
-	h.createSession(w, r, setup.Workspace)
+	h.createSession(w, r, info.Settings.Workspace)
 }
 
 func (h *PageHandler) createSession(w nethttp.ResponseWriter, r *nethttp.Request, workspace string) {
-	h.createMu.Lock()
-	defer h.createMu.Unlock()
-
-	existingID, err := h.emptySessionIn(workspace)
+	info, err := h.business.Create(workspace)
 	if err != nil {
 		h.renderError(w, r, err)
 		return
 	}
-	if existingID != "" {
-		nethttp.Redirect(w, r, "/chat/"+existingID, nethttp.StatusSeeOther)
-		return
-	}
-
-	id, err := newSessionID()
-	if err != nil {
-		h.renderError(w, r, err)
-		return
-	}
-	_, err = h.sessions.Create(id)
-	if err != nil {
-		h.renderError(w, r, fmt.Errorf("创建会话失败：%w", err))
-		return
-	}
-	setup := settings.SessionSettings{AgentID: agents.DefaultID, Workspace: workspace}
-	err = h.settings.Put(id, setup)
-	if err != nil {
-		discardErr := h.sessions.DiscardEmpty(id)
-		h.renderError(w, r, fmt.Errorf("保存会话设置失败：%w", errors.Join(err, discardErr)))
-		return
-	}
-	nethttp.Redirect(w, r, "/chat/"+id, nethttp.StatusSeeOther)
-}
-
-func (h *PageHandler) emptySessionIn(workspace string) (string, error) {
-	metas, err := h.sessions.List()
-	if err != nil {
-		return "", fmt.Errorf("读取会话失败：%w", err)
-	}
-	for _, meta := range metas {
-		setup, err := h.settings.For(meta.ID)
-		if err != nil {
-			return "", fmt.Errorf("读取会话设置失败：%w", err)
-		}
-		if setup.Workspace != workspace {
-			continue
-		}
-		sess, err := h.sessions.Get(meta.ID)
-		if err != nil {
-			return "", fmt.Errorf("读取会话失败：%w", err)
-		}
-		if len(sess.Entries()) == 0 {
-			return meta.ID, nil
-		}
-	}
-	return "", nil
+	nethttp.Redirect(w, r, "/chat/"+info.Meta.ID, nethttp.StatusSeeOther)
 }
 
 func (h *PageHandler) history(w nethttp.ResponseWriter, r *nethttp.Request) {
-	sess, err := h.sessions.Get(r.PathValue("sessionID"))
+	snapshot, err := h.business.Snapshot(r.PathValue("sessionID"))
 	if err != nil {
 		nethttp.Error(w, err.Error(), nethttp.StatusNotFound)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	snapshot := runview.Snapshot{Entries: sess.Entries(), Runs: []runner.RunState{}}
-	if state, ok := h.runner.State(r.PathValue("sessionID")); ok {
-		snapshot.Runs = []runner.RunState{state}
-	}
 	if err := json.NewEncoder(w).Encode(snapshot); err != nil {
 		nethttp.Error(w, err.Error(), nethttp.StatusInternalServerError)
 	}
@@ -556,18 +470,14 @@ func (h *PageHandler) history(w nethttp.ResponseWriter, r *nethttp.Request) {
 
 func (h *PageHandler) events(w nethttp.ResponseWriter, r *nethttp.Request) {
 	sessionID := r.PathValue("sessionID")
-	if _, err := h.sessions.Get(sessionID); err != nil {
-		nethttp.Error(w, err.Error(), nethttp.StatusNotFound)
+	info, err := h.business.Session(sessionID)
+	if err != nil {
+		nethttp.Error(w, err.Error(), chatSessionStatus(err))
 		return
 	}
 	flusher, ok := w.(nethttp.Flusher)
 	if !ok {
 		nethttp.Error(w, "streaming unsupported", nethttp.StatusInternalServerError)
-		return
-	}
-	setup, err := h.settings.For(sessionID)
-	if err != nil {
-		nethttp.Error(w, err.Error(), nethttp.StatusInternalServerError)
 		return
 	}
 	queue, unsubscribe := h.hub.subscribe(sessionID)
@@ -577,7 +487,7 @@ func (h *PageHandler) events(w nethttp.ResponseWriter, r *nethttp.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	_, _ = w.Write([]byte(": connected\n\n"))
 	flusher.Flush()
-	dockContext := DockContext{SessionID: sessionID, Workspace: setup.Workspace}
+	dockContext := DockContext{SessionID: sessionID, Workspace: info.Settings.Workspace}
 	for _, definition := range h.registry.Docks() {
 		if !h.writeDockEvent(w, flusher, dockContext, definition.ID) {
 			return
@@ -648,8 +558,9 @@ func writeSSE(w nethttp.ResponseWriter, event string, data string) error {
 
 func (h *PageHandler) message(w nethttp.ResponseWriter, r *nethttp.Request) {
 	sessionID := r.PathValue("sessionID")
-	if _, err := h.sessions.Get(sessionID); err != nil {
-		nethttp.Error(w, err.Error(), nethttp.StatusNotFound)
+	_, sessionErr := h.business.Snapshot(sessionID)
+	if sessionErr != nil {
+		nethttp.Error(w, sessionErr.Error(), nethttp.StatusNotFound)
 		return
 	}
 	contentType := r.Header.Get("Content-Type")
@@ -675,35 +586,31 @@ func (h *PageHandler) message(w nethttp.ResponseWriter, r *nethttp.Request) {
 	}
 	switch mode {
 	case "run":
-		if err := h.selectRunSettings(sessionID, r.FormValue("agentID"), r.FormValue("model"), r.FormValue("reasoningEffort")); err != nil {
-			nethttp.Error(w, err.Error(), nethttp.StatusBadRequest)
-			return
-		}
-		setup, err := h.settings.For(sessionID)
+		err = h.business.Start(context.Background(), chatservice.RunInput{
+			SessionID:       sessionID,
+			AgentID:         r.FormValue("agentID"),
+			Model:           r.FormValue("model"),
+			ReasoningEffort: r.FormValue("reasoningEffort"),
+			Message:         input,
+		})
 		if err != nil {
-			nethttp.Error(w, err.Error(), nethttp.StatusInternalServerError)
-			return
-		}
-		if err := h.ensureVision(setup.Model, input); err != nil {
-			nethttp.Error(w, err.Error(), nethttp.StatusBadRequest)
-			return
-		}
-		if err := h.startRun(sessionID, input); err != nil {
-			nethttp.Error(w, err.Error(), nethttp.StatusConflict)
+			status := nethttp.StatusBadRequest
+			if errors.Is(err, chatservice.ErrRunStart) {
+				status = nethttp.StatusConflict
+			}
+			nethttp.Error(w, err.Error(), status)
 			return
 		}
 	case "steer":
-		setup, err := h.settings.For(sessionID)
+		err = h.business.Steer(sessionID, input)
 		if err != nil {
-			nethttp.Error(w, err.Error(), nethttp.StatusInternalServerError)
-			return
-		}
-		if err := h.ensureVision(setup.Model, input); err != nil {
-			nethttp.Error(w, err.Error(), nethttp.StatusBadRequest)
-			return
-		}
-		if err := h.runner.Steer(sessionID, input); err != nil {
-			nethttp.Error(w, err.Error(), nethttp.StatusConflict)
+			status := nethttp.StatusConflict
+			if errors.Is(err, chatservice.ErrSessionSettings) {
+				status = nethttp.StatusInternalServerError
+			} else if !errors.Is(err, chatservice.ErrRunSteer) {
+				status = nethttp.StatusBadRequest
+			}
+			nethttp.Error(w, err.Error(), status)
 			return
 		}
 	default:
@@ -715,16 +622,13 @@ func (h *PageHandler) message(w nethttp.ResponseWriter, r *nethttp.Request) {
 
 func (h *PageHandler) command(w nethttp.ResponseWriter, r *nethttp.Request) {
 	sessionID := r.PathValue("sessionID")
-	if _, err := h.sessions.Get(sessionID); err != nil {
-		nethttp.Error(w, err.Error(), nethttp.StatusNotFound)
-		return
-	}
-	if h.commands == nil {
-		nethttp.NotFound(w, r)
+	_, err := h.business.Snapshot(sessionID)
+	if err != nil {
+		nethttp.Error(w, err.Error(), chatSessionStatus(err))
 		return
 	}
 	name := strings.TrimSpace(r.PathValue("command"))
-	err := h.commands.Call(context.Background(), name, sessionID)
+	err = h.business.CallCommand(context.Background(), name, sessionID)
 	if err != nil {
 		status := nethttp.StatusBadRequest
 		if strings.Contains(err.Error(), "already running") {
@@ -736,57 +640,23 @@ func (h *PageHandler) command(w nethttp.ResponseWriter, r *nethttp.Request) {
 	w.WriteHeader(nethttp.StatusNoContent)
 }
 
+func chatSessionStatus(err error) int {
+	if errors.Is(err, chatservice.ErrSessionSettings) {
+		return nethttp.StatusInternalServerError
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return nethttp.StatusNotFound
+	}
+	return nethttp.StatusInternalServerError
+}
+
 func (h *PageHandler) stop(w nethttp.ResponseWriter, r *nethttp.Request) {
-	if err := h.runner.Stop(r.PathValue("sessionID")); err != nil {
+	err := h.business.Stop(r.PathValue("sessionID"))
+	if err != nil {
 		nethttp.Error(w, err.Error(), nethttp.StatusConflict)
 		return
 	}
 	w.WriteHeader(nethttp.StatusNoContent)
-}
-
-func (h *PageHandler) startRun(sessionID string, input session.UserMessage) error {
-	return h.runner.Start(context.Background(), sessionID, input)
-}
-
-func (h *PageHandler) ensureVision(model string, input session.UserMessage) error {
-	if !hasImages(input) {
-		return nil
-	}
-	if h.models != nil && h.models.Vision(model) {
-		return nil
-	}
-	return fmt.Errorf("当前模型无法识别图片")
-}
-
-func (h *PageHandler) selectRunSettings(sessionID, agentID, model, effort string) error {
-	setup, err := h.settings.For(sessionID)
-	if err != nil {
-		return err
-	}
-	if model == "" || effort == "" {
-		return fmt.Errorf("请先选择模型和思考档位")
-	}
-	agentID = strings.TrimSpace(agentID)
-	if agentID == "" {
-		agentID = setup.AgentID
-	}
-	if _, err := h.agents.Get(agentID); err != nil {
-		return fmt.Errorf("Agent 不可用：%w", err)
-	}
-	for _, choice := range h.models.Models() {
-		if choice.ID != model {
-			continue
-		}
-		for _, available := range choice.ReasoningEfforts {
-			if available == effort {
-				setup.AgentID = agentID
-				setup.Model = model
-				setup.ReasoningEffort = effort
-				return h.settings.Put(sessionID, setup)
-			}
-		}
-	}
-	return fmt.Errorf("模型或思考档位不可用")
 }
 
 func (h *PageHandler) renderError(w nethttp.ResponseWriter, r *nethttp.Request, err error) {
@@ -803,23 +673,4 @@ func (h *PageHandler) renderError(w nethttp.ResponseWriter, r *nethttp.Request, 
 	content := h.renderPage(r, data)
 	w.WriteHeader(nethttp.StatusInternalServerError)
 	templ.Handler(content).ServeHTTP(w, r)
-}
-
-func checkWorkspace(path string) error {
-	path = strings.TrimSpace(path)
-	if !filepath.IsAbs(path) {
-		return fmt.Errorf("工作区目录必须是绝对路径")
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		return fmt.Errorf("工作区目录不可用：%w", err)
-	}
-	if !info.IsDir() {
-		return fmt.Errorf("工作区路径不是目录")
-	}
-	return nil
-}
-
-func newSessionID() (string, error) {
-	return session.NewID()
 }

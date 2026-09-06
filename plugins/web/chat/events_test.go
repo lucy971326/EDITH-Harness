@@ -7,6 +7,37 @@ import (
 	"harness/kernel/runner"
 )
 
+func TestPluginCloseUnsubscribesAndClosesHub(t *testing.T) {
+	hub := newEventHub()
+	queue, unsubscribe := hub.subscribe("session-1")
+	defer unsubscribe()
+	called := 0
+	plugin := &Plugin{
+		hub: hub,
+		unlisten: func() {
+			called++
+		},
+	}
+
+	err := plugin.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if called != 1 {
+		t.Fatalf("unsubscribe calls = %d", called)
+	}
+	if _, ok := <-queue; ok {
+		t.Fatal("event queue remains open")
+	}
+	err = plugin.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if called != 1 {
+		t.Fatalf("unsubscribe calls after repeated close = %d", called)
+	}
+}
+
 func TestEventHubFiltersSessionAndDropsSlowClient(t *testing.T) {
 	hub := newEventHub()
 	first, stopFirst := hub.subscribe("first")

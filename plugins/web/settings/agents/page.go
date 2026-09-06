@@ -9,6 +9,7 @@ import (
 
 	"github.com/a-h/templ"
 	"harness/kernel/agents"
+	chatservice "harness/kernel/chat"
 	"harness/kernel/loops"
 	"harness/kernel/tools"
 	"harness/surface/web"
@@ -16,7 +17,7 @@ import (
 
 // 活对象。page 渲染 Agent 设置栏目并处理其表单。
 type page struct {
-	agents *agents.Service
+	business *chatservice.Service
 }
 
 // 数据。agentSettingsView 是 Agent 设置页面的渲染数据。
@@ -38,8 +39,8 @@ type agentView struct {
 	InUse    bool
 }
 
-func newPage(agentService *agents.Service) *page {
-	return &page{agents: agentService}
+func newPage(business *chatservice.Service) *page {
+	return &page{business: business}
 }
 
 func (p *page) Definition() web.SettingsSectionDefinition {
@@ -102,7 +103,7 @@ func (p *page) save(w nethttp.ResponseWriter, r *nethttp.Request) {
 		SystemPrompt: r.FormValue("systemPrompt"),
 		Tools:        r.Form["tools"],
 	}
-	saved, err := p.agents.Save(agent)
+	saved, err := p.business.SaveAgent(agent)
 	if err != nil {
 		view, viewErr := p.view(id, agent, id == "", err.Error())
 		if viewErr != nil {
@@ -123,7 +124,7 @@ func (p *page) save(w nethttp.ResponseWriter, r *nethttp.Request) {
 
 func (p *page) delete(w nethttp.ResponseWriter, r *nethttp.Request) {
 	id := r.PathValue("agentID")
-	err := p.agents.Delete(id)
+	err := p.business.DeleteAgent(id)
 	if err != nil {
 		view, viewErr := p.view(id, agents.Agent{}, false, err.Error())
 		if viewErr != nil {
@@ -143,7 +144,7 @@ func (p *page) delete(w nethttp.ResponseWriter, r *nethttp.Request) {
 }
 
 func (p *page) view(id string, draft agents.Agent, isNew bool, message string) (agentSettingsView, error) {
-	all, err := p.agents.List()
+	all, err := p.business.ListAgents()
 	if err != nil {
 		return agentSettingsView{}, err
 	}
@@ -152,7 +153,7 @@ func (p *page) view(id string, draft agents.Agent, isNew bool, message string) (
 	}
 	selected := draft
 	if !isNew && draft.ID == "" {
-		selected, err = p.agents.Get(id)
+		selected, err = p.business.GetAgent(id)
 		if err != nil {
 			return agentSettingsView{}, err
 		}
@@ -160,7 +161,7 @@ func (p *page) view(id string, draft agents.Agent, isNew bool, message string) (
 	views := make([]agentView, 0, len(all))
 	selectedInUse := false
 	for _, agent := range all {
-		inUse, err := p.agents.InUse(agent.ID)
+		inUse, err := p.business.AgentInUse(agent.ID)
 		if err != nil {
 			return agentSettingsView{}, err
 		}
@@ -170,12 +171,12 @@ func (p *page) view(id string, draft agents.Agent, isNew bool, message string) (
 		views = append(views, agentView{ID: agent.ID, Name: agent.Name, Selected: agent.ID == id && !isNew, InUse: inUse})
 	}
 	return agentSettingsView{
-		Agents: views, Selected: selected, Choices: p.agents.Choices(), IsNew: isNew, Error: message, SelectedID: id, SelectedInUse: selectedInUse,
+		Agents: views, Selected: selected, Choices: p.business.AgentChoices(), IsNew: isNew, Error: message, SelectedID: id, SelectedInUse: selectedInUse,
 	}, nil
 }
 
 func (p *page) newAgent() agents.Agent {
-	choices := p.agents.Choices()
+	choices := p.business.AgentChoices()
 	if len(choices.Loops) == 0 {
 		return agents.Agent{}
 	}

@@ -32,12 +32,13 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的五个页面插槽基础�
 
 ### 阶段 3：真实聊天
 
-- 启动链已完整组装：`persist → session → llm → machine-local → tools → events → loops/react → skills → skills-builtin → skills-filesystem → agents → commands → runner → compact → web → chat → chat-composer-skills → chat-composer-commands → panel-demo`。
+- 启动链已完整组装：`persist → session → llm → machine-local → tools → events → loops/react → skills → skills-builtin → skills-filesystem → agents → commands → runner → chat-service → compact → web → chat → chat-composer-skills → chat-composer-commands → panel-demo`。
 - 每轮生成 `RunID`，写入本轮耐久消息与 SSE；History Snapshot 和 SSE 共用 RunView reducer / `paint()`。同一 Run 默认合并为一张助手卡，只有耐久 Steer 才切成前后片段；落账完成不会让实时卡片跳位。
 - 时间线的耐久顺序使用 `Entry.Seq`；运行中卡片用 `AfterEntrySeq` 定位，Run 内按 `StepSeq / BlockSeq` 排列，工具结果按原始调用块回填。
 - Chat 支持普通发送、停止和 Steer；已移除 FollowUp 入口与等待队列，每个活 Run 只执行当前一轮。
 - Steer 在接受时立即落账；工具被停止时也会补齐「已取消」结果，不留下悬空工具调用。
 - `Runner.Start` 同步占住 Session，并在启动 goroutine 前完成一次 Agent / Skill 准备；准备错误直接返回 HTTP，之后在 Runner 管理的 goroutine 运行；`Runner.Close` 会取消并等待仍在运行的 Run。
+- `kernel/chat` 的 `ChatService` 是聊天业务入口：创建或复用空会话、下一轮设置校验与启动、Steer/停止、快照、分叉、命令与 Agent/Skill 查询都经它完成；它不拥有账本、Run 或事件登记处。Chat Web、分叉动作、输入候选与 Agent 设置页不再直接使用这些内核服务。
 - Runner 对界面只发布稳定事件：开始、文本/推理 Delta、工具开始/完成、用量、耐久消息、结束状态。
 - 每次 SSE 重连重新同步 History；耐久快照会覆盖已排队的旧 Delta，慢客户端被断开，不会阻塞 Run。
 - 模型与思考档位是独立选择框；每次普通发送前两者必选，换模型会清空档位并影响下一轮 Run。
@@ -136,7 +137,7 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的五个页面插槽基础�
 
 ### 公共 RunView
 
-- `surface/web/runview` 提供单 Session 的 Snapshot、Templ 运行视图和公共浏览器 reducer；它统一处理 History、SSE Delta、Step / Block 排序、Tool 回填、工作流、Markdown 与展开状态。
+- `surface/web/runview` 提供 Templ 运行视图和公共浏览器 reducer；它统一处理 ChatService History Snapshot、SSE Delta、Step / Block 排序、Tool 回填、工作流、Markdown 与展开状态。
 - Chat 改用 RunView；Chat 私有脚本只保留 Composer、停止、消息动作和右侧面板交互，资源由 `/assets/chat/` 路由提供。
 - Chat 保持一条 SSE：`run` JSON 交给 RunView，`dock-*` HTML 继续由 HTMX `sse-swap` 处理。
 - 新的 Runner 驱动 Web 产品可以直接使用 `runview.View`，不必重写流式投影 JavaScript；Snapshot 与 SSE HTTP 路由仍归产品自己。

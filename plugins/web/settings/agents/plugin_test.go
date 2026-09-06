@@ -9,9 +9,15 @@ import (
 	"testing"
 
 	kernelagents "harness/kernel/agents"
+	chatservice "harness/kernel/chat"
+	"harness/kernel/commands"
+	"harness/kernel/events"
 	"harness/kernel/host"
+	"harness/kernel/llm"
 	"harness/kernel/loops"
 	"harness/kernel/persist"
+	"harness/kernel/runner"
+	"harness/kernel/session"
 	"harness/kernel/session/settings"
 	"harness/kernel/skills"
 	"harness/kernel/tools"
@@ -45,6 +51,18 @@ func TestPluginManagesAgentsAndProtectsUsedAgent(t *testing.T) {
 	if err := h.Install(&persist.Plugin{Dir: t.TempDir()}); err != nil {
 		t.Fatal(err)
 	}
+	err := h.Install(&session.Plugin{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = h.Install(&llm.Plugin{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = h.Install(events.NewPlugin())
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := h.Install(loops.NewPlugin()); err != nil {
 		t.Fatal(err)
 	}
@@ -62,6 +80,18 @@ func TestPluginManagesAgentsAndProtectsUsedAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := h.Install(kernelagents.NewPlugin()); err != nil {
+		t.Fatal(err)
+	}
+	err = h.Install(commands.NewPlugin())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = h.Install(runner.NewPlugin())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = h.Install(chatservice.NewPlugin())
+	if err != nil {
 		t.Fatal(err)
 	}
 	mock := newMockWeb()

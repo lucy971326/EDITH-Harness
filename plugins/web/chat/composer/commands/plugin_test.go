@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"harness/kernel/agents"
+	chatservice "harness/kernel/chat"
 	kerncommands "harness/kernel/commands"
 	"harness/kernel/events"
 	"harness/kernel/host"
@@ -107,6 +108,7 @@ func installChatWithCommands(t *testing.T) (*host.Host, string) {
 		agents.NewPlugin(),
 		kerncommands.NewPlugin(),
 		runner.NewPlugin(),
+		chatservice.NewPlugin(),
 		compactcmd.New(),
 	} {
 		if err := h.Install(plugin); err != nil {

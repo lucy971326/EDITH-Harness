@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"harness/kernel/agents"
+	chatservice "harness/kernel/chat"
 	"harness/kernel/commands"
 	"harness/kernel/events"
 	"harness/kernel/host"
@@ -29,7 +30,6 @@ import (
 	"harness/kernel/skills"
 	"harness/kernel/tools"
 	"harness/surface/web"
-	"harness/surface/web/runview"
 	"harness/surface/web/ui"
 )
 
@@ -162,41 +162,6 @@ func TestCreateProjectFailureDoesNotCreateSession(t *testing.T) {
 	}
 }
 
-func TestSettingsFailureDiscardsNewSession(t *testing.T) {
-	h := host.NewHost()
-	err := h.Install(&persist.Plugin{Dir: t.TempDir()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = h.Install(&session.Plugin{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	sessions, err := host.Resolve[*session.Store](h, "sessions")
-	if err != nil {
-		t.Fatal(err)
-	}
-	previous := selectWorkspace
-	selectWorkspace = func(context.Context) (string, error) { return t.TempDir(), nil }
-	t.Cleanup(func() { selectWorkspace = previous })
-
-	handler := &PageHandler{sessions: sessions, settings: failingSettings{}}
-	request := httptest.NewRequest(nethttp.MethodPost, "/chat/projects", nil)
-	request.Header.Set("HX-Request", "true")
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, request)
-	if response.Code != nethttp.StatusInternalServerError {
-		t.Fatalf("status = %d", response.Code)
-	}
-	list, err := sessions.List()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(list) != 0 {
-		t.Fatalf("sessions = %#v", list)
-	}
-}
-
 func TestMessageSelectsModelAndHistoryReturnsLedger(t *testing.T) {
 	h, webPlugin := installChat(t)
 	defer h.Close()
@@ -264,7 +229,7 @@ func TestMessageSelectsModelAndHistoryReturnsLedger(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer response.Body.Close()
-	var history runview.Snapshot
+	var history chatservice.Snapshot
 	if err := json.NewDecoder(response.Body).Decode(&history); err != nil {
 		t.Fatal(err)
 	}
@@ -285,16 +250,23 @@ func TestSelectRunSettingsReplacesSettingsForNextRun(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	models, err := host.Resolve[*llm.Client](h, "llm")
+	sessions, err := host.Resolve[*session.Store](h, "sessions")
 	if err != nil {
 		t.Fatal(err)
 	}
-	agentService, err := host.Resolve[*agents.Service](h, "agents")
+	_, err = sessions.Create("session-1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := &PageHandler{settings: settingsStore, agents: agentService, models: models}
-	if err := handler.selectRunSettings("session-1", agents.DefaultID, "deepseek/deepseek-v4-pro", "low"); err != nil {
+	business, err := host.Resolve[*chatservice.Service](h, "chatService")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = business.Start(context.Background(), chatservice.RunInput{
+		SessionID: "session-1", AgentID: agents.DefaultID, Model: "deepseek/deepseek-v4-pro", ReasoningEffort: "low",
+		Message: session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "hello"}}},
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 	setup, err := settingsStore.For("session-1")
@@ -313,7 +285,16 @@ func TestMessageAcceptsURLencodedForm(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := sessions.Create("session-1"); err != nil {
+	_, err = sessions.Create("session-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	settingsStore, err := host.Resolve[settings.SessionSettingsStore](h, "sessionSettings")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = settingsStore.Put("session-1", settings.SessionSettings{AgentID: agents.DefaultID, Workspace: t.TempDir()})
+	if err != nil {
 		t.Fatal(err)
 	}
 	response, err := nethttp.PostForm(webPlugin.URL()+"/chat/session-1/messages", url.Values{
@@ -333,6 +314,70 @@ func TestMessageAcceptsURLencodedForm(t *testing.T) {
 	}
 	if !strings.Contains(string(body), "未知消息模式") {
 		t.Fatalf("body = %q", body)
+	}
+}
+
+func TestCommandRejectsMissingSessionWithNotFound(t *testing.T) {
+	h, webPlugin := installChat(t)
+	defer h.Close()
+	response, err := nethttp.Post(webPlugin.URL()+"/chat/missing/commands/compact", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != nethttp.StatusNotFound {
+		t.Fatalf("status = %d", response.StatusCode)
+	}
+}
+
+func TestTargetSettingsFailureReturnsServerError(t *testing.T) {
+	h, _ := installChat(t)
+	defer h.Close()
+	sessions, err := host.Resolve[*session.Store](h, "sessions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = sessions.Create("session-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	settingsStore, err := host.Resolve[settings.SessionSettingsStore](h, "sessionSettings")
+	if err != nil {
+		t.Fatal(err)
+	}
+	agentService, err := host.Resolve[*agents.Service](h, "agents")
+	if err != nil {
+		t.Fatal(err)
+	}
+	models, err := host.Resolve[*llm.Client](h, "llm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runService, err := host.Resolve[*runner.Runner](h, "runner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	commandService, err := host.Resolve[commands.Commands](h, "commands")
+	if err != nil {
+		t.Fatal(err)
+	}
+	eventRegistry, err := host.Resolve[*events.Registry](h, "events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	business, err := chatservice.NewService(sessions, brokenSettings{store: settingsStore}, agentService, models, runService, commandService, eventRegistry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := newPageHandler(nil, chatProduct, business, newEventHub(), newRegistry())
+	for _, path := range []string{"/chat/session-1/suggestions", "/chat/session-1/panels/test", "/chat/session-1/events"} {
+		request := httptest.NewRequest(nethttp.MethodGet, path, nil)
+		request.SetPathValue("sessionID", "session-1")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != nethttp.StatusInternalServerError {
+			t.Fatalf("path=%q status=%d", path, response.Code)
+		}
 	}
 }
 
@@ -457,20 +502,6 @@ func TestMessageActionReturnsCopyTextAndRejectsInvalidTarget(t *testing.T) {
 	}
 }
 
-type failingSettings struct{}
-
-func (failingSettings) For(string) (settings.SessionSettings, error) {
-	return settings.SessionSettings{}, errors.New("unavailable")
-}
-
-func (failingSettings) Put(string, settings.SessionSettings) error {
-	return errors.New("disk full")
-}
-
-func (failingSettings) UsesAgent(string) (bool, error) {
-	return false, errors.New("disk full")
-}
-
 func installChat(t *testing.T) (*host.Host, *web.Plugin) {
 	t.Helper()
 	home := t.TempDir()
@@ -537,6 +568,10 @@ func installChat(t *testing.T) (*host.Host, *web.Plugin) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	err = h.Install(chatservice.NewPlugin())
+	if err != nil {
+		t.Fatal(err)
+	}
 	webPlugin := web.NewPlugin(web.Config{Host: "127.0.0.1", Port: 0})
 	err = h.Install(webPlugin)
 	if err != nil {
@@ -559,3 +594,15 @@ func (chatTestLoop) Run(ctx context.Context, invocation loops.Invocation) error 
 	message := session.Message{Role: session.RoleAssistant, Blocks: []session.Block{{Kind: "text", Text: "answer"}}}
 	return invocation.Emit(ctx, loops.Event{Kind: loops.EventMessage, Message: &message})
 }
+
+type brokenSettings struct{ store settings.SessionSettingsStore }
+
+func (brokenSettings) For(string) (settings.SessionSettings, error) {
+	return settings.SessionSettings{}, errors.New("unavailable")
+}
+
+func (b brokenSettings) Put(id string, value settings.SessionSettings) error {
+	return b.store.Put(id, value)
+}
+
+func (b brokenSettings) UsesAgent(id string) (bool, error) { return b.store.UsesAgent(id) }
