@@ -298,6 +298,7 @@ plugins/
     loops/react/     必装默认 Loop；使用 llm、tools，填 loops
     skills/filesystem/  扫描用户与工作区 Skill 根，填 skills
     tools/read/ write/ edit/ bash/   各填 tools
+    tools/subagents/  六个委派平台工具；使用 subagents，填同一个 tools
     commands/compact/ 填 compact 命令
   web/
     chat/            Chat 产品；填 Web products 和 routes
@@ -322,7 +323,7 @@ enable: [web, read, write, edit, bash]
 ```
 main:
   host.New()
-  必装：persist（挂 sessionPersistence + sessionSettings + agentStore）→ session → llm → tools → loops → react → skills → skills-filesystem → agents → commands → runner → subagents → chat-service → compact
+  必装：persist（挂 sessionPersistence + sessionSettings + agentStore）→ session → llm → tools → loops → react → skills → skills-filesystem → agents → commands → runner → subagents → subagent-tools → chat-service → compact
   必装提供者：yaml machine 选出的那一个，在 tools 前面 Start
   再按 enable：plugins/* 、 surface/*
   Close 倒序

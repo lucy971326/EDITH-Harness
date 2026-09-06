@@ -103,7 +103,7 @@ func makeWaitResult(task Task, targetTurn int, persistErr error) (WaitResult, er
 }
 
 // List 列出属于指定父会话的任务记录。严格统一锁序，不在持 s.mu 时等待 coord.mu。
-func (s *Subagents) List(parentSessionID, taskID string) ([]Task, error) {
+func (s *Subagents) List(parentSessionID, taskID string) ([]TaskView, error) {
 	if parentSessionID == "" {
 		return nil, fmt.Errorf("subagents: empty parent session id")
 	}
@@ -135,7 +135,7 @@ func (s *Subagents) List(parentSessionID, taskID string) ([]Task, error) {
 	}
 	s.mu.RUnlock()
 
-	out := make([]Task, 0, len(targetCoords))
+	out := make([]TaskView, 0, len(targetCoords))
 	var persistErrs []error
 	for _, coord := range targetCoords {
 		coord.mu.Lock()
@@ -146,11 +146,16 @@ func (s *Subagents) List(parentSessionID, taskID string) ([]Task, error) {
 			}
 			continue
 		}
-		out = append(out, deepCopyTask(coord.task))
+		task := deepCopyTask(coord.task)
 		if coord.persistErr != nil {
 			persistErrs = append(persistErrs, fmt.Errorf("task %s persist error: %w", coord.task.ID, coord.persistErr))
 		}
 		coord.mu.Unlock()
+		results, err := s.readResults(task)
+		out = append(out, TaskView{Task: task, Results: results})
+		if err != nil {
+			persistErrs = append(persistErrs, err)
+		}
 	}
 
 	if len(persistErrs) > 0 {

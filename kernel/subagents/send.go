@@ -3,6 +3,7 @@ package subagents
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"harness/kernel/session"
@@ -16,6 +17,16 @@ func (s *Subagents) Send(ctx context.Context, parentSessionID, taskID string, in
 	}
 	if taskID == "" {
 		return SendResult{}, fmt.Errorf("subagents: empty task id")
+	}
+	var text strings.Builder
+	for _, block := range input.Blocks {
+		if block.Kind != "text" || block.Tool != nil || block.Result != nil || block.Media != nil {
+			return SendResult{}, fmt.Errorf("subagents: send accepts only text")
+		}
+		text.WriteString(block.Text)
+	}
+	if strings.TrimSpace(text.String()) == "" {
+		return SendResult{}, ErrDescriptionEmpty
 	}
 
 	s.mu.RLock()

@@ -32,7 +32,7 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的五个页面插槽基础�
 
 ### 阶段 3：真实聊天
 
-- 启动链已完整组装：`persist → session → llm → machine-local → tools → events → loops/react → skills → skills-builtin → skills-filesystem → agents → commands → runner → subagents → chat-service → compact → web → chat → chat-composer-skills → chat-composer-commands → panel-demo`。
+- 启动链已完整组装：`persist → session → llm → machine-local → tools → events → loops/react → skills → skills-builtin → skills-filesystem → agents → commands → runner → subagents → subagent-tools → chat-service → compact → web → chat → chat-composer-skills → chat-composer-commands → panel-demo`。
 - 每轮生成 `RunID`，写入本轮耐久消息与 SSE；History Snapshot 和 SSE 共用 RunView reducer / `paint()`。同一 Run 默认合并为一张助手卡，只有耐久 Steer 才切成前后片段；落账完成不会让实时卡片跳位。
 - 时间线的耐久顺序使用 `Entry.Seq`；运行中卡片用 `AfterEntrySeq` 定位，Run 内按 `StepSeq / BlockSeq` 排列，工具结果按原始调用块回填。
 - Chat 支持普通发送、停止和 Steer；已移除 FollowUp 入口与等待队列，每个活 Run 只执行当前一轮。
@@ -149,7 +149,7 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的五个页面插槽基础�
 - Steer 使用可重复观察的广播信号，只有检查点消费消息后才换代次；ReAct 每次调用工具时获取当前信号，停止仍通过 Context 取消。
 - 初始化历史与后续 Steer 分离，避免重复消费；Compact 始终拒绝 Steer。取消/关闭后不重新开放输入，收尾依次释放 live、完成句柄、结束后台工作。
 - 开始事件部分投递失败仍尝试结束通知，错误保留在最终结果。已验收全量 Go 测试、相关 race、vet 和 diff 检查。
-- 此步完成运行基础；委派服务的后续进展见下节，平台工具仍未实现。
+- 此步完成运行基础；委派服务与平台工具的后续进展见下节。
 
 ### 子会话委派第 2 步：服务与独立存储
 
@@ -158,7 +158,16 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的五个页面插槽基础�
 - `subagents/tasks/<task-id>.json` 保存版本化任务、逐轮 RunID / 状态 / 最终正文位置和通知集合；重启保留历史，未完成轮次标记中断，不自动执行。
 - 单任务状态与写盘串行，旧轮完整收尾后才能开新轮；关闭取消服务上下文并等待在途启动和运行回调。持久化失败由调用、查询、等待及关闭明确报告。
 - 已通过全量 Go 测试、相关包 race、vet 与 diff 检查，覆盖极快完成、旧轮收尾、启动中关闭、实际写盘失败和恢复。
-- 尚未接入平台工具、父账本通知、等待插话和 Chat 父子停止；StopFamily 与并发派生的完整协调留在第 5 步。后续按 `docs/Nowplan.md` 逐步授权。
+- 平台工具进展见下节；父账本通知、等待插话和 Chat 父子停止尚未接入，StopFamily 与并发派生的完整协调留在第 5 步。
+
+### 子会话委派第 3 步：工具入口
+
+- 新增 `plugins/kernel/tools/subagents`，在 Subagents 之后静态安装，向现有 tools 登记处填入 options / spawn / send / list / wait / stop 六个 `subagent_*` 工具；插件不拥有后台资源，子 Run 仍由 Subagents 与 Runner 管理。
+- 身份取可信调用上下文，不允许模型参数指定父会话、RunID 或工作区；服务拒绝越权及二层委派。Agent / 模型 / 档位分别继承父 Run 快照，显式覆盖独立校验。
+- 工具沿用普通 Tool 权限，安装不替已有 Agent 勾选；需在 Agent 工具清单手动启用。options 返回现有 Agent 设置与模型清单，不新增“用途”字段或第二份名单。
+- send 只允许非空文字，忙时追加、闲时开启下一轮；可能已经接收的错误不会自动重发。list 返回含逐轮最终正文的 TaskView 查询投影，正文仍只存在子账本。
+- wait 接入单孩子当前轮的基础等待，默认 60 秒、允许 0～60 秒，超时不停止孩子；返回状态与结果位置。通知 ID、多个孩子等待、用户插话提前唤醒及自动投递留待第 4 步。
+- 已通过全量 Go 测试、相关包 race、vet 和 diff 检查；覆盖六工具调用、权限、参数、身份隔离、继承与覆盖、忙闲追加、保存失败反馈和取消。尚未做真实模型端到端验收（第 6 步），未推进第 4 步。
 
 ## 验证
 

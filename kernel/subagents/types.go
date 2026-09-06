@@ -81,6 +81,20 @@ type Task struct {
 	UpdatedAt       time.Time      `json:"updatedAt"`
 }
 
+// 数据。查询投影：任务记录加按账本位置读取的最终正文，不写入任务存储。
+type TaskView struct {
+	Task
+	Results []TurnResult `json:"results"`
+}
+
+// 数据。一轮已保存结果的正文查询，不包含中途推理或工具消息。
+type TurnResult struct {
+	Turn    int    `json:"turn"`
+	RunID   string `json:"runID"`
+	EntryID string `json:"entryID"`
+	Text    string `json:"text"`
+}
+
 // 数据。创建子任务的输入。
 type SpawnInput struct {
 	ParentSessionID string
@@ -93,30 +107,30 @@ type SpawnInput struct {
 
 // 数据。Spawn 的返回结果。
 type SpawnResult struct {
-	TaskID         string
-	ChildSessionID string
-	RunID          string
+	TaskID         string `json:"taskID"`
+	ChildSessionID string `json:"childSessionID"`
+	RunID          string `json:"runID"`
 }
 
 // 数据。Send 的返回结果。
 type SendResult struct {
-	Turn    int
-	RunID   string
-	Steered bool
+	Turn    int    `json:"turn"`
+	RunID   string `json:"runID"`
+	Steered bool   `json:"steered"`
 }
 
 // 数据。系统可选 Agent 与模型。
 type OptionsResult struct {
-	Agents []agents.Agent
-	Models []llm.ModelChoice
+	Agents []agents.Agent    `json:"agents"`
+	Models []llm.ModelChoice `json:"models"`
 }
 
 // 数据。Wait 查询与等待结果。
 type WaitResult struct {
-	TaskID        string
-	Status        TaskStatus
-	Turn          int
-	RunID         string
-	ResultEntryID string
-	Error         string
+	TaskID        string     `json:"taskID"`
+	Status        TaskStatus `json:"status"`
+	Turn          int        `json:"turn"`
+	RunID         string     `json:"runID"`
+	ResultEntryID string     `json:"resultEntryID,omitempty"`
+	Error         string     `json:"error,omitempty"`
 }

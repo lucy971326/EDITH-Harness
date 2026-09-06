@@ -36,6 +36,7 @@ import (
 	edittool "harness/plugins/kernel/tools/edit"
 	mcptool "harness/plugins/kernel/tools/mcp"
 	readtool "harness/plugins/kernel/tools/read"
+	subagenttools "harness/plugins/kernel/tools/subagents"
 	writetool "harness/plugins/kernel/tools/write"
 	chatproduct "harness/plugins/web/chat"
 	composercommands "harness/plugins/web/chat/composer/commands"
@@ -150,6 +151,10 @@ func run(configPath string) error {
 		return err
 	}
 	err = h.Install(subagents.NewPlugin(dataDir))
+	if err != nil {
+		return err
+	}
+	err = h.Install(subagenttools.New())
 	if err != nil {
 		return err
 	}
