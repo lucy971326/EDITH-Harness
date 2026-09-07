@@ -9,18 +9,11 @@ import (
 	"testing"
 
 	kernelagents "harness/kernel/agents"
-	chatservice "harness/kernel/chat"
-	"harness/kernel/commands"
-	"harness/kernel/events"
 	"harness/kernel/host"
-	"harness/kernel/llm"
 	"harness/kernel/loops"
 	"harness/kernel/persist"
-	"harness/kernel/runner"
-	"harness/kernel/session"
 	"harness/kernel/session/settings"
 	"harness/kernel/skills"
-	"harness/kernel/subagents"
 	"harness/kernel/tools"
 	"harness/surface/web"
 )
@@ -49,65 +42,46 @@ func (m *mockWeb) SettingsSection(string) (web.SettingsSection, bool) {
 
 func TestPluginManagesAgentsAndProtectsUsedAgent(t *testing.T) {
 	h := host.NewHost()
-	if err := h.Install(&persist.Plugin{Dir: t.TempDir()}); err != nil {
-		t.Fatal(err)
-	}
-	err := h.Install(&session.Plugin{})
+	t.Cleanup(func() { _ = h.Close() })
+	// Agent 设置页只需要自己的公共服务，不安装 HarnessProduct、Runner 或 app-server。
+	err := h.Install(&persist.Plugin{Dir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = h.Install(&llm.Plugin{})
+	err = h.Install(loops.NewPlugin())
 	if err != nil {
-		t.Fatal(err)
-	}
-	err = h.Install(events.NewPlugin())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := h.Install(loops.NewPlugin()); err != nil {
 		t.Fatal(err)
 	}
 	loopRegistry, err := host.Resolve[loops.Loops](h, "loops")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := loopRegistry.Register(testLoop{}); err != nil {
-		t.Fatal(err)
-	}
-	if err := h.Install(tools.NewPlugin()); err != nil {
-		t.Fatal(err)
-	}
-	if err := h.Install(skills.NewPlugin()); err != nil {
-		t.Fatal(err)
-	}
-	if err := h.Install(kernelagents.NewPlugin()); err != nil {
-		t.Fatal(err)
-	}
-	err = h.Install(commands.NewPlugin())
+	err = loopRegistry.Register(testLoop{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = h.Install(runner.NewPlugin())
+	err = h.Install(tools.NewPlugin())
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = h.Install(subagents.NewPlugin(t.TempDir()))
+	err = h.Install(skills.NewPlugin())
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = h.Install(chatservice.NewPlugin())
+	err = h.Install(kernelagents.NewPlugin())
 	if err != nil {
 		t.Fatal(err)
 	}
 	mock := newMockWeb()
-	if err := h.RegisterService("web", web.Service(mock)); err != nil {
+	err = h.RegisterService("web", web.Service(mock))
+	if err != nil {
 		t.Fatal(err)
 	}
 	p := New()
-	if err := p.Start(h); err != nil {
+	err = h.Install(p)
+	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = h.Close() })
 
 	if len(mock.sections) != 1 || mock.sections[0].Definition().ID != "agents" {
 		t.Fatalf("sections = %#v", mock.sections)
@@ -117,7 +91,8 @@ func TestPluginManagesAgentsAndProtectsUsedAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 	var rendered strings.Builder
-	if err := component.Render(context.Background(), &rendered); err != nil {
+	err = component.Render(context.Background(), &rendered)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(rendered.String(), "Harness") || !strings.Contains(rendered.String(), "不可删除") || !strings.Contains(rendered.String(), "高级配置") || strings.Contains(rendered.String(), "启用的 Skill") {
@@ -159,7 +134,8 @@ func TestPluginManagesAgentsAndProtectsUsedAgent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := settingsStore.Put("session-1", settings.SessionSettings{AgentID: codingID}); err != nil {
+	err = settingsStore.Put("session-1", settings.SessionSettings{AgentID: codingID})
+	if err != nil {
 		t.Fatal(err)
 	}
 	deleteHandler := mock.routes["POST /settings/agents/{agentID}/delete"]

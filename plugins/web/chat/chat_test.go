@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"harness/appserver"
 	"harness/kernel/agents"
-	chatservice "harness/kernel/chat"
 	"harness/kernel/commands"
 	"harness/kernel/events"
 	"harness/kernel/host"
@@ -30,6 +30,7 @@ import (
 	"harness/kernel/skills"
 	"harness/kernel/subagents"
 	"harness/kernel/tools"
+	harnessproduct "harness/products/harness"
 	"harness/surface/web"
 	"harness/surface/web/ui"
 )
@@ -230,7 +231,7 @@ func TestMessageSelectsModelAndHistoryReturnsLedger(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer response.Body.Close()
-	var history chatservice.Snapshot
+	var history harnessproduct.Snapshot
 	if err := json.NewDecoder(response.Body).Decode(&history); err != nil {
 		t.Fatal(err)
 	}
@@ -259,11 +260,11 @@ func TestSelectRunSettingsReplacesSettingsForNextRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	business, err := host.Resolve[*chatservice.Service](h, "chatService")
+	business, err := host.Resolve[*harnessproduct.Product](h, "harnessProduct")
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = business.Start(context.Background(), chatservice.RunInput{
+	err = business.Start(context.Background(), harnessproduct.RunInput{
 		SessionID: "session-1", AgentID: agents.DefaultID, Model: "deepseek/deepseek-v4-pro", ReasoningEffort: "low",
 		Message: session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "hello"}}},
 	})
@@ -362,19 +363,15 @@ func TestTargetSettingsFailureReturnsServerError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	eventRegistry, err := host.Resolve[*events.Registry](h, "events")
-	if err != nil {
-		t.Fatal(err)
-	}
 	subagentService, err := host.Resolve[*subagents.Subagents](h, "subagents")
 	if err != nil {
 		t.Fatal(err)
 	}
-	business, err := chatservice.NewService(sessions, brokenSettings{store: settingsStore}, agentService, models, runService, commandService, eventRegistry, subagentService)
+	business, err := harnessproduct.New(sessions, brokenSettings{store: settingsStore}, agentService, models, runService, commandService, subagentService)
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := newPageHandler(nil, chatProduct, business, newEventHub(), newRegistry())
+	handler := newPageHandler(nil, chatProduct, business, models, agentService, newEventHub(), newRegistry())
 	for _, path := range []string{"/chat/session-1/suggestions", "/chat/session-1/panels/test", "/chat/session-1/events"} {
 		request := httptest.NewRequest(nethttp.MethodGet, path, nil)
 		request.SetPathValue("sessionID", "session-1")
@@ -525,6 +522,12 @@ func installChat(t *testing.T) (*host.Host, *web.Plugin) {
 		_ = os.Setenv("HOME", previousHome)
 	})
 	h := host.NewHost()
+	server := appserver.New()
+	registerErr := h.RegisterService("appServer", server)
+	if registerErr != nil {
+		t.Fatal(registerErr)
+	}
+	t.Cleanup(func() { _ = server.Close() })
 	err := h.Install(&persist.Plugin{Dir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
@@ -577,7 +580,7 @@ func installChat(t *testing.T) (*host.Host, *web.Plugin) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = h.Install(chatservice.NewPlugin())
+	err = h.Install(harnessproduct.NewPlugin())
 	if err != nil {
 		t.Fatal(err)
 	}

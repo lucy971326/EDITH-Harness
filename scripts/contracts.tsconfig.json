@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": []
+  },
+  "include": ["contracts-types.test.ts", "../appserver/generated/*.d.ts"]
+}

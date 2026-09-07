@@ -37,13 +37,15 @@ Skill 负责开发步骤与验收入口；本篇、设计书、`DATA_MODEL.md` �
 
 **进程是一张服务表。聊天是桌上的一摊产品，不是根。**
 
+`appserver/` 是固定的后台接入设施：普通活对象，不是插件，也不属于 `kernel` 或 `surface`。入口创建并登记 `appServer`，产品插件填接口目录。`products/harness` 拥有 Harness 业务，通过 `harnessProduct` 提供进程内调用；旧 Web 只负责画面。
+
 能换的做成登记处，别人来填；不能换的做成一整份服务。一场对话是一次 `Runner.Send` / `Run`：怎么想是 Loop（要编译）；Agent 设置管 Kind、SystemPrompt 和普通 Tool；Skills 与 MCP 按当前作用域自动可用；这份会话怎么配是 SessionSettings（AgentID、模型、思考档位、工作区文件夹）。账本只记说过的话。屏幕听这一轮 `Emit`，不听账本。插件要编译进去；配置只决定这次启不启动，不排顺序，不热加载新代码。
 
 动手之前先问：这是桌上新的一摊，还是聊天里的一份数据、一种画法？工作区、自定义模式、轨迹页，全是聊天产品，不改内核形状。不要为了对齐 DSH 往内核加插槽。
 
 ```
 Host（桌子）
-  ├─ 聊天：ChatService.Start / Steer / Stop → Runner → Loop.Run → llm.Stream
+  ├─ 聊天：HarnessProduct.Start / Steer / Stop → Runner → Loop.Run → llm.Stream
   ├─ 狼人杀：验架构，v1 不实现。自己的棋盘，可以 Get Runner
   ├─ 多机器人：验架构，v1 不实现。自己的房间；每个机器人一本 session
   └─ 电影：验架构，v1 不实现。只占 HTTP，零依赖对话
@@ -55,13 +57,13 @@ Host（桌子）
 
 1. 参考 DSH / pi，**不照抄**。Go。静态编译。无动态插件。无热加载。无 AI 自改代码。
 2. **根是插件宿主，不是 Runner。** 聊天只是宿主里的一摊。电影播放器可以零依赖对话。
-3. 聊天产品通过 `ChatService` 做创建、发送、Steer、停止、分叉与聊天查询；发送与插话调用 `Runner.Start` / `Steer`，用户停止经 `Subagents.StopFamily` 取消父与孩子。Runner 在 Loop 外面：`Runner.Run` → `Loop.Run` →（仅 LLM 类）`llm.Stream`。换 loop = 换 Agent Kind，不是换 Runner。
+3. 聊天产品通过 `HarnessProduct` 做创建、发送、Steer、停止、分叉与聊天查询；发送与插话调用 `Runner.Start` / `Steer`，用户停止经 `Subagents.StopFamily` 取消父与孩子。Runner 在 Loop 外面：`Runner.Run` → `Loop.Run` →（仅 LLM 类）`llm.Stream`。换 loop = 换 Agent Kind，不是换 Runner。
 4. Loop 是一种程序，不是一场焊死的对话。session 在 `Run` 的参数上。接着问 = 闲着再 `Run`。还在转时插一句 = `Runner.Steer`。不要 `Chat.Followup`，不要 Inbox。
 5. 自定义：Loop / Kind（开发者代码，要编译）vs Agent 设置（用户数据：SystemPrompt、已有普通 Tool）vs SessionSettings（会话数据：AgentID、模型、思考档位、工作区）。Skills 与 MCP 按来源自动可用，不写进 Agent。用户不热加载 Go。Agent 设置和 SessionSettings 都是实时事实来源；Runner 每轮读取一次。
 6. 系统提示词属于 Agent 设置。`agents.Prepare` 现取当前作用域 Skills 摘要、已启用 MCP 说明和本轮工作区，拼成最终 System Prompt；Runner 只拿成品交给 Loop。LLM 类 Loop 插件在 `Start` 时自己 Resolve `llm`、`tools`，运行时按本轮工具名单现取 schema。不要另设提示词登记处。
 7. Session **只记对话**，可以分叉。todo / 审批 / 游戏状态放插件自己的结构体。别往账本塞。
 8. 屏幕听这一轮 Run（`Emit`；浏览器用 SSE）。不听账本。喇叭就这一个，插件不要各搞各的。耐久事件先 `Append` 再给屏幕，失败则终止 Run。
-9. 前端：内核一份，表面按端 enable。Web 和 webview 同一套 templ；TUI 另画；ACP 是管子不是画面。Web 内有产品、路由和少量页面插槽登记处；产品决定进入哪一摊，页面插槽只扩展某个产品内部。请求 POST，通知 SSE。v1 不用 WebSocket。
+9. 前端：内核与产品业务各一份，表面只负责接入与画面。最终客户端业务统一走 WebSocket / JSON-RPC，网页资源用 HTTP，后台内部直接调用 Go。当前第一批只完成 app-server 进程内接口；旧 Web 暂时保留 POST / SSE 与 templ，不提前重写界面或实现传输。Web 的页面插槽不承担后台产品业务。
 10. Web UI 的 Token、公共规则、图标、视觉方向与 JS 边界见根目录 `WEB_UI.md`。做 Web 页面、产品或页面插槽前必须阅读；其中 JS 规则同样是铁律。
 
 ---
@@ -226,11 +228,13 @@ plugins/kernel/tools/bash/
 #### import
 
 ```
-cmd             → kernel / surface / plugins
+cmd             → appserver / products / kernel / surface / plugins
+appserver       不得 import products、kernel、surface、plugins
+products        → appserver / kernel；不得 import surface、plugins
 plugins/kernel  → kernel（只 import 自己填充的定义者）
-plugins/web     → surface/web；确有业务需要时再 import kernel 定义者
+plugins/web     → surface/web / products；公共服务直接 import kernel 定义者
 surface         → kernel
-kernel          不得 import plugins、surface
+kernel          不得 import appserver、products、plugins、surface
 surface/web     不得 import Web 产品或页面插槽填充者
 定义者          不得 import 填充者
 ```
@@ -246,10 +250,18 @@ plugins/web/chat/<slot>/... 填 Chat 自己的页面插槽
 plugins/web/settings/...    填 Web 公共 settings.section
 ```
 
-Chat 当前是 Web 产品，因为它直接使用 `surface/web`、Templ、HTMX 和 SSE。TUI
-将来自己画，只复用 Session / Runner 等内核；ACP 是协议桥，不画页面；桌面端用
-WebView 承载同一套 Web，不复制一份 Chat。真实代码出现前不建空的 `plugins/tui`
-或 `plugins/acp`。
+`products/harness` 是后台产品，拥有创建、发送、插话、停止、分叉等业务，不依赖界面。
+`plugins/web/chat` 仍填 Web products / routes，但只是现有 Chat 画面与页面插槽。
+模型、Agent 设置、Skill、事件订阅等公共服务由调用方直接使用，不经 HarnessProduct 纯转发。
+其他客户端复用后台业务，不复制产品；真实代码出现前不建空的 TUI / ACP 目录。
+
+### App-server 契约
+
+- Go 数据类型和类型化方法声明是唯一手写契约；数据在定义者 `types.go`，方法声明与绑定在 `methods.go`。
+- `appserver.Register` 将声明与类型化处理函数绑定，组装时编译输入输出 Schema；重名、空处理函数、坏契约使组装失败。
+- 入口在全部插件安装成功后 `Freeze`，此前拒绝调用，此后拒绝登记；运行时验证输入与输出，业务判断仍归产品。
+- `cmd/contracts` 只读声明，不安装产品或访问用户配置；`npm run contracts:generate` 生成目录、Schema 和 TS，`npm run contracts:check` 检查一致性与类型。生成物不手改；TS 不能表达的格式、长度等约束以运行时 Schema 为准。
+- 不在这一批预建事件、反向请求、JSON-RPC 封套或传输适配框架。
 
 ### 风格
 
@@ -274,6 +286,10 @@ cmd/harness/
   main.go            读 yaml，按顺序 Start
   harness.yaml
 
+appserver/           普通 Server：接口声明、登记、目录、校验与分发
+products/harness/    Product + 插件：Harness 业务与接口；挂 harnessProduct
+cmd/contracts/       只读契约生成入口，不安装运行服务
+
 kernel/
   host/              桌子。Plugin、RegisterService、Resolve、Close 倒序
   persist/           Persistence + SessionSettingsStore + agents/config.Store；jsonl.go / sqlite.go（配置选，不是 enable 插件）
@@ -287,7 +303,6 @@ kernel/
   commands/          空登记处 + Command
   runner/            整份 A；live
   subagents/         整份 A；子会话委派关系、逐轮状态与独立存储
-  chat/              整份 A；聊天业务入口，不拥有账本或 Run
 
 surface/
   web/               v1。产品 / 路由 / 页面插槽登记处；templ + htmx + SSE
@@ -323,10 +338,12 @@ enable: [web, read, write, edit, bash]
 ```
 main:
   host.New()
-  必装：persist（挂 sessionPersistence + sessionSettings + agentStore）→ session → llm → tools → loops → react → skills → skills-filesystem → agents → commands → runner → subagents → subagent-tools → chat-service → compact
+  appserver.New() → 直接登记 appServer（不是 Install）
+  必装：persist（挂 sessionPersistence + sessionSettings + agentStore）→ session → llm → tools → loops → react → skills → skills-filesystem → agents → commands → runner → subagents → subagent-tools → harness-product → compact
   必装提供者：yaml machine 选出的那一个，在 tools 前面 Start
   再按 enable：plugins/* 、 surface/*
-  Close 倒序
+  全部安装成功 → appServer.Freeze（本批没有网络监听器）
+  关闭：appServer.Close 拒绝新调用并等在途调用 → Host.Close 倒序拆插件
 ```
 
 顺序只出现在 `cmd/harness`。yaml 不能重排。jsonl / sqlite 是 persist 包内部选文件。machine 是 yaml 选提供者插件。两者都不进 `enable`。内核每次都 Start，不进 `enable`。
@@ -346,6 +363,7 @@ r, err := host.Resolve[*runner.Runner](h, "runner")
 
 - 启动时固定填入的 B（tools / loops / skills / HTTP）只 `Register`，随 Host 整体消失。运行中会离场的订阅（events）才返回幂等 `unregister`。
 - `Install` 中途失败：已 Start 的倒序拆。
+- Host 只关闭 Install 的插件，不关闭直接 RegisterService 的对象。入口负责 app-server 的失败清理与正常关闭，不给它套 plugin.go；本批无连接资源，不新增通用生命周期框架。
 - 谁开长期资源，谁关。谁启动 goroutine 或服务器，谁在 `Close` 中停止并等它退出。为此必需的等待状态属于这份能力，不算过度设计。
 - 一次铺一个领域，测过再下一个。不顺手加功能，不改已经公开的能力名。
 - 可选插件用配置 `enable`；内核名单和 Start 顺序留在 Go。v1 改配置后重启。不热加载未编译的包。

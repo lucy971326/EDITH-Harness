@@ -4,7 +4,7 @@ package agents
 import (
 	"fmt"
 
-	chatservice "harness/kernel/chat"
+	agentservice "harness/kernel/agents"
 	"harness/kernel/host"
 	"harness/surface/web"
 )
@@ -24,24 +24,29 @@ func (p *Plugin) Start(h *host.Host) error {
 	if err != nil {
 		return fmt.Errorf("settings-agents: resolve web: %w", err)
 	}
-	business, err := host.Resolve[*chatservice.Service](h, "chatService")
+	agentService, err := host.Resolve[*agentservice.Service](h, "agents")
 	if err != nil {
-		return fmt.Errorf("settings-agents: resolve chat service: %w", err)
+		return fmt.Errorf("settings-agents: resolve dependency: %w", err)
 	}
-	page := newPage(business)
-	if err := webService.RegisterSettingsSection(page); err != nil {
+	page := newPage(agentService)
+	err = webService.RegisterSettingsSection(page)
+	if err != nil {
 		return err
 	}
-	if err := webService.RegisterRoute("GET /settings/agents/{agentID}", page); err != nil {
+	err = webService.RegisterRoute("GET /settings/agents/{agentID}", page)
+	if err != nil {
 		return err
 	}
-	if err := webService.RegisterRoute("POST /settings/agents", page); err != nil {
+	err = webService.RegisterRoute("POST /settings/agents", page)
+	if err != nil {
 		return err
 	}
-	if err := webService.RegisterRoute("POST /settings/agents/{agentID}", page); err != nil {
+	err = webService.RegisterRoute("POST /settings/agents/{agentID}", page)
+	if err != nil {
 		return err
 	}
-	if err := webService.RegisterRoute("POST /settings/agents/{agentID}/delete", page); err != nil {
+	err = webService.RegisterRoute("POST /settings/agents/{agentID}/delete", page)
+	if err != nil {
 		return err
 	}
 	return nil

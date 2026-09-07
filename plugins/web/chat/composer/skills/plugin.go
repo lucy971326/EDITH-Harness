@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	chatservice "harness/kernel/chat"
+	"harness/kernel/agents"
 	"harness/kernel/host"
 	kernskills "harness/kernel/skills"
 	chat "harness/plugins/web/chat"
@@ -24,16 +24,17 @@ func New() *Plugin { return &Plugin{} }
 func (p *Plugin) Name() string { return "chat-composer-skills" }
 
 func (p *Plugin) Start(h *host.Host) error {
-	business, err := host.Resolve[*chatservice.Service](h, "chatService")
+	agentService, err := host.Resolve[*agents.Service](h, "agents")
 	if err != nil {
-		return fmt.Errorf("chat-composer-skills: resolve chat service: %w", err)
+		return fmt.Errorf("chat-composer-skills: resolve dependency: %w", err)
 	}
 	chatService, err := host.Resolve[chat.Service](h, "chat")
 	if err != nil {
 		return fmt.Errorf("chat-composer-skills: resolve chat: %w", err)
 	}
-	p.source = &source{business: business}
-	if err := chatService.RegisterSuggestionSource(p.source); err != nil {
+	p.source = &source{agents: agentService}
+	err = chatService.RegisterSuggestionSource(p.source)
+	if err != nil {
 		p.source = nil
 		return err
 	}
@@ -47,7 +48,7 @@ func (p *Plugin) Close() error {
 
 // 活对象。按当前工作区查询 Skill 候选的来源。
 type source struct {
-	business *chatservice.Service
+	agents *agents.Service
 }
 
 func (s *source) ID() string { return "skills" }
@@ -55,10 +56,10 @@ func (s *source) ID() string { return "skills" }
 func (s *source) Prefixes() []string { return []string{"/", "$"} }
 
 func (s *source) List(context chat.SuggestionContext) ([]chat.Suggestion, error) {
-	if s == nil || s.business == nil {
+	if s == nil || s.agents == nil {
 		return nil, fmt.Errorf("chat-composer-skills: source is not ready")
 	}
-	available, err := s.business.AvailableSkills(context.Workspace)
+	available, err := s.agents.AvailableSkills(context.Workspace)
 	if err != nil {
 		return nil, err
 	}

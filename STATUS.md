@@ -1,12 +1,12 @@
 # 项目状态
 
-更新日期：2026-09-06
+更新日期：2026-09-07
 
 ## 现在是什么
 
 Harness 已完成阶段 1、2、3，以及阶段 4 的五个页面插槽基础设施：它是可启动的 Web 聊天产品，具备项目/会话管理、真实 Runner 调度与 SSE 流式界面。
 
-插件已按契约所有者归档：`plugins/kernel` 放内核服务实现与登记处填充物，`plugins/web` 放 Web 产品及其页面插槽填充物；Chat 是 `plugins/web/chat` 下的 Web 产品。
+第一批后台重构已完成：`appserver` 是入口直接管理的普通活对象；`products/harness` 接替原 ChatService 的真实业务；`plugins/web/chat` 保留现有画面与页面插槽。当前对外契约已可在进程内调用，尚未接 WebSocket / JSON-RPC。
 
 ```text
 浏览器 POST → Chat → Runner → Agent 设置 → React Loop → LLM / Tools
@@ -16,6 +16,15 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的五个页面插槽基础�
 运行 `go run ./cmd/harness` 会读取 `harness.yaml`，组装完整服务链，并在 `http://127.0.0.1:8888` 打开 Chat。
 
 ## 已完成
+
+### App-server 第一批：产品迁移与类型化契约
+
+- 整体迁移 `kernel/chat` 到 `products/harness`，Host 键为 `harnessProduct`；不留旧包或兼容包装。发送、Steer、父子停止、快照、分叉与命令业务仍用原内核执行和存储。
+- 模型、Agent 设置、Skill、命令名单与事件订阅的纯转发已移除，调用方直接使用所属公共服务；Agent 设置页测试不再安装 HarnessProduct / Runner。
+- 入口直接创建并登记 `appServer`，产品插件绑定接口，全部安装成功后冻结；冻结前不能调用，冻结后不能登记。入口关闭 app-server 准入并等待在途调用，再关闭 Host；失败清理不把直接登记的服务误当成插件。
+- 已开放 `harness/session/create`、`harness/session/list`、`harness/session/get` 三个进程内接口。保留并发空会话复用与子会话隔离，空列表返回 `[]`；字段、时间与输入输出均通过 Schema 校验，错误有稳定分类。
+- Go 类型和方法声明生成接口目录、Schema 与 TS；`npm run contracts:generate` 更新生成物，`npm run contracts:check` 检查一致性和 TS 类型。已覆盖必填、可选、枚举、数组、引用、时间及封闭空对象映射。
+- 全量 Go 测试、vet、相关包三轮 race 与契约检查通过；保留真实 ReAct / Runner / 工具链的本地模拟模型父子停止回归。不调用外部模型，不改 Runner 执行、界面或用户数据；网络接入仍是后续工作。
 
 ### 阶段 1：Web 基础
 
@@ -32,13 +41,13 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的五个页面插槽基础�
 
 ### 阶段 3：真实聊天
 
-- 启动链已完整组装：`persist → session → llm → machine-local → tools → events → loops/react → skills → skills-builtin → skills-filesystem → agents → commands → runner → subagents → subagent-tools → chat-service → compact → web → chat → chat-composer-skills → chat-composer-commands → panel-demo`。
+- 启动链已完整组装：`persist → session → llm → machine-local → tools → events → loops/react → skills → skills-builtin → skills-filesystem → agents → commands → runner → subagents → subagent-tools → harness-product → compact → web → chat → chat-composer-skills → chat-composer-commands → panel-demo`。
 - 每轮生成 `RunID`，写入本轮耐久消息与 SSE；History Snapshot 和 SSE 共用 RunView reducer / `paint()`。同一 Run 默认合并为一张助手卡，只有耐久 Steer 才切成前后片段；落账完成不会让实时卡片跳位。
 - 时间线的耐久顺序使用 `Entry.Seq`；运行中卡片用 `AfterEntrySeq` 定位，Run 内按 `StepSeq / BlockSeq` 排列，工具结果按原始调用块回填。
 - Chat 支持普通发送、停止和 Steer；已移除 FollowUp 入口与等待队列，每个活 Run 只执行当前一轮。
 - Steer 在接受时立即落账；工具被停止时也会补齐「已取消」结果，不留下悬空工具调用。
 - `Runner.Start` 同步占住 Session，并在启动 goroutine 前完成一次 Agent / Skill 准备；准备错误直接返回 HTTP，之后在 Runner 管理的 goroutine 运行；`Runner.Close` 会取消并等待仍在运行的 Run。
-- `kernel/chat` 的 `ChatService` 是聊天业务入口：创建或复用空会话、下一轮设置校验与启动、Steer/停止、快照、分叉、命令与 Agent/Skill 查询都经它完成；它不拥有账本、Run 或事件登记处。Chat Web、分叉动作、输入候选与 Agent 设置页不再直接使用这些内核服务。
+- `products/harness` 的 `Product` 是聊天业务入口：创建或复用空会话、下一轮设置校验与启动、Steer/停止、快照、分叉与带会话校验的命令调用由它完成；它不拥有账本或 Run。模型、Agent/Skill 查询和事件订阅由各调用方直接使用所属公共服务。
 - Runner 对界面只发布稳定事件：开始、文本/推理 Delta、工具开始/完成、用量、耐久消息、结束状态。
 - 每次 SSE 重连重新同步 History；耐久快照会覆盖已排队的旧 Delta，慢客户端被断开，不会阻塞 Run。
 - 模型与思考档位是独立选择框；每次普通发送前两者必选，换模型会清空档位并影响下一轮 Run。
@@ -137,7 +146,7 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的五个页面插槽基础�
 
 ### 公共 RunView
 
-- `surface/web/runview` 提供 Templ 运行视图和公共浏览器 reducer；它统一处理 ChatService History Snapshot、SSE Delta、Step / Block 排序、Tool 回填、工作流、Markdown 与展开状态。
+- `surface/web/runview` 提供 Templ 运行视图和公共浏览器 reducer；它统一处理 HarnessProduct History Snapshot、SSE Delta、Step / Block 排序、Tool 回填、工作流、Markdown 与展开状态。
 - Chat 改用 RunView；Chat 私有脚本只保留 Composer、停止、消息动作和右侧面板交互，资源由 `/assets/chat/` 路由提供。
 - Chat 保持一条 SSE：`run` JSON 交给 RunView，`dock-*` HTML 继续由 HTMX `sse-swap` 处理。
 - 新的 Runner 驱动 Web 产品可以直接使用 `runview.View`，不必重写流式投影 JavaScript；Snapshot 与 SSE HTTP 路由仍归产品自己。
@@ -153,7 +162,7 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的五个页面插槽基础�
 
 ### 子会话委派第 2 步：服务与独立存储
 
-- 必装 `kernel/subagents` 整份服务，启动顺序为 Runner → Subagents → ChatService；提供 Options / Spawn / Send / List / Wait / Stop / StopFamily。
+- 必装 `kernel/subagents` 整份服务，启动顺序为 Runner → Subagents → HarnessProduct；提供 Options / Spawn / Send / List / Wait / Stop / StopFamily。
 - 使用父 Run 快照继承设置，独立创建子 Session；关系先保存，随后创建会话与设置、启动 Runner。子会话不进入普通聊天列表或空会话复用。
 - `subagents/tasks/<task-id>.json` 保存版本化任务、逐轮 RunID / 状态 / 最终正文位置和通知集合；重启保留历史，未完成轮次标记中断，不自动执行。
 - 单任务状态与写盘串行，旧轮完整收尾后才能开新轮；关闭取消服务上下文并等待在途启动和运行回调。持久化失败由调用、查询、等待及关闭明确报告。
@@ -201,6 +210,7 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的五个页面插槽基础�
 - `go test ./...` 通过。
 - `go vet ./...` 通过。
 - `git diff --check` 通过。
+- `npm run contracts:check` 通过（生成一致性、TS 类型检查及 Go → Schema → TS 映射测试）。
 - `node --test plugins/web/chat/static/test/sidepanel.test.js` 通过。
 - `node --check surface/web/static/runview.js` 与 Chat 私有脚本通过。
 - 已做真实浏览器页面与布局检查。

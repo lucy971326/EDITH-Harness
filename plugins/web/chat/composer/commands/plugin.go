@@ -4,7 +4,7 @@ package commands
 import (
 	"fmt"
 
-	chatservice "harness/kernel/chat"
+	kernelcommands "harness/kernel/commands"
 	"harness/kernel/host"
 	chat "harness/plugins/web/chat"
 	"harness/surface/web/ui"
@@ -21,16 +21,17 @@ func New() *Plugin { return &Plugin{} }
 func (p *Plugin) Name() string { return "chat-composer-commands" }
 
 func (p *Plugin) Start(h *host.Host) error {
-	business, err := host.Resolve[*chatservice.Service](h, "chatService")
+	commandService, err := host.Resolve[kernelcommands.Commands](h, "commands")
 	if err != nil {
-		return fmt.Errorf("chat-composer-commands: resolve chat service: %w", err)
+		return fmt.Errorf("chat-composer-commands: resolve dependency: %w", err)
 	}
 	chatService, err := host.Resolve[chat.Service](h, "chat")
 	if err != nil {
 		return fmt.Errorf("chat-composer-commands: resolve chat: %w", err)
 	}
-	p.source = &source{business: business}
-	if err := chatService.RegisterSuggestionSource(p.source); err != nil {
+	p.source = &source{commands: commandService}
+	err = chatService.RegisterSuggestionSource(p.source)
+	if err != nil {
 		p.source = nil
 		return err
 	}
@@ -44,7 +45,7 @@ func (p *Plugin) Close() error {
 
 // 活对象。按当前命令名单生成 / 候选。
 type source struct {
-	business *chatservice.Service
+	commands kernelcommands.Commands
 }
 
 func (s *source) ID() string { return "commands" }
@@ -52,10 +53,10 @@ func (s *source) ID() string { return "commands" }
 func (s *source) Prefixes() []string { return []string{"/"} }
 
 func (s *source) List(chat.SuggestionContext) ([]chat.Suggestion, error) {
-	if s == nil || s.business == nil {
+	if s == nil || s.commands == nil {
 		return nil, fmt.Errorf("chat-composer-commands: source is not ready")
 	}
-	definitions := s.business.Commands()
+	definitions := s.commands.List()
 	items := make([]chat.Suggestion, 0, len(definitions))
 	for _, definition := range definitions {
 		items = append(items, chat.Suggestion{

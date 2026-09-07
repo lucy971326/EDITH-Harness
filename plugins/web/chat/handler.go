@@ -16,9 +16,9 @@ import (
 	"github.com/a-h/templ"
 
 	"harness/kernel/agents"
-	chatservice "harness/kernel/chat"
 	"harness/kernel/llm"
 	"harness/kernel/session"
+	harnessproduct "harness/products/harness"
 	"harness/surface/web"
 )
 
@@ -26,7 +26,9 @@ import (
 type PageHandler struct {
 	web      web.Service
 	product  web.Product
-	business *chatservice.Service
+	business *harnessproduct.Product
+	models   *llm.Client
+	agents   *agents.Service
 	hub      *eventHub
 	registry Service
 }
@@ -34,12 +36,14 @@ type PageHandler struct {
 func newPageHandler(
 	webService web.Service,
 	product web.Product,
-	business *chatservice.Service,
+	business *harnessproduct.Product,
+	models *llm.Client,
+	agents *agents.Service,
 	hub *eventHub,
 	registry Service,
 ) *PageHandler {
 	return &PageHandler{
-		web: webService, product: product, business: business, hub: hub, registry: registry,
+		web: webService, product: product, business: business, models: models, agents: agents, hub: hub, registry: registry,
 	}
 }
 
@@ -192,8 +196,8 @@ func (h *PageHandler) pageData(selectedID string) (pageView, error) {
 			}
 		}
 	}
-	out.Models = h.business.Models()
-	out.Agents, err = h.business.ListAgents()
+	out.Models = h.models.Models()
+	out.Agents, err = h.agents.List()
 	if err != nil {
 		return pageView{}, fmt.Errorf("chat: list agents: %w", err)
 	}
@@ -586,7 +590,7 @@ func (h *PageHandler) message(w nethttp.ResponseWriter, r *nethttp.Request) {
 	}
 	switch mode {
 	case "run":
-		err = h.business.Start(context.Background(), chatservice.RunInput{
+		err = h.business.Start(context.Background(), harnessproduct.RunInput{
 			SessionID:       sessionID,
 			AgentID:         r.FormValue("agentID"),
 			Model:           r.FormValue("model"),
@@ -595,7 +599,7 @@ func (h *PageHandler) message(w nethttp.ResponseWriter, r *nethttp.Request) {
 		})
 		if err != nil {
 			status := nethttp.StatusBadRequest
-			if errors.Is(err, chatservice.ErrRunStart) {
+			if errors.Is(err, harnessproduct.ErrRunStart) {
 				status = nethttp.StatusConflict
 			}
 			nethttp.Error(w, err.Error(), status)
@@ -605,9 +609,9 @@ func (h *PageHandler) message(w nethttp.ResponseWriter, r *nethttp.Request) {
 		err = h.business.Steer(sessionID, input)
 		if err != nil {
 			status := nethttp.StatusConflict
-			if errors.Is(err, chatservice.ErrSessionSettings) {
+			if errors.Is(err, harnessproduct.ErrSessionSettings) {
 				status = nethttp.StatusInternalServerError
-			} else if !errors.Is(err, chatservice.ErrRunSteer) {
+			} else if !errors.Is(err, harnessproduct.ErrRunSteer) {
 				status = nethttp.StatusBadRequest
 			}
 			nethttp.Error(w, err.Error(), status)
@@ -641,7 +645,7 @@ func (h *PageHandler) command(w nethttp.ResponseWriter, r *nethttp.Request) {
 }
 
 func chatSessionStatus(err error) int {
-	if errors.Is(err, chatservice.ErrSessionSettings) {
+	if errors.Is(err, harnessproduct.ErrSessionSettings) {
 		return nethttp.StatusInternalServerError
 	}
 	if errors.Is(err, os.ErrNotExist) {

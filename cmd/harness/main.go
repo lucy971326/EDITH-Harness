@@ -14,8 +14,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"harness/appserver"
 	"harness/kernel/agents"
-	chatservice "harness/kernel/chat"
 	"harness/kernel/commands"
 	"harness/kernel/events"
 	"harness/kernel/host"
@@ -47,6 +47,7 @@ import (
 	webdemo "harness/plugins/web/demo"
 	agentsettings "harness/plugins/web/settings/agents"
 	settingsdemo "harness/plugins/web/settings/demo"
+	harnessproduct "harness/products/harness"
 	"harness/surface/web"
 )
 
@@ -63,7 +64,7 @@ func main() {
 	}
 }
 
-func run(configPath string) error {
+func run(configPath string) (result error) {
 	config, err := loadConfig(configPath)
 	if err != nil {
 		return err
@@ -74,6 +75,15 @@ func run(configPath string) error {
 	}
 
 	h := host.NewHost()
+	server := appserver.New()
+	defer func() {
+		// 入口拥有直接登记的 app-server；先结束接口调用，再拆产品与执行服务。
+		result = errors.Join(result, server.Close(), h.Close())
+	}()
+	err = h.RegisterService("appServer", server)
+	if err != nil {
+		return err
+	}
 	err = h.Install(&persist.Plugin{Dir: dataDir})
 	if err != nil {
 		return err
@@ -158,7 +168,7 @@ func run(configPath string) error {
 	if err != nil {
 		return err
 	}
-	err = h.Install(chatservice.NewPlugin())
+	err = h.Install(harnessproduct.NewPlugin())
 	if err != nil {
 		return err
 	}
@@ -208,6 +218,10 @@ func run(configPath string) error {
 		return err
 	}
 
+	err = server.Freeze()
+	if err != nil {
+		return err
+	}
 	url := webPlugin.URL()
 	err = openBrowser(url)
 	if err != nil {
@@ -218,10 +232,6 @@ func run(configPath string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	<-ctx.Done()
-	err = h.Close()
-	if err != nil {
-		return err
-	}
 	return nil
 }
 

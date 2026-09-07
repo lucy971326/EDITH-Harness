@@ -5,10 +5,12 @@ import (
 	"context"
 	"fmt"
 
-	chatservice "harness/kernel/chat"
+	"harness/kernel/agents"
 	"harness/kernel/events"
 	"harness/kernel/host"
+	"harness/kernel/llm"
 	"harness/kernel/runner"
+	harnessproduct "harness/products/harness"
 	"harness/surface/web"
 	"harness/surface/web/ui"
 )
@@ -23,7 +25,7 @@ var chatProduct = web.Product{
 
 // 活对象。Plugin 把 Chat 产品及其路由填入 Web 登记处。
 type Plugin struct {
-	business *chatservice.Service
+	business *harnessproduct.Product
 	hub      *eventHub
 	registry *registry
 	unlisten func()
@@ -41,9 +43,9 @@ func (p *Plugin) Start(h *host.Host) error {
 	if err != nil {
 		return fmt.Errorf("chat: resolve web: %w", err)
 	}
-	p.business, err = host.Resolve[*chatservice.Service](h, "chatService")
+	p.business, err = host.Resolve[*harnessproduct.Product](h, "harnessProduct")
 	if err != nil {
-		return fmt.Errorf("chat: resolve chat service: %w", err)
+		return fmt.Errorf("chat: resolve harness product: %w", err)
 	}
 	eventRegistry, err := host.Resolve[*events.Registry](h, "events")
 	if err != nil {
@@ -60,7 +62,7 @@ func (p *Plugin) Start(h *host.Host) error {
 		return err
 	}
 	hub := p.hub
-	p.unlisten, err = p.business.SubscribeRun(func(_ context.Context, event runner.RunEvent) error {
+	p.unlisten, err = events.Subscribe(eventRegistry, func(_ context.Context, event runner.RunEvent) error {
 		hub.publishRun(event)
 		return nil
 	})
@@ -93,7 +95,15 @@ func (p *Plugin) Start(h *host.Host) error {
 	if err != nil {
 		return err
 	}
-	handler := newPageHandler(webService, chatProduct, p.business, p.hub, p.registry)
+	modelClient, err := host.Resolve[*llm.Client](h, "llm")
+	if err != nil {
+		return err
+	}
+	agentService, err := host.Resolve[*agents.Service](h, "agents")
+	if err != nil {
+		return err
+	}
+	handler := newPageHandler(webService, chatProduct, p.business, modelClient, agentService, p.hub, p.registry)
 	err = webService.RegisterRoute("GET /chat", handler)
 	if err != nil {
 		return err

@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"harness/appserver"
 	"harness/kernel/agents"
-	chatservice "harness/kernel/chat"
 	"harness/kernel/commands"
 	"harness/kernel/events"
 	"harness/kernel/host"
@@ -26,6 +26,7 @@ import (
 	"harness/kernel/subagents"
 	"harness/kernel/tools"
 	"harness/plugins/web/chat"
+	harnessproduct "harness/products/harness"
 	"harness/surface/web"
 )
 
@@ -128,6 +129,12 @@ func installChatWithDemo(t *testing.T) (*host.Host, *web.Plugin, *Plugin) {
 	t.Cleanup(func() { _ = os.Setenv("HOME", previousHome) })
 
 	h := host.NewHost()
+	server := appserver.New()
+	registerErr := h.RegisterService("appServer", server)
+	if registerErr != nil {
+		t.Fatal(registerErr)
+	}
+	t.Cleanup(func() { _ = server.Close() })
 	for _, plugin := range []host.Plugin{
 		&persist.Plugin{Dir: t.TempDir()},
 		&session.Plugin{},
@@ -140,7 +147,7 @@ func installChatWithDemo(t *testing.T) (*host.Host, *web.Plugin, *Plugin) {
 		commands.NewPlugin(),
 		runner.NewPlugin(),
 		subagents.NewPlugin(home),
-		chatservice.NewPlugin(),
+		harnessproduct.NewPlugin(),
 	} {
 		if err := h.Install(plugin); err != nil {
 			t.Fatal(err)

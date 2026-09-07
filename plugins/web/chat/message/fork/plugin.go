@@ -5,14 +5,14 @@ import (
 	"context"
 	"fmt"
 
-	chatservice "harness/kernel/chat"
 	"harness/kernel/host"
 	"harness/plugins/web/chat"
+	harnessproduct "harness/products/harness"
 )
 
 // 活对象。Plugin 将分叉动作填入 Chat 的 message.actions 插槽。
 type Plugin struct {
-	business *chatservice.Service
+	business *harnessproduct.Product
 }
 
 // New 创建分叉消息动作插件。
@@ -27,9 +27,9 @@ func (p *Plugin) Start(h *host.Host) error {
 	if err != nil {
 		return fmt.Errorf("message fork: resolve chat: %w", err)
 	}
-	p.business, err = host.Resolve[*chatservice.Service](h, "chatService")
+	p.business, err = host.Resolve[*harnessproduct.Product](h, "harnessProduct")
 	if err != nil {
-		return fmt.Errorf("message fork: resolve chat service: %w", err)
+		return fmt.Errorf("message fork: resolve harness product: %w", err)
 	}
 	err = service.RegisterMessageAction(action{business: p.business})
 	if err != nil {
@@ -45,7 +45,7 @@ func (p *Plugin) Close() error {
 
 // 活对象。action 从已完成的助手回答创建一场独立会话。
 type action struct {
-	business *chatservice.Service
+	business *harnessproduct.Product
 }
 
 func (action) Definition() chat.MessageActionDefinition {
@@ -59,7 +59,7 @@ func (action) Definition() chat.MessageActionDefinition {
 }
 
 func (a action) Execute(_ context.Context, input chat.MessageActionContext) (chat.MessageActionResult, error) {
-	destinationID, err := a.business.Fork(chatservice.ForkInput{SessionID: input.SessionID, RunID: input.Target.RunID, BoundaryEntryID: input.Target.BoundaryEntryID})
+	destinationID, err := a.business.Fork(harnessproduct.ForkInput{SessionID: input.SessionID, RunID: input.Target.RunID, BoundaryEntryID: input.Target.BoundaryEntryID})
 	if err != nil {
 		return chat.MessageActionResult{}, err
 	}

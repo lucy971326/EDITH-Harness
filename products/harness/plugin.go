@@ -1,9 +1,9 @@
-package chat
+package harness
 
 import (
+	"harness/appserver"
 	"harness/kernel/agents"
 	"harness/kernel/commands"
-	"harness/kernel/events"
 	"harness/kernel/host"
 	"harness/kernel/llm"
 	"harness/kernel/runner"
@@ -12,13 +12,13 @@ import (
 	"harness/kernel/subagents"
 )
 
-// 活对象。把 ChatService 挂到 Host 的 chatService 键。
-type Plugin struct{ service *Service }
+// 活对象。安装 harnessProduct，并向入口创建的 appServer 登记产品接口。
+type Plugin struct{ service *Product }
 
-// NewPlugin 造 ChatService 插件。
+// NewPlugin 造 Harness 产品插件；不拥有内核或 app-server 的资源。
 func NewPlugin() *Plugin { return &Plugin{} }
 
-func (p *Plugin) Name() string { return "chat-service" }
+func (p *Plugin) Name() string { return "harness-product" }
 
 func (p *Plugin) Start(h *host.Host) error {
 	sessions, err := host.Resolve[*session.Store](h, "sessions")
@@ -45,7 +45,7 @@ func (p *Plugin) Start(h *host.Host) error {
 	if err != nil {
 		return err
 	}
-	eventRegistry, err := host.Resolve[*events.Registry](h, "events")
+	server, err := host.Resolve[*appserver.Server](h, "appServer")
 	if err != nil {
 		return err
 	}
@@ -53,16 +53,16 @@ func (p *Plugin) Start(h *host.Host) error {
 	if err != nil {
 		return err
 	}
-	p.service, err = NewService(sessions, settingsStore, agentService, modelClient, runService, commandService, eventRegistry, subagentService)
+	p.service, err = New(sessions, settingsStore, agentService, modelClient, runService, commandService, subagentService)
 	if err != nil {
 		return err
 	}
-	err = h.RegisterService("chatService", p.service)
+	err = h.RegisterService("harnessProduct", p.service)
 	if err != nil {
 		p.service = nil
 		return err
 	}
-	return nil
+	return p.service.registerMethods(server)
 }
 
 func (p *Plugin) Close() error { p.service = nil; return nil }

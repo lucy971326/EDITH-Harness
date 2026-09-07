@@ -24,7 +24,10 @@ description: 在 Harness 中新增或调整静态插件、服务与登记处，�
 已有登记处的一种实现   → 填入条目
 独立领域且别人需要调用 → 提供一份服务
 仅供用户进入的 Web 产品 → 填 Web products / routes
+后台产品业务与客户端接口 → products/<产品>，使用内核，填 appServer
 ```
+
+`appserver.Server` 是入口直接管理的普通活对象，不实现插件接口；不要为统一外形给它增加 plugin.go。产品插件通过 Host 获取同一份 `appServer`。接口只是一种登记条目，不是新的执行器。
 
 不要因为功能新就增加 Host 服务键。先查定义者的 `types.go`、登记处和实际调用者，确认现有入口够不够用。
 
@@ -35,6 +38,7 @@ description: 在 Harness 中新增或调整静态插件、服务与登记处，�
 | 注册普通 Tool | `plugins/kernel/tools/bash/`、`kernel/tools/types.go` | 获取 machine、构造工具、填 tools |
 | 接入动态 Tool 来源 | `plugins/kernel/tools/mcp/plugin.go`、`kernel/tools/types.go` | 用户选择与工作区快照、资源归属；不照搬全部 MCP 实现 |
 | 提供独立服务 | `kernel/runner/plugin.go`、`kernel/host/host.go` | 构造、Resolve、RegisterService 的边界 |
+| 后台产品与接口 | `products/harness/plugin.go`、`products/harness/methods.go`、`appserver/` | 类型化契约、产品业务、冻结前登记与生成一致性 |
 | 添加 Web 产品或插槽 | `plugins/web/chat/plugin.go`、`surface/web/types.go` | 确认填的是 Web 登记处还是 Chat 自己的登记处 |
 
 只读相关一行的实现。修改 Loop 执行语义时，再读 [Loop 开发与验收](../harness-loop-development/SKILL.md)。
@@ -44,10 +48,13 @@ description: 在 Harness 中新增或调整静态插件、服务与登记处，�
 - 先确定契约由谁定义，再按 AGENTS.md 的类型与 import 规则放文件。消费者通过定义者使用服务，不 import 具体提供者。
 - `plugin.go` 负责接线与生命周期；业务实现放所属领域文件。组装入口是 `cmd/harness/main.go`，按现有必装 / 可选规则接入，不让配置承担排序。
 - 打开的长期资源要有明确主人。检查 `Start` 中途失败、正常 `Close` 时如何释放；后台任务取消后要等待退出。Host 会关闭启动失败的插件，因此部分初始化状态也要能清理。
+- 直接 RegisterService 不代表 Install；Host 不负责关闭入口直接创建的 app-server。核对入口失败清理、冻结时机与关闭顺序，不能在产品安装完之前接受接口请求。
 - 修改公共契约时搜索所有调用点；不要留下另一套转发 API 只为保留旧写法。
 
 ## 按风险验收
 
 普通登记条目先运行受影响包的已有测试。涉及资源生命周期时，重点验证启动失败能清理、关闭后任务退出；涉及契约变更时编译或测试调用方。没有实际风险的样板接线不额外堆测试。
+
+产品接口变更检查 `go test ./appserver ./products/harness` 与 `npm run contracts:check`；修改 Go 声明后先 `npm run contracts:generate`，不手改 Schema 或 TS。仅迁移产品接线时保留原有发送、分叉、父子停止回归，不需要修改 Loop 的执行语义。
 
 交付简述：填了哪个入口、谁拥有资源、验证了什么。规则变化更新规则来源，完成状态按需更新 STATUS.md；不要在 Skill 里复制一份架构规范或维护第二份进度。

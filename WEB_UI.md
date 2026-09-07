@@ -2,6 +2,12 @@
 
 面向后续维护 Harness Web 表面的人与 AI。目标不是做一批相似页面，而是让所有 Web 产品和页面插槽共享一套稳定、克制、容易维护的视觉语言。
 
+## 后台与画面的边界
+
+`products/harness` 拥有产品业务，`appserver` 拥有接口契约与分发；它们不依赖本篇的 Templ / HTMX 画法。`plugins/web/chat` 当前只调整业务接线，继续使用现有页面与 POST / SSE；模型、Agent 设置、Skill 等公共查询直接使用所属服务。
+
+最终客户端业务将统一走 WebSocket / JSON-RPC，HTTP 负责网页资源。第一批没有实现网络或客户端重写；以下 JS、Token 与现有组件规则仍有效，不因后台迁移顺手扩张前端。
+
 ## 总原则
 
 ```text

@@ -1,0 +1,246 @@
+[
+  {
+    "name": "harness/session/create",
+    "description": "创建或复用工作区中的空会话",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "workspace": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "workspace"
+      ]
+    },
+    "outputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$defs": {
+        "SessionSettings": {
+          "properties": {
+            "agentID": {
+              "type": "string"
+            },
+            "model": {
+              "type": "string"
+            },
+            "reasoningEffort": {
+              "type": "string"
+            },
+            "workspace": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "agentID",
+            "model",
+            "reasoningEffort",
+            "workspace"
+          ]
+        },
+        "SessionView": {
+          "properties": {
+            "sessionID": {
+              "type": "string",
+              "minLength": 1
+            },
+            "title": {
+              "type": "string"
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "settings": {
+              "$ref": "#/$defs/SessionSettings"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "sessionID",
+            "title",
+            "createdAt",
+            "settings"
+          ]
+        }
+      },
+      "properties": {
+        "session": {
+          "$ref": "#/$defs/SessionView"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "session"
+      ]
+    }
+  },
+  {
+    "name": "harness/session/get",
+    "description": "查询一场普通会话",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "sessionID": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "sessionID"
+      ]
+    },
+    "outputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$defs": {
+        "SessionSettings": {
+          "properties": {
+            "agentID": {
+              "type": "string"
+            },
+            "model": {
+              "type": "string"
+            },
+            "reasoningEffort": {
+              "type": "string"
+            },
+            "workspace": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "agentID",
+            "model",
+            "reasoningEffort",
+            "workspace"
+          ]
+        },
+        "SessionView": {
+          "properties": {
+            "sessionID": {
+              "type": "string",
+              "minLength": 1
+            },
+            "title": {
+              "type": "string"
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "settings": {
+              "$ref": "#/$defs/SessionSettings"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "sessionID",
+            "title",
+            "createdAt",
+            "settings"
+          ]
+        }
+      },
+      "properties": {
+        "session": {
+          "$ref": "#/$defs/SessionView"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "session"
+      ]
+    }
+  },
+  {
+    "name": "harness/session/list",
+    "description": "列出普通会话，不包含子会话",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {},
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "outputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$defs": {
+        "SessionSettings": {
+          "properties": {
+            "agentID": {
+              "type": "string"
+            },
+            "model": {
+              "type": "string"
+            },
+            "reasoningEffort": {
+              "type": "string"
+            },
+            "workspace": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "agentID",
+            "model",
+            "reasoningEffort",
+            "workspace"
+          ]
+        },
+        "SessionView": {
+          "properties": {
+            "sessionID": {
+              "type": "string",
+              "minLength": 1
+            },
+            "title": {
+              "type": "string"
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "settings": {
+              "$ref": "#/$defs/SessionSettings"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "sessionID",
+            "title",
+            "createdAt",
+            "settings"
+          ]
+        }
+      },
+      "properties": {
+        "sessions": {
+          "items": {
+            "$ref": "#/$defs/SessionView"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "sessions"
+      ]
+    }
+  }
+]

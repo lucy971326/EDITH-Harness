@@ -2,6 +2,8 @@
 
 面向后续维护 Harness 的人和 AI。先确认一件事：数据放在哪里，取决于它是谁的事实；不是取决于它显示在哪个页面。
 
+`products/harness` 只组合现有 Session / SessionSettings / Runner / Subagents 的业务，不迁移用户数据。`appserver/generated` 中的接口目录、Schema 与 TS 是 Go 契约的生成物，不是运行状态或持久化格式；对外 Session 投影中的时间编码为 RFC 3339 字符串。
+
 ## 物理位置
 
 运行数据根目录固定为当前用户的 `~/.harness`，不写入项目目录。

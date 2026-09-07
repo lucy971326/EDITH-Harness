@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"harness/appserver"
 	"harness/kernel/agents"
-	chatservice "harness/kernel/chat"
 	kerncommands "harness/kernel/commands"
 	"harness/kernel/events"
 	"harness/kernel/host"
@@ -26,6 +26,7 @@ import (
 	"harness/kernel/tools"
 	compactcmd "harness/plugins/kernel/commands/compact"
 	chat "harness/plugins/web/chat"
+	harnessproduct "harness/products/harness"
 	"harness/surface/web"
 )
 
@@ -98,6 +99,12 @@ func installChatWithCommands(t *testing.T) (*host.Host, string) {
 	t.Setenv("HOME", home)
 
 	h := host.NewHost()
+	server := appserver.New()
+	registerErr := h.RegisterService("appServer", server)
+	if registerErr != nil {
+		t.Fatal(registerErr)
+	}
+	t.Cleanup(func() { _ = server.Close() })
 	for _, plugin := range []host.Plugin{
 		&persist.Plugin{Dir: t.TempDir()},
 		&session.Plugin{},
@@ -110,7 +117,7 @@ func installChatWithCommands(t *testing.T) (*host.Host, string) {
 		kerncommands.NewPlugin(),
 		runner.NewPlugin(),
 		subagents.NewPlugin(home),
-		chatservice.NewPlugin(),
+		harnessproduct.NewPlugin(),
 		compactcmd.New(),
 	} {
 		if err := h.Install(plugin); err != nil {

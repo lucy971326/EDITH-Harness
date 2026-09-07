@@ -1,4 +1,4 @@
-package chat
+package harness
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"harness/appserver"
 	"harness/kernel/agents"
 	"harness/kernel/commands"
 	"harness/kernel/events"
@@ -25,7 +26,7 @@ import (
 	"harness/kernel/tools"
 )
 
-func TestServiceRunsWithoutWebAndForksCompletedSegment(t *testing.T) {
+func TestProductRunsWithoutWebAndForksCompletedSegment(t *testing.T) {
 	fixture := newTestFixture(t)
 	defer fixture.host.Close()
 
@@ -43,7 +44,7 @@ func TestServiceRunsWithoutWebAndForksCompletedSegment(t *testing.T) {
 	}
 
 	eventsSeen := make(chan runner.RunEvent, 16)
-	unsubscribe, err := fixture.service.SubscribeRun(func(_ context.Context, event runner.RunEvent) error {
+	unsubscribe, err := events.Subscribe(fixture.events, func(_ context.Context, event runner.RunEvent) error {
 		eventsSeen <- event
 		return nil
 	})
@@ -120,10 +121,10 @@ func TestServiceRunsWithoutWebAndForksCompletedSegment(t *testing.T) {
 	waitEnded(t, eventsSeen, stopping.Meta.ID)
 }
 
-func TestServiceCreateDiscardsSessionWhenSettingsSaveFails(t *testing.T) {
+func TestProductCreateDiscardsSessionWhenSettingsSaveFails(t *testing.T) {
 	fixture := newTestFixture(t)
 	defer fixture.host.Close()
-	service, err := NewService(fixture.sessions, failingSettings{store: fixture.settings}, fixture.agents, fixture.models, fixture.runner, fixture.commands, fixture.events, fixture.subagents)
+	service, err := New(fixture.sessions, failingSettings{store: fixture.settings}, fixture.agents, fixture.models, fixture.runner, fixture.commands, fixture.subagents)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +141,7 @@ func TestServiceCreateDiscardsSessionWhenSettingsSaveFails(t *testing.T) {
 	}
 }
 
-func TestServiceSessionDoesNotReadOtherSessionSettings(t *testing.T) {
+func TestProductSessionDoesNotReadOtherSessionSettings(t *testing.T) {
 	fixture := newTestFixture(t)
 	defer fixture.host.Close()
 	workspace := t.TempDir()
@@ -156,7 +157,7 @@ func TestServiceSessionDoesNotReadOtherSessionSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service, err := NewService(fixture.sessions, selectiveFailSettings{store: fixture.settings, badID: "bad"}, fixture.agents, fixture.models, fixture.runner, fixture.commands, fixture.events, fixture.subagents)
+	service, err := New(fixture.sessions, selectiveFailSettings{store: fixture.settings, badID: "bad"}, fixture.agents, fixture.models, fixture.runner, fixture.commands, fixture.subagents)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +172,7 @@ func TestServiceSessionDoesNotReadOtherSessionSettings(t *testing.T) {
 
 type testFixture struct {
 	host      *host.Host
-	service   *Service
+	service   *Product
 	sessions  *session.Store
 	settings  settings.SessionSettingsStore
 	agents    *agents.Service
@@ -202,6 +203,12 @@ func newTestFixture(t *testing.T) testFixture {
 	t.Cleanup(func() { _ = os.Setenv("HOME", previousHome) })
 
 	h := host.NewHost()
+	server := appserver.New()
+	registerErr := h.RegisterService("appServer", server)
+	if registerErr != nil {
+		t.Fatal(registerErr)
+	}
+	t.Cleanup(func() { _ = server.Close() })
 	plugins := []host.Plugin{&persist.Plugin{Dir: t.TempDir()}, &session.Plugin{}, &llm.Plugin{}, events.NewPlugin(), loops.NewPlugin(), skills.NewPlugin(), tools.NewPlugin(), agents.NewPlugin(), commands.NewPlugin(), runner.NewPlugin(), subagents.NewPlugin(t.TempDir()), NewPlugin()}
 	for _, plugin := range plugins {
 		err = h.Install(plugin)
@@ -220,7 +227,7 @@ func newTestFixture(t *testing.T) testFixture {
 			}
 		}
 	}
-	service, err := host.Resolve[*Service](h, "chatService")
+	service, err := host.Resolve[*Product](h, "harnessProduct")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -389,7 +396,54 @@ func TestSubagentsChatIsolation(t *testing.T) {
 	fixture.loop.waitStarted(t)
 	fixture.loop.release()
 
-	// 1. ChatService.List 绝不包含子会话
+	// 同样的隔离必须经过真实接口分发成立，而不只测直接调用。
+	server, err := host.Resolve[*appserver.Server](fixture.host, "appServer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.Close()
+	err = server.Freeze()
+	if err != nil {
+		t.Fatal(err)
+	}
+	params, err := json.Marshal(GetParams{SessionID: spawnRes.ChildSessionID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = server.Call(context.Background(), GetMethod().Name, params)
+	assertMethodError(t, err, appserver.CodeNotFound)
+	raw, err := server.Call(context.Background(), ListMethod().Name, json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wireList ListResult
+	err = json.Unmarshal(raw, &wireList)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range wireList.Sessions {
+		if item.SessionID == spawnRes.ChildSessionID {
+			t.Fatal("child leaked through interface")
+		}
+	}
+	params, err = json.Marshal(CreateParams{Workspace: workspace})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err = server.Call(context.Background(), CreateMethod().Name, params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wireCreated SessionResult
+	err = json.Unmarshal(raw, &wireCreated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wireCreated.Session.SessionID == spawnRes.ChildSessionID {
+		t.Fatal("interface reused child")
+	}
+
+	// 1. HarnessProduct.List 绝不包含子会话
 	chatList, err := fixture.service.List()
 	if err != nil {
 		t.Fatal(err)
@@ -400,22 +454,22 @@ func TestSubagentsChatIsolation(t *testing.T) {
 		}
 	}
 
-	// 2. ChatService.Create 绝不复用空子会话
+	// 2. HarnessProduct.Create 绝不复用空子会话
 	newChat, err := fixture.service.Create(workspace)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if newChat.Meta.ID == spawnRes.ChildSessionID {
-		t.Fatalf("child session %q was reused by chatService.Create", spawnRes.ChildSessionID)
+		t.Fatalf("child session %q was reused by harnessProduct.Create", spawnRes.ChildSessionID)
 	}
 
-	// 3. ChatService.Session 拒绝访问子会话
+	// 3. HarnessProduct.Session 拒绝访问子会话
 	_, err = fixture.service.Session(spawnRes.ChildSessionID)
 	if !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("expected ErrNotExist, got %v", err)
 	}
 
-	// 4. ChatService.Start / Steer 拒绝操作子会话
+	// 4. HarnessProduct.Start / Steer 拒绝操作子会话
 	err = fixture.service.Start(context.Background(), RunInput{
 		SessionID: spawnRes.ChildSessionID,
 		Message:   session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "hi"}}},

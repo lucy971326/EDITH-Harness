@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"harness/appserver"
 	"harness/kernel/agents"
-	"harness/kernel/chat"
 	"harness/kernel/commands"
 	"harness/kernel/events"
 	"harness/kernel/host"
@@ -29,6 +29,7 @@ import (
 	delegation "harness/kernel/subagents"
 	"harness/kernel/tools"
 	"harness/plugins/kernel/loops/react"
+	harnessproduct "harness/products/harness"
 )
 
 // 数据。测试模型收到的普通聊天请求。
@@ -147,13 +148,19 @@ func TestRealReactWaitReceivesCompletionOrUserInput(t *testing.T) {
 				t.Fatal(err)
 			}
 			h := host.NewHost()
+			appServer := appserver.New()
+			registerErr := h.RegisterService("appServer", appServer)
+			if registerErr != nil {
+				t.Fatal(registerErr)
+			}
+			t.Cleanup(func() { _ = appServer.Close() })
 			defer func() {
 				err := h.Close()
 				if err != nil {
 					t.Error(err)
 				}
 			}()
-			for _, plugin := range []host.Plugin{&persist.Plugin{Dir: dir}, &session.Plugin{}, &llm.Plugin{}, tools.NewPlugin(), events.NewPlugin(), loops.NewPlugin(), react.New(), skills.NewPlugin(), agents.NewPlugin(), commands.NewPlugin(), runner.NewPlugin(), delegation.NewPlugin(dir), New(), chat.NewPlugin()} {
+			for _, plugin := range []host.Plugin{&persist.Plugin{Dir: dir}, &session.Plugin{}, &llm.Plugin{}, tools.NewPlugin(), events.NewPlugin(), loops.NewPlugin(), react.New(), skills.NewPlugin(), agents.NewPlugin(), commands.NewPlugin(), runner.NewPlugin(), delegation.NewPlugin(dir), New(), harnessproduct.NewPlugin()} {
 				err = h.Install(plugin)
 				if err != nil {
 					t.Fatal(err)
@@ -161,7 +168,7 @@ func TestRealReactWaitReceivesCompletionOrUserInput(t *testing.T) {
 			}
 			r := resolve[*runner.Runner](t, h, "runner")
 			s := resolve[*delegation.Subagents](t, h, "subagents")
-			chatService := resolve[*chat.Service](t, h, "chatService")
+			chatService := resolve[*harnessproduct.Product](t, h, "harnessProduct")
 			err = resolve[tools.Tools](t, h, "tools").Register(tools.New("side_effect", "Test cancellation boundary", func(context.Context, tools.Call, struct{}) (tools.Result, error) {
 				sideEffects.Add(1)
 				return tools.Result{Content: "executed"}, nil
