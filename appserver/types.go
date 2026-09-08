@@ -7,13 +7,13 @@ import (
 )
 
 // 契约。方法的名称、说明和输入输出 Go 类型；同一声明用于登记和生成。
-type Method[I, O any] struct {
+type Method[Input, Output any] struct {
 	Name        string
 	Description string
 }
 
 // 契约。处理函数只接收已校验的输入，返回仍需校验的输出。
-type Handler[I, O any] func(context.Context, I) (O, error)
+type Handler[Input, Output any] func(context.Context, Input) (Output, error)
 
 // 数据。可导出的接口目录条目，Schema 由 Go 类型生成。
 type Definition struct {

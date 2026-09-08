@@ -30,6 +30,13 @@ App-server 第一批已经完成：`appserver` 是入口直接管理的普通活
 - Go 类型和方法声明生成接口目录、Schema 与 TS；`npm run contracts:generate` 更新生成物，`npm run contracts:check` 检查一致性和 TS 类型。已覆盖必填、可选、枚举、数组、引用、时间及封闭空对象映射。
 - 全量 Go 测试、vet、相关包三轮 race 与契约检查通过；保留真实 ReAct / Runner / 工具链的本地模拟模型父子停止回归。不调用外部模型，不改 Runner 执行、界面或用户数据；网络接入仍是后续工作。
 
+### App-server 第一批：可读性整理
+
+- `Server` 改名为 `RPCServer`，保留 `New()`，不留旧名别名；产品接线与测试引用已同步。它仍只做进程内登记与分发，没有新增 JSON-RPC 封套、网络监听或 `Handle`。
+- `appserver` 按 `types.go / server.go / method.go / schema.go` 分工；私有 `boundMethod[Input, Output]` 保存处理函数和编译后的 Schema，具名 `Call` 顺序完成输入检查、解码、业务调用、编码与输出检查，替代登记时的闭包。
+- Harness 的 `methods.go` 只保留声明、契约导出与登记名单；`handlers.go` 承载三个具名处理方法、投影转换和错误映射。`types.go` 按创建、列表、查询归组，创建与查询共用一份 `SessionResult`。
+- 全量 `go test ./...`、`go vet ./...`、appserver / Harness 产品 race 与 `npm run contracts:check` 通过；8 个契约生成文件保持一致，未改变接口行为、生命周期和业务逻辑。
+
 ### 迁移期 Web：阶段 1 基础
 
 - `surface/web`：HTTP Server、产品/路由登记处、templ 通用页面壳。

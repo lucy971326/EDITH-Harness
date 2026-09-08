@@ -3,14 +3,13 @@ package appserver
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"sort"
 	"sync"
 )
 
-// 活对象。入口直接拥有的接口登记处与分发器，不是插件。
-type Server struct {
+// 活对象。入口直接拥有的 RPC 登记处与分发器，不负责 HTTP 或 WebSocket 收发。
+type RPCServer struct {
 	mu      sync.RWMutex
 	methods map[string]registeredMethod
 	frozen  bool
@@ -25,51 +24,23 @@ type registeredMethod struct {
 }
 
 // New 创建空登记处；不启动连接、模型或后台任务。
-func New() *Server { return &Server{methods: make(map[string]registeredMethod)} }
+func New() *RPCServer { return &RPCServer{methods: make(map[string]registeredMethod)} }
 
 // Register 绑定类型化声明和处理函数；错误契约在组装时失败。
-func Register[I, O any](s *Server, method Method[I, O], handler Handler[I, O]) error {
+func Register[Input, Output any](s *RPCServer, method Method[Input, Output], handler Handler[Input, Output]) error {
 	if s == nil || handler == nil {
 		return fmt.Errorf("appserver: nil server or handler")
 	}
-	definition, input, output, err := describe(method)
+	definition, inputSchema, outputSchema, err := describe(method)
 	if err != nil {
 		return err
 	}
-	entry := registeredMethod{definition: definition}
-	entry.call = func(ctx context.Context, raw json.RawMessage) (json.RawMessage, error) {
-		value, err := decodeJSON(raw)
-		if err == nil {
-			err = input.Validate(value)
-		}
-		if err != nil {
-			return nil, &Error{CodeInvalidParams, "input does not match contract", err}
-		}
-		var params I
-		err = json.Unmarshal(raw, &params)
-		if err != nil {
-			return nil, &Error{CodeInvalidParams, "input cannot be decoded", err}
-		}
-		result, err := handler(ctx, params)
-		if err != nil {
-			var public *Error
-			if errors.As(err, &public) {
-				return nil, public
-			}
-			return nil, &Error{CodeInternal, "handler failed", err}
-		}
-		encoded, err := json.Marshal(result)
-		if err == nil {
-			value, err = decodeJSON(encoded)
-		}
-		if err == nil {
-			err = output.Validate(value)
-		}
-		if err != nil {
-			return nil, &Error{CodeInternal, "output does not match contract", err}
-		}
-		return encoded, nil
+	bound := boundMethod[Input, Output]{
+		handler:      handler,
+		inputSchema:  inputSchema,
+		outputSchema: outputSchema,
 	}
+	entry := registeredMethod{definition: definition, call: bound.Call}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed || s.frozen {
@@ -83,7 +54,7 @@ func Register[I, O any](s *Server, method Method[I, O], handler Handler[I, O]) e
 }
 
 // Freeze 结束组装；此后目录只读，才允许业务调用。
-func (s *Server) Freeze() error {
+func (s *RPCServer) Freeze() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
@@ -94,22 +65,28 @@ func (s *Server) Freeze() error {
 }
 
 // Catalog 返回独立副本；调用方不能修改运行时契约。
-func (s *Server) Catalog() []Definition {
+func (s *RPCServer) Catalog() []Definition {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]Definition, 0, len(s.methods))
-	for _, entry := range s.methods {
+	// 按方法名排序，保证目录顺序稳定。
+	names := make([]string, 0, len(s.methods))
+	for name := range s.methods {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	catalog := make([]Definition, 0, len(names))
+	for _, name := range names {
+		entry := s.methods[name]
 		definition := entry.definition
 		definition.InputSchema = append(json.RawMessage(nil), definition.InputSchema...)
 		definition.OutputSchema = append(json.RawMessage(nil), definition.OutputSchema...)
-		out = append(out, definition)
+		catalog = append(catalog, definition)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	return out
+	return catalog
 }
 
 // Call 校验并分发一次进程内请求，不自动重试。
-func (s *Server) Call(ctx context.Context, name string, params json.RawMessage) (json.RawMessage, error) {
+func (s *RPCServer) Call(ctx context.Context, name string, params json.RawMessage) (json.RawMessage, error) {
 	s.mu.Lock()
 	ready := s.frozen && !s.closed
 	entry, exists := s.methods[name]
@@ -132,7 +109,7 @@ func (s *Server) Call(ctx context.Context, name string, params json.RawMessage) 
 }
 
 // Close 幂等关闭准入；本批没有监听器或连接资源。入口在关闭 Host 前调用。
-func (s *Server) Close() error {
+func (s *RPCServer) Close() error {
 	s.mu.Lock()
 	s.closed = true
 	s.mu.Unlock()

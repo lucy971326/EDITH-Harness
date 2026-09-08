@@ -86,7 +86,7 @@ Client 调用 create(params)
 ```
 
 - Go 数据类型和类型化方法声明是唯一手写契约。
-- 数据放定义者的 `types.go`；方法声明与绑定放 `methods.go`。
+- 数据放定义者的 `types.go`，按业务归组，共享结果只定义一次；方法声明、契约导出与登记名单放 `methods.go`，具名处理方法与错误映射放 `handlers.go`。
 - `appserver.Register` 绑定声明和处理函数，组装时编译输入输出 Schema。
 - 重名、空处理函数或坏契约使组装失败。
 - 所有插件安装完成后 `Freeze`；此前拒绝调用，此后拒绝登记。
@@ -96,6 +96,7 @@ Client 调用 create(params)
 - 运行时仍校验输入和输出；TypeScript 不能表达的格式、长度等约束以 Schema 为准。
 - appserver 不 import products、kernel 提供者、旧 Web 或具体 Client；产品插件负责绑定业务处理函数。
 - 不自动暴露 Host 方法；只有显式登记的对外方法可调用。
+- `RPCServer` 是与传输无关的 RPC 登记与分发对象，不是 HTTP / WebSocket 监听服务器。接入层负责网络收发，协议处理层负责封套与分发，Product 只处理业务。
 
 协议使用标准 JSON-RPC 2.0，保留 `jsonrpc`、`id`、`method`、`params`、`result`、`error`。请求 ID 只做本次响应配对，不充当业务防重 ID。
 
@@ -234,6 +235,8 @@ Client    只依赖生成契约和自身 UI；不读取 Go Host
 - 普通包返回错误，不打日志；错误只在进程边界或无法返回的后台入口打印一次。
 - `err := f()` 与 `if err != nil` 分行。
 - 每包一个主要公开构造入口；构造函数只校验依赖和组装。
+- 接口处理优先使用结构体保存依赖、具名方法承载行为，不用捕获依赖的闭包或匿名 Handler；登记名单留在产品，不下放到 main。
+- 泛型只用于必要的公共类型转换，类型参数写成 `Input / Output`。一次调用的校验、解码、业务调用、编码与输出校验顺序写在同一方法，不拆成绕行的小助手。
 - 搜索优先 `rg` / `rg --files`。
 - 改代码后执行与风险匹配的单测、race、vet、生成一致性与前端检查；不要为了通过检查改无关代码。
 - 旧 Web 迁移期间的具体构建命令以 `STATUS.md` 为准；新 Client 建立后再替换，不把尚未完成写成事实。

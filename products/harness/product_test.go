@@ -397,7 +397,7 @@ func TestSubagentsChatIsolation(t *testing.T) {
 	fixture.loop.release()
 
 	// 同样的隔离必须经过真实接口分发成立，而不只测直接调用。
-	server, err := host.Resolve[*appserver.Server](fixture.host, "appServer")
+	server, err := host.Resolve[*appserver.RPCServer](fixture.host, "appServer")
 	if err != nil {
 		t.Fatal(err)
 	}

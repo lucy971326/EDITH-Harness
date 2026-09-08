@@ -6,7 +6,7 @@
 
 第一批已经完成：
 
-- `appserver.Server`、类型化方法登记、Schema 校验、Freeze 与关闭准入。
+- `appserver.RPCServer`、类型化方法登记、Schema 校验、Freeze 与关闭准入。
 - `products/harness` 接替原 `kernel/chat`，不保留 ChatService 包装层。
 - `harness/session/create`、`list`、`get` 三个进程内方法。
 - Go 契约生成目录、JSON Schema 与 TypeScript。

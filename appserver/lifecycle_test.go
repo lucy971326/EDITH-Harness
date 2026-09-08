@@ -12,14 +12,14 @@ import (
 
 // 活对象。验证 Host 生命周期与直接登记的 app-server 不混为一谈。
 type methodPlugin struct {
-	server *appserver.Server
+	server *appserver.RPCServer
 	closes int
 }
 
 func (*methodPlugin) Name() string { return "test-product" }
 func (p *methodPlugin) Start(h *host.Host) error {
 	var err error
-	p.server, err = host.Resolve[*appserver.Server](h, "appServer")
+	p.server, err = host.Resolve[*appserver.RPCServer](h, "appServer")
 	if err != nil {
 		return err
 	}
@@ -50,7 +50,7 @@ func TestEntryOwnsServerAndHostOwnsPlugins(t *testing.T) {
 	if p.closes != 1 {
 		t.Fatalf("plugin closed %d times", p.closes)
 	}
-	// 直接登记的 Server 没有被 Host 当作插件关闭；入口必须自己关。
+	// 直接登记的 RPCServer 没有被 Host 当作插件关闭；入口必须自己关。
 	err = s.Freeze()
 	if err != nil {
 		t.Fatal("Host unexpectedly closed directly registered server", err)
@@ -94,7 +94,7 @@ func TestFailedProductAssemblyNeverOpensCalls(t *testing.T) {
 	if !errors.As(err, &public) || public.Code != appserver.CodeConflict {
 		t.Fatal("failed assembly accepted a call", err)
 	}
-	// 与入口失败清理相同：直接关闭 Server，不能重新冻结开放。
+	// 与入口失败清理相同：直接关闭 RPCServer，不能重新冻结开放。
 	err = s.Close()
 	if err != nil {
 		t.Fatal(err)

@@ -17,7 +17,7 @@ import (
 func TestSessionMethodsUseRealProductAndMatchGeneratedCatalog(t *testing.T) {
 	fixture := newTestFixture(t)
 	defer fixture.host.Close()
-	server, err := host.Resolve[*appserver.Server](fixture.host, "appServer")
+	server, err := host.Resolve[*appserver.RPCServer](fixture.host, "appServer")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestMethodErrorsDoNotConfuseMissingFilesWithMissingSession(t *testing.T) {
 func TestProductInstallFailureLeavesEntryUnopened(t *testing.T) {
 	fixture := newTestFixture(t)
 	defer fixture.host.Close()
-	server, err := host.Resolve[*appserver.Server](fixture.host, "appServer")
+	server, err := host.Resolve[*appserver.RPCServer](fixture.host, "appServer")
 	if err != nil {
 		t.Fatal(err)
 	}
