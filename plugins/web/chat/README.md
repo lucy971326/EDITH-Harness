@@ -1,15 +1,18 @@
 # Chat 产品
 
-【它是什么】默认 Chat Web 产品：项目/会话导航、对话页面、History 与 SSE 实时画面。
+> 迁移期旧实现。目标 Harness Client 位于未来的 `clients/web`，所有业务通过 WebSocket / JSON-RPC 2.0 调用 app-server；本目录在 React 迁移完成后整体删除。
+
+【它是什么】当前旧 Chat Web 产品：项目/会话导航、对话页面、History 与 SSE 实时画面。
 
 【使用能力】
 
 - `web`：登记 Chat 产品和 HTTP 路由；
-- `chatService`：创建会话、发送、Steer、停止、分叉、快照、模型/Agent/命令/Skill 查询；
+- `harnessProduct`：创建会话、发送、Steer、停止、分叉与快照；
+- 模型、Agent、命令和 Skill 查询：直接调用各自所属的公共服务；
 - `events`：订阅 `RunEvent` 与 `DockChanged`，转成浏览器 SSE。
 - `surface/web/runview`：统一投影历史、思考、Tool 与最终回答；Chat 不维护运行 reducer。
 
-【提供能力】注册服务 `chat`：提供 `sidepanel`、`dock`、`message.actions`、`composer.actions`、`composer.suggestions` 五个 Chat 内部登记处；内置 `copy` 消息动作。`chatService` 由 `kernel/chat` 注册，不由本产品提供。
+【提供能力】注册迁移期服务 `chat`：提供 `sidepanel`、`dock`、`message.actions`、`composer.actions`、`composer.suggestions` 五个旧页面登记处；内置 `copy` 消息动作。后台业务由 `products/harness` 的 `harnessProduct` 提供。
 
 【填充插槽】向 `web` 填入 Chat 产品和全部 `/chat` 路由。
 
@@ -17,7 +20,7 @@
 
 【不做】不保存 Run、Dock 或其他插件业务状态；Session 只保存对话。用量球和附图按钮是 Chat 页面自己的，不填 composer 插槽。
 
-## 目录形状
+## 当前目录形状
 
 ```text
 根目录

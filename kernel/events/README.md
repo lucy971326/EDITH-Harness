@@ -8,6 +8,6 @@
 
 【填充插槽】自身不填；监听者填入的是回调，不是长期业务数据。
 
-【谁在用】`runner` 发布稳定 `RunEvent`；`chat` 订阅它并转成 SSE。Dock 填充者未来发布 `DockChanged`，Chat 同样订阅。
+【谁在用】`runner` 发布稳定 `RunEvent`；当前旧 `chat` 订阅并转成 SSE。目标架构由 app-server 按 Client 订阅投影运行事件，不改变 events 的进程内职责。
 
 【不做】不保存、不缓冲、不重放事件；有返回值的协作仍直接调用服务。

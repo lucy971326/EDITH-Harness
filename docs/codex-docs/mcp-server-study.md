@@ -1,6 +1,8 @@
 # Codex 的"服务器"机制：exec-server / MCP Server / app-server 完全搞懂
 
 > 基于 `reference/codex/codex-rs/` 源码的真实行为整理。
+>
+> 本文是 Codex 参考笔记，不是 Harness 设计。Codex app-server 的 Client 通信结论以 [Client 通信与多端协作](client-communication.md) 为准；Harness 采用自己的标准 JSON-RPC 2.0 方案。
 
 ---
 

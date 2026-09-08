@@ -2,6 +2,8 @@
 
 插件都静态编译进 Harness；目录表达“它填谁的契约”，不代表动态加载或新的 Host 层级。
 
+下图记录当前组装事实。其中 Web 一支是迁移期旧实现；目标 React Client 不再作为后台页面插件，也不保留页面插槽。
+
 ```text
 Host
 ├─ 内核默认插件
@@ -14,7 +16,7 @@ Host
 │  skills/filesystem → skills
 │  read/write/edit/bash → tools
 │
-└─ Web
+└─ 迁移期旧 Web
    surface/web   → web（产品、路由、settings.section）
    chat          → web products + chat（四个 Chat 内部登记处）
    web/demo      → web products（演示产品）
@@ -33,4 +35,4 @@ Host
 【谁在用】     哪个插件或浏览器实际消费它
 ```
 
-先读本文件定位，再读目标插件 README；只有需要实现时才进入代码。
+内核插件仍按本图定位。旧 Web 只做必要修复；新 Client 规则见根目录 `WEB_UI.md`。

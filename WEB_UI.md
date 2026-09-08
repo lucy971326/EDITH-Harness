@@ -1,133 +1,100 @@
-# Web UI 规范
+# Client UI 规范
 
-面向后续维护 Harness Web 表面的人与 AI。目标不是做一批相似页面，而是让所有 Web 产品和页面插槽共享一套稳定、克制、容易维护的视觉语言。
+本篇描述目标 React Client。当前 `surface/web`、`plugins/web`、Templ、HTMX、POST 与 SSE 仍是可运行的迁移期实现，完成情况见 `STATUS.md`；不要再把它们当作新页面的长期基础。
 
-## 后台与画面的边界
-
-`products/harness` 拥有产品业务，`appserver` 拥有接口契约与分发；它们不依赖本篇的 Templ / HTMX 画法。`plugins/web/chat` 当前只调整业务接线，继续使用现有页面与 POST / SSE；模型、Agent 设置、Skill 等公共查询直接使用所属服务。
-
-最终客户端业务将统一走 WebSocket / JSON-RPC，HTTP 负责网页资源。第一批没有实现网络或客户端重写；以下 JS、Token 与现有组件规则仍有效，不因后台迁移顺手扩张前端。
-
-## 总原则
+## 1. 调用边界
 
 ```text
-统一视觉语言
-→ 在确实重复的地方复用
-→ 降低维护成本
+React 组件
+   ↓ 调用类型化 Client 方法
+普通 TypeScript：状态、Snapshot、订阅与重连
+   ↓
+WebSocket / 标准 JSON-RPC 2.0
+   ↓
+app-server → Product / 公共服务 → kernel
 ```
 
-不要为了复用，把产品独有的工作流硬抽成全局组件。
+- HTTP 只提供 Vite 构建后的静态资源。
+- 所有业务调用、通知、订阅和服务端反向请求走同一条 WebSocket。
+- React 负责显示和局部交互；普通 TypeScript 负责连接、协议、状态归并与恢复。
+- Client 使用生成的 TypeScript 契约，不手写第二份方法名、参数或返回类型。
+- UI 不直接拼 JSON-RPC 封套，不知道 Go Host、Runner 或 Product 的具体实现。
+- Wails 首版承载同一套前端并连接同一 WebSocket，不另写一套 IPC 业务层。
+
+## 2. 状态边界
 
 ```text
-应统一：按钮、输入框、导航、文字层级、状态色、主题、图标
-各自拥有：Chat 工作过程、Movie 播放控制、某个插件的专属内容
+后台事实        Session、SessionSettings、Agent、Product 状态、Run 状态
+Client 投影     从 Snapshot + 后续事件得到的当前画面
+Client 临时状态 当前路由、选择、折叠、面板宽度、主题、输入草稿
 ```
 
-## 三层设计系统
+Client 不写账本，不把本地状态冒充业务事实。刷新可丢失的界面状态可保存在内存或浏览器本地存储；需要跨端一致的事实必须由后台拥有。
+
+运行详情采用“先建立订阅边界，再取得 Snapshot，最后应用边界后的事件”或等价无空档方案。重连时重新初始化、恢复 Snapshot 和待回答请求，再续订；不要求重放每个文字 Delta，但最终投影不能漏耐久事实。
+
+请求 ID 只匹配响应。发送、回答等有副作用操作如需安全重试，必须使用后台定义的业务操作 ID，不能拿 JSON-RPC `id` 代替。
+
+未知通知可忽略；服务端反向请求必须明确回答“不支持”或交给支持它的 Client，不能静默吞掉。慢 Client 断开或丢弃增量，不得反压 Runner。
+
+## 3. 前端代码组织
+
+目标目录在迁移时建立为 `clients/web/`：
 
 ```text
-surface/web
-├─ Token
-│  颜色、字体、字号、间距、圆角、边框、阴影、动画、主题
-├─ 公共 UI 规则
-│  ui-button-*、ui-input、ui-select、ui-nav-item、ui-card、
-│  ui-text-*、ui-menu、ui-notice、ui-empty-state …
-└─ 公共图标入口
-   ui.Icon(ui.IconSettings)、ui.Icon(ui.IconPlus) …
+clients/web/
+├─ src/client/       JSON-RPC 连接、生成契约适配、订阅与恢复
+├─ src/state/        后台投影 reducer 与页面级状态
+├─ src/components/   跨产品基础组件
+├─ src/products/     Harness 等产品界面
+├─ src/styles/       Token、主题与公共语义样式
+└─ src/icons/        受控图标入口
 ```
 
-### 1. Token
+- 不使用 Next.js，不引入服务端 React。
+- TypeScript 写法直白、类型明确，少语法糖和高级类型技巧。
+- 没有真实复用前，不建立通用 Store、组件框架或插件化 UI。
+- 后台插件传数据，不传 HTML、React 组件或任意 SVG。
+- 目标架构不保留旧页面插槽；产品内部扩展由真实需求再设计，不迁移 demo 插槽。
 
-来源：`surface/web/assets/tokens.css`。
+## 4. 视觉系统
 
-Token 是唯一的视觉事实来源。颜色、排版、间距、圆角与主题都在这里定义。
-
-```text
-禁止：产品或插槽自己写固定颜色、任意字号、任意圆角
-允许：从现有 Token 选择；若确实缺少一类全局规则，再补 Token
-```
-
-亮色、暗色、跟随系统只切换 Token；产品与填充物不得各写一份 dark CSS。
-
-### 2. 公共 UI 规则
-
-来源：`surface/web/assets/input.css`。
-
-`ui-*` 类将 Token 组合成可复用的界面规则。新增 Web 产品或插槽时，先选用已有规则：
-
-```text
-文字：ui-text-title / ui-text-section / ui-text-body / ui-text-meta / ui-text-code
-操作：ui-button-primary / ui-button-secondary / ui-button-danger / ui-icon-button
-表单：ui-input / ui-select / ui-textarea
-容器：ui-page / ui-panel / ui-card / ui-menu / ui-notice / ui-empty-state
-导航：ui-nav-item / ui-tab
-```
-
-只在一类元素会跨产品重复出现时，才新增公共 `ui-*` 规则；仅属于一个产品的内容，写在该产品自己的语义类中。
-
-```text
-正确：Runner 驱动产品共用的运行过程属于 `surface/web/runview`
-正确：Chat 的 Composer、Dock、Sidepanel 与消息动作留在 Chat
-正确：ui-button-primary 属于所有 Web 产品，留在公共规则
-错误：把批次、编辑器、Composer 等产品事实塞进 RunView
-```
-
-## 图标
-
-来源：`surface/web/ui/icons.templ`。
-
-Web 自身、Web 产品和页面插槽一律使用受控图标：
-
-```go
-@ui.Icon(ui.IconSettings)
-@ui.Icon(ui.IconPlus)
-```
-
-不在正式 UI 使用 Emoji 充当图标，不从运行时读取 SVG，也不让插件传入任意 SVG 或图标字符串。
-
-若现有图标不够，先在 `surface/web/ui` 增加一个静态编译的图标常量，再由各处使用。
-
-## JavaScript 边界
-
-优先级固定：
-
-```text
-静态页面 / 普通表单 / 局部刷新 → templ + 原生 HTML + HTMX
-浏览器独有且服务端做不到的职责 → 少量 JavaScript
-```
-
-JS 仅可处理：
-
-```text
-SSE 实时投影
-浏览器临时状态
-拖拽、复制、输入填充
-```
-
-`surface/web/runview` 是已批准的公共 SSE 投影：它把 Snapshot 与 `runner.RunEvent`
-归并为完整运行记录。新 Agent 产品应直接使用它，不重写 reducer、Tool 回填或 Markdown；
-产品私有交互仍归产品自己的少量 JS。
-
-不得把业务状态、Session 状态或插件状态放进 JS；不引入前端状态管理框架。新增 JS 前，先说明 HTMX / 原生 HTML 无法完成的原因，并征得用户同意。
-
-## 当前视觉方向
+保留现有已经验证的视觉方向，换实现不换体验：
 
 ```text
 暖白工作台 + 石墨文字 + 极淡分割线
 黑色用于主要操作
 蓝色只用于链接与焦点
-少用卡片与普通阴影；卡片必须表达真实分组关系
+少用卡片与普通阴影；卡片必须表达真实分组
 ```
 
-保持桌面端信息密度。工作过程默认收起，工具默认是一行摘要；只有用户展开时才显示详细容器。
+Token 是颜色、排版、间距、圆角、边框、阴影、动画和主题的唯一视觉事实来源。亮色、暗色、跟随系统只切换 Token；产品不得各写一份 dark 样式。
 
-## 新页面或新插槽检查表
+公共组件只承载跨产品重复的基础元素：按钮、输入框、选择框、导航、文字层级、状态、菜单、提示、空状态。Chat 的 Composer、运行过程、消息动作等产品事实留在 Harness 产品界面。
+
+正式 UI 使用受控图标，不用 Emoji 充当图标，不接受后台传入的任意 SVG。缺少图标时先扩充 Client 的静态图标集合。
+
+## 5. Chat 与运行投影
+
+- 默认结论优先：最终回答直接显示，推理、过程和工具详情默认收起。
+- Snapshot 与实时事件进入同一个 reducer；工具结果按原 tool call 回填，Steer 分段不能串位。
+- 只有已落账的最终回答能成为最终结果；运行中的临时正文不能冒充完成。
+- Markdown 只用于用户消息和最终回答，渲染后必须清洗；推理、工具参数和结果默认按纯文本显示。
+- 图片、模型、思考档位、Agent、命令和 Skill 候选都通过类型化接口取得，不从旧页面 HTML 中解析。
+- 关闭窗口或断开连接不停止后台任务；只有明确 Stop 才取消。
+
+## 6. 可访问性与验收
+
+新页面至少检查：
 
 ```text
-[ ] 是否只使用 Token 与已有 ui-* 规则？
-[ ] 是否使用 ui.Icon，而非 Emoji 或私有 SVG？
-[ ] 是否同时检查亮色、暗色与窄桌面？
-[ ] 是否保留键盘焦点与原生语义？
-[ ] 是否避免无意义卡片、阴影、颜色与动画？
-[ ] 是否能用 templ + HTMX 完成，而不是新增 JS？
+[ ] 业务调用是否只经过类型化 Client？
+[ ] Snapshot 与事件之间是否无空档，重连后是否恢复一致？
+[ ] 是否把业务事实误存进 React / 浏览器状态？
+[ ] 是否只使用 Token、公共基础组件和受控图标？
+[ ] 是否支持亮色、暗色、窄桌面、键盘焦点与减少动态效果？
+[ ] 慢连接、断线和未知通知是否不会阻塞后台？
+[ ] 是否保留结论优先、工具配对、Markdown 清洗和 Stop 语义？
 ```
+
+迁移完成前，旧 Web 只做必要修复；迁移完成后整体删除旧 Templ / HTMX / POST / SSE 页面链和演示插槽，不维护双轨。

@@ -1,16 +1,20 @@
 # 项目状态
 
-更新日期：2026-09-07
+更新日期：2026-09-08
 
 ## 现在是什么
 
-Harness 已完成阶段 1、2、3，以及阶段 4 的五个页面插槽基础设施：它是可启动的 Web 聊天产品，具备项目/会话管理、真实 Runner 调度与 SSE 流式界面。
+Harness 的内核、聊天业务和旧 Web 已经能完整运行。旧 `surface/web` / `plugins/web` 使用 Templ、HTMX、POST 与 SSE；它是迁移期现状，不是目标前端架构。
 
-第一批后台重构已完成：`appserver` 是入口直接管理的普通活对象；`products/harness` 接替原 ChatService 的真实业务；`plugins/web/chat` 保留现有画面与页面插槽。当前对外契约已可在进程内调用，尚未接 WebSocket / JSON-RPC。
+App-server 第一批已经完成：`appserver` 是入口直接管理的普通活对象；`products/harness` 接替原 `kernel/chat` 的真实业务；类型化契约已可在进程内调用并生成 Schema / TypeScript。当前尚未实现 WebSocket、JSON-RPC 封套、订阅、反向请求和 React Client。
 
 ```text
-浏览器 POST → Chat → Runner → Agent 设置 → React Loop → LLM / Tools
-浏览器 SSE  ← Chat ← Runner 稳定事件 ← 完整消息先落账
+当前：浏览器 POST → 旧 Web → HarnessProduct → Runner → ReAct Loop → LLM / Tools
+      浏览器 SSE  ← 旧 Web ← Runner 稳定事件 ← 完整消息先落账
+
+目标：React Client → WebSocket / JSON-RPC 2.0 → app-server
+                                             ├→ HarnessProduct
+                                             └→ 公共服务 → kernel
 ```
 
 运行 `go run ./cmd/harness` 会读取 `harness.yaml`，组装完整服务链，并在 `http://127.0.0.1:8888` 打开 Chat。
@@ -26,20 +30,20 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的五个页面插槽基础�
 - Go 类型和方法声明生成接口目录、Schema 与 TS；`npm run contracts:generate` 更新生成物，`npm run contracts:check` 检查一致性和 TS 类型。已覆盖必填、可选、枚举、数组、引用、时间及封闭空对象映射。
 - 全量 Go 测试、vet、相关包三轮 race 与契约检查通过；保留真实 ReAct / Runner / 工具链的本地模拟模型父子停止回归。不调用外部模型，不改 Runner 执行、界面或用户数据；网络接入仍是后续工作。
 
-### 阶段 1：Web 基础
+### 迁移期 Web：阶段 1 基础
 
 - `surface/web`：HTTP Server、产品/路由登记处、templ 通用页面壳。
 - `plugins/web/chat`：Chat 产品注册及页面。
 - 本地嵌入 HTMX `2.0.10`、SSE 扩展 `2.2.4`；Tailwind 编译到 `surface/web/static/site.css`。
 
-### 阶段 2：项目与会话
+### 迁移期 Web：阶段 2 项目与会话
 
 - `SessionMeta` 独立保存 `ID / Title / CreatedAt`；元数据是空会话存在的依据。
 - 新会话显示「新对话」；首条用户消息落账后自动改名。
 - Chat 按 `Workspace` 分组展示项目与会话；项目不是独立数据。
 - Win / macOS / Linux 原生目录选择；取消返回 Chat，真实错误才显示。
 
-### 阶段 3：真实聊天
+### 迁移期 Web：阶段 3 真实聊天
 
 - 启动链已完整组装：`persist → session → llm → machine-local → tools → events → loops/react → skills → skills-builtin → skills-filesystem → agents → commands → runner → subagents → subagent-tools → harness-product → compact → web → chat → chat-composer-skills → chat-composer-commands → panel-demo`。
 - 每轮生成 `RunID`，写入本轮耐久消息与 SSE；History Snapshot 和 SSE 共用 RunView reducer / `paint()`。同一 Run 默认合并为一张助手卡，只有耐久 Steer 才切成前后片段；落账完成不会让实时卡片跳位。
@@ -52,7 +56,7 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的五个页面插槽基础�
 - 每次 SSE 重连重新同步 History；耐久快照会覆盖已排队的旧 Delta，慢客户端被断开，不会阻塞 Run。
 - 模型与思考档位是独立选择框；每次普通发送前两者必选，换模型会清空档位并影响下一轮 Run。
 - `models.json` 为每条模型手写 `contextWindow` 和 `vision`；`Models()` 带给 Chat，模型下拉用 `data-context-window` / `data-vision` 挂上。当前 DeepSeek 两条窗口 100 万、不看图；Google `gemini-3.5-flash-lite` 窗口 104 万、能看图。
-- Chat 在模型选择旁画用量球：每次模型调用结束后，React 读 `ChunkFinish.Usage`，Runner 发 `usage` 事件，走现有 SSE，`chat.js` 更新。已用 = InputTokens + CacheReadTokens。不进账本，刷新后从 0% 开始。
+- Chat 在模型选择旁画用量球：每次模型调用结束后，ReAct Loop 读 `ChunkFinish.Usage`，Runner 发 `usage` 事件，走现有 SSE，`chat.js` 更新。已用 = InputTokens + CacheReadTokens。不进账本，刷新后从 0% 开始。
 - Chat 可附图（选文件或粘贴）；只发图也行。当前模型 `vision` 决定按钮是否可用。图进账本原样保存；发给不看图的模型时，`llm` 把图换成文字占位。用户气泡由 RunView 画图。当前 DeepSeek 两条都不看图，按钮默认禁用。
 - Agent 设置已持久化为 `~/.harness/<agent-id>.agent.json`；`default` 是可编辑、不可删除的新会话默认项，首次生成时显式选中当时全部普通 Tool。Chat 普通发送可切换下一轮 Agent；Steer 不改变正在运行的 Run。Agent 设置页把普通 Tool 清单放在默认折叠的「高级配置」。
 - `plugins/web/settings/agents` 填入 Web 公共设置页，使用 HTMX 管理 Agent 的新建、编辑与删除；仍被任一会话选择的 Agent 不可删除。
@@ -218,21 +222,19 @@ Harness 已完成阶段 1、2、3，以及阶段 4 的五个页面插槽基础�
 ## 下一步
 
 ```text
-阶段 4 扩展（插槽填充物）：
-  └─ sidepanel：真实文件树与文件查看面板
-
-阶段 5：完整验收
-  ├─ 轨迹页
-  └─ 产品切换、SSE 重连、慢客户端、取消、关闭与浏览器验收
+1. WebSocket + 标准 JSON-RPC 2.0 最小真实闭环
+2. 完整 Harness / 公共服务接口、订阅、反向请求与多 Client
+3. React + TypeScript + Vite Client
+4. Wails 与唯一后台启动/发现
+5. 删除旧 surface/web、plugins/web、Templ、HTMX、POST 与 SSE
 ```
 
-未完成工作只写 `docs/plan/future_plan.md`；做完的计划删除。UI 规范见 `WEB_UI.md`，已完成事实只写本文件，产品形状写入 `docs/设计书.md`。
+方向见 `docs/plan/app-server-redesign.md`，实施顺序见 `docs/plan/app-server-refactoring.md`。UI 规范见 `WEB_UI.md`；已完成事实只写本文件，稳定产品形状写入 `docs/设计书.md`。
 
 ## 运行前提
 
 - Go 1.25。
-- 修改 `.templ` 后运行 `go tool templ generate`。
-- 修改样式后运行 `npm run web:build`；首次需要 `npm install`。
+- 当前旧 Web：修改 `.templ` 后运行 `go tool templ generate`；修改样式后运行 `npm run web:build`，首次需要 `npm install`。React Client 建立后再替换这些命令。
 - 数据根目录固定为 `~/.harness`；全局 `config.yaml` 留在根目录，每场会话位于 `sessions/<session-id>/`，其中分别保存账本、元数据与 SessionSettings。项目内旧 `.harness-data/` 和用户目录旧平铺会话文件均不再读取，可由用户自行删除。
 - machine-local 直接操作本机文件和进程，没有沙箱与路径限制。
 - 本机需要 `~/.harness/config.yaml` 配置 LLM Provider：

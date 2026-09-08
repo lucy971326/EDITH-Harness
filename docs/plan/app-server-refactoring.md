@@ -1,98 +1,127 @@
-# App Server Refactoring Plan
+# App-server 迁移实施计划
 
-2026-09-07 · 重构计划，尚未实施。
+更新于 2026-09-08。方向依据：[App-server 与多 Client 方向](app-server-redesign.md)。本篇只记录尚未完成的实施顺序；完成事实见 `STATUS.md`。
 
-方向依据：[App-server 与多产品方向](app-server-redesign.md)。方向书记录产品选择；本篇记录职责划分、代码迁移与实施顺序，不另复制一份产品方向。
+## 当前基线
 
-## 1. 已确认的职责
+第一批已经完成：
 
-**ChatService 演变为 HarnessProduct，不再增加一层 HarnessProduct 包住 ChatService。**
+- `appserver.Server`、类型化方法登记、Schema 校验、Freeze 与关闭准入。
+- `products/harness` 接替原 `kernel/chat`，不保留 ChatService 包装层。
+- `harness/session/create`、`list`、`get` 三个进程内方法。
+- Go 契约生成目录、JSON Schema 与 TypeScript。
+
+当前仍没有 WebSocket、JSON-RPC 封套、连接、订阅、反向请求和 React Client。旧 Web 仍通过 POST / SSE 直接使用后台，只是迁移期实现。
+
+## 职责
 
 | 部分 | 负责 | 不负责 |
 |---|---|---|
-| app-server | 连接、初始化、对外功能登记、请求分发、订阅、问答中转和断线清理 | 不决定聊天或游戏业务，不直接暴露 Host 服务表 |
-| HarnessProduct | 通用 Agent 产品业务：会话创建与查询、发送、插话、停止、分叉等 | 不管理 WebSocket，不返回页面组件，不重复实现 Runner |
-| 公共服务 | Runner、Session、Subagents、Agents、模型、工具等各自已有的职责 | 不依赖某个 Client；共用服务不强制经过聊天产品 |
-| 产品插件 | 组装产品、解析依赖、登记对外处理函数，按资源归属关闭 | 不把业务实现堆进 plugin.go |
-| 产品客户端 | React 界面与产品交互，调用已适配接口 | 不成为后台业务状态的事实来源 |
-
-HarnessProduct 是产品业务服务；安装它的插件与它本身不是同一个概念。产品自己的业务数据归产品，账本与执行仍由所属公共服务管理。
-
-## 2. 调用关系
+| app-server | JSON-RPC、连接、初始化、目录、校验、分发、订阅、反向请求与断线清理 | 不决定聊天业务，不直接暴露 Host |
+| HarnessProduct | 会话、发送、Steer、停止、分叉等 Harness 业务编排 | 不管理 WebSocket，不返回界面组件，不重复 Runner |
+| 公共服务 | Runner、Session、Agents、模型、Skills、Tools 等各自职责 | 不依赖具体 Client，不强制经过 HarnessProduct |
+| 产品插件 | 解析依赖并把方法绑定到 app-server | 不把业务实现堆进 `plugin.go` |
+| Client | React 界面、类型化调用、Snapshot/事件投影与重连 | 不成为后台业务事实来源 |
 
 ```text
 Client
-   ↕ WebSocket / JSON-RPC
-同一个后台进程、同一个 Host
-   app-server
-      ├─ 已登记的聊天处理函数 → HarnessProduct
-      │                           ↓
-      │                  Runner / Session / Subagents
-      └─ 已登记的公共处理函数 → Agents / 模型等服务
+  ↕ WebSocket / JSON-RPC 2.0
+app-server
+  ├─ Harness 方法 → HarnessProduct → Runner / Session / Subagents
+  └─ 公共方法    → Agents / Models / Skills / Commands / ...
 ```
 
-- app-server 到 HarnessProduct 是进程内 Go 调用，不是第二次网络请求，不另启产品进程或小 Host。
-- 插件把对外契约与处理函数绑定到登记处；app-server 按接口名分发，不写死聊天、狼人杀等产品分支，也不 import 产品实现。
-- 公共接口直接使用所属服务，不为经过 HarnessProduct 而增加转发层。
-- 产品接口与公共接口的代码位置、登记签名、服务键和方法名尚待设计，不把本篇示意图当作已完成 API。
+app-server 到处理函数始终是进程内 Go 调用，不是第二次网络请求。
 
-## 3. 现有代码如何处理
+## 第二步：最小网络闭环
 
-| 当前代码 | 迁移原则 |
-|---|---|
-| kernel/chat 的创建、查询、Start、Steer、Stop、Fork 等业务 | 整理为 HarnessProduct 的主体，保留有效逻辑与测试，不保留额外 ChatService 包装层 |
-| ChatService 中模型、Agent 设置等纯转发方法 | 公共接口直接接入所属服务；迁移后删除不再需要的转发 |
-| Host、Runner、Loop、Session、Subagents、工具、Skills、MCP | 保留为主，只针对新边界和已验证缺口修改，不整体重写 |
-| plugins/web/chat 与 settings 的正式业务入口 | 拆出请求解析、业务调用、界面显示，分别迁移到新接口和客户端 |
-| Templ、HTMX、SSE、旧页面插槽与演示插件 | 随对应迁移退出，不维护新旧双轨；演示功能不是迁移目标 |
-| 视觉 Token、Markdown 与运行过程投影 | 保留有效的视觉与行为规则，迁移实现；不因为换框架丢失已有体验 |
+这是下一步。
 
-当前源码已确认的差距：
+实现最小但真实的连接链：
 
-- Web message 处理器由页面传入 run / steer 模式；新产品应由后台统一判断忙闲，同时保留启动与插话的独立内部边界。
-- Chat Snapshot 目前提供账本与活跃 Run 编号，不能完整恢复尚未落账的流式输出；需要设计运行快照与后续事件的衔接。
-- 现有 Agent 设置页面通过 ChatService 访问公共 Agents 服务；迁移时解除这条不必要的产品依赖。
+1. WebSocket 监听与本机连接初始化。
+2. 标准 JSON-RPC 2.0 请求、响应、通知和错误封套。
+3. 请求 ID 配对、并发写串行化、单连接取消与关闭。
+4. 目录/初始化方法，让 Client 知道版本和可用功能。
+5. Harness 最小接口：创建/查询会话、发送、当前运行 Snapshot、运行订阅、停止。
+6. 一个简单 TypeScript 测试 Client，连接真实 HarnessProduct、Runner 和本地模拟模型。
 
-## 4. 从哪里开始
+发送的后台语义：闲时 Start，忙时 Steer；内部仍保留 Start / Steer 独立边界。断开连接不取消 Run；慢连接不能阻塞 Runner。
 
-**先完成职责与接口设计，再写最小闭环；不边写接入层边猜产品边界。**
+完成标准：
 
-### 第一步：完成纸面设计
+- Client 能经 WebSocket 创建会话、发起真实 Run、看到完整结果并停止。
+- Snapshot 与事件无空档，不因订阅时序漏掉完成。
+- JSON-RPC 错误与现有 appserver 错误稳定映射。
+- 服务关闭先拒绝新连接/请求，再清理连接并等待在途调用，最后关闭 Host。
 
-- 逐项盘点已有正式功能，标明归属、现有代码位置、新入口与验收方式。
-- 明确 app-server、HarnessProduct、公共服务的目录与依赖方向。
-- 定义对外契约的登记方式：方法、输入、输出、错误、事件与交互；同一份定义用于功能目录和 TS 类型生成。
-- 用“发送 → 运行 → 完成”和“提问 → 回答 → 继续”核对调用与资源归属。问答先验证公共机制，不因此新增审批产品或完整问答工具。
-- 同步 AGENTS.md、设计书、WEB_UI.md 中与已定新方向冲突的规则；未完成事实不写成 STATUS 中的完成项。
+## 第三步：完整后台 API 与多 Client
 
-完成标准：每项业务有明确主人，接口与调用链可解释清楚，无多余 ChatService 层，无 app-server 产品分支。
+补齐 React 迁移需要的正式接口：
 
-### 第二步：实现最小可运行闭环
+- 会话列表、历史、分叉与 SessionSettings。
+- 模型、思考档位、Agent、Skill、命令目录。
+- 图片输入、Steer、运行状态与用量。
+- 订阅创建/取消、任务简要状态和详情状态。
+- 服务端反向请求、回答一次性交付与待回答恢复。
 
-- 建立接入层与 HarnessProduct，接入创建会话、发送、订阅和停止。
-- 验证 Go → TS 生成链，以简易测试 Client 连接真实 Runner 与本地模拟模型。
-- 两个 Client 操作同一会话，验证输出、停止、断线继续和重连恢复。
+同时完成：
 
-完成标准：新架构能实际运行任务，不只是空接口；保留已有取消与工具结果配对行为。
+- 业务操作 ID 与防重；JSON-RPC `id` 不承担防重。
+- 两个 Client 并发操作同一会话的状态检查。
+- 旧操作不能停止、回答或修改新一轮。
+- 重连 Snapshot + 事件衔接；无需重放每个 Delta。
+- 未知可选通知忽略，需要响应的请求明确拒绝。
 
-### 后续顺序
+完成标准：两个测试 Client 不串任务、不重复推进；断线继续、重连恢复、停止和回答边界均通过。
 
-1. 补齐多端操作、稳定操作编号、快照与事件衔接、待回答交互及慢连接隔离的验收。
-2. 迁移 React Web：聊天、图片、Agent 与运行设置、分叉、命令、Skills 候选等正式功能。
-3. 完成唯一后台的自动启动与发现，Wails 复用同一界面和 WebSocket；窗口退出不停止后台任务。
-4. 清理旧体系与依赖，完整验证构建、功能、多端、重启和关闭。
+## 第四步：React Web 迁移
 
-后台启动细节和接入层生命周期在第一步明确，不等桌面包装完成后再决定所有权。每步按风险测试后再推进，不承诺迁移中旧版可用。
+建立 `clients/web`，使用 React + TypeScript + Vite：
 
-## 5. 工程边界与验收重点
+1. 类型化 Client、连接、初始化、订阅和恢复。
+2. 项目/会话导航与聊天主流程。
+3. 运行过程、工具回填、Markdown 与图片。
+4. 模型、档位、Agent、SessionSettings。
+5. 命令、Skill 候选、停止和分叉。
+6. 主题、窄桌面、键盘焦点与错误状态。
 
-- 重连恢复一致画面，不要求重播断线期间每个文字增量；快照与事件之间不能留空档。
-- 请求响应编号不充当业务防重编号；已接收但回执丢失的发送，重试不能重复执行。
-- 未知目录项或通知可忽略；需要响应的请求不能静默丢弃。不支持回答的 Client 不能替其他端消耗待回答问题。
-- 有效回答只交付一次；停止后旧问题失效，旧操作不能误作用于新轮次。
-- 慢连接不能阻塞 Runner；断开后允许重新同步。
-- 断线不取消已接受任务；后台重启不自动续跑，未完成任务标记中断。
-- 不兼容、不迁移旧数据不等于授权删除旧文件；旧数据保留，实施与测试明确使用的数据位置。
-- 不加狼人杀、新 UI 插槽、插件市场或其他未授权功能。
+普通 TypeScript 管通信和投影，React 主要负责显示。迁移保留已有体验，不照搬旧 Templ 组件结构，也不迁移页面 demo 插槽。
 
-本计划完成后，结论归入设计书与 STATUS，删除本篇施工计划。
+完成标准：React Client 覆盖当前正式功能，刷新和重连画面一致，所有业务只走类型化 Client。
+
+## 第五步：桌面与唯一后台
+
+- Go embed Vite 产物，HTTP 只提供静态资源。
+- 本地启动器发现或启动唯一后台，不重复启动。
+- Wails 承载同一 React UI，首版仍连接 WebSocket。
+- 窗口退出不停止任务；提供明确的关闭后台操作。
+- 后台启动、发现、本机连接校验与退出顺序形成可重复测试。
+
+完成标准：Web 与 Wails 连接同一后台，任一界面退出不影响已接受任务。
+
+## 第六步：删除旧体系
+
+在 React 功能验收完成后一次删除：
+
+- `surface/web` 与 `plugins/web`。
+- Templ、HTMX、旧 POST / SSE 路由与 RunView JS。
+- 旧页面插槽、演示插件及仅为它们存在的依赖和生成命令。
+
+不提前删除仍被当前可运行版本使用的代码，也不维护长期双轨。
+
+最后执行：
+
+- 全量 Go test / vet / 相关 race。
+- 契约生成一致性与 TypeScript 检查。
+- React 构建和前端测试。
+- 两 Client、重连、慢连接、停止、反向请求、后台重启与关闭验收。
+- 更新 `STATUS.md`、设计书、`DATA_MODEL.md` 与 `WEB_UI.md`，完成后删除本施工计划。
+
+## 不在本计划
+
+- 狼人杀、多机器人或其他新产品。
+- 动态插件、插件市场和热加载。
+- 跨设备接入、多人账号与复杂权限系统。
+- 为假想未来预建第二种传输。
+- 新 UI 插槽或迁移旧 demo。

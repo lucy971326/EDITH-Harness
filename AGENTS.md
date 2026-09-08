@@ -1,375 +1,239 @@
 # AGENTS.md
 
-压缩会话、换人、新开对话：先读这篇，再读 `STATUS.md`。方案细节：`docs/设计书.md`。Web UI 细则：`WEB_UI.md`。数据归属与运行文件：`DATA_MODEL.md`。未完成工作：`docs/plan/future_plan.md`。Cordis 对照：`docs/reference/DSH项目心得.md`。不要先翻 DSH / pi 源码。
+压缩会话、换人或新开对话时，先读本篇，再按任务读取：
 
-冲突：铁律以这篇为准，产品形状以设计书为准。已完成事实只写 STATUS，不另留施工稿。
+- `STATUS.md`：已经完成的事实与当前可运行状态。
+- `docs/设计书.md`：目标产品形状与稳定架构决策。
+- `DATA_MODEL.md`：数据归属、持久化与运行时状态。
+- `WEB_UI.md`：React Client 的界面、状态与通信边界。
+- `docs/plan/app-server-redesign.md`：尚未完成的总体迁移方向。
+- `docs/plan/app-server-refactoring.md`：当前实施顺序与验收。
 
-`docs/plan/` 只放尚未做完的计划；做完即删，结论写入设计书和 STATUS。`docs/reference/` 只留别人的对照，默认不要改，用户叫写才写。
+`docs/codex-docs/` 与 `docs/reference/` 只是外部项目对照，不是 Harness 规范。优先读本项目文档，不先翻 DSH / pi 源码。
 
-### 项目开发 Skills
-
-按本次改动读取对应指引，不必全部加载：
-
-- 新增插件、调整服务或登记处、修改启动与关闭：读 [harness-plugin-development](.agents/skills/harness-plugin-development/SKILL.md)。
-- 新增 Loop、修改 Runner / Loop 执行流程、Steer 或工具取消收尾：读 [harness-loop-development](.agents/skills/harness-loop-development/SKILL.md)。
-
-Skill 负责开发步骤与验收入口；本篇、设计书、`DATA_MODEL.md` 和 `WEB_UI.md` 仍是规则来源。普通数据或页面修改不自动触发内核开发流程。
-
-### 参考资料与查阅规则
-
-`reference/` 目录存放第三方技术文档与参考项目：
-
-1. **技术文档**：
-   - 不懂 HTMX：查阅 `reference/htmx/`
-   - 不懂 Templ：查阅 `reference/templ/`
-
-2. **参考项目（DSH 与 pi）**：
-   - 路径：`reference/deepseek-harness/` 和 `reference/pi/`
-   - 两个参考项目的源码已建立 `codegraph` 索引。
-   - **查阅优先级**：`项目文档 (docs) > codegraph 查源码 > 直接读源码`
-   - 提醒：参考项目仅供对照设计思路，不照抄其具体实现。
+文档纪律：完成事实只写 `STATUS.md`；稳定结论写设计书；`docs/plan/` 只保留仍在执行的方向和计划，完成后删除或收口。不要维护第二份功能清单。
 
 ---
 
-## 原则
+## 1. 当前事实与目标架构
 
-### 心智模型
+当前仓库处于迁移期：后台第一批已经完成，旧 `surface/web`、`plugins/web`、Templ、HTMX、POST 与 SSE 仍能运行，但只用于过渡。不要继续给旧页面体系增加新架构、新插槽或长期规则。
 
-**进程是一张服务表。聊天是桌上的一摊产品，不是根。**
-
-`appserver/` 是固定的后台接入设施：普通活对象，不是插件，也不属于 `kernel` 或 `surface`。入口创建并登记 `appServer`，产品插件填接口目录。`products/harness` 拥有 Harness 业务，通过 `harnessProduct` 提供进程内调用；旧 Web 只负责画面。
-
-能换的做成登记处，别人来填；不能换的做成一整份服务。一场对话是一次 `Runner.Send` / `Run`：怎么想是 Loop（要编译）；Agent 设置管 Kind、SystemPrompt 和普通 Tool；Skills 与 MCP 按当前作用域自动可用；这份会话怎么配是 SessionSettings（AgentID、模型、思考档位、工作区文件夹）。账本只记说过的话。屏幕听这一轮 `Emit`，不听账本。插件要编译进去；配置只决定这次启不启动，不排顺序，不热加载新代码。
-
-动手之前先问：这是桌上新的一摊，还是聊天里的一份数据、一种画法？工作区、自定义模式、轨迹页，全是聊天产品，不改内核形状。不要为了对齐 DSH 往内核加插槽。
-
-```
-Host（桌子）
-  ├─ 聊天：HarnessProduct.Start / Steer / Stop → Runner → Loop.Run → llm.Stream
-  ├─ 狼人杀：验架构，v1 不实现。自己的棋盘，可以 Get Runner
-  ├─ 多机器人：验架构，v1 不实现。自己的房间；每个机器人一本 session
-  └─ 电影：验架构，v1 不实现。只占 HTTP，零依赖对话
-```
-
-`Run` 不加 `appName` / `user_id`。用户拦在 HTTP；产品是桌上另一摊。
-
-### 铁律
-
-1. 参考 DSH / pi，**不照抄**。Go。静态编译。无动态插件。无热加载。无 AI 自改代码。
-2. **根是插件宿主，不是 Runner。** 聊天只是宿主里的一摊。电影播放器可以零依赖对话。
-3. 聊天产品通过 `HarnessProduct` 做创建、发送、Steer、停止、分叉与聊天查询；发送与插话调用 `Runner.Start` / `Steer`，用户停止经 `Subagents.StopFamily` 取消父与孩子。Runner 在 Loop 外面：`Runner.Run` → `Loop.Run` →（仅 LLM 类）`llm.Stream`。换 loop = 换 Agent Kind，不是换 Runner。
-4. Loop 是一种程序，不是一场焊死的对话。session 在 `Run` 的参数上。接着问 = 闲着再 `Run`。还在转时插一句 = `Runner.Steer`。不要 `Chat.Followup`，不要 Inbox。
-5. 自定义：Loop / Kind（开发者代码，要编译）vs Agent 设置（用户数据：SystemPrompt、已有普通 Tool）vs SessionSettings（会话数据：AgentID、模型、思考档位、工作区）。Skills 与 MCP 按来源自动可用，不写进 Agent。用户不热加载 Go。Agent 设置和 SessionSettings 都是实时事实来源；Runner 每轮读取一次。
-6. 系统提示词属于 Agent 设置。`agents.Prepare` 现取当前作用域 Skills 摘要、已启用 MCP 说明和本轮工作区，拼成最终 System Prompt；Runner 只拿成品交给 Loop。LLM 类 Loop 插件在 `Start` 时自己 Resolve `llm`、`tools`，运行时按本轮工具名单现取 schema。不要另设提示词登记处。
-7. Session **只记对话**，可以分叉。todo / 审批 / 游戏状态放插件自己的结构体。别往账本塞。
-8. 屏幕听这一轮 Run（`Emit`；浏览器用 SSE）。不听账本。喇叭就这一个，插件不要各搞各的。耐久事件先 `Append` 再给屏幕，失败则终止 Run。
-9. 前端：内核与产品业务各一份，表面只负责接入与画面。最终客户端业务统一走 WebSocket / JSON-RPC，网页资源用 HTTP，后台内部直接调用 Go。当前第一批只完成 app-server 进程内接口；旧 Web 暂时保留 POST / SSE 与 templ，不提前重写界面或实现传输。Web 的页面插槽不承担后台产品业务。
-10. Web UI 的 Token、公共规则、图标、视觉方向与 JS 边界见根目录 `WEB_UI.md`。做 Web 页面、产品或页面插槽前必须阅读；其中 JS 规则同样是铁律。
-
----
-
-## 怎么讲解
-
-讲解用项目词：登记处 / 插槽 / 活对象。不要编「袋子」「缝」「椅子」。
-
-### 话术
-
-一个插件可以三件都做，不必须只做一件。
-
-1. 注册服务 — 表上多一个键，分两种形态：
-
-   整份服务（A）  `RegisterService("llm", client)`  一个就能 Stream 的对象
-   登记处  （B）  `RegisterService("tools", 空名单)`  ← 等人来做第 2 步
-
-2. 填充插槽 — 往 B 的名单里塞一条
-3. 回调
-
-`Resolve("llm").Stream(...)` 是在用整份服务。
-`Resolve("tools").Register(bash)` 才是填插槽。
-
-表上的值一律叫 **服务**。不叫能力。A/B 只描述服务形态，不套活对象。
-
-类型放哪的「数据 / 契约 / 活对象」是文件分类。这里的三样是 Host 上的东西：
-
-| 叫什么 | 在哪 | 例子 |
-|---|---|---|
-| **服务** | 表上一个键，`Resolve` 拿到 | `llm`、`tools`、`sessions`、`machine` |
-| **插槽条目** | 往 B 里塞的一条 | `Tool`、Kind、prompt 段 |
-| **活对象** | 用出来之后才有 | 一本 `Session`、一场 `Runner` 里的 `Run` |
-
-填槽 ≠ 使用。`Register` 是填；`Call` / `Run` 才是用。B 没有 `Create` 出来的活 Tool。活着的 `Run` 在 `Runner.live`。
-
-**契约** = 定义者包里写的：服务方法 / 插槽条目形状 / 活对象方法。Go 就是类型所在的包。Host 的表运行时无类型；怎么调只在定义者包。消费者 import 定义者，不 import 提供者。
-
-### 四问
-
-一次只讲一个。先说是不是插件，再说已经有了还是计划。
-
-```
-【它是什么】     一句话
-【提供能力】     别人 Resolve 到什么
-【使用能力】     它 Resolve 哪些已有的
-【填充插槽】     填哪个 B；没有就写「不填」
-```
-
-登记一种 Kind 再加一问：**`Run` 是否取尽 `Steers`？** 不取尽不准 Register。
-
-不是插件（比如 SessionSettings）：它是什么、干什么、谁产生/谁用。先人话，再代码名。不把没做的说成已经有了。
-
----
-
-## 怎么写代码
-
-### 规范
-
-#### 结构体字段
-
-数据结构体按数据契约定义。有行为的活对象，字段只表达三类东西：
-
-1. **身份**：它是谁，例如 ID、名字、所属关系。
-2. **配置**：它怎么运行，例如 `Config`。
-3. **能力**：它靠什么做事，例如组合进来的服务、登记处、资源句柄。**字段即能力**，这也是 Go 组合的用法。
-
-每个字段都必须说清属于哪一类。实现状态只在确实支撑这份能力时保存；能交给局部变量或标准库的，就不自己保存。
-
-#### 类型放哪
-
-三种名字，三个位置。**导出 ≠ 进 `types.go`。**
-
-```
-数据     Message / Input / SessionSettings / Node     别人要造、要读的形状
-契约     Plugin / Persistence / Tool        别人要遵守或要填的口
-活对象   Host / Store / Session / Client    挂在 Host 上的那份东西
-```
-
-```
-数据、契约  →  定义者包的 types.go
-活对象      →  跟它方法同一个文件（即使导出也不进 types.go）
-包内私货    →  谁用放谁那
-```
-
-`plugin.go` 只做 Start / Close，不放业务类型。包很小、契约自己就是文件名时（host 的 `Plugin`），不必硬拆 `types.go`。
-
-每个 `type` 注释第一句标明种类：`数据` / `契约` / `活对象`。
-
-```go
-// 数据。Runner 已准备好的本轮输入。
-type Input struct { ... }
-
-// 契约。按 session 读写 SessionSettings。
-type SessionSettingsStore interface { ... }
-
-// 活对象。挂在 Host 上的那份 LLM 客户端。
-type Client struct { ... }
-```
-
-接口默认没有。现在就有两种实现要换，或别人来填槽（B），才做接口。不为测试、不为「以后也许有 mock」预建。
-
-谁先说出这个词，类型就在谁那。别人 import，不要抄一份。
-
-类型跟定义者走：块在 `session`，goai 流事件留在 goai，SessionSettings / Invocation 在它们的定义包。SessionSettingsStore 契约跟 SessionSettings 走；For/Put 的实现在 persist 包，Host 键是 `sessionSettings`。Agent 的纯数据与 Store 契约在 `agents/config`，persist 以 `agentStore` 挂同一份实现，避免 Agent 服务、Loop、Session、persist 的 Go import 环。`Persistence` 接口仍然只谈 Tree。
-
-#### 契约与接口排版
-
-降低阅读心智负担：接口内方法不得无序堆叠在一起。
-1. **按职责归组**：同类能力的方法聚拢（如产品的存与取、同一插槽的注册与查询）。
-2. **语义空行**：不同职责的方法块之间必须保留空行隔开。
-3. **职责注释**：每组方法上方标明简明中文注释（如 `// 产品管理`、`// 路由分配`）。
-
-#### 一个包怎么拆
-
-打开一个包，先填四格：表上有键吗？A 还是 B 还是库？契约有几份、各给谁？本包不做什么？
-
-一个领域一份服务。服务里面按职责拆文件。**真能换的才做插槽**（B）。别把小能力都 `RegisterService`。
-
-```
-Plugin    Name + Start + Close。Start 里挂上，Close 只关自己开的长期资源
-插槽      B 的 Register 口。不是第三种插件
-```
-
-默认同包分文件，不先拆子包。看文件名就是菜单。不要 `manager` / `util` / `common`。
-
-A（Runner）：
-
-```
-kernel/runner/
-  plugin.go    Start：Resolve 依赖，New，RegisterService("runner", r)
-  types.go     跨包的数据、契约
-  run.go       type Runner struct { live ... }  活对象，和 Run
-  steer.go     Steer
-  spawn.go     Spawn / Wait / Stop
-```
-
-B 登记处（tools）：
-
-```
-kernel/tools/
-  plugin.go    挂上空登记处
-  types.go     Tool 接口、Schema（契约 / 数据）
-  registry.go  Register / 按名 Call
-```
-
-填充者：
-
-```
-plugins/kernel/tools/bash/
-  plugin.go    Resolve("tools")、Resolve("machine")，Register(bash)
-  bash.go      Call 里 machine.Run
-```
-
-三件都满足才加一层目录：能独立替换；边界稳定；不会绕一圈转发。
-
-```
-优先：领域包 → 章节文件 → 函数
-```
-
-不因为文件长或「以后也许有用」而拆包。不建空的 `tui/`、`acp/`。
-
-#### import
-
-```
-cmd             → appserver / products / kernel / surface / plugins
-appserver       不得 import products、kernel、surface、plugins
-products        → appserver / kernel；不得 import surface、plugins
-plugins/kernel  → kernel（只 import 自己填充的定义者）
-plugins/web     → surface/web / products；公共服务直接 import kernel 定义者
-surface         → kernel
-kernel          不得 import appserver、products、plugins、surface
-surface/web     不得 import Web 产品或页面插槽填充者
-定义者          不得 import 填充者
-```
-
-提供者和消费者都 import 定义者，彼此不 import。
-
-插件目录按它填充的契约所有者归档，不按技术名或插件大小平铺：
+目标调用链只有一条：
 
 ```text
-plugins/kernel/...          内核服务的提供者、内核登记处的填充者
-plugins/web/<product>/      填 Web products 登记处的产品
-plugins/web/chat/<slot>/... 填 Chat 自己的页面插槽
-plugins/web/settings/...    填 Web 公共 settings.section
+React / Web / Wails / 其他 Client
+               ↓ 类型化 Client 方法
+       WebSocket + JSON-RPC 2.0
+               ↓
+           app-server
+        ┌──────┴────────┐
+        ↓               ↓
+HarnessProduct      公共服务接口
+        └──────┬────────┘
+               ↓ 进程内 Go 调用
+        Runner / Session / Agents / 其他内核服务
 ```
 
-`products/harness` 是后台产品，拥有创建、发送、插话、停止、分叉等业务，不依赖界面。
-`plugins/web/chat` 仍填 Web products / routes，但只是现有 Chat 画面与页面插槽。
-模型、Agent 设置、Skill、事件订阅等公共服务由调用方直接使用，不经 HarnessProduct 纯转发。
-其他客户端复用后台业务，不复制产品；真实代码出现前不建空的 TUI / ACP 目录。
+- HTTP 只提供静态资源；业务调用与运行事件统一走 WebSocket / JSON-RPC 2.0。
+- Web 使用 React + TypeScript + Vite，不使用 Next.js。Wails 首版复用同一套界面和 WebSocket。
+- app-server 负责接入、协议、目录、校验、分发、订阅、反向请求和连接清理；不拥有产品业务。
+- Product 负责业务编排；不拥有协议、页面组件或公共内核数据。
+- kernel 提供执行和数据能力；不依赖 appserver、products、clients、surface 或 plugins。
+- Client 只保存界面状态和服务端投影，不成为业务事实来源。
 
-### App-server 契约
-
-- Go 数据类型和类型化方法声明是唯一手写契约；数据在定义者 `types.go`，方法声明与绑定在 `methods.go`。
-- `appserver.Register` 将声明与类型化处理函数绑定，组装时编译输入输出 Schema；重名、空处理函数、坏契约使组装失败。
-- 入口在全部插件安装成功后 `Freeze`，此前拒绝调用，此后拒绝登记；运行时验证输入与输出，业务判断仍归产品。
-- `cmd/contracts` 只读声明，不安装产品或访问用户配置；`npm run contracts:generate` 生成目录、Schema 和 TS，`npm run contracts:check` 检查一致性与类型。生成物不手改；TS 不能表达的格式、长度等约束以运行时 Schema 为准。
-- 不在这一批预建事件、反向请求、JSON-RPC 封套或传输适配框架。
-
-### 风格
-
-- 标识符英文。注释中文。commit 双语。
-- 可读性优先，不炫技。
-- 普通包只返回错误，不打日志。错误只在 main 等进程边界，或无法再返回错误的后台入口打印一次。
-- 生产与测试代码一律把 `err := f()` 和 `if err != nil` 分成两行。
-- 每包一个主要公开构造入口；构造只校验依赖和组装。
-- 契约接口方法必须按职责成组，用空行与中文注释隔开，严禁杂乱堆叠。
-- 不要没有主人的 `utils.go` / `helpers.go` / `common.go`。
+旧 Web 的真实完成情况写在 `STATUS.md`；目标边界以本篇、设计书和 `WEB_UI.md` 为准。
 
 ---
 
-## 怎么组装
+## 2. 心智模型
 
-### 仓库
+**进程是一张服务表。聊天是宿主中的一个产品，不是根。**
 
-两层半。看 `kernel/` 就是 Host 那张表。一个 `go.mod`。
-
-```
-cmd/harness/
-  main.go            读 yaml，按顺序 Start
-  harness.yaml
-
-appserver/           普通 Server：接口声明、登记、目录、校验与分发
-products/harness/    Product + 插件：Harness 业务与接口；挂 harnessProduct
-cmd/contracts/       只读契约生成入口，不安装运行服务
-
-kernel/
-  host/              桌子。Plugin、RegisterService、Resolve、Close 倒序
-  persist/           Persistence + SessionSettingsStore + agents/config.Store；jsonl.go / sqlite.go（配置选，不是 enable 插件）
-  session/           Session / 块 / Message；Store
-  machine/           定义者，只放契约。不是 A。A 是提供者挂上之后表上那把键
-  llm/               plugin.go + Client / models.json；直接调 goai
-  tools/             空登记处 + Tool
-  loops/             空登记处 + Loop / Invocation
-  skills/            空登记处 + Skill Provider / Skill 摘要
-  agents/            Agent 设置服务
-  commands/          空登记处 + Command
-  runner/            整份 A；live
-  subagents/         整份 A；子会话委派关系、逐轮状态与独立存储
-
-surface/
-  web/               v1。产品 / 路由 / 页面插槽登记处；templ + htmx + SSE
-
-plugins/
-  kernel/
-    machine/local/   本机。RegisterService("machine", …)
-    loops/react/     必装默认 Loop；使用 llm、tools，填 loops
-    skills/filesystem/  扫描用户与工作区 Skill 根，填 skills
-    tools/read/ write/ edit/ bash/   各填 tools
-    tools/subagents/  六个委派平台工具；使用 subagents，填同一个 tools
-    commands/compact/ 填 compact 命令
-  web/
-    chat/            Chat 产品；填 Web products 和 routes
-      composer/skills/ 填 Chat composer.suggestions
-      composer/commands/ 把命令名单转成 / 候选
-      composer/demo/ 填 Chat composer.actions
-      dock/demo/     填 Chat dock（仅测试安装）
-      sidepanel/demo/ 填 Chat sidepanel
-    settings/demo/   填 Web settings.section
+```text
+Host（服务表）
+├─ 公共内核：session / runner / agents / llm / tools / loops / skills / ...
+├─ 后台产品：harnessProduct；以后可以有其他 Product
+└─ appServer：入口直接创建和管理的接入服务
 ```
 
-`plugins/tui/`、`plugins/acp/` 后期真写再加目录，**不要先建空文件夹**。
+服务有两种形态：
 
-### 启动
-
-```yaml
-persist: jsonl
-machine: local
-enable: [web, read, write, edit, bash]
+```text
+整份服务  RegisterService("llm", client)      Resolve 后直接使用
+登记处    RegisterService("tools", registry)  其他插件再 Register 条目
 ```
 
+表上的值一律叫服务。登记处中的一项叫插槽条目。运行后才存在的 Session、Run 等叫活对象。
+
+定义者写契约，提供者和消费者都 import 定义者，彼此不 import。Host 运行时只存服务；类型安全来自 Go 包里的契约。
+
+能独立替换，或确实需要别人填充时，才做接口或登记处。默认使用结构体和直接方法，不为测试或假想未来预建抽象。
+
+---
+
+## 3. App-server 与契约
+
+方法声明不是业务实现，也不是另一层网络。它把“收到某个 JSON-RPC 方法名时，应把哪种参数交给哪个类型化处理函数”明确下来。
+
+```text
+Client 调用 create(params)
+→ 编码 JSON-RPC 请求
+→ app-server 按 method 找到绑定
+→ 解码并校验 params
+→ 调用进程内 Go handler
+→ 校验结果并编码响应
 ```
-main:
-  host.New()
-  appserver.New() → 直接登记 appServer（不是 Install）
-  必装：persist（挂 sessionPersistence + sessionSettings + agentStore）→ session → llm → tools → loops → react → skills → skills-filesystem → agents → commands → runner → subagents → subagent-tools → harness-product → compact
-  必装提供者：yaml machine 选出的那一个，在 tools 前面 Start
-  再按 enable：plugins/* 、 surface/*
-  全部安装成功 → appServer.Freeze（本批没有网络监听器）
-  关闭：appServer.Close 拒绝新调用并等在途调用 → Host.Close 倒序拆插件
+
+- Go 数据类型和类型化方法声明是唯一手写契约。
+- 数据放定义者的 `types.go`；方法声明与绑定放 `methods.go`。
+- `appserver.Register` 绑定声明和处理函数，组装时编译输入输出 Schema。
+- 重名、空处理函数或坏契约使组装失败。
+- 所有插件安装完成后 `Freeze`；此前拒绝调用，此后拒绝登记。
+- `cmd/contracts` 只读声明，不安装运行服务、不访问用户配置。
+- `npm run contracts:generate` 生成目录、JSON Schema 与 TypeScript；生成物不手改。
+- `npm run contracts:check` 检查生成一致性与类型。
+- 运行时仍校验输入和输出；TypeScript 不能表达的格式、长度等约束以 Schema 为准。
+- appserver 不 import products、kernel 提供者、旧 Web 或具体 Client；产品插件负责绑定业务处理函数。
+- 不自动暴露 Host 方法；只有显式登记的对外方法可调用。
+
+协议使用标准 JSON-RPC 2.0，保留 `jsonrpc`、`id`、`method`、`params`、`result`、`error`。请求 ID 只做本次响应配对，不充当业务防重 ID。
+
+---
+
+## 4. Product 与公共服务
+
+`products/harness` 是 Harness 后台产品，拥有创建会话、发送、Steer、停止、分叉、快照和产品命令等业务编排。原 `kernel/chat` 已迁移，不保留 ChatService 兼容层。
+
+模型、Agent 设置、Skill、命令目录和事件等公共能力由对应服务直接提供对外处理函数，不经 HarnessProduct 做无意义转发。
+
+新增产品时：
+
+- 业务放自己的 Product。
+- 产品状态由产品自己的 Store 管理。
+- 共用 Runner、Session、LLM、Tools 等公共服务。
+- 对外方法由产品插件登记到 app-server。
+- 不修改 app-server 的产品分支，不建立产品自己的小 Host。
+- 不把页面组件或 HTML 当作后台插件契约。
+
+狼人杀、多机器人、电影只是检验边界的例子，未明确要求前不实现。
+
+---
+
+## 5. Runner / Loop / Session 铁律
+
+一场对话是一轮 `Runner.Start` / `Run`：
+
+```text
+闲时发送   HarnessProduct → Runner.Start → agents.Prepare → Loop.Run
+运行中输入 HarnessProduct → Runner.Steer → Loop 在检查点取走
+停止       HarnessProduct → Subagents.StopFamily → Runner 取消并收尾
 ```
 
-顺序只出现在 `cmd/harness`。yaml 不能重排。jsonl / sqlite 是 persist 包内部选文件。machine 是 yaml 选提供者插件。两者都不进 `enable`。内核每次都 Start，不进 `enable`。
+- Runner 在 Loop 外：`Runner.Run → Loop.Run →（仅 LLM 类）llm.Stream`。
+- Loop 是编译进程序的一种执行程序，不是一场会话。换 Loop = 换 Agent Kind。
+- Session 只记对话，可以分叉；todo、审批、游戏状态和界面状态不得写入账本。
+- Agent 设置拥有 Kind、SystemPrompt 与普通 Tool；SessionSettings 拥有 AgentID、模型、思考档位和工作区。
+- Skills 与 MCP 按当前作用域自动发现，不复制进 Agent。
+- `agents.Prepare` 每轮读取实时设置，拼好最终 System Prompt；Runner 只接收成品。
+- Client 订阅本轮运行投影，不把账本当实时事件流。耐久事件必须先 Append，再发布。
+- 同一 Session 同时只能有一个活 Run；活 Run 只存在 `Runner.live`。
+- 不要 `Chat.Followup`、Inbox 或下一轮队列。闲时再 Run，忙时 Steer。
 
-`skills` 只登记 Provider；Provider 在每次 `List(workspace)` 时动态发现 Skill。文件系统 Provider 扫描用户 `~/.harness/skills`、`~/.agents/skills` 与项目 `.harness/skills`、`.agents/skills`，项目覆盖用户，同层 `.harness` 覆盖 `.agents`。系统、个人与当前项目 Skill 都自动可用，不写入 Agent。
+修改 Runner / Loop 时必须守住：
 
-没有 `service.go`。Host 上那份对象就是结构体本身。服务名硬编码字符串。取出时泛型 Resolve。对不上就是组装错误。
+- 每个已发出的 tool call 最终必须恰好配对一个 tool result；取消也要补齐取消结果。
+- Loop 每个允许插话的检查点都要取尽当时的 Steers；做不到就不能登记该 Kind。
+- 用户停止用 Context 取消；停止后不执行尚未开始的工具。
+- 已完成或取消的运行必须释放 live、完成句柄并结束后台工作。
+- `Runner.Close` 拒绝新运行、取消现有运行并等待收尾。
+- 慢订阅者不能阻塞 Runner。
 
-```go
-host.RegisterService("runner", r)
-r, err := host.Resolve[*runner.Runner](h, "runner")
+---
+
+## 6. 数据边界
+
+数据归属以 `DATA_MODEL.md` 为准：
+
+```text
+Session          对话事实
+SessionSettings  本会话如何运行
+Agent 设置       一个 Agent 如何工作
+Product/插件     自己的业务状态
+Client           临时界面状态与服务端投影
+app-server       连接、订阅、请求配对等瞬时状态
 ```
 
-一份 A 用结构体 `Resolve[*llm.Client]`；能换的 A 用接口 `Resolve[persist.Persistence]`、`Resolve[machine.Machine]`。
+运行事件、JSON-RPC 请求 ID、连接和订阅都不是账本事实。后台重启后，未完成运行标记中断，不自动续跑；Client 重新取得 Snapshot 后再订阅。
 
-### 装上和拆掉
+---
 
-- 启动时固定填入的 B（tools / loops / skills / HTTP）只 `Register`，随 Host 整体消失。运行中会离场的订阅（events）才返回幂等 `unregister`。
-- `Install` 中途失败：已 Start 的倒序拆。
-- Host 只关闭 Install 的插件，不关闭直接 RegisterService 的对象。入口负责 app-server 的失败清理与正常关闭，不给它套 plugin.go；本批无连接资源，不新增通用生命周期框架。
-- 谁开长期资源，谁关。谁启动 goroutine 或服务器，谁在 `Close` 中停止并等它退出。为此必需的等待状态属于这份能力，不算过度设计。
-- 一次铺一个领域，测过再下一个。不顺手加功能，不改已经公开的能力名。
-- 可选插件用配置 `enable`；内核名单和 Start 顺序留在 Go。v1 改配置后重启。不热加载未编译的包。
+## 7. 包与依赖
 
+目标结构：
 
-## 用户要求！
+```text
+cmd/harness/          进程组装、配置、启动与关闭
+cmd/contracts/        只读契约生成入口
+appserver/            方法契约、登记、校验、协议与连接
+products/harness/     Harness 后台业务与对外方法绑定
+kernel/               公共执行、数据与登记处
+plugins/kernel/       内核服务提供者、登记处填充者
+clients/web/          React + TypeScript + Vite（迁移时建立）
+```
 
-1. 讲解东西能一句说明白就不要说很多，言简意赅,因为用户有轻微的阅读障碍，讲解要求通俗易懂但是不能是天马行空的比喻
-2. 开发测试阶段如果用到了APIKEY直接硬编码且用用户给你的APIKEY，不要考虑什么安全问题！这不是你该考虑的事情，用户会兜底重置APIKEY的
+当前的 `surface/web` 与 `plugins/web` 是待迁移旧实现，不是目标目录模板。
+
+依赖方向：
+
+```text
+cmd       → appserver / products / kernel / plugins / clients 的静态资源
+products  → appserver / kernel
+plugins   → 自己填充的定义者
+appserver 不得 import products / kernel / plugins / Client
+kernel    不得 import appserver / products / plugins / Client
+Client    只依赖生成契约和自身 UI；不读取 Go Host
+定义者    不得 import 填充者
+```
+
+一个领域默认同包分文件，不先拆子包。只有“可独立替换、边界稳定、不会绕圈转发”三项都成立，才增加一层目录。不要创建 `manager.go`、`utils.go`、`common.go`。
+
+类型分类：
+
+```text
+数据      别人要造、要读的形状       → 定义者 types.go
+契约      别人要实现或填充的口       → 定义者 types.go
+活对象    挂在 Host 上或运行中的对象 → 与其方法同文件
+包内私货  只有本包使用               → 谁使用放谁旁边
+```
+
+每个导出类型的注释首句标明“数据。/ 契约。/ 活对象。”。接口方法按职责分组，用中文组注释与空行隔开。
+
+---
+
+## 8. 插件、启动与关闭
+
+插件只负责组装：`Name + Start + Close`。`plugin.go` 不放业务类型和业务实现。
+
+- Start 解析依赖、构造服务、登记服务或条目。
+- 谁打开长期资源、启动 goroutine 或监听器，谁负责 Close、取消并等待退出。
+- 固定启动顺序只写在 `cmd/harness`；yaml 只选择已编译提供者或可选插件，不重排。
+- 启动中途失败，已 Start 的插件倒序关闭。
+- 启动时固定登记的条目随 Host 一起消失，不需要 unregister；运行期会离场的订阅才返回幂等取消函数。
+- Host 只关闭通过 Install 安装的插件；入口直接创建的 app-server 由入口关闭。
+- 正常退出先让 app-server 拒绝新调用并等待在途请求，再关闭 Host；连接清理按接入层实施计划补齐。
+
+---
+
+## 9. 实现与验证
+
+- 修改前区分：已确认事实、合理推测、未知信息。
+- Bug 尽量先稳定复现或写最小失败测试，再修根因。
+- 可读性 > 炫技；简单设计 > 通用设计；当前需求 > 假想未来；最小必要改动 > 无关重构。
+- 标识符英文，注释中文，commit 双语。
+- 普通包返回错误，不打日志；错误只在进程边界或无法返回的后台入口打印一次。
+- `err := f()` 与 `if err != nil` 分行。
+- 每包一个主要公开构造入口；构造函数只校验依赖和组装。
+- 搜索优先 `rg` / `rg --files`。
+- 改代码后执行与风险匹配的单测、race、vet、生成一致性与前端检查；不要为了通过检查改无关代码。
+- 旧 Web 迁移期间的具体构建命令以 `STATUS.md` 为准；新 Client 建立后再替换，不把尚未完成写成事实。
