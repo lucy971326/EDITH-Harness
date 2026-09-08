@@ -2,10 +2,12 @@
 reference/*
 !reference/go.mod
 
-# Go
-*.test
-*.out
+# macOS
 .DS_Store
+__MACOSX/
+._*
+
+# Go
 .forward/
 .harness-data/
 .agy/
@@ -24,3 +26,5 @@ playground/
 .agents/
 
 reference.zip
+.codegraph/
+
