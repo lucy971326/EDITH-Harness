@@ -31,7 +31,7 @@ func Register[Input, Output any](s *RPCServer, method Method[Input, Output], han
 	if s == nil || handler == nil {
 		return fmt.Errorf("appserver: nil server or handler")
 	}
-	definition, inputSchema, outputSchema, err := describe(method)
+	definition, inputSchema, outputSchema, err := compileMethod(method)
 	if err != nil {
 		return err
 	}

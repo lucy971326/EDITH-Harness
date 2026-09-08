@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 )
 
-// 契约。方法的名称、说明和输入输出 Go 类型；同一声明用于登记和生成。
+// 契约。方法的名称、说明和输入输出 Go 类型，用于类型化登记。
 type Method[Input, Output any] struct {
 	Name        string
 	Description string

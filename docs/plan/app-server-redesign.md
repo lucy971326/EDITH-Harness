@@ -41,20 +41,22 @@ HarnessProduct      公共服务接口
 ## 3. 一份契约
 
 ```text
-Go 数据类型 + 类型化方法声明
+Go 数据类型 + 类型化方法声明     手写 TS 契约
+              ↓                      ↓
+       appserver.Register         各 Client 共用
               ↓
-       appserver.Register
-       ↙              ↘
-运行时目录与 Schema    生成 TypeScript / JSON Schema
+       运行时目录与 Schema
+
+       接口修改时人工同步两端
 ```
 
-- Go 契约是唯一手写事实；方法名、输入、输出和错误不在 Client 再抄一份。
+- Go 与 TS 分别手工维护同一套接口约定；TS 放 `clients/contracts/`，修改时同步两端，不保留自动生成链。
 - 只有显式登记的方法对外可用，不自动暴露内部服务方法。
 - 登记时绑定类型化 handler 并编译 Schema；冻结后才能调用。
-- 运行时验证输入和输出；生成类型不替代业务校验。
+- 运行时验证输入和输出；TS 类型不替代业务校验。
 - Client 可查询功能目录，只使用自己适配的功能；未知可选功能和通知允许忽略。
 
-第一批已经完成进程内 Server、Freeze、三个 Session 方法以及 Go → Schema → TypeScript 生成链。它证明契约形状，不代表网络协议和完整产品 API 已经完成。
+当前基线见 `STATUS.md`；进程内分发与手写 TS 契约不代表网络协议和完整产品 API 已经完成。
 
 ## 4. 协议与连接
 

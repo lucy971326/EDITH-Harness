@@ -6,7 +6,7 @@
 
 Harness 的内核、聊天业务和旧 Web 已经能完整运行。旧 `surface/web` / `plugins/web` 使用 Templ、HTMX、POST 与 SSE；它是迁移期现状，不是目标前端架构。
 
-App-server 第一批已经完成：`appserver` 是入口直接管理的普通活对象；`products/harness` 接替原 `kernel/chat` 的真实业务；类型化契约已可在进程内调用并生成 Schema / TypeScript。当前尚未实现 WebSocket、JSON-RPC 封套、订阅、反向请求和 React Client。
+App-server 第一批已经完成：`appserver` 是入口直接管理的普通活对象；`products/harness` 接替原 `kernel/chat` 的真实业务；类型化契约已可在进程内调用并接受 Schema 校验，TS 类型改为手工维护。当前尚未实现 WebSocket、JSON-RPC 封套、订阅、反向请求和 React Client。
 
 ```text
 当前：浏览器 POST → 旧 Web → HarnessProduct → Runner → ReAct Loop → LLM / Tools
@@ -27,15 +27,22 @@ App-server 第一批已经完成：`appserver` 是入口直接管理的普通活
 - 模型、Agent 设置、Skill、命令名单与事件订阅的纯转发已移除，调用方直接使用所属公共服务；Agent 设置页测试不再安装 HarnessProduct / Runner。
 - 入口直接创建并登记 `appServer`，产品插件绑定接口，全部安装成功后冻结；冻结前不能调用，冻结后不能登记。入口关闭 app-server 准入并等待在途调用，再关闭 Host；失败清理不把直接登记的服务误当成插件。
 - 已开放 `harness/session/create`、`harness/session/list`、`harness/session/get` 三个进程内接口。保留并发空会话复用与子会话隔离，空列表返回 `[]`；字段、时间与输入输出均通过 Schema 校验，错误有稳定分类。
-- Go 类型和方法声明生成接口目录、Schema 与 TS；`npm run contracts:generate` 更新生成物，`npm run contracts:check` 检查一致性和 TS 类型。已覆盖必填、可选、枚举、数组、引用、时间及封闭空对象映射。
+- Go 类型和方法声明提供运行时目录与 Schema 校验；TS 契约在 `clients/contracts/harness.ts` 手工维护，三个接口共用会话结果与设置类型。`npm run contracts:check` 只检查 TS 类型与类型测试，不再做自动生成或两端一致性检查。
 - 全量 Go 测试、vet、相关包三轮 race 与契约检查通过；保留真实 ReAct / Runner / 工具链的本地模拟模型父子停止回归。不调用外部模型，不改 Runner 执行、界面或用户数据；网络接入仍是后续工作。
 
 ### App-server 第一批：可读性整理
 
 - `Server` 改名为 `RPCServer`，保留 `New()`，不留旧名别名；产品接线与测试引用已同步。它仍只做进程内登记与分发，没有新增 JSON-RPC 封套、网络监听或 `Handle`。
 - `appserver` 按 `types.go / server.go / method.go / schema.go` 分工；私有 `boundMethod[Input, Output]` 保存处理函数和编译后的 Schema，具名 `Call` 顺序完成输入检查、解码、业务调用、编码与输出检查，替代登记时的闭包。
-- Harness 的 `methods.go` 只保留声明、契约导出与登记名单；`handlers.go` 承载三个具名处理方法、投影转换和错误映射。`types.go` 按创建、列表、查询归组，创建与查询共用一份 `SessionResult`。
-- 全量 `go test ./...`、`go vet ./...`、appserver / Harness 产品 race 与 `npm run contracts:check` 通过；8 个契约生成文件保持一致，未改变接口行为、生命周期和业务逻辑。
+- Harness 的 `methods.go` 只保留声明与登记名单；`handlers.go` 承载三个具名处理方法、投影转换和错误映射。`types.go` 按创建、列表、查询归组，创建与查询共用一份 `SessionResult`。
+- 可读性整理时，全量 `go test ./...`、`go vet ./...`、appserver / Harness 产品 race 与当时的契约生成检查通过，未改变接口行为、生命周期和业务逻辑。
+
+### TS 契约改为手工维护
+
+- 删除 Go → TS 生成入口、生成脚本、生成链专用测试和 `appserver/generated` 的 8 个文件，移除 `json-schema-to-typescript` 依赖。原文件可从 Git 历史恢复。
+- `clients/contracts/harness.ts` 集中维护三个会话接口，保留共享结果、字符串时间与空列表参数约束；接口变更需同步 Go / TS。
+- 移除仅供导出的 `Describe`、`Definitions`，登记时直接使用私有 `compileMethod`。运行时 Schema 校验、类型化绑定与泛型转换仍保留，不改变业务行为。
+- 全量 Go 测试、vet、appserver / Harness 产品 race 与手写 TS 类型检查通过；TS 检查不宣称自动验证两端一致。
 
 ### 迁移期 Web：阶段 1 基础
 
@@ -221,7 +228,7 @@ App-server 第一批已经完成：`appserver` 是入口直接管理的普通活
 - `go test ./...` 通过。
 - `go vet ./...` 通过。
 - `git diff --check` 通过。
-- `npm run contracts:check` 通过（生成一致性、TS 类型检查及 Go → Schema → TS 映射测试）。
+- `npm run contracts:check` 检查手写 TS 契约与类型测试；不再包含生成一致性或 Go → Schema → TS 映射测试。
 - `node --test plugins/web/chat/static/test/sidepanel.test.js` 通过。
 - `node --check surface/web/static/runview.js` 与 Chat 私有脚本通过。
 - 已做真实浏览器页面与布局检查。

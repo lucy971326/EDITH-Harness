@@ -14,7 +14,7 @@ import (
 	"harness/kernel/host"
 )
 
-func TestSessionMethodsUseRealProductAndMatchGeneratedCatalog(t *testing.T) {
+func TestSessionMethodsUseRealProduct(t *testing.T) {
 	fixture := newTestFixture(t)
 	defer fixture.host.Close()
 	server, err := host.Resolve[*appserver.RPCServer](fixture.host, "appServer")
@@ -22,12 +22,13 @@ func TestSessionMethodsUseRealProductAndMatchGeneratedCatalog(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer server.Close()
-	definitions, err := Definitions()
-	if err != nil {
-		t.Fatal(err)
+	catalog := server.Catalog()
+	names := make([]string, 0, len(catalog))
+	for _, definition := range catalog {
+		names = append(names, definition.Name)
 	}
-	if !reflect.DeepEqual(server.Catalog(), definitions) {
-		t.Fatal("runtime and generator catalogs diverged")
+	if !reflect.DeepEqual(names, []string{"harness/session/create", "harness/session/get", "harness/session/list"}) {
+		t.Fatalf("unexpected runtime catalog: %v", names)
 	}
 	err = server.Freeze()
 	if err != nil {

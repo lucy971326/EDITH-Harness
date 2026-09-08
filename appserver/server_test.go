@@ -52,12 +52,12 @@ func TestContractRegistration(t *testing.T) {
 	if err == nil {
 		t.Fatal("empty name accepted")
 	}
-	_, err = Describe(Method[string, contractOutput]{Name: "scalar"})
+	_, _, _, err = compileMethod(Method[string, contractOutput]{Name: "scalar"})
 	if err == nil {
 		t.Fatal("non-object contract accepted")
 	}
 	// 无效正则是一个编译期契约错误，不应等到调用时暴露。
-	_, err = Describe(Method[invalidPattern, contractOutput]{Name: "invalid"})
+	_, _, _, err = compileMethod(Method[invalidPattern, contractOutput]{Name: "invalid"})
 	if err == nil {
 		t.Fatal("invalid schema accepted")
 	}

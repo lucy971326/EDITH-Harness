@@ -7,5 +7,5 @@
     "moduleResolution": "NodeNext",
     "types": []
   },
-  "include": ["contracts-types.test.ts", "../appserver/generated/*.d.ts"]
+  "include": ["contracts-types.test.ts", "../clients/contracts/*.ts"]
 }

@@ -9,7 +9,7 @@
 - `appserver.RPCServer`、类型化方法登记、Schema 校验、Freeze 与关闭准入。
 - `products/harness` 接替原 `kernel/chat`，不保留 ChatService 包装层。
 - `harness/session/create`、`list`、`get` 三个进程内方法。
-- Go 契约生成目录、JSON Schema 与 TypeScript。
+- Go 运行时目录与 Schema 校验；TS 契约在 `clients/contracts/` 手工维护。
 
 当前仍没有 WebSocket、JSON-RPC 封套、连接、订阅、反向请求和 React Client。旧 Web 仍通过 POST / SSE 直接使用后台，只是迁移期实现。
 
@@ -113,7 +113,7 @@ app-server 到处理函数始终是进程内 Go 调用，不是第二次网络�
 最后执行：
 
 - 全量 Go test / vet / 相关 race。
-- 契约生成一致性与 TypeScript 检查。
+- Go / TS 两端契约对照审查与 TypeScript 检查。
 - React 构建和前端测试。
 - 两 Client、重连、慢连接、停止、反向请求、后台重启与关闭验收。
 - 更新 `STATUS.md`、设计书、`DATA_MODEL.md` 与 `WEB_UI.md`，完成后删除本施工计划。

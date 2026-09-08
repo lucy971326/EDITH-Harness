@@ -85,14 +85,13 @@ Client 调用 create(params)
 → 校验结果并编码响应
 ```
 
-- Go 数据类型和类型化方法声明是唯一手写契约。
-- 数据放定义者的 `types.go`，按业务归组，共享结果只定义一次；方法声明、契约导出与登记名单放 `methods.go`，具名处理方法与错误映射放 `handlers.go`。
+- Go 数据类型与 TS 数据类型分别手工维护；修改接口时同步方法名、字段、可选性和返回类型。Go 端负责实际运行时校验。
+- 数据放定义者的 `types.go`，按业务归组，共享结果只定义一次；方法声明与登记名单放 `methods.go`，具名处理方法与错误映射放 `handlers.go`。
 - `appserver.Register` 绑定声明和处理函数，组装时编译输入输出 Schema。
 - 重名、空处理函数或坏契约使组装失败。
 - 所有插件安装完成后 `Freeze`；此前拒绝调用，此后拒绝登记。
-- `cmd/contracts` 只读声明，不安装运行服务、不访问用户配置。
-- `npm run contracts:generate` 生成目录、JSON Schema 与 TypeScript；生成物不手改。
-- `npm run contracts:check` 检查生成一致性与类型。
+- 手写 TS 契约放 `clients/contracts/`，由各 Client 共用，不自动从 Go 生成。
+- `npm run contracts:check` 检查手写 TS 类型及类型测试，不保证 Go / TS 自动一致；接口改动需对照两端审查。
 - 运行时仍校验输入和输出；TypeScript 不能表达的格式、长度等约束以 Schema 为准。
 - appserver 不 import products、kernel 提供者、旧 Web 或具体 Client；产品插件负责绑定业务处理函数。
 - 不自动暴露 Host 方法；只有显式登记的对外方法可调用。
@@ -175,7 +174,7 @@ app-server       连接、订阅、请求配对等瞬时状态
 
 ```text
 cmd/harness/          进程组装、配置、启动与关闭
-cmd/contracts/        只读契约生成入口
+clients/contracts/    手写 TypeScript 契约
 appserver/            方法契约、登记、校验、协议与连接
 products/harness/     Harness 后台业务与对外方法绑定
 kernel/               公共执行、数据与登记处
@@ -193,7 +192,7 @@ products  → appserver / kernel
 plugins   → 自己填充的定义者
 appserver 不得 import products / kernel / plugins / Client
 kernel    不得 import appserver / products / plugins / Client
-Client    只依赖生成契约和自身 UI；不读取 Go Host
+Client    只依赖手写 TS 契约和自身 UI；不读取 Go Host
 定义者    不得 import 填充者
 ```
 
@@ -238,5 +237,5 @@ Client    只依赖生成契约和自身 UI；不读取 Go Host
 - 接口处理优先使用结构体保存依赖、具名方法承载行为，不用捕获依赖的闭包或匿名 Handler；登记名单留在产品，不下放到 main。
 - 泛型只用于必要的公共类型转换，类型参数写成 `Input / Output`。一次调用的校验、解码、业务调用、编码与输出校验顺序写在同一方法，不拆成绕行的小助手。
 - 搜索优先 `rg` / `rg --files`。
-- 改代码后执行与风险匹配的单测、race、vet、生成一致性与前端检查；不要为了通过检查改无关代码。
+- 改代码后执行与风险匹配的单测、race、vet、两端契约审查与前端检查；不要为了通过检查改无关代码。
 - 旧 Web 迁移期间的具体构建命令以 `STATUS.md` 为准；新 Client 建立后再替换，不把尚未完成写成事实。

@@ -17,7 +17,7 @@ app-server → Product / 公共服务 → kernel
 - HTTP 只提供 Vite 构建后的静态资源。
 - 所有业务调用、通知、订阅和服务端反向请求走同一条 WebSocket。
 - React 负责显示和局部交互；普通 TypeScript 负责连接、协议、状态归并与恢复。
-- Client 使用生成的 TypeScript 契约，不手写第二份方法名、参数或返回类型。
+- Client 共用 `clients/contracts/` 中手写的 TypeScript 契约；接口修改时同步 Go 与 TS，不自动生成。
 - UI 不直接拼 JSON-RPC 封套，不知道 Go Host、Runner 或 Product 的具体实现。
 - Wails 首版承载同一套前端并连接同一 WebSocket，不另写一套 IPC 业务层。
 
@@ -43,7 +43,7 @@ Client 不写账本，不把本地状态冒充业务事实。刷新可丢失的�
 
 ```text
 clients/web/
-├─ src/client/       JSON-RPC 连接、生成契约适配、订阅与恢复
+├─ src/client/       JSON-RPC 连接、手写契约适配、订阅与恢复
 ├─ src/state/        后台投影 reducer 与页面级状态
 ├─ src/components/   跨产品基础组件
 ├─ src/products/     Harness 等产品界面

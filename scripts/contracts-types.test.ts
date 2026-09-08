@@ -1,4 +1,4 @@
-import type { Methods } from '../appserver/generated';
+import type { Methods } from '../clients/contracts/harness';
 
 type Create = Methods['harness/session/create'];
 type Get = Methods['harness/session/get'];

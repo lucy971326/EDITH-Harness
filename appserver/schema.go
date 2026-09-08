@@ -11,13 +11,8 @@ import (
 	validator "github.com/santhosh-tekuri/jsonschema/v6"
 )
 
-// Describe 不启动产品；从方法声明生成并编译同一份运行时契约。
-func Describe[Input, Output any](method Method[Input, Output]) (Definition, error) {
-	definition, _, _, err := describe(method)
-	return definition, err
-}
-
-func describe[Input, Output any](method Method[Input, Output]) (Definition, *validator.Schema, *validator.Schema, error) {
+// compileMethod 为登记准备运行时目录与输入、输出校验规则，不生成 TS。
+func compileMethod[Input, Output any](method Method[Input, Output]) (Definition, *validator.Schema, *validator.Schema, error) {
 	if strings.TrimSpace(method.Name) == "" || strings.TrimSpace(method.Name) != method.Name {
 		return Definition{}, nil, nil, fmt.Errorf("appserver: invalid method name %q", method.Name)
 	}
