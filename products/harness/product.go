@@ -20,15 +20,20 @@ import (
 
 // 活对象。聊天业务的统一入口；不拥有账本、Run 或事件登记处。
 type Product struct {
-	sessions  *session.Store
-	settings  settings.SessionSettingsStore
-	agents    *agents.Service
-	models    *llm.Client
+	// 会话数据与运行配置。
+	sessions *session.Store
+	settings settings.SessionSettingsStore
+	agents   *agents.Service
+	models   *llm.Client
+
+	// 执行与产品操作。
 	runner    *runner.Runner
 	commands  commands.Commands
 	subagents *subagents.Subagents
 
-	createMu sync.Mutex // 支撑同工作区空会话复用的串行判断与创建。
+	// 并发协调：分别保护空会话复用和发送时的忙闲判断。
+	createMu sync.Mutex
+	sendMu   sync.Mutex
 }
 
 // New 组装聊天业务服务。

@@ -86,8 +86,8 @@ Client 调用 create(params)
 ```
 
 - Go 数据类型与 TS 数据类型分别手工维护；修改接口时同步方法名、字段、可选性和返回类型。Go 端负责实际运行时校验。
-- 数据放定义者的 `types.go`，按业务归组，共享结果只定义一次；方法声明与登记名单放 `methods.go`，具名处理方法与错误映射放 `handlers.go`。
-- `appserver.Register` 绑定声明和处理函数，组装时编译输入输出 Schema。
+- 数据放定义者的 `types.go`，按业务归组，共享结果只定义一次；方法名与登记名单放 `methods.go`，具名处理方法与错误映射放 `handlers.go`。
+- `appserver.Register` 直接绑定方法名和类型化处理函数，组装时编译输入输出 Schema；不要为只有 Name 的方法再造声明结构体或工厂函数。
 - 重名、空处理函数或坏契约使组装失败。
 - 入口在所有插件安装、方法登记成功后才启动监听；组装失败则关闭清理，不开放网络接入。
 - 手写 TS 契约放 `clients/contracts/`，由各 Client 共用，不自动从 Go 生成。
@@ -97,7 +97,7 @@ Client 调用 create(params)
 - appserver 不 import products、kernel 提供者、旧 Web 或具体 Client；产品插件负责绑定业务处理函数。
 - 不自动暴露 Host 方法；只有显式登记的对外方法可调用。
 - `sourcegraph/jsonrpc2` 负责 JSON-RPC 封套、请求 ID、响应与通知；appserver 只保留类型化方法登记、校验和产品调用，不在库外重写一套协议兼容层。
-- `WebSocketServer` 只管监听、接入安全与服务关闭。每个 Client 对应一个 `Connection`；它是 IM 网关式的基础设施对象，只保存初始化、RPC 连接、订阅、发送保护和断线清理等瞬时连接状态，绝不保存 Session、Run、设置或任何产品业务状态，也不决定 Start / Steer / Stop 等业务行为。
+- appserver 只有一个入口 `Server`，方法表、WebSocket 监听和关闭生命周期不再拆成两个 Server。每个 Client 对应一个 `Connection`；它是 IM 网关式的基础设施对象，只保存初始化、RPC 连接、订阅、发送保护和断线清理等瞬时连接状态，绝不保存 Session、Run、设置或任何产品业务状态，也不决定 Start / Steer / Stop 等业务行为。
 - `Connection` 断开只清理该 Client 的监听和网络资源，不停止已接受的 Run。需要业务判断的代码一律放 Product 或对应公共服务，不能为了调用方便塞进连接对象。
 - 连接先完成协议版本初始化；只监听回环地址并校验浏览器 Origin。本机模式不增加临时鉴权。
 - 订阅先接入事件，再取 Snapshot；响应先于缓冲通知发送。重叠账本按 Entry.ID 去重，慢连接断开，不能阻塞 Runner。
@@ -227,7 +227,7 @@ Client    只依赖手写 TS 契约和自身 UI；不读取 Go Host
 - 启动中途失败，已 Start 的插件倒序关闭。
 - 启动时固定登记的条目随 Host 一起消失，不需要 unregister；运行期会离场的订阅才返回幂等取消函数。
 - Host 只关闭通过 Install 安装的插件；入口直接创建的 app-server 由入口关闭。
-- 正常退出先关闭 WebSocketServer 准入，取消连接请求、解除订阅并等待处理退出；再关闭 MethodRegistry 准入并等待进程内调用，最后关闭 Host。已接受的 Run 不继承连接 Context，由 Runner 停止和关闭。
+- 正常退出先关闭 appserver Server，拒绝新调用、断开连接、解除订阅并等待处理退出，再关闭 Host。已接受的 Run 不继承连接 Context，由 Runner 停止和关闭。
 
 ---
 

@@ -12,20 +12,20 @@ import (
 )
 
 // compileMethod 为登记准备输入、输出校验规则。
-func compileMethod[Input, Output any](method Method[Input, Output]) (*validator.Schema, *validator.Schema, error) {
-	if strings.TrimSpace(method.Name) == "" || strings.TrimSpace(method.Name) != method.Name {
-		return nil, nil, fmt.Errorf("appserver: invalid method name %q", method.Name)
+func compileMethod[Input, Output any](name string) (*validator.Schema, *validator.Schema, error) {
+	if strings.TrimSpace(name) == "" || strings.TrimSpace(name) != name {
+		return nil, nil, fmt.Errorf("appserver: invalid method name %q", name)
 	}
-	if strings.HasPrefix(method.Name, "rpc.") || method.Name == "initialize" || method.Name == "server/unsubscribe" {
-		return nil, nil, fmt.Errorf("appserver: reserved method name %q", method.Name)
+	if strings.HasPrefix(name, "rpc.") || name == "initialize" || name == "server/unsubscribe" {
+		return nil, nil, fmt.Errorf("appserver: reserved method name %q", name)
 	}
 	inputSchema, err := schemaFor(reflect.TypeFor[Input]())
 	if err != nil {
-		return nil, nil, fmt.Errorf("appserver: %s input: %w", method.Name, err)
+		return nil, nil, fmt.Errorf("appserver: %s input: %w", name, err)
 	}
 	outputSchema, err := schemaFor(reflect.TypeFor[Output]())
 	if err != nil {
-		return nil, nil, fmt.Errorf("appserver: %s output: %w", method.Name, err)
+		return nil, nil, fmt.Errorf("appserver: %s output: %w", name, err)
 	}
 	return inputSchema, outputSchema, nil
 }

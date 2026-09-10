@@ -46,7 +46,7 @@ func (p *Plugin) Start(h *host.Host) error {
 	if err != nil {
 		return err
 	}
-	server, err := host.Resolve[*appserver.RPCServer](h, "appServer")
+	server, err := host.Resolve[*appserver.Server](h, "appServer")
 	if err != nil {
 		return err
 	}

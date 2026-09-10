@@ -12,18 +12,18 @@ import (
 
 // 活对象。验证 Host 生命周期与直接登记的 app-server 不混为一谈。
 type methodPlugin struct {
-	server *appserver.RPCServer
+	server *appserver.Server
 	closes int
 }
 
 func (*methodPlugin) Name() string { return "test-product" }
 func (p *methodPlugin) Start(h *host.Host) error {
 	var err error
-	p.server, err = host.Resolve[*appserver.RPCServer](h, "appServer")
+	p.server, err = host.Resolve[*appserver.Server](h, "appServer")
 	if err != nil {
 		return err
 	}
-	return appserver.Register(p.server, appserver.Method[struct{}, struct{}]{Name: "product/get"}, func(context.Context, struct{}) (struct{}, error) { return struct{}{}, nil })
+	return appserver.Register(p.server, "product/get", func(context.Context, struct{}) (struct{}, error) { return struct{}{}, nil })
 }
 func (p *methodPlugin) Close() error { p.closes++; return nil }
 
@@ -50,7 +50,7 @@ func TestEntryOwnsServerAndHostOwnsPlugins(t *testing.T) {
 	if p.closes != 1 {
 		t.Fatalf("plugin closed %d times", p.closes)
 	}
-	// 直接登记的 RPCServer 没有被 Host 当作插件关闭；入口必须自己关。
+	// 直接创建的 app-server 没有被 Host 当作插件关闭；入口必须自己关。
 	_, err = s.Call(context.Background(), "product/get", json.RawMessage(`{}`))
 	if err != nil {
 		t.Fatal("Host unexpectedly closed directly registered server", err)
@@ -89,7 +89,7 @@ func TestFailedProductAssemblyCleanupClosesCalls(t *testing.T) {
 	if first.closes != 1 || failing.closes != 1 {
 		t.Fatal("failed installation was not cleaned up")
 	}
-	// 入口在组装失败时关闭 RPCServer，并且不启动网络监听。
+	// 入口在组装失败时关闭 app-server，并且不启动网络监听。
 	err = s.Close()
 	if err != nil {
 		t.Fatal(err)

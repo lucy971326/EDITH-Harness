@@ -8,6 +8,7 @@ require (
 	github.com/invopop/jsonschema v0.14.0
 	github.com/modelcontextprotocol/go-sdk v1.7.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
+	github.com/sourcegraph/jsonrpc2 v0.2.3
 	github.com/zendev-sh/goai v0.9.8
 	gopkg.in/yaml.v3 v3.0.1
 )

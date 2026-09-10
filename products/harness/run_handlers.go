@@ -3,7 +3,6 @@ package harness
 import (
 	"context"
 	"strings"
-	"sync"
 
 	"harness/appserver"
 	"harness/kernel/events"
@@ -16,19 +15,16 @@ type runHandlers struct {
 	// 产品业务与订阅所需的事件来源。
 	product *Product
 	events  *events.Registry
-
-	// 串行决定 Start 或 Steer，避免多个连接同时发送时交错。
-	sendMu sync.Mutex
 }
 
-func (h *runHandlers) send(ctx context.Context, input SendParams) (SendResult, error) {
-	h.sendMu.Lock()
-	defer h.sendMu.Unlock()
+func (p *Product) send(ctx context.Context, input SendParams) (SendResult, error) {
+	p.sendMu.Lock()
+	defer p.sendMu.Unlock()
 	err := ctx.Err()
 	if err != nil {
 		return SendResult{}, err
 	}
-	_, err = h.product.Session(input.SessionID)
+	_, err = p.Session(input.SessionID)
 	if err != nil {
 		return SendResult{}, methodError(err)
 	}
@@ -36,8 +32,8 @@ func (h *runHandlers) send(ctx context.Context, input SendParams) (SendResult, e
 		return SendResult{}, &appserver.Error{Code: appserver.CodeInvalidParams, Message: "text is empty"}
 	}
 	message := session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: input.Text}}}
-	if _, running := h.product.runner.State(input.SessionID); running {
-		err = h.product.Steer(input.SessionID, message)
+	if _, running := p.runner.State(input.SessionID); running {
+		err = p.Steer(input.SessionID, message)
 		return SendResult{Mode: "steered"}, err
 	}
 	runInput := RunInput{
@@ -48,7 +44,7 @@ func (h *runHandlers) send(ctx context.Context, input SendParams) (SendResult, e
 		Message:         message,
 	}
 	// 接受之后由 Runner 的 Stop / Close 管生命周期，不继承连接取消。
-	err = h.product.Start(context.Background(), runInput)
+	err = p.Start(context.Background(), runInput)
 	if err != nil {
 		return SendResult{}, methodError(err)
 	}

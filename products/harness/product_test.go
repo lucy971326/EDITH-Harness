@@ -397,7 +397,7 @@ func TestSubagentsChatIsolation(t *testing.T) {
 	fixture.loop.release()
 
 	// 同样的隔离必须经过真实接口分发成立，而不只测直接调用。
-	server, err := host.Resolve[*appserver.RPCServer](fixture.host, "appServer")
+	server, err := host.Resolve[*appserver.Server](fixture.host, "appServer")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -406,9 +406,9 @@ func TestSubagentsChatIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = server.Call(context.Background(), GetMethod().Name, params)
+	_, err = server.Call(context.Background(), getMethod, params)
 	assertMethodError(t, err, appserver.CodeNotFound)
-	raw, err := server.Call(context.Background(), ListMethod().Name, json.RawMessage(`{}`))
+	raw, err := server.Call(context.Background(), listMethod, json.RawMessage(`{}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -426,7 +426,7 @@ func TestSubagentsChatIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, err = server.Call(context.Background(), CreateMethod().Name, params)
+	raw, err = server.Call(context.Background(), createMethod, params)
 	if err != nil {
 		t.Fatal(err)
 	}

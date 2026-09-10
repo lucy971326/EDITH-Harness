@@ -10,7 +10,7 @@ import (
 
 // 活对象。保存类型化处理函数与组装时编译的输入、输出校验规则。
 type boundMethod[Input, Output any] struct {
-	handler      Handler[Input, Output]
+	handler      func(context.Context, Input) (Output, error)
 	inputSchema  *validator.Schema
 	outputSchema *validator.Schema
 }

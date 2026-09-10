@@ -29,7 +29,7 @@ type contractOutput struct {
 	Value string `json:"value" jsonschema:"minLength=1"`
 }
 
-var sample = Method[contractInput, contractOutput]{Name: "test/call"}
+const sample = "test/call"
 
 const validInput = `{"name":"ok","mode":"read","items":[{"value":"x"}],"at":"2026-09-07T10:00:00Z"}`
 
@@ -44,28 +44,28 @@ func TestContractRegistration(t *testing.T) {
 	if err == nil {
 		t.Fatal("duplicate method accepted")
 	}
-	err = Register(s, Method[contractInput, contractOutput]{Name: "empty-handler"}, nil)
+	err = Register[contractInput, contractOutput](s, "empty-handler", nil)
 	if err == nil {
 		t.Fatal("nil handler accepted")
 	}
-	err = Register(s, Method[contractInput, contractOutput]{}, handler)
+	err = Register(s, "", handler)
 	if err == nil {
 		t.Fatal("empty name accepted")
 	}
-	_, _, err = compileMethod(Method[string, contractOutput]{Name: "scalar"})
+	_, _, err = compileMethod[string, contractOutput]("scalar")
 	if err == nil {
 		t.Fatal("non-object contract accepted")
 	}
 	// 无效正则是一个编译期契约错误，不应等到调用时暴露。
-	_, _, err = compileMethod(Method[invalidPattern, contractOutput]{Name: "invalid"})
+	_, _, err = compileMethod[invalidPattern, contractOutput]("invalid")
 	if err == nil {
 		t.Fatal("invalid schema accepted")
 	}
-	_, err = s.Call(context.Background(), sample.Name, json.RawMessage(validInput))
+	_, err = s.Call(context.Background(), sample, json.RawMessage(validInput))
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = Register(s, Method[contractInput, contractOutput]{Name: "late"}, handler)
+	err = Register(s, "late", handler)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestInputAndOutputValidation(t *testing.T) {
 		`{"name":"ok","mode":"read","items":[],"at":"not-time"}`,
 		`{"name":"ok","mode":"read","items":[],"at":"2026-09-07T10:00:00Z","extra":true}`,
 	} {
-		_, err = s.Call(context.Background(), sample.Name, json.RawMessage(raw))
+		_, err = s.Call(context.Background(), sample, json.RawMessage(raw))
 		assertCode(t, err, CodeInvalidParams)
 	}
 	if calls.Load() != 0 {
@@ -113,7 +113,7 @@ func TestInputAndOutputValidation(t *testing.T) {
 	}
 	cancelled, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err = s.Call(cancelled, sample.Name, json.RawMessage(validInput))
+	_, err = s.Call(cancelled, sample, json.RawMessage(validInput))
 	assertCode(t, err, CodeInternal)
 	if !errors.Is(err, context.Canceled) || calls.Load() != 0 {
 		t.Fatal("cancelled request reached handler or lost cause")
@@ -124,7 +124,7 @@ func TestInputAndOutputValidation(t *testing.T) {
 		if marshalErr != nil {
 			t.Fatal(marshalErr)
 		}
-		_, err = s.Call(context.Background(), sample.Name, raw)
+		_, err = s.Call(context.Background(), sample, raw)
 		switch name {
 		case "ok":
 			if err != nil {
@@ -151,7 +151,7 @@ func TestConcurrentCalls(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, callErr := s.Call(context.Background(), sample.Name, json.RawMessage(validInput))
+			_, callErr := s.Call(context.Background(), sample, json.RawMessage(validInput))
 			if callErr != nil {
 				t.Error(callErr)
 			}
@@ -175,16 +175,16 @@ func TestCloseRejectsNewCallsAndWaitsForAcceptedCall(t *testing.T) {
 		t.Fatal(err)
 	}
 	done := make(chan error, 1)
-	go func() { _, err := s.Call(context.Background(), sample.Name, json.RawMessage(validInput)); done <- err }()
+	go func() { _, err := s.Call(context.Background(), sample, json.RawMessage(validInput)); done <- err }()
 	<-started
 	closed := make(chan struct{})
 	go func() { _ = s.Close(); close(closed) }()
 	// 同包检查关闭准入完成，避免依赖调度延迟来建立时序。
 	deadline := time.Now().Add(3 * time.Second)
 	for {
-		s.mu.RLock()
+		s.mu.Lock()
 		stopped := s.closed
-		s.mu.RUnlock()
+		s.mu.Unlock()
 		if stopped {
 			break
 		}
@@ -198,7 +198,7 @@ func TestCloseRejectsNewCallsAndWaitsForAcceptedCall(t *testing.T) {
 		t.Fatal("Close did not wait")
 	default:
 	}
-	_, err = s.Call(context.Background(), sample.Name, json.RawMessage(validInput))
+	_, err = s.Call(context.Background(), sample, json.RawMessage(validInput))
 	assertCode(t, err, CodeConflict)
 	releaseOnce.Do(func() { close(release) })
 	err = <-done
@@ -226,7 +226,7 @@ func TestClosedServerCannotReopen(t *testing.T) {
 	if err == nil {
 		t.Fatal("closed server accepted registration")
 	}
-	_, err = s.Call(context.Background(), sample.Name, json.RawMessage(validInput))
+	_, err = s.Call(context.Background(), sample, json.RawMessage(validInput))
 	assertCode(t, err, CodeConflict)
 }
 

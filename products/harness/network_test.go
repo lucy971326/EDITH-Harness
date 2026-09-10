@@ -49,10 +49,10 @@ func TestTypeScriptClient(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := host.NewHost()
-	rpc := appserver.New()
+	server := appserver.New()
 	t.Cleanup(func() { _ = h.Close() })
-	t.Cleanup(func() { _ = rpc.Close() })
-	err = h.RegisterService("appServer", rpc)
+	t.Cleanup(func() { _ = server.Close() })
+	err = h.RegisterService("appServer", server)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,12 +63,10 @@ func TestTypeScriptClient(t *testing.T) {
 			t.Fatal(plugin.Name(), err)
 		}
 	}
-	transport := &appserver.WebSocketServer{RPC: rpc}
-	url, err := transport.Listen("127.0.0.1:0")
+	url, err := server.Listen("127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = transport.Close() })
 	script, err := filepath.Abs("../../clients/test/smoke.ts")
 	if err != nil {
 		t.Fatal(err)

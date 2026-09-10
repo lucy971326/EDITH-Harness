@@ -11,15 +11,41 @@ import (
 	"github.com/coder/websocket"
 )
 
-func startTestSocket(t *testing.T, rpc *RPCServer) (*WebSocketServer, string) {
+func startTestSocket(t *testing.T, server *Server) (*Server, string) {
 	t.Helper()
-	s := &WebSocketServer{RPC: rpc}
-	url, err := s.Listen("127.0.0.1:0")
+	url, err := server.Listen("127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = s.Close() })
-	return s, url
+	t.Cleanup(func() { _ = server.Close() })
+	return server, url
+}
+
+type rpcResponse struct {
+	JSONRPC string          `json:"jsonrpc"`
+	ID      json.RawMessage `json:"id"`
+	Result  json.RawMessage `json:"result"`
+	Error   *struct {
+		Code    int64  `json:"code"`
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+type echoInput struct {
+	Value string `json:"value"`
+}
+
+func newEchoServer(t *testing.T) *Server {
+	t.Helper()
+	server := New()
+	err := Register(server, "echo", func(_ context.Context, input echoInput) (echoInput, error) {
+		return input, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = server.Close() })
+	return server
 }
 
 func dialTestSocket(t *testing.T, url string) *websocket.Conn {
@@ -88,7 +114,7 @@ func TestWebSocketInitializationAndOrigin(t *testing.T) {
 	if err == nil || res == nil || res.StatusCode != http.StatusForbidden {
 		t.Fatal("foreign origin accepted", err)
 	}
-	_, err = (&WebSocketServer{RPC: rpc}).Listen("0.0.0.0:0")
+	_, err = New().Listen("0.0.0.0:0")
 	if err == nil {
 		t.Fatal("public listener accepted")
 	}
@@ -124,7 +150,7 @@ func (h *subscriptionHandler) call(ctx context.Context, _ struct{}) (subscriptio
 func TestSubscriptionResponsePrecedesEventsAndDisconnectCleans(t *testing.T) {
 	rpc := New()
 	h := &subscriptionHandler{connection: make(chan *Connection, 1)}
-	err := Register(rpc, Method[struct{}, subscriptionReply]{Name: "subscribe"}, h.call)
+	err := Register(rpc, "subscribe", h.call)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +188,7 @@ func TestSubscriptionResponsePrecedesEventsAndDisconnectCleans(t *testing.T) {
 func TestSlowSubscriptionCancelsWithoutBlockingPublisher(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	c := &Connection{ctx: ctx, cancel: cancel, outgoing: make(chan []byte, 1), subscriptions: make(map[string]*Subscription)}
+	c := &Connection{ctx: ctx, cancel: cancel, notifications: make(chan notification, 1), subscriptions: make(map[string]*Subscription)}
 	s, err := c.Subscribe()
 	if err != nil {
 		t.Fatal(err)
@@ -200,46 +226,66 @@ func (h *cancellingHandler) call(ctx context.Context, _ struct{}) (struct{}, err
 }
 
 func TestCloseCancelsConnectionCallsAndWaits(t *testing.T) {
-	rpc := New()
-	h := &cancellingHandler{entered: make(chan struct{}), cancelled: make(chan struct{})}
-	err := Register(rpc, Method[struct{}, struct{}]{Name: "wait"}, h.call)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rpc.Close()
-	s, url := startTestSocket(t, rpc)
-	ws := dialTestSocket(t, url)
-	initializeSocket(t, ws)
-	err = ws.Write(t.Context(), websocket.MessageText, []byte(`{"jsonrpc":"2.0","id":2,"method":"wait"}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case <-h.entered:
-	case <-time.After(time.Second):
-		t.Fatal("handler not called")
-	}
-	done := make(chan error, 1)
-	go func() { done <- s.Close() }()
-	select {
-	case err = <-done:
-		if err != nil {
-			t.Fatal(err)
+	for _, disconnect := range []bool{false, true} {
+		name := "server close"
+		if disconnect {
+			name = "client disconnect"
 		}
-	case <-time.After(time.Second):
-		t.Fatal("close blocked")
-	}
-	select {
-	case <-h.cancelled:
-	default:
-		t.Fatal("close returned before handler exited")
+		t.Run(name, func(t *testing.T) {
+			rpc := New()
+			h := &cancellingHandler{entered: make(chan struct{}), cancelled: make(chan struct{})}
+			err := Register(rpc, "wait", h.call)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer rpc.Close()
+			s, url := startTestSocket(t, rpc)
+			ws := dialTestSocket(t, url)
+			initializeSocket(t, ws)
+			err = ws.Write(t.Context(), websocket.MessageText, []byte(`{"jsonrpc":"2.0","id":2,"method":"wait"}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case <-h.entered:
+			case <-time.After(time.Second):
+				t.Fatal("handler not called")
+			}
+			// 同一套连接与等待 handler，分别验收服务器关闭和客户端断线。
+			if disconnect {
+				err = ws.CloseNow()
+				if err != nil {
+					t.Fatal(err)
+				}
+				select {
+				case <-h.cancelled:
+				case <-time.After(time.Second):
+					t.Fatal("disconnect did not cancel waiting handler")
+				}
+			}
+			done := make(chan error, 1)
+			go func() { done <- s.Close() }()
+			select {
+			case err = <-done:
+				if err != nil {
+					t.Fatal(err)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("close blocked")
+			}
+			select {
+			case <-h.cancelled:
+			default:
+				t.Fatal("close returned before handler exited")
+			}
+		})
 	}
 }
 
 func TestActiveSlowSubscriptionAndLateCleanup(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	c := &Connection{ctx: ctx, cancel: cancel, outgoing: make(chan []byte, 1), subscriptions: make(map[string]*Subscription)}
+	c := &Connection{ctx: ctx, cancel: cancel, notifications: make(chan notification, 1), subscriptions: make(map[string]*Subscription)}
 	s, err := c.Subscribe()
 	if err != nil {
 		t.Fatal(err)

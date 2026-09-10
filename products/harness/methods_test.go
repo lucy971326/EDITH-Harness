@@ -17,12 +17,12 @@ import (
 func TestSessionMethodsUseRealProduct(t *testing.T) {
 	fixture := newTestFixture(t)
 	defer fixture.host.Close()
-	server, err := host.Resolve[*appserver.RPCServer](fixture.host, "appServer")
+	server, err := host.Resolve[*appserver.Server](fixture.host, "appServer")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer server.Close()
-	raw, err := server.Call(context.Background(), ListMethod().Name, json.RawMessage(`{}`))
+	raw, err := server.Call(context.Background(), listMethod, json.RawMessage(`{}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func TestSessionMethodsUseRealProduct(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			raw, err := server.Call(context.Background(), CreateMethod().Name, params)
+			raw, err := server.Call(context.Background(), createMethod, params)
 			if err != nil {
 				t.Error(err)
 				return
@@ -72,7 +72,7 @@ func TestSessionMethodsUseRealProduct(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, err = server.Call(context.Background(), GetMethod().Name, params)
+	raw, err = server.Call(context.Background(), getMethod, params)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,11 +105,13 @@ func TestSessionMethodsUseRealProduct(t *testing.T) {
 		name, params string
 		code         appserver.ErrorCode
 	}{
-		{GetMethod().Name, `{"sessionID":"missing"}`, appserver.CodeNotFound},
-		{GetMethod().Name, `{"sessionID":""}`, appserver.CodeInvalidParams},
-		{CreateMethod().Name, `{"workspace":"relative"}`, appserver.CodeInvalidParams},
-		{ListMethod().Name, `{"filter":"all"}`, appserver.CodeInvalidParams},
+		{getMethod, `{"sessionID":"missing"}`, appserver.CodeNotFound},
+		{getMethod, `{"sessionID":""}`, appserver.CodeInvalidParams},
+		{createMethod, `{"workspace":"relative"}`, appserver.CodeInvalidParams},
+		{listMethod, `{"filter":"all"}`, appserver.CodeInvalidParams},
 		{"harness/session/start", `{}`, appserver.CodeUnknownMethod},
+		{sendMethod, `{"sessionID":"missing","text":"  "}`, appserver.CodeNotFound},
+		{sendMethod, `{"sessionID":"` + id + `","text":"  "}`, appserver.CodeInvalidParams},
 	} {
 		_, err = server.Call(context.Background(), test.name, json.RawMessage(test.params))
 		assertMethodError(t, err, test.code)
@@ -136,14 +138,13 @@ func TestSendRejectsInvalidSettingsWithoutStartingOrSaving(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handlers := &runHandlers{product: fixture.service, events: fixture.events}
 	for _, input := range []SendParams{
 		{SessionID: created.Meta.ID, Text: "hello"},
 		{SessionID: created.Meta.ID, Text: "hello", Model: "missing", ReasoningEffort: "high"},
 		{SessionID: created.Meta.ID, Text: "hello", Model: "deepseek/deepseek-v4-flash", ReasoningEffort: "missing"},
 		{SessionID: created.Meta.ID, Text: "hello", Model: "deepseek/deepseek-v4-flash", ReasoningEffort: "high", AgentID: "missing"},
 	} {
-		_, err = handlers.send(t.Context(), input)
+		_, err = fixture.service.send(t.Context(), input)
 		assertMethodError(t, err, appserver.CodeInvalidParams)
 		if !errors.Is(err, ErrInvalidRunSettings) {
 			t.Fatalf("settings error classification lost: %v", err)
@@ -168,12 +169,12 @@ func TestSendRejectsInvalidSettingsWithoutStartingOrSaving(t *testing.T) {
 func TestProductInstallFailureCleanupClosesCalls(t *testing.T) {
 	fixture := newTestFixture(t)
 	defer fixture.host.Close()
-	server, err := host.Resolve[*appserver.RPCServer](fixture.host, "appServer")
+	server, err := host.Resolve[*appserver.Server](fixture.host, "appServer")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer server.Close()
-	// 真实产品重复安装失败后，由入口关闭 RPCServer。
+	// 真实产品重复安装失败后，由入口关闭 app-server。
 	err = fixture.host.Install(NewPlugin())
 	if err == nil {
 		t.Fatal("duplicate product installed")
@@ -182,7 +183,7 @@ func TestProductInstallFailureCleanupClosesCalls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = server.Call(context.Background(), ListMethod().Name, json.RawMessage(`{}`))
+	_, err = server.Call(context.Background(), listMethod, json.RawMessage(`{}`))
 	assertMethodError(t, err, appserver.CodeConflict)
 }
 
