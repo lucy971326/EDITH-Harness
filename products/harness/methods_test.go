@@ -22,18 +22,6 @@ func TestSessionMethodsUseRealProduct(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer server.Close()
-	catalog := server.Catalog()
-	names := make([]string, 0, len(catalog))
-	for _, definition := range catalog {
-		names = append(names, definition.Name)
-	}
-	if !reflect.DeepEqual(names, []string{"harness/session/create", "harness/session/get", "harness/session/list"}) {
-		t.Fatalf("unexpected runtime catalog: %v", names)
-	}
-	err = server.Freeze()
-	if err != nil {
-		t.Fatal(err)
-	}
 	raw, err := server.Call(context.Background(), ListMethod().Name, json.RawMessage(`{}`))
 	if err != nil {
 		t.Fatal(err)
@@ -80,7 +68,7 @@ func TestSessionMethodsUseRealProduct(t *testing.T) {
 	if id == "" {
 		t.Fatal("no session returned")
 	}
-	params, err = json.Marshal(GetParams{SessionID: id})
+	params, err = json.Marshal(SessionIDParams{SessionID: id})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,9 +122,50 @@ func TestMethodErrorsDoNotConfuseMissingFilesWithMissingSession(t *testing.T) {
 	}
 	assertMethodError(t, methodError(ErrSessionNotFound), appserver.CodeNotFound)
 	assertMethodError(t, methodError(ErrWorkspace), appserver.CodeInvalidParams)
+	assertMethodError(t, methodError(ErrInvalidRunSettings), appserver.CodeInvalidParams)
 }
 
-func TestProductInstallFailureLeavesEntryUnopened(t *testing.T) {
+func TestSendRejectsInvalidSettingsWithoutStartingOrSaving(t *testing.T) {
+	fixture := newTestFixture(t)
+	defer fixture.host.Close()
+	created, err := fixture.service.Create(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := fixture.settings.For(created.Meta.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handlers := &runHandlers{product: fixture.service, events: fixture.events}
+	for _, input := range []SendParams{
+		{SessionID: created.Meta.ID, Text: "hello"},
+		{SessionID: created.Meta.ID, Text: "hello", Model: "missing", ReasoningEffort: "high"},
+		{SessionID: created.Meta.ID, Text: "hello", Model: "deepseek/deepseek-v4-flash", ReasoningEffort: "missing"},
+		{SessionID: created.Meta.ID, Text: "hello", Model: "deepseek/deepseek-v4-flash", ReasoningEffort: "high", AgentID: "missing"},
+	} {
+		_, err = handlers.send(t.Context(), input)
+		assertMethodError(t, err, appserver.CodeInvalidParams)
+		if !errors.Is(err, ErrInvalidRunSettings) {
+			t.Fatalf("settings error classification lost: %v", err)
+		}
+	}
+	after, err := fixture.settings.For(created.Meta.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(before, after) {
+		t.Fatal("invalid settings were saved")
+	}
+	snapshot, err := fixture.service.Snapshot(created.Meta.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Entries) != 0 || len(snapshot.Runs) != 0 {
+		t.Fatal("invalid input started a run")
+	}
+}
+
+func TestProductInstallFailureCleanupClosesCalls(t *testing.T) {
 	fixture := newTestFixture(t)
 	defer fixture.host.Close()
 	server, err := host.Resolve[*appserver.RPCServer](fixture.host, "appServer")
@@ -144,21 +173,17 @@ func TestProductInstallFailureLeavesEntryUnopened(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer server.Close()
-	// 真实产品重复安装在组装期失败；它不能把入口偷偷冻结并开放。
+	// 真实产品重复安装失败后，由入口关闭 RPCServer。
 	err = fixture.host.Install(NewPlugin())
 	if err == nil {
 		t.Fatal("duplicate product installed")
 	}
-	_, err = server.Call(context.Background(), ListMethod().Name, json.RawMessage(`{}`))
-	assertMethodError(t, err, appserver.CodeConflict)
 	err = server.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = server.Freeze()
-	if err == nil {
-		t.Fatal("failed assembly reopened")
-	}
+	_, err = server.Call(context.Background(), ListMethod().Name, json.RawMessage(`{}`))
+	assertMethodError(t, err, appserver.CodeConflict)
 }
 
 func assertMethodError(t *testing.T, err error, code appserver.ErrorCode) {

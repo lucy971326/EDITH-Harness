@@ -4,6 +4,7 @@ import (
 	"harness/appserver"
 	"harness/kernel/agents"
 	"harness/kernel/commands"
+	"harness/kernel/events"
 	"harness/kernel/host"
 	"harness/kernel/llm"
 	"harness/kernel/runner"
@@ -62,7 +63,11 @@ func (p *Plugin) Start(h *host.Host) error {
 		p.service = nil
 		return err
 	}
-	return p.service.registerMethods(server)
+	registry, err := host.Resolve[*events.Registry](h, "events")
+	if err != nil {
+		return err
+	}
+	return p.service.registerMethods(server, registry)
 }
 
 func (p *Plugin) Close() error { p.service = nil; return nil }

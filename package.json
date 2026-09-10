@@ -3,10 +3,13 @@
   "private": true,
   "scripts": {
     "contracts:check": "tsc -p scripts/contracts.tsconfig.json",
+    "rpc:check": "tsc -p clients/test/tsconfig.json",
+    "rpc:test": "go test ./products/harness -run TestTypeScriptClient -count=1 -v",
     "web:build": "tailwindcss -i ./surface/web/assets/input.css -o ./surface/web/static/site.css --minify"
   },
   "devDependencies": {
     "@tailwindcss/cli": "4.3.3",
+    "@types/node": "26.5.0",
     "dompurify": "^3.4.14",
     "htmx-ext-sse": "2.2.4",
     "htmx.org": "2.0.10",

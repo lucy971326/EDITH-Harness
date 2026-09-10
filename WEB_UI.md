@@ -33,6 +33,8 @@ Client 不写账本，不把本地状态冒充业务事实。刷新可丢失的�
 
 运行详情采用“先建立订阅边界，再取得 Snapshot，最后应用边界后的事件”或等价无空档方案。重连时重新初始化、恢复 Snapshot 和待回答请求，再续订；不要求重放每个文字 Delta，但最终投影不能漏耐久事实。
 
+`harness/session/subscribe` 把订阅 ID 与初始 Snapshot 一起返回，随后发送 `harness/run/event` 通知。Client 先采用 Snapshot，再应用通知；重叠耐久消息按 Entry.ID 去重。`clients/test` 仅用于协议验收，不作为 React 页面或正式 SDK 的目录模板。
+
 请求 ID 只匹配响应。发送、回答等有副作用操作如需安全重试，必须使用后台定义的业务操作 ID，不能拿 JSON-RPC `id` 代替。
 
 未知通知可忽略；服务端反向请求必须明确回答“不支持”或交给支持它的 Client，不能静默吞掉。慢 Client 断开或丢弃增量，不得反压 Runner。

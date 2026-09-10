@@ -2,7 +2,7 @@
 
 面向后续维护 Harness 的人和 AI。先确认一件事：数据放在哪里，取决于它是谁的事实；不是取决于它显示在哪个页面。
 
-`products/harness` 只组合现有 Session / SessionSettings / Runner / Subagents 的业务，不迁移用户数据。`clients/contracts/` 是手工维护的 TS 接口类型；appserver 的目录与 Schema 用于运行时校验，两者都不是运行状态或持久化格式；对外 Session 投影中的时间编码为 RFC 3339 字符串。
+`products/harness` 只组合现有 Session / SessionSettings / Runner / Subagents 的业务，不迁移用户数据。`clients/contracts/` 是手工维护的 TS 接口类型；appserver 的 Schema 只用于运行时校验，不提供接口目录。这些契约都不是运行状态或持久化格式；对外 Session 投影中的时间编码为 RFC 3339 字符串。
 
 ## 物理位置
 
@@ -72,6 +72,7 @@ Client 状态
 app-server 瞬时状态
 └─ 连接、JSON-RPC 请求响应配对、订阅和待回答请求
    不进入 Session，也不是业务防重记录
+   初始化状态、待发队列和订阅读快照期间的缓冲也只存在内存
 ```
 
 ## 不可跨越的边界
@@ -95,7 +96,8 @@ Client 状态
 
 连接与请求
   JSON-RPC 请求 ID 只匹配一次响应；连接、订阅和待发送队列都在内存
-  后台重启后全部失效，Client 必须重新初始化、取得 Snapshot 并订阅
+  后台重启后全部失效，Client 必须重新初始化，通过订阅接口一起取得 Snapshot 与后续事件
+  Snapshot 与通知的重叠耐久消息按 Entry.ID 去重；不复制成第二份账本
 
 Skill 正文
   保留在各自 Skill 目录的 SKILL.md 和相对资源中

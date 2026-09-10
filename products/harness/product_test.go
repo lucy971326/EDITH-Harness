@@ -402,11 +402,7 @@ func TestSubagentsChatIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer server.Close()
-	err = server.Freeze()
-	if err != nil {
-		t.Fatal(err)
-	}
-	params, err := json.Marshal(GetParams{SessionID: spawnRes.ChildSessionID})
+	params, err := json.Marshal(SessionIDParams{SessionID: spawnRes.ChildSessionID})
 	if err != nil {
 		t.Fatal(err)
 	}

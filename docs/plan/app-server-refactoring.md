@@ -4,20 +4,13 @@
 
 ## 当前基线
 
-第一批已经完成：
-
-- `appserver.RPCServer`、类型化方法登记、Schema 校验、Freeze 与关闭准入。
-- `products/harness` 接替原 `kernel/chat`，不保留 ChatService 包装层。
-- `harness/session/create`、`list`、`get` 三个进程内方法。
-- Go 运行时目录与 Schema 校验；TS 契约在 `clients/contracts/` 手工维护。
-
-当前仍没有 WebSocket、JSON-RPC 封套、连接、订阅、反向请求和 React Client。旧 Web 仍通过 POST / SSE 直接使用后台，只是迁移期实现。
+第一、二步的完成事实与验证入口见 `STATUS.md`；本篇从第三步继续。旧 Web 只用于过渡，不作为新 Client 的目录模板。
 
 ## 职责
 
 | 部分 | 负责 | 不负责 |
 |---|---|---|
-| app-server | JSON-RPC、连接、初始化、目录、校验、分发、订阅、反向请求与断线清理 | 不决定聊天业务，不直接暴露 Host |
+| app-server | JSON-RPC、连接、初始化、校验、分发、订阅、反向请求与断线清理 | 不决定聊天业务，不直接暴露 Host |
 | HarnessProduct | 会话、发送、Steer、停止、分叉等 Harness 业务编排 | 不管理 WebSocket，不返回界面组件，不重复 Runner |
 | 公共服务 | Runner、Session、Agents、模型、Skills、Tools 等各自职责 | 不依赖具体 Client，不强制经过 HarnessProduct |
 | 产品插件 | 解析依赖并把方法绑定到 app-server | 不把业务实现堆进 `plugin.go` |
@@ -33,36 +26,16 @@ app-server
 
 app-server 到处理函数始终是进程内 Go 调用，不是第二次网络请求。
 
-## 第二步：最小网络闭环
-
-这是下一步。
-
-实现最小但真实的连接链：
-
-1. WebSocket 监听与本机连接初始化。
-2. 标准 JSON-RPC 2.0 请求、响应、通知和错误封套。
-3. 请求 ID 配对、并发写串行化、单连接取消与关闭。
-4. 目录/初始化方法，让 Client 知道版本和可用功能。
-5. Harness 最小接口：创建/查询会话、发送、当前运行 Snapshot、运行订阅、停止。
-6. 一个简单 TypeScript 测试 Client，连接真实 HarnessProduct、Runner 和本地模拟模型。
-
-发送的后台语义：闲时 Start，忙时 Steer；内部仍保留 Start / Steer 独立边界。断开连接不取消 Run；慢连接不能阻塞 Runner。
-
-完成标准：
-
-- Client 能经 WebSocket 创建会话、发起真实 Run、看到完整结果并停止。
-- Snapshot 与事件无空档，不因订阅时序漏掉完成。
-- JSON-RPC 错误与现有 appserver 错误稳定映射。
-- 服务关闭先拒绝新连接/请求，再清理连接并等待在途调用，最后关闭 Host。
-
 ## 第三步：完整后台 API 与多 Client
+
+这是下一步。复用最小网络闭环，不重写接入层。
 
 补齐 React 迁移需要的正式接口：
 
-- 会话列表、历史、分叉与 SessionSettings。
+- 在已有会话列表与 Snapshot 上补齐正式历史、分叉与 SessionSettings 接口。
 - 模型、思考档位、Agent、Skill、命令目录。
 - 图片输入、Steer、运行状态与用量。
-- 订阅创建/取消、任务简要状态和详情状态。
+- 在已有会话订阅/取消基础上补齐任务简要状态和详情状态。
 - 服务端反向请求、回答一次性交付与待回答恢复。
 
 同时完成：

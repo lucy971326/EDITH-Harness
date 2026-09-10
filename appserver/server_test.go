@@ -52,24 +52,22 @@ func TestContractRegistration(t *testing.T) {
 	if err == nil {
 		t.Fatal("empty name accepted")
 	}
-	_, _, _, err = compileMethod(Method[string, contractOutput]{Name: "scalar"})
+	_, _, err = compileMethod(Method[string, contractOutput]{Name: "scalar"})
 	if err == nil {
 		t.Fatal("non-object contract accepted")
 	}
 	// 无效正则是一个编译期契约错误，不应等到调用时暴露。
-	_, _, _, err = compileMethod(Method[invalidPattern, contractOutput]{Name: "invalid"})
+	_, _, err = compileMethod(Method[invalidPattern, contractOutput]{Name: "invalid"})
 	if err == nil {
 		t.Fatal("invalid schema accepted")
 	}
 	_, err = s.Call(context.Background(), sample.Name, json.RawMessage(validInput))
-	assertCode(t, err, CodeConflict)
-	err = s.Freeze()
 	if err != nil {
 		t.Fatal(err)
 	}
 	err = Register(s, Method[contractInput, contractOutput]{Name: "late"}, handler)
-	if err == nil {
-		t.Fatal("registration after freeze accepted")
+	if err != nil {
+		t.Fatal(err)
 	}
 	_, err = s.Call(context.Background(), "missing", json.RawMessage(validInput))
 	assertCode(t, err, CodeUnknownMethod)
@@ -96,10 +94,6 @@ func TestInputAndOutputValidation(t *testing.T) {
 		}
 		return contractOutput{Value: input.Name}, nil
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = s.Freeze()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,15 +138,11 @@ func TestInputAndOutputValidation(t *testing.T) {
 	}
 }
 
-func TestFrozenConcurrentCallsAndCatalogCopies(t *testing.T) {
+func TestConcurrentCalls(t *testing.T) {
 	s := New()
 	err := Register(s, sample, func(_ context.Context, input contractInput) (contractOutput, error) {
 		return contractOutput{Value: input.Name}, nil
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = s.Freeze()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,8 +151,6 @@ func TestFrozenConcurrentCallsAndCatalogCopies(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			catalog := s.Catalog()
-			catalog[0].InputSchema[0] = '!'
 			_, callErr := s.Call(context.Background(), sample.Name, json.RawMessage(validInput))
 			if callErr != nil {
 				t.Error(callErr)
@@ -170,9 +158,6 @@ func TestFrozenConcurrentCallsAndCatalogCopies(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	if !json.Valid(s.Catalog()[0].InputSchema) {
-		t.Fatal("catalog escaped by reference")
-	}
 }
 
 func TestCloseRejectsNewCallsAndWaitsForAcceptedCall(t *testing.T) {
@@ -186,10 +171,6 @@ func TestCloseRejectsNewCallsAndWaitsForAcceptedCall(t *testing.T) {
 		<-release
 		return contractOutput{Value: "ok"}, nil
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = s.Freeze()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,10 +222,12 @@ func TestClosedServerCannotReopen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = s.Freeze()
+	err = Register(s, sample, func(context.Context, contractInput) (contractOutput, error) { return contractOutput{Value: "ok"}, nil })
 	if err == nil {
-		t.Fatal("closed server reopened")
+		t.Fatal("closed server accepted registration")
 	}
+	_, err = s.Call(context.Background(), sample.Name, json.RawMessage(validInput))
+	assertCode(t, err, CodeConflict)
 }
 
 func assertCode(t *testing.T, err error, code ErrorCode) {

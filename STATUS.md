@@ -6,11 +6,12 @@
 
 Harness 的内核、聊天业务和旧 Web 已经能完整运行。旧 `surface/web` / `plugins/web` 使用 Templ、HTMX、POST 与 SSE；它是迁移期现状，不是目标前端架构。
 
-App-server 第一批已经完成：`appserver` 是入口直接管理的普通活对象；`products/harness` 接替原 `kernel/chat` 的真实业务；类型化契约已可在进程内调用并接受 Schema 校验，TS 类型改为手工维护。当前尚未实现 WebSocket、JSON-RPC 封套、订阅、反向请求和 React Client。
+App-server 第一、二步已经完成：`products/harness` 接替原 `kernel/chat`，类型化接口接受 Schema 校验，Go / TS 分别手工维护；本机 WebSocket / JSON-RPC 2.0 已接通真实产品与 Runner，具备初始化、会话操作和运行订阅。当前尚未实现反向请求、完整公共服务 API、业务防重和 React Client。
 
 ```text
 当前：浏览器 POST → 旧 Web → HarnessProduct → Runner → ReAct Loop → LLM / Tools
       浏览器 SSE  ← 旧 Web ← Runner 稳定事件 ← 完整消息先落账
+      TS 测试 Client ↔ WebSocket / JSON-RPC 2.0 ↔ app-server ↔ 同一个后台产品与内核
 
 目标：React Client → WebSocket / JSON-RPC 2.0 → app-server
                                              ├→ HarnessProduct
@@ -25,14 +26,14 @@ App-server 第一批已经完成：`appserver` 是入口直接管理的普通活
 
 - 整体迁移 `kernel/chat` 到 `products/harness`，Host 键为 `harnessProduct`；不留旧包或兼容包装。发送、Steer、父子停止、快照、分叉与命令业务仍用原内核执行和存储。
 - 模型、Agent 设置、Skill、命令名单与事件订阅的纯转发已移除，调用方直接使用所属公共服务；Agent 设置页测试不再安装 HarnessProduct / Runner。
-- 入口直接创建并登记 `appServer`，产品插件绑定接口，全部安装成功后冻结；冻结前不能调用，冻结后不能登记。入口关闭 app-server 准入并等待在途调用，再关闭 Host；失败清理不把直接登记的服务误当成插件。
+- 入口直接创建并登记 `appServer`，产品插件绑定接口，全部安装成功后才启动网络监听；RPCServer 不另设冻结状态。入口关闭 app-server 准入并等待在途调用，再关闭 Host；失败清理不把直接登记的服务误当成插件。
 - 已开放 `harness/session/create`、`harness/session/list`、`harness/session/get` 三个进程内接口。保留并发空会话复用与子会话隔离，空列表返回 `[]`；字段、时间与输入输出均通过 Schema 校验，错误有稳定分类。
-- Go 类型和方法声明提供运行时目录与 Schema 校验；TS 契约在 `clients/contracts/harness.ts` 手工维护，三个接口共用会话结果与设置类型。`npm run contracts:check` 只检查 TS 类型与类型测试，不再做自动生成或两端一致性检查。
-- 全量 Go 测试、vet、相关包三轮 race 与契约检查通过；保留真实 ReAct / Runner / 工具链的本地模拟模型父子停止回归。不调用外部模型，不改 Runner 执行、界面或用户数据；网络接入仍是后续工作。
+- Go 类型和方法声明提供类型化登记与 Schema 校验；TS 契约在 `clients/contracts/harness.ts` 手工维护，会话接口共用结果与设置类型。`npm run contracts:check` 只检查 TS 类型与类型测试，不再做自动生成或两端一致性检查。
+- 第一批验收时，全量 Go 测试、vet、相关包三轮 race 与契约检查通过；保留真实 ReAct / Runner / 工具链的本地模拟模型父子停止回归。该批不调用外部模型，不改 Runner 执行、界面或用户数据；后续网络接入见第二步。
 
 ### App-server 第一批：可读性整理
 
-- `Server` 改名为 `RPCServer`，保留 `New()`，不留旧名别名；产品接线与测试引用已同步。它仍只做进程内登记与分发，没有新增 JSON-RPC 封套、网络监听或 `Handle`。
+- `Server` 改名为 `RPCServer`，保留 `New()`，不留旧名别名；产品接线与测试引用已同步。该批整理只涉及进程内登记与分发，未新增封套或网络；第二步再增加 `Handle` 与接入层。
 - `appserver` 按 `types.go / server.go / method.go / schema.go` 分工；私有 `boundMethod[Input, Output]` 保存处理函数和编译后的 Schema，具名 `Call` 顺序完成输入检查、解码、业务调用、编码与输出检查，替代登记时的闭包。
 - Harness 的 `methods.go` 只保留声明与登记名单；`handlers.go` 承载三个具名处理方法、投影转换和错误映射。`types.go` 按创建、列表、查询归组，创建与查询共用一份 `SessionResult`。
 - 可读性整理时，全量 `go test ./...`、`go vet ./...`、appserver / Harness 产品 race 与当时的契约生成检查通过，未改变接口行为、生命周期和业务逻辑。
@@ -43,6 +44,30 @@ App-server 第一批已经完成：`appserver` 是入口直接管理的普通活
 - `clients/contracts/harness.ts` 集中维护三个会话接口，保留共享结果、字符串时间与空列表参数约束；接口变更需同步 Go / TS。
 - 移除仅供导出的 `Describe`、`Definitions`，登记时直接使用私有 `compileMethod`。运行时 Schema 校验、类型化绑定与泛型转换仍保留，不改变业务行为。
 - 全量 Go 测试、vet、appserver / Harness 产品 race 与手写 TS 类型检查通过；TS 检查不宣称自动验证两端一致。
+
+### App-server 第二步：最小网络闭环
+
+- `RPCServer.Handle` 按标准 JSON-RPC 2.0 处理请求、响应、通知、批量和错误；数字/字符串/null 请求 ID 原样配对，不把通知当请求回复，不泄露内部错误原因。
+- 新增独立 `WebSocketServer`，使用 `github.com/coder/websocket v1.8.14`。入口完成插件安装和方法登记后监听 `ws://127.0.0.1:8889/rpc`；本机模式不增加临时鉴权。初始化版本为 1，默认拒绝跨 Origin 握手，10 秒内未完成初始化则断开。
+- `Connection` 拥有单连接取消、串行发送和订阅清理；每连接顺序处理请求，不同连接可并行。入站单消息上限 1 MiB、待处理队列 32 条、待发及单订阅缓冲各 128 条、每连接最多 32 个订阅；慢连接超限断开，不阻塞 Runner。关闭顺序为 WebSocketServer → RPCServer → Host。
+- 协议内建 `initialize`、`server/unsubscribe`；产品新增 `harness/session/send / snapshot / subscribe / stop`，沿用原有 create / list / get。发送暂时只接文字，闲时 Start、忙时 Steer；已接受 Run 不继承连接取消，不自动重试。
+- 移除接口目录 `Catalog / server/catalog`、`Definition`、运行时方法说明与原始 Schema 副本；初始化只返回协议版本，登记表直接保存处理函数。方法说明改为源码注释，产品登记名单合并为一处；解除订阅统一由 Subscription.Close 清理。
+- 接单的锁、状态检查与计数集中在同文件的 beginCall；Call 保留执行与收尾主线。连接 run 集中展示读写启动、请求处理、取消与等待，通知放行命名为 releaseBufferedNotifications。发送不再重复预检设置，由 Product.Start 校验一次并返回可识别错误，接口层统一映射。
+- 其余接入可读性整理：握手准入与连接登记就近封装；单连接网络对象命名为 websocketClientConnection。响应与通知封套集中在 protocol.go，连接和订阅字段按职责分组。Go / TS 共用会话 ID 的参数名统一为 SessionIDParams，JSON 字段不变；测试 Client 的事件交付与消息识别分开阅读。
+- 订阅先安装监听再取 Snapshot，响应先入队、随后释放缓冲的 `harness/run/event` 通知。账本重叠按 Entry.ID 去重；解除订阅与断线不停止运行。
+- 失败测试复现并修复结束通知已经发布、Snapshot 却短暂把该 Run 显示为活跃的窗口：结束标记在通知前可见，live 仍占用到完整收尾；准备期尚未落账的运行不冒充可恢复快照。
+- `clients/test` 是无界面 TypeScript 验收程序，不是正式 Client 或 SDK。Go 集成测试创建临时数据与本地模拟模型，再启动 Node，经过真实 WebSocket → Product → Runner → ReAct 验证创建、查询、发送、极快完成、断线重连继续、忙时 Steer 和停止。停止确实取消模型 HTTP 请求；不调用外部模型或修改真实会话。
+- 全量 Go 测试、vet、相关包 race、手写契约检查与测试 Client 类型检查通过。没有实现正式 React UI、反向请求、业务操作防重、完整多 Client 协调，也没有删除旧 Web。
+
+复现网络验收（安装前端依赖后，需 Node.js 22.18+）：
+
+```sh
+npm run contracts:check
+npm run rpc:check
+npm run rpc:test
+```
+
+`rpc:test` 自动启动并关闭隔离的本地后台，不需要先启动 `cmd/harness`；普通启动仍保留旧界面，并额外开放上述 RPC 测试入口。
 
 ### 迁移期 Web：阶段 1 基础
 
@@ -229,6 +254,7 @@ App-server 第一批已经完成：`appserver` 是入口直接管理的普通活
 - `go vet ./...` 通过。
 - `git diff --check` 通过。
 - `npm run contracts:check` 检查手写 TS 契约与类型测试；不再包含生成一致性或 Go → Schema → TS 映射测试。
+- `npm run rpc:check` 检查 TS 测试 Client，`npm run rpc:test` 执行隔离的真实网络链路验收。
 - `node --test plugins/web/chat/static/test/sidepanel.test.js` 通过。
 - `node --check surface/web/static/runview.js` 与 Chat 私有脚本通过。
 - 已做真实浏览器页面与布局检查。
@@ -236,11 +262,10 @@ App-server 第一批已经完成：`appserver` 是入口直接管理的普通活
 ## 下一步
 
 ```text
-1. WebSocket + 标准 JSON-RPC 2.0 最小真实闭环
-2. 完整 Harness / 公共服务接口、订阅、反向请求与多 Client
-3. React + TypeScript + Vite Client
-4. Wails 与唯一后台启动/发现
-5. 删除旧 surface/web、plugins/web、Templ、HTMX、POST 与 SSE
+第三步：完整 Harness / 公共服务接口、反向请求、业务防重与多 Client
+第四步：React + TypeScript + Vite Client
+第五步：Wails 与唯一后台启动/发现
+第六步：删除旧 surface/web、plugins/web、Templ、HTMX、POST 与 SSE
 ```
 
 方向见 `docs/plan/app-server-redesign.md`，实施顺序见 `docs/plan/app-server-refactoring.md`。UI 规范见 `WEB_UI.md`；已完成事实只写本文件，稳定产品形状写入 `docs/设计书.md`。

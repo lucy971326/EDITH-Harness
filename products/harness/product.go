@@ -147,10 +147,12 @@ func (s *Product) Snapshot(sessionID string) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, err
 	}
-	out := Snapshot{Entries: sess.Entries(), Runs: []runner.RunState{}}
-	if state, ok := s.runner.State(sessionID); ok {
+	out := Snapshot{Runs: []runner.RunState{}}
+	// 先读运行身份，再读账本；不把尚未落下首条输入的准备期当成可恢复运行。
+	if state, ok := s.runner.State(sessionID); ok && state.AfterEntrySeq != 0 {
 		out.Runs = []runner.RunState{state}
 	}
+	out.Entries = sess.Entries()
 	return out, nil
 }
 
@@ -173,7 +175,7 @@ func (s *Product) Start(ctx context.Context, input RunInput) error {
 	}
 	err = s.selectRunSettings(&setup, input)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %w", ErrInvalidRunSettings, err)
 	}
 	err = s.ensureVision(setup.Model, input.Message)
 	if err != nil {

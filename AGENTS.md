@@ -17,7 +17,7 @@
 
 ## 1. 当前事实与目标架构
 
-当前仓库处于迁移期：后台第一批已经完成，旧 `surface/web`、`plugins/web`、Templ、HTMX、POST 与 SSE 仍能运行，但只用于过渡。不要继续给旧页面体系增加新架构、新插槽或长期规则。
+当前仓库处于迁移期；已完成的批次与可运行入口只看 `STATUS.md`。旧 `surface/web`、`plugins/web`、Templ、HTMX、POST 与 SSE 只用于过渡。不要继续给旧页面体系增加新架构、新插槽或长期规则。
 
 目标调用链只有一条：
 
@@ -37,7 +37,7 @@ HarnessProduct      公共服务接口
 
 - HTTP 只提供静态资源；业务调用与运行事件统一走 WebSocket / JSON-RPC 2.0。
 - Web 使用 React + TypeScript + Vite，不使用 Next.js。Wails 首版复用同一套界面和 WebSocket。
-- app-server 负责接入、协议、目录、校验、分发、订阅、反向请求和连接清理；不拥有产品业务。
+- app-server 负责接入、协议、校验、分发、订阅、反向请求和连接清理；不拥有产品业务。
 - Product 负责业务编排；不拥有协议、页面组件或公共内核数据。
 - kernel 提供执行和数据能力；不依赖 appserver、products、clients、surface 或 plugins。
 - Client 只保存界面状态和服务端投影，不成为业务事实来源。
@@ -89,13 +89,17 @@ Client 调用 create(params)
 - 数据放定义者的 `types.go`，按业务归组，共享结果只定义一次；方法声明与登记名单放 `methods.go`，具名处理方法与错误映射放 `handlers.go`。
 - `appserver.Register` 绑定声明和处理函数，组装时编译输入输出 Schema。
 - 重名、空处理函数或坏契约使组装失败。
-- 所有插件安装完成后 `Freeze`；此前拒绝调用，此后拒绝登记。
+- 入口在所有插件安装、方法登记成功后才启动监听；组装失败则关闭清理，不开放网络接入。
 - 手写 TS 契约放 `clients/contracts/`，由各 Client 共用，不自动从 Go 生成。
+- Client 按手写契约调用，不提供运行时接口目录；Schema 只用于服务端校验。
 - `npm run contracts:check` 检查手写 TS 类型及类型测试，不保证 Go / TS 自动一致；接口改动需对照两端审查。
 - 运行时仍校验输入和输出；TypeScript 不能表达的格式、长度等约束以 Schema 为准。
 - appserver 不 import products、kernel 提供者、旧 Web 或具体 Client；产品插件负责绑定业务处理函数。
 - 不自动暴露 Host 方法；只有显式登记的对外方法可调用。
 - `RPCServer` 是与传输无关的 RPC 登记与分发对象，不是 HTTP / WebSocket 监听服务器。接入层负责网络收发，协议处理层负责封套与分发，Product 只处理业务。
+- `protocol.go` 处理封套，`connection.go` 管临时队列与订阅，`websocket.go` 管监听与网络 IO。`WebSocketServer` 和 `RPCServer` 都由入口拥有，不把业务登记名单搬进 main。
+- 连接先完成协议版本初始化；只监听回环地址并校验浏览器 Origin。本机模式不增加临时鉴权。
+- 订阅先接入事件，再取 Snapshot；响应先于缓冲通知发送。重叠账本按 Entry.ID 去重，慢连接断开，不能阻塞 Runner。
 
 协议使用标准 JSON-RPC 2.0，保留 `jsonrpc`、`id`、`method`、`params`、`result`、`error`。请求 ID 只做本次响应配对，不充当业务防重 ID。
 
@@ -164,7 +168,7 @@ Client           临时界面状态与服务端投影
 app-server       连接、订阅、请求配对等瞬时状态
 ```
 
-运行事件、JSON-RPC 请求 ID、连接和订阅都不是账本事实。后台重启后，未完成运行标记中断，不自动续跑；Client 重新取得 Snapshot 后再订阅。
+运行事件、JSON-RPC 请求 ID、连接和订阅都不是账本事实。后台重启后，未完成运行标记中断，不自动续跑；Client 重新初始化，再通过订阅接口一起取得 Snapshot 和后续事件。
 
 ---
 
@@ -175,6 +179,7 @@ app-server       连接、订阅、请求配对等瞬时状态
 ```text
 cmd/harness/          进程组装、配置、启动与关闭
 clients/contracts/    手写 TypeScript 契约
+clients/test/         无界面的网络验收 Client，不是正式 SDK
 appserver/            方法契约、登记、校验、协议与连接
 products/harness/     Harness 后台业务与对外方法绑定
 kernel/               公共执行、数据与登记处
@@ -221,7 +226,7 @@ Client    只依赖手写 TS 契约和自身 UI；不读取 Go Host
 - 启动中途失败，已 Start 的插件倒序关闭。
 - 启动时固定登记的条目随 Host 一起消失，不需要 unregister；运行期会离场的订阅才返回幂等取消函数。
 - Host 只关闭通过 Install 安装的插件；入口直接创建的 app-server 由入口关闭。
-- 正常退出先让 app-server 拒绝新调用并等待在途请求，再关闭 Host；连接清理按接入层实施计划补齐。
+- 正常退出先关闭 WebSocketServer 准入，取消连接请求、解除订阅并等待处理退出；再关闭 RPCServer 准入并等待进程内调用，最后关闭 Host。已接受的 Run 不继承连接 Context，由 Runner 停止和关闭。
 
 ---
 
@@ -233,8 +238,12 @@ Client    只依赖手写 TS 契约和自身 UI；不读取 Go Host
 - 标识符英文，注释中文，commit 双语。
 - 普通包返回错误，不打日志；错误只在进程边界或无法返回的后台入口打印一次。
 - `err := f()` 与 `if err != nil` 分行。
+- 检查到错误或不满足条件时就地返回，让正常流程按执行顺序向下展开；循环中可用 continue 跳过不适用项。避免先保存多个判断结果、隔几段再处理，以及不必要的 else 和嵌套。以读起来顺畅为准，不机械改写每个分支；调整时保留错误优先级、锁的范围和必要的收尾。
+- 主函数展示几个有明确含义的完整动作；锁、接单检查等细节可收进同文件相邻的具名方法，优先一层展开就能读懂。不按行数机械拆分，不为每个判断或加锁建立 helper。检查状态与修改状态必须保持原有原子性，收尾责任在调用处可见。
+- 业务错误在产品层明确分类，对外错误翻译集中在接口边界；避免为映射错误重复执行业务校验。协程的启动、取消和等待应能在同一处看清，读写方法专注各自工作；不以吞错、隐藏状态或省略等待来减少视觉噪音。
 - 每包一个主要公开构造入口；构造函数只校验依赖和组装。
 - 接口处理优先使用结构体保存依赖、具名方法承载行为，不用捕获依赖的闭包或匿名 Handler；登记名单留在产品，不下放到 main。
+- Go 的关键能力结构体是理解代码的重要入口。字段应按适合该结构体的顺序排列，并按职责用空行和中文组注释分隔，优先让人一眼看懂它的组成；不强套统一的排序模板。
 - 泛型只用于必要的公共类型转换，类型参数写成 `Input / Output`。一次调用的校验、解码、业务调用、编码与输出校验顺序写在同一方法，不拆成绕行的小助手。
 - 搜索优先 `rg` / `rg --files`。
 - 改代码后执行与风险匹配的单测、race、vet、两端契约审查与前端检查；不要为了通过检查改无关代码。

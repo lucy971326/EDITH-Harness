@@ -26,3 +26,15 @@ const unknownList: List['params'] = { filter: 'all' };
 // @ts-expect-error 空对象契约不能接收标量。
 const scalarList: List['params'] = 'all';
 void [create, get, empty, session, missing, unknown, wrongTime, nullList];
+
+type Send = Methods['harness/session/send'];
+type Subscribe = Methods['harness/session/subscribe'];
+const steer: Send['params'] = { sessionID: 'abc', text: '继续' };
+const subscribed: Subscribe['result'] = { subscriptionID: 'sub', snapshot: { entries: [], runs: [] } };
+// @ts-expect-error 第二步只开放文字输入，不能悄悄加入未实现的图片参数。
+const imageSend: Send['params'] = { sessionID: 'abc', text: '图', image: 'base64' };
+// @ts-expect-error 发送不是下一轮队列。
+const queued: Send['result'] = { mode: 'queued' };
+// @ts-expect-error 快照里的账本必须是数组。
+const nullEntries: Subscribe['result'] = { subscriptionID: 'sub', snapshot: { entries: null, runs: [] } };
+void [steer, subscribed, imageSend, queued, nullEntries];

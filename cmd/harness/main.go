@@ -76,9 +76,10 @@ func run(configPath string) (result error) {
 
 	h := host.NewHost()
 	server := appserver.New()
+	transport := &appserver.WebSocketServer{RPC: server}
 	defer func() {
 		// 入口拥有直接登记的 app-server；先结束接口调用，再拆产品与执行服务。
-		result = errors.Join(result, server.Close(), h.Close())
+		result = errors.Join(result, transport.Close(), server.Close(), h.Close())
 	}()
 	err = h.RegisterService("appServer", server)
 	if err != nil {
@@ -218,10 +219,11 @@ func run(configPath string) (result error) {
 		return err
 	}
 
-	err = server.Freeze()
+	rpcURL, err := transport.Listen("127.0.0.1:8889")
 	if err != nil {
 		return err
 	}
+	fmt.Printf("RPC 测试入口：%s\n", rpcURL)
 	url := webPlugin.URL()
 	err = openBrowser(url)
 	if err != nil {

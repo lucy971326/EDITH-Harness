@@ -4,6 +4,7 @@ go 1.25.0
 
 require (
 	github.com/a-h/templ v0.3.1020
+	github.com/coder/websocket v1.8.14
 	github.com/invopop/jsonschema v0.14.0
 	github.com/modelcontextprotocol/go-sdk v1.7.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3

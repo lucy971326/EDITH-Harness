@@ -51,7 +51,7 @@ func TestEntryOwnsServerAndHostOwnsPlugins(t *testing.T) {
 		t.Fatalf("plugin closed %d times", p.closes)
 	}
 	// 直接登记的 RPCServer 没有被 Host 当作插件关闭；入口必须自己关。
-	err = s.Freeze()
+	_, err = s.Call(context.Background(), "product/get", json.RawMessage(`{}`))
 	if err != nil {
 		t.Fatal("Host unexpectedly closed directly registered server", err)
 	}
@@ -68,7 +68,7 @@ func TestEntryOwnsServerAndHostOwnsPlugins(t *testing.T) {
 	}
 }
 
-func TestFailedProductAssemblyNeverOpensCalls(t *testing.T) {
+func TestFailedProductAssemblyCleanupClosesCalls(t *testing.T) {
 	h := host.NewHost()
 	s := appserver.New()
 	defer s.Close()
@@ -89,18 +89,14 @@ func TestFailedProductAssemblyNeverOpensCalls(t *testing.T) {
 	if first.closes != 1 || failing.closes != 1 {
 		t.Fatal("failed installation was not cleaned up")
 	}
-	_, err = s.Call(context.Background(), "product/get", json.RawMessage(`{}`))
-	var public *appserver.Error
-	if !errors.As(err, &public) || public.Code != appserver.CodeConflict {
-		t.Fatal("failed assembly accepted a call", err)
-	}
-	// 与入口失败清理相同：直接关闭 RPCServer，不能重新冻结开放。
+	// 入口在组装失败时关闭 RPCServer，并且不启动网络监听。
 	err = s.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = s.Freeze()
-	if err == nil {
-		t.Fatal("failed server reopened")
+	_, err = s.Call(context.Background(), "product/get", json.RawMessage(`{}`))
+	var public *appserver.Error
+	if !errors.As(err, &public) || public.Code != appserver.CodeConflict {
+		t.Fatal("closed server accepted a call", err)
 	}
 }

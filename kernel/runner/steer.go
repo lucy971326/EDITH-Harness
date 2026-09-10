@@ -87,7 +87,7 @@ func (r *Runner) State(sessionID string) (RunState, bool) {
 	if err != nil {
 		return RunState{}, false
 	}
-	return current.state(), true
+	return current.state()
 }
 
 // RunSettings 返回指定活跃 Run 启动时保存的配置快照。
@@ -151,10 +151,10 @@ func (r *liveRun) setAfterEntrySeq(seq uint64) {
 	r.mu.Unlock()
 }
 
-func (r *liveRun) state() RunState {
+func (r *liveRun) state() (RunState, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return RunState{RunID: r.runID, AfterEntrySeq: r.afterEntrySeq}
+	return RunState{RunID: r.runID, AfterEntrySeq: r.afterEntrySeq}, !r.ended
 }
 
 func (r *liveRun) afterSeq() uint64 {

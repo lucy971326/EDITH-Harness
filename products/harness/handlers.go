@@ -24,7 +24,7 @@ func (p *Product) handleList(_ context.Context, _ ListParams) (ListResult, error
 	return result, nil
 }
 
-func (p *Product) handleGet(_ context.Context, input GetParams) (SessionResult, error) {
+func (p *Product) handleGet(_ context.Context, input SessionIDParams) (SessionResult, error) {
 	info, err := p.Session(input.SessionID)
 	return SessionResult{Session: sessionView(info)}, methodError(err)
 }
@@ -44,6 +44,9 @@ func methodError(err error) error {
 	}
 	if errors.Is(err, ErrWorkspace) {
 		return &appserver.Error{Code: appserver.CodeInvalidParams, Message: "workspace is not available", Cause: err}
+	}
+	if errors.Is(err, ErrInvalidRunSettings) {
+		return &appserver.Error{Code: appserver.CodeInvalidParams, Message: "model, reasoning effort or agent is unavailable", Cause: err}
 	}
 	// 底层文件缺失不是目标会话不存在，只有产品的明确判断才能映射为未找到。
 	if errors.Is(err, ErrSessionNotFound) {

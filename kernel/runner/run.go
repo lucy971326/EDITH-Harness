@@ -35,6 +35,7 @@ type liveRun struct {
 	inputErr          error
 	inputPublications sync.WaitGroup
 	afterEntrySeq     uint64
+	ended             bool // 结束通知发布前置位；live 仍保留到完整收尾，不提前放行新 Run。
 	runID             string
 	settings          *settings.SessionSettings // 准备完成前为空，不能拿半成品当配置快照。
 	// 当前代次的通道在有待处理 Steer 时关闭广播；Checkpoint 消费后才换代次。
@@ -458,6 +459,14 @@ func (r *Runner) emit(ctx context.Context, sessionID, runID string, sess *sessio
 }
 
 func (r *Runner) publish(ctx context.Context, event RunEvent) error {
+	if event.Kind == RunEnded {
+		current, err := r.current(event.SessionID)
+		if err == nil && current.runID == event.RunID {
+			current.mu.Lock()
+			current.ended = true
+			current.mu.Unlock()
+		}
+	}
 	return events.Publish(ctx, r.events, event)
 }
 

@@ -19,9 +19,10 @@ type boundMethod[Input, Output any] struct {
 func (m *boundMethod[Input, Output]) Call(ctx context.Context, raw json.RawMessage) (json.RawMessage, error) {
 	// 输入检查：不符合契约的参数不能进入业务。
 	inputValue, err := decodeJSON(raw)
-	if err == nil {
-		err = m.inputSchema.Validate(inputValue)
+	if err != nil {
+		return nil, &Error{CodeInvalidParams, "input does not match contract", err}
 	}
+	err = m.inputSchema.Validate(inputValue)
 	if err != nil {
 		return nil, &Error{CodeInvalidParams, "input does not match contract", err}
 	}
@@ -45,13 +46,14 @@ func (m *boundMethod[Input, Output]) Call(ctx context.Context, raw json.RawMessa
 
 	// 编码与输出检查：业务结果也必须满足对外契约。
 	encoded, err := json.Marshal(output)
-	var outputValue any
-	if err == nil {
-		outputValue, err = decodeJSON(encoded)
+	if err != nil {
+		return nil, &Error{CodeInternal, "output does not match contract", err}
 	}
-	if err == nil {
-		err = m.outputSchema.Validate(outputValue)
+	outputValue, err := decodeJSON(encoded)
+	if err != nil {
+		return nil, &Error{CodeInternal, "output does not match contract", err}
 	}
+	err = m.outputSchema.Validate(outputValue)
 	if err != nil {
 		return nil, &Error{CodeInternal, "output does not match contract", err}
 	}

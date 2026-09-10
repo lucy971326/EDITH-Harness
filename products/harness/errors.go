@@ -9,6 +9,8 @@ var (
 	ErrWorkspace = errors.New("harness product: invalid workspace")
 	// ErrSessionSettings 标记读取目标会话设置失败。
 	ErrSessionSettings = errors.New("harness product: session settings")
+	// ErrInvalidRunSettings 标记本轮选择的 Agent、模型或思考档位不合法。
+	ErrInvalidRunSettings = errors.New("harness product: invalid run settings")
 	// ErrRunStart 标记 Runner 未能启动新一轮。
 	ErrRunStart = errors.New("harness product: start run")
 	// ErrRunSteer 标记 Runner 未能接受 Steer。
