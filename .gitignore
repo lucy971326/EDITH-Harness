@@ -22,8 +22,10 @@ playground/
 .vscode/
 .claude/
 .codex/
-# 项目不再维护仓库内开发 Skills；本地 Agent 文件全部忽略。
-.agents/
+# 只提交项目共享 Skills，其他本地 Agent 文件继续忽略。
+.agents/*
+!.agents/skills/
+!.agents/skills/**
 
 reference.zip
 .codegraph/
