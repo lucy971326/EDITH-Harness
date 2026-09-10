@@ -1,10 +1,8 @@
 package harness
 
 import (
-	"harness/appserver"
 	"harness/kernel/agents"
 	"harness/kernel/commands"
-	"harness/kernel/events"
 	"harness/kernel/host"
 	"harness/kernel/llm"
 	"harness/kernel/runner"
@@ -13,7 +11,7 @@ import (
 	"harness/kernel/subagents"
 )
 
-// 活对象。安装 harnessProduct，并向入口创建的 appServer 登记产品接口。
+// 活对象。安装 harnessProduct；只组装业务依赖。
 type Plugin struct{ service *Product }
 
 // NewPlugin 造 Harness 产品插件；不拥有内核或 app-server 的资源。
@@ -46,10 +44,6 @@ func (p *Plugin) Start(h *host.Host) error {
 	if err != nil {
 		return err
 	}
-	server, err := host.Resolve[*appserver.Server](h, "appServer")
-	if err != nil {
-		return err
-	}
 	subagentService, err := host.Resolve[*subagents.Subagents](h, "subagents")
 	if err != nil {
 		return err
@@ -63,11 +57,7 @@ func (p *Plugin) Start(h *host.Host) error {
 		p.service = nil
 		return err
 	}
-	registry, err := host.Resolve[*events.Registry](h, "events")
-	if err != nil {
-		return err
-	}
-	return p.service.registerMethods(server, registry)
+	return nil
 }
 
 func (p *Plugin) Close() error { p.service = nil; return nil }

@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"harness/appserver"
 	"harness/kernel/agents"
 	"harness/kernel/commands"
 	"harness/kernel/events"
@@ -129,12 +128,6 @@ func installChatWithDemo(t *testing.T) (*host.Host, *web.Plugin, *Plugin) {
 	t.Cleanup(func() { _ = os.Setenv("HOME", previousHome) })
 
 	h := host.NewHost()
-	server := appserver.New()
-	registerErr := h.RegisterService("appServer", server)
-	if registerErr != nil {
-		t.Fatal(registerErr)
-	}
-	t.Cleanup(func() { _ = server.Close() })
 	for _, plugin := range []host.Plugin{
 		&persist.Plugin{Dir: t.TempDir()},
 		&session.Plugin{},

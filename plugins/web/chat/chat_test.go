@@ -16,7 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"harness/appserver"
 	"harness/kernel/agents"
 	"harness/kernel/commands"
 	"harness/kernel/events"
@@ -522,12 +521,6 @@ func installChat(t *testing.T) (*host.Host, *web.Plugin) {
 		_ = os.Setenv("HOME", previousHome)
 	})
 	h := host.NewHost()
-	server := appserver.New()
-	registerErr := h.RegisterService("appServer", server)
-	if registerErr != nil {
-		t.Fatal(registerErr)
-	}
-	t.Cleanup(func() { _ = server.Close() })
 	err := h.Install(&persist.Plugin{Dir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)

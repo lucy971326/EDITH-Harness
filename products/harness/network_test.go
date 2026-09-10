@@ -1,9 +1,10 @@
-package harness
+package harness_test
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"harness/products/harness"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -28,7 +29,7 @@ import (
 	"harness/plugins/kernel/loops/react"
 )
 
-// 全链路使用真正的 ReAct / Runner / Product，只有模型 HTTP 服务是本地替身。
+// 全链路使用真正的 ReAct / Runner / harness.Product，只有模型 HTTP 服务是本地替身。
 func TestTypeScriptClient(t *testing.T) {
 	node, err := exec.LookPath("node")
 	if err != nil {
@@ -52,16 +53,24 @@ func TestTypeScriptClient(t *testing.T) {
 	server := appserver.New()
 	t.Cleanup(func() { _ = h.Close() })
 	t.Cleanup(func() { _ = server.Close() })
-	err = h.RegisterService("appServer", server)
-	if err != nil {
-		t.Fatal(err)
-	}
-	plugins := []host.Plugin{&persist.Plugin{Dir: data}, &session.Plugin{}, &llm.Plugin{}, events.NewPlugin(), tools.NewPlugin(), loops.NewPlugin(), react.New(), skills.NewPlugin(), agents.NewPlugin(), commands.NewPlugin(), runner.NewPlugin(), subagents.NewPlugin(data), NewPlugin()}
+	plugins := []host.Plugin{&persist.Plugin{Dir: data}, &session.Plugin{}, &llm.Plugin{}, events.NewPlugin(), tools.NewPlugin(), loops.NewPlugin(), react.New(), skills.NewPlugin(), agents.NewPlugin(), commands.NewPlugin(), runner.NewPlugin(), subagents.NewPlugin(data), harness.NewPlugin()}
 	for _, plugin := range plugins {
 		err = h.Install(plugin)
 		if err != nil {
 			t.Fatal(plugin.Name(), err)
 		}
+	}
+	product, err := host.Resolve[*harness.Product](h, "harnessProduct")
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := host.Resolve[*events.Registry](h, "events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = server.BindHarness(product, registry)
+	if err != nil {
+		t.Fatal(err)
 	}
 	url, err := server.Listen("127.0.0.1:0")
 	if err != nil {

@@ -53,8 +53,9 @@ HarnessProduct      公共服务接口
 ```text
 Host（服务表）
 ├─ 公共内核：session / runner / agents / llm / tools / loops / skills / ...
-├─ 后台产品：harnessProduct；以后可以有其他 Product
-└─ appServer：入口直接创建和管理的接入服务
+└─ 后台产品：harnessProduct；以后可以有其他 Product
+
+appserver.Server（Host 外，由入口创建、接入 Product 并管理关闭）
 ```
 
 服务有两种形态：
@@ -66,7 +67,7 @@ Host（服务表）
 
 表上的值一律叫服务。登记处中的一项叫插槽条目。运行后才存在的 Session、Run 等叫活对象。
 
-定义者写契约，提供者和消费者都 import 定义者，彼此不 import。Host 运行时只存服务；类型安全来自 Go 包里的契约。
+内核扩展由定义者写契约，提供者和消费者都 import 定义者，彼此不 import。外围 appserver 直接依赖具体 Product 和公共服务。Host 运行时只存服务；类型安全来自 Go 包里的契约。
 
 能独立替换，或确实需要别人填充时，才做接口或登记处。默认使用结构体和直接方法，不为测试或假想未来预建抽象。
 
@@ -86,7 +87,7 @@ Client 调用 create(params)
 ```
 
 - Go 数据类型与 TS 数据类型分别手工维护；修改接口时同步方法名、字段、可选性和返回类型。Go 端负责实际运行时校验。
-- 数据放定义者的 `types.go`，按业务归组，共享结果只定义一次；方法名与登记名单放 `methods.go`，具名处理方法与错误映射放 `handlers.go`。
+- 业务数据放定义者的 `types.go`；网络参数与结果放 `appserver/harness_types.go`，登记、请求处理与错误映射放 `appserver/harness.go`，运行订阅处理放 `appserver/harness_run.go`。共享业务结果直接复用，不复制。
 - `appserver.Register` 直接绑定方法名和类型化处理函数，组装时编译输入输出 Schema；不要为只有 Name 的方法再造声明结构体或工厂函数。
 - 重名、空处理函数或坏契约使组装失败。
 - 入口在所有插件安装、方法登记成功后才启动监听；组装失败则关闭清理，不开放网络接入。
@@ -94,7 +95,7 @@ Client 调用 create(params)
 - Client 按手写契约调用，不提供运行时接口目录；Schema 只用于服务端校验。
 - `npm run contracts:check` 检查手写 TS 类型及类型测试，不保证 Go / TS 自动一致；接口改动需对照两端审查。
 - 运行时仍校验输入和输出；TypeScript 不能表达的格式、长度等约束以 Schema 为准。
-- appserver 不 import products、kernel 提供者、旧 Web 或具体 Client；产品插件负责绑定业务处理函数。
+- appserver 直接 import Product 和所需公共服务；Product、kernel 和业务插件不得 import appserver。入口从 Host 取出依赖，调用 `server.BindHarness(product, events)`；appserver 不登记进 Host，不读取 Host，也不依赖旧 Web 或具体 Client。
 - 不自动暴露 Host 方法；只有显式登记的对外方法可调用。
 - `sourcegraph/jsonrpc2` 负责 JSON-RPC 封套、请求 ID、响应与通知；appserver 只保留类型化方法登记、校验和产品调用，不在库外重写一套协议兼容层。
 - appserver 只有一个入口 `Server`，方法表、WebSocket 监听和关闭生命周期不再拆成两个 Server。每个 Client 对应一个 `Connection`；它是 IM 网关式的基础设施对象，只保存初始化、RPC 连接、订阅、发送保护和断线清理等瞬时连接状态，绝不保存 Session、Run、设置或任何产品业务状态，也不决定 Start / Steer / Stop 等业务行为。
@@ -110,15 +111,15 @@ Client 调用 create(params)
 
 `products/harness` 是 Harness 后台产品，拥有创建会话、发送、Steer、停止、分叉、快照和产品命令等业务编排。原 `kernel/chat` 已迁移，不保留 ChatService 兼容层。
 
-模型、Agent 设置、Skill、命令目录和事件等公共能力由对应服务直接提供对外处理函数，不经 HarnessProduct 做无意义转发。
+模型、Agent 设置、Skill、命令目录和事件等公共能力由 appserver 直接调用对应服务，不经 HarnessProduct 做无意义转发。
 
 新增产品时：
 
 - 业务放自己的 Product。
 - 产品状态由产品自己的 Store 管理。
 - 共用 Runner、Session、LLM、Tools 等公共服务。
-- 对外方法由产品插件登记到 app-server。
-- 不修改 app-server 的产品分支，不建立产品自己的小 Host。
+- 对外方法在 appserver 内登记，具名处理方法直接调用 Product。
+- 接入新产品时在 appserver 增加对应接口文件；不建立产品自己的小 Host，不要求通用插件自动接入。
 - 不把页面组件或 HTML 当作后台插件契约。
 
 狼人杀、多机器人、电影只是检验边界的例子，未明确要求前不实现。
@@ -182,7 +183,7 @@ cmd/harness/          进程组装、配置、启动与关闭
 clients/contracts/    手写 TypeScript 契约
 clients/test/         无界面的网络验收 Client，不是正式 SDK
 appserver/            方法契约、登记、校验、协议与连接
-products/harness/     Harness 后台业务与对外方法绑定
+products/harness/     Harness 后台业务
 kernel/               公共执行、数据与登记处
 plugins/kernel/       内核服务提供者、登记处填充者
 clients/web/          React + TypeScript + Vite（迁移时建立）
@@ -194,9 +195,10 @@ clients/web/          React + TypeScript + Vite（迁移时建立）
 
 ```text
 cmd       → appserver / products / kernel / plugins / clients 的静态资源
-products  → appserver / kernel
+products  → kernel
 plugins   → 自己填充的定义者
-appserver 不得 import products / kernel / plugins / Client
+appserver → products / kernel 公共服务
+appserver 不得 import plugins / Client；不得读取 Host
 kernel    不得 import appserver / products / plugins / Client
 Client    只依赖手写 TS 契约和自身 UI；不读取 Go Host
 定义者    不得 import 填充者
@@ -244,7 +246,7 @@ Client    只依赖手写 TS 契约和自身 UI；不读取 Go Host
 - 同一角色保持命名一致，关键对象使用能认出职责的名字；展开挤成一行的方法，避免难区分的缩写。注释解释阶段、原因和边界，不逐行翻译代码或堆砌术语。
 - 业务错误在产品层明确分类，对外错误翻译集中在接口边界；避免为映射错误重复执行业务校验。协程的启动、取消和等待应能在同一处看清，读写方法专注各自工作；不以吞错、隐藏状态或省略等待来减少视觉噪音。
 - 每包一个主要公开构造入口；构造函数只校验依赖和组装。
-- 接口处理优先使用结构体保存依赖、具名方法承载行为，不用捕获依赖的闭包或匿名 Handler；登记名单留在产品，不下放到 main。
+- 接口处理优先使用结构体保存依赖、具名方法承载行为，不用捕获依赖的闭包或匿名 Handler；登记名单留在 appserver 的对应产品接口文件，main 只传入依赖并启动。
 - Go 的关键能力结构体是理解代码的重要入口。字段应按适合该结构体的顺序排列，并按职责用空行和中文组注释分隔，优先让人一眼看懂它的组成；不强套统一的排序模板。
 - 泛型只用于必要的公共类型转换，类型参数写成 `Input / Output`。一次调用的校验、解码、业务调用、编码与输出校验顺序写在同一方法，不拆成绕行的小助手。
 - 搜索优先 `rg` / `rg --files`。

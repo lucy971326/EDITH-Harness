@@ -2,5 +2,7 @@
   "files.exclude": {
     "**/*_test.go": true,
     "**/*.test.ts": true
-  }
+  },
+  "betterFolding.showFoldedBodyLinesCount":false,
+  "betterFolding.showFunctionParameters":true,
 }

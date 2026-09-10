@@ -3,6 +3,8 @@ package harness
 import "errors"
 
 var (
+	// ErrInvalidMessage 标记空消息或不可用的消息内容。
+	ErrInvalidMessage = errors.New("harness product: invalid message")
 	// ErrSessionNotFound 区分普通会话不存在与底层文件读取失败。
 	ErrSessionNotFound = errors.New("harness product: session not found")
 	// ErrWorkspace 标记创建输入中的工作区不可用。

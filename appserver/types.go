@@ -1,4 +1,4 @@
-// Package appserver 提供方法登记、JSON-RPC 分发和本机 WebSocket 接入，不依赖具体产品。
+// Package appserver 提供方法登记、JSON-RPC 分发和本机 WebSocket 接入，直接调用产品与公共服务。
 package appserver
 
 // 协议初始化与对外错误。

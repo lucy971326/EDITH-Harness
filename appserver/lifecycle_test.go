@@ -10,20 +10,18 @@ import (
 	"harness/kernel/host"
 )
 
-// 活对象。验证 Host 生命周期与直接登记的 app-server 不混为一谈。
+// 测试插件只参与 Host 生命周期，不持有 app-server。
 type methodPlugin struct {
-	server *appserver.Server
+	fail   bool
 	closes int
 }
 
 func (*methodPlugin) Name() string { return "test-product" }
-func (p *methodPlugin) Start(h *host.Host) error {
-	var err error
-	p.server, err = host.Resolve[*appserver.Server](h, "appServer")
-	if err != nil {
-		return err
+func (p *methodPlugin) Start(_ *host.Host) error {
+	if p.fail {
+		return errors.New("product assembly failed")
 	}
-	return appserver.Register(p.server, "product/get", func(context.Context, struct{}) (struct{}, error) { return struct{}{}, nil })
+	return nil
 }
 func (p *methodPlugin) Close() error { p.closes++; return nil }
 
@@ -31,7 +29,7 @@ func TestEntryOwnsServerAndHostOwnsPlugins(t *testing.T) {
 	h := host.NewHost()
 	s := appserver.New()
 	defer s.Close()
-	err := h.RegisterService("appServer", s)
+	err := appserver.Register(s, "product/get", emptyResult)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,9 +38,6 @@ func TestEntryOwnsServerAndHostOwnsPlugins(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.server != s {
-		t.Fatal("plugin did not receive entry-owned instance")
-	}
 	err = h.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -50,10 +45,10 @@ func TestEntryOwnsServerAndHostOwnsPlugins(t *testing.T) {
 	if p.closes != 1 {
 		t.Fatalf("plugin closed %d times", p.closes)
 	}
-	// 直接创建的 app-server 没有被 Host 当作插件关闭；入口必须自己关。
+	// 直接创建的 app-server 不在 Host 内；入口必须自己关。
 	_, err = s.Call(context.Background(), "product/get", json.RawMessage(`{}`))
 	if err != nil {
-		t.Fatal("Host unexpectedly closed directly registered server", err)
+		t.Fatal("Host unexpectedly closed entry-owned server", err)
 	}
 	err = s.Close()
 	if err != nil {
@@ -72,19 +67,19 @@ func TestFailedProductAssemblyCleanupClosesCalls(t *testing.T) {
 	h := host.NewHost()
 	s := appserver.New()
 	defer s.Close()
-	err := h.RegisterService("appServer", s)
+	err := appserver.Register(s, "product/get", emptyResult)
 	if err != nil {
 		t.Fatal(err)
 	}
-	first, failing := &methodPlugin{}, &methodPlugin{}
+	first, failing := &methodPlugin{}, &methodPlugin{fail: true}
 	err = h.Install(first)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 重复接口导致第二个产品安装失败，Host 回滚两个插件。
+	// 依赖组装错误导致第二个产品安装失败，Host 回滚两个插件。
 	err = h.Install(failing)
 	if err == nil {
-		t.Fatal("duplicate method installation succeeded")
+		t.Fatal("failed product installation succeeded")
 	}
 	if first.closes != 1 || failing.closes != 1 {
 		t.Fatal("failed installation was not cleaned up")
@@ -100,3 +95,5 @@ func TestFailedProductAssemblyCleanupClosesCalls(t *testing.T) {
 		t.Fatal("closed server accepted a call", err)
 	}
 }
+
+func emptyResult(context.Context, struct{}) (struct{}, error) { return struct{}{}, nil }

@@ -1,28 +1,25 @@
-package harness
+package harness_test
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
-	"os"
+	"harness/products/harness"
 	"reflect"
 	"sync"
 	"testing"
 	"time"
 
 	"harness/appserver"
-	"harness/kernel/host"
+	"harness/kernel/session"
 )
 
 func TestSessionMethodsUseRealProduct(t *testing.T) {
 	fixture := newTestFixture(t)
 	defer fixture.host.Close()
-	server, err := host.Resolve[*appserver.Server](fixture.host, "appServer")
-	if err != nil {
-		t.Fatal(err)
-	}
+	server := newRPCServer(t, fixture)
 	defer server.Close()
-	raw, err := server.Call(context.Background(), listMethod, json.RawMessage(`{}`))
+	raw, err := server.Call(context.Background(), "harness/session/list", json.RawMessage(`{}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,23 +28,23 @@ func TestSessionMethodsUseRealProduct(t *testing.T) {
 	}
 
 	workspace := t.TempDir()
-	params, err := json.Marshal(CreateParams{Workspace: workspace})
+	params, err := json.Marshal(appserver.CreateParams{Workspace: workspace})
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 并发接口调用仍经同一个 Product 的空会话复用锁。
+	// 并发接口调用仍经同一个 harness.Product 的空会话复用锁。
 	var wg sync.WaitGroup
 	ids := make(chan string, 8)
 	for range 8 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			raw, err := server.Call(context.Background(), createMethod, params)
+			raw, err := server.Call(context.Background(), "harness/session/create", params)
 			if err != nil {
 				t.Error(err)
 				return
 			}
-			var result SessionResult
+			var result appserver.SessionResult
 			err = json.Unmarshal(raw, &result)
 			if err != nil {
 				t.Error(err)
@@ -68,15 +65,15 @@ func TestSessionMethodsUseRealProduct(t *testing.T) {
 	if id == "" {
 		t.Fatal("no session returned")
 	}
-	params, err = json.Marshal(SessionIDParams{SessionID: id})
+	params, err = json.Marshal(appserver.SessionIDParams{SessionID: id})
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, err = server.Call(context.Background(), getMethod, params)
+	raw, err = server.Call(context.Background(), "harness/session/get", params)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var result SessionResult
+	var result appserver.SessionResult
 	err = json.Unmarshal(raw, &result)
 	if err != nil {
 		t.Fatal(err)
@@ -85,7 +82,7 @@ func TestSessionMethodsUseRealProduct(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(result.Session, sessionView(actual)) {
+	if !reflect.DeepEqual(result.Session, appserver.SessionView{SessionID: actual.Meta.ID, Title: actual.Meta.Title, CreatedAt: actual.Meta.CreatedAt, Settings: actual.Settings}) {
 		t.Fatalf("wire session = %+v, product = %+v", result, actual)
 	}
 	var envelope struct {
@@ -105,26 +102,17 @@ func TestSessionMethodsUseRealProduct(t *testing.T) {
 		name, params string
 		code         appserver.ErrorCode
 	}{
-		{getMethod, `{"sessionID":"missing"}`, appserver.CodeNotFound},
-		{getMethod, `{"sessionID":""}`, appserver.CodeInvalidParams},
-		{createMethod, `{"workspace":"relative"}`, appserver.CodeInvalidParams},
-		{listMethod, `{"filter":"all"}`, appserver.CodeInvalidParams},
+		{"harness/session/get", `{"sessionID":"missing"}`, appserver.CodeNotFound},
+		{"harness/session/get", `{"sessionID":""}`, appserver.CodeInvalidParams},
+		{"harness/session/create", `{"workspace":"relative"}`, appserver.CodeInvalidParams},
+		{"harness/session/list", `{"filter":"all"}`, appserver.CodeInvalidParams},
 		{"harness/session/start", `{}`, appserver.CodeUnknownMethod},
-		{sendMethod, `{"sessionID":"missing","text":"  "}`, appserver.CodeNotFound},
-		{sendMethod, `{"sessionID":"` + id + `","text":"  "}`, appserver.CodeInvalidParams},
+		{"harness/session/send", `{"sessionID":"missing","text":"  "}`, appserver.CodeNotFound},
+		{"harness/session/send", `{"sessionID":"` + id + `","text":"  "}`, appserver.CodeInvalidParams},
 	} {
 		_, err = server.Call(context.Background(), test.name, json.RawMessage(test.params))
 		assertMethodError(t, err, test.code)
 	}
-}
-
-func TestMethodErrorsDoNotConfuseMissingFilesWithMissingSession(t *testing.T) {
-	if mapped := methodError(os.ErrNotExist); mapped != os.ErrNotExist {
-		t.Fatal("storage failure was reclassified as missing session")
-	}
-	assertMethodError(t, methodError(ErrSessionNotFound), appserver.CodeNotFound)
-	assertMethodError(t, methodError(ErrWorkspace), appserver.CodeInvalidParams)
-	assertMethodError(t, methodError(ErrInvalidRunSettings), appserver.CodeInvalidParams)
 }
 
 func TestSendRejectsInvalidSettingsWithoutStartingOrSaving(t *testing.T) {
@@ -138,15 +126,17 @@ func TestSendRejectsInvalidSettingsWithoutStartingOrSaving(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, input := range []SendParams{
+	for _, input := range []appserver.SendParams{
 		{SessionID: created.Meta.ID, Text: "hello"},
 		{SessionID: created.Meta.ID, Text: "hello", Model: "missing", ReasoningEffort: "high"},
 		{SessionID: created.Meta.ID, Text: "hello", Model: "deepseek/deepseek-v4-flash", ReasoningEffort: "missing"},
 		{SessionID: created.Meta.ID, Text: "hello", Model: "deepseek/deepseek-v4-flash", ReasoningEffort: "high", AgentID: "missing"},
 	} {
-		_, err = fixture.service.send(t.Context(), input)
-		assertMethodError(t, err, appserver.CodeInvalidParams)
-		if !errors.Is(err, ErrInvalidRunSettings) {
+		_, err = fixture.service.Send(t.Context(), harness.RunInput{
+			SessionID: input.SessionID, AgentID: input.AgentID, Model: input.Model, ReasoningEffort: input.ReasoningEffort,
+			Message: session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: input.Text}}},
+		})
+		if !errors.Is(err, harness.ErrInvalidRunSettings) {
 			t.Fatalf("settings error classification lost: %v", err)
 		}
 	}
@@ -169,13 +159,10 @@ func TestSendRejectsInvalidSettingsWithoutStartingOrSaving(t *testing.T) {
 func TestProductInstallFailureCleanupClosesCalls(t *testing.T) {
 	fixture := newTestFixture(t)
 	defer fixture.host.Close()
-	server, err := host.Resolve[*appserver.Server](fixture.host, "appServer")
-	if err != nil {
-		t.Fatal(err)
-	}
+	server := newRPCServer(t, fixture)
 	defer server.Close()
 	// 真实产品重复安装失败后，由入口关闭 app-server。
-	err = fixture.host.Install(NewPlugin())
+	err := fixture.host.Install(harness.NewPlugin())
 	if err == nil {
 		t.Fatal("duplicate product installed")
 	}
@@ -183,7 +170,7 @@ func TestProductInstallFailureCleanupClosesCalls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = server.Call(context.Background(), listMethod, json.RawMessage(`{}`))
+	_, err = server.Call(context.Background(), "harness/session/list", json.RawMessage(`{}`))
 	assertMethodError(t, err, appserver.CodeConflict)
 }
 
@@ -193,4 +180,15 @@ func assertMethodError(t *testing.T, err error, code appserver.ErrorCode) {
 	if !errors.As(err, &public) || public.Code != code {
 		t.Fatalf("error=%v, want %s", err, code)
 	}
+}
+
+func newRPCServer(t *testing.T, fixture testFixture) *appserver.Server {
+	t.Helper()
+	server := appserver.New()
+	t.Cleanup(func() { _ = server.Close() })
+	err := server.BindHarness(fixture.service, fixture.events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return server
 }

@@ -22,6 +22,7 @@ playground/
 .vscode/
 .claude/
 .codex/
+.zed/
 # 只提交项目共享 Skills，其他本地 Agent 文件继续忽略。
 .agents/*
 !.agents/skills/

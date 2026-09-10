@@ -80,10 +80,6 @@ func run(configPath string) (result error) {
 		// 入口先关闭 Client 接入与调用，再拆产品和执行服务。
 		result = errors.Join(result, server.Close(), h.Close())
 	}()
-	err = h.RegisterService("appServer", server)
-	if err != nil {
-		return err
-	}
 	err = h.Install(&persist.Plugin{Dir: dataDir})
 	if err != nil {
 		return err
@@ -218,6 +214,18 @@ func run(configPath string) (result error) {
 		return err
 	}
 
+	product, err := host.Resolve[*harnessproduct.Product](h, "harnessProduct")
+	if err != nil {
+		return err
+	}
+	registry, err := host.Resolve[*events.Registry](h, "events")
+	if err != nil {
+		return err
+	}
+	err = server.BindHarness(product, registry)
+	if err != nil {
+		return err
+	}
 	rpcURL, err := server.Listen("127.0.0.1:8889")
 	if err != nil {
 		return err

@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"harness/appserver"
 	"harness/kernel/agents"
 	"harness/kernel/commands"
 	"harness/kernel/events"
@@ -148,12 +147,6 @@ func TestRealReactWaitReceivesCompletionOrUserInput(t *testing.T) {
 				t.Fatal(err)
 			}
 			h := host.NewHost()
-			appServer := appserver.New()
-			registerErr := h.RegisterService("appServer", appServer)
-			if registerErr != nil {
-				t.Fatal(registerErr)
-			}
-			t.Cleanup(func() { _ = appServer.Close() })
 			defer func() {
 				err := h.Close()
 				if err != nil {

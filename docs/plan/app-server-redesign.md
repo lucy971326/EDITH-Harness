@@ -52,7 +52,7 @@ Go 数据类型 + 类型化方法声明     手写 TS 契约
 
 - Go 与 TS 分别手工维护同一套接口约定；TS 放 `clients/contracts/`，修改时同步两端，不保留自动生成链。
 - 只有显式登记的方法对外可用，不自动暴露内部服务方法。
-- 登记时绑定类型化 handler 并编译 Schema；入口完成组装后启动监听。
+- appserver 内登记类型化 handler 并编译 Schema，直接调用 Product / 公共服务；入口传入依赖并在组装成功后启动监听。Host、Product 和业务插件不依赖 appserver。
 - 运行时验证输入和输出；TS 类型不替代业务校验。
 - Client 按手写契约调用已适配的功能；未知可选通知允许忽略。
 

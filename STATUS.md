@@ -26,7 +26,7 @@ App-server 第一、二步已经完成：`products/harness` 接替原 `kernel/ch
 
 - 整体迁移 `kernel/chat` 到 `products/harness`，Host 键为 `harnessProduct`；不留旧包或兼容包装。发送、Steer、父子停止、快照、分叉与命令业务仍用原内核执行和存储。
 - 模型、Agent 设置、Skill、命令名单与事件订阅的纯转发已移除，调用方直接使用所属公共服务；Agent 设置页测试不再安装 HarnessProduct / Runner。
-- 入口直接创建并登记 `appServer`，产品插件绑定接口，全部安装成功后才启动网络监听。入口关闭 app-server 准入并等待在途调用，再关闭 Host；失败清理不把直接登记的服务误当成插件。
+- 入口在 Host 外创建 appserver，产品插件只安装 Product；入口传入 Product 和事件来源，由 appserver 登记接口，全部组装成功后才启动网络监听。入口关闭 app-server 准入并等待在途调用，再关闭 Host；失败清理不把直接登记的服务误当成插件。
 - 已开放 `harness/session/create`、`harness/session/list`、`harness/session/get` 三个进程内接口。保留并发空会话复用与子会话隔离，空列表返回 `[]`；字段、时间与输入输出均通过 Schema 校验，错误有稳定分类。
 - Go 类型和方法名提供类型化登记与 Schema 校验；TS 契约在 `clients/contracts/harness.ts` 手工维护，会话接口共用结果与设置类型。`npm run contracts:check` 只检查 TS 类型与类型测试，不再做自动生成或两端一致性检查。
 - 第一批验收时，全量 Go 测试、vet、相关包三轮 race 与契约检查通过；保留真实 ReAct / Runner / 工具链的本地模拟模型父子停止回归。该批不调用外部模型，不改 Runner 执行、界面或用户数据；后续网络接入见第二步。
@@ -40,13 +40,13 @@ App-server 第一、二步已经完成：`products/harness` 接替原 `kernel/ch
 
 ### App-server 第二步：最小网络闭环
 
-- appserver 只保留一个 `Server`，同时拥有私有方法表、WebSocket 监听和关闭生命周期；原 `RPCServer + WebSocketServer` 两层及只有 Name 的泛型 Method 工厂已经删除。产品在 `methods.go` 用方法名直接绑定具名 handler。
+- appserver 只保留一个 `Server`，同时拥有私有方法表、WebSocket 监听和关闭生命周期；原 `RPCServer + WebSocketServer` 两层及只有 Name 的泛型 Method 工厂已经删除。appserver 在 `harness.go` 用方法名直接绑定自己的具名 handler，再直接调用 Product。
 - 使用 `github.com/coder/websocket v1.8.14` 接入网络，`github.com/sourcegraph/jsonrpc2 v0.2.3` 负责封套、请求 ID、响应和通知；删除手写 `protocol.go`、Batch 与畸形封套兼容测试，不在库外重造协议。正式 Client 使用合法的单请求、响应和通知。
 - 每个 Client 只有一个基础设施 `Connection`，保存初始化、JSON-RPC 连接、订阅、一个有界事件通知队列和断线清理，不保存业务状态或决定业务流程。协议库持续读取以发现断线，请求仍按连接顺序执行；慢 Client 超限断开，不阻塞 Runner。
 - 入口完成插件安装和方法登记后监听 `ws://127.0.0.1:8889/rpc`；本机模式不增加临时鉴权。初始化版本为 1，默认拒绝跨 Origin 握手，10 秒内未完成初始化则断开。正常关闭顺序为 appserver Server → Host。
 - 协议内建 `initialize`、`server/unsubscribe`；产品新增 `harness/session/send / snapshot / subscribe / stop`，沿用原有 create / list / get。发送暂时只接文字，闲时 Start、忙时 Steer；已接受 Run 不继承连接取消，不自动重试。
 - 移除接口目录 `Catalog / server/catalog`、`Definition`、运行时方法说明与原始 Schema 副本；初始化只返回协议版本，登记表直接保存处理函数。方法说明改为源码注释，产品登记名单合并为一处；解除订阅统一由 Subscription.Close 清理。
-- 发送方法和忙闲协调锁直接归 Product，不增加公开 Send API、适配层或错误类型。旧 Web、手写 TS 契约和测试 Client 的调用形状保持原样。
+- `Product.Send(ctx, RunInput)` 与忙闲协调锁直接归 Product；网络输入输出类型、请求处理、错误映射和事件监听已移到 appserver，删除产品中的 methods.go / handlers.go / run_handlers.go 和 runHandlers 包装。Product 与业务插件不再导入 appserver，Host 不再保存 appServer。旧 Web、手写 TS 契约和测试 Client 的调用形状保持原样。
 - 保留断线取消等待中 handler、订阅响应先于通知、极快完成、慢 Client、重复关闭和错误映射回归；断线只清理连接与监听，不停止已接受的 Run。
 - 订阅先安装监听再取 Snapshot，响应先入队、随后释放缓冲的 `harness/run/event` 通知。账本重叠按 Entry.ID 去重；解除订阅与断线不停止运行。
 - 失败测试复现并修复结束通知已经发布、Snapshot 却短暂把该 Run 显示为活跃的窗口：结束标记在通知前可见，live 仍占用到完整收尾；准备期尚未落账的运行不冒充可恢复快照。

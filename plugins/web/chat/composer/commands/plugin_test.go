@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"harness/appserver"
 	"harness/kernel/agents"
 	kerncommands "harness/kernel/commands"
 	"harness/kernel/events"
@@ -99,12 +98,6 @@ func installChatWithCommands(t *testing.T) (*host.Host, string) {
 	t.Setenv("HOME", home)
 
 	h := host.NewHost()
-	server := appserver.New()
-	registerErr := h.RegisterService("appServer", server)
-	if registerErr != nil {
-		t.Fatal(registerErr)
-	}
-	t.Cleanup(func() { _ = server.Close() })
 	for _, plugin := range []host.Plugin{
 		&persist.Plugin{Dir: t.TempDir()},
 		&session.Plugin{},

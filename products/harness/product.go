@@ -62,6 +62,34 @@ func New(sessions *session.Store, settingsStore settings.SessionSettingsStore, a
 	return &Product{sessions: sessions, settings: settingsStore, agents: agentService, models: modelClient, runner: runService, commands: commandService, subagents: subagentService}, nil
 }
 
+// Send 闲时启动、忙时插话；已接受的运行由 Runner 管理生命周期。
+func (p *Product) Send(ctx context.Context, input RunInput) (string, error) {
+	p.sendMu.Lock()
+	defer p.sendMu.Unlock()
+	err := ctx.Err()
+	if err != nil {
+		return "", err
+	}
+	_, err = p.Session(input.SessionID)
+	if err != nil {
+		return "", err
+	}
+	err = checkMessage(input.Message)
+	if err != nil {
+		return "", fmt.Errorf("%w: %w", ErrInvalidMessage, err)
+	}
+	if _, running := p.runner.State(input.SessionID); running {
+		err = p.Steer(input.SessionID, input.Message)
+		return "steered", err
+	}
+	// 接受之后由 Runner 的 Stop / Close 管生命周期，不继承连接取消。
+	err = p.Start(context.Background(), input)
+	if err != nil {
+		return "", err
+	}
+	return "started", nil
+}
+
 // Create 创建或复用指定工作区中的空会话。
 func (s *Product) Create(workspace string) (SessionInfo, error) {
 	err := checkWorkspace(workspace)

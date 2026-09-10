@@ -13,7 +13,7 @@
 | app-server | JSON-RPC、连接、初始化、校验、分发、订阅、反向请求与断线清理 | 不决定聊天业务，不直接暴露 Host |
 | HarnessProduct | 会话、发送、Steer、停止、分叉等 Harness 业务编排 | 不管理 WebSocket，不返回界面组件，不重复 Runner |
 | 公共服务 | Runner、Session、Agents、模型、Skills、Tools 等各自职责 | 不依赖具体 Client，不强制经过 HarnessProduct |
-| 产品插件 | 解析依赖并把方法绑定到 app-server | 不把业务实现堆进 `plugin.go` |
+| 产品插件 | 解析内核依赖并安装 Product | 不依赖 appserver，不把业务实现堆进 `plugin.go` |
 | Client | React 界面、类型化调用、Snapshot/事件投影与重连 | 不成为后台业务事实来源 |
 
 ```text
@@ -24,7 +24,7 @@ app-server
   └─ 公共方法    → Agents / Models / Skills / Commands / ...
 ```
 
-app-server 到处理函数始终是进程内 Go 调用，不是第二次网络请求。
+app-server 的具名处理方法直接调用 Product 或公共服务。入口传入依赖；Host 不保存 appserver，后续接口也按这一边界接入。
 
 ## 第三步：完整后台 API 与多 Client
 
