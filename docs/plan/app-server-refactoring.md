@@ -1,10 +1,10 @@
 # App-server 迁移实施计划
 
-更新于 2026-09-08。方向依据：[App-server 与多 Client 方向](app-server-redesign.md)。本篇只记录尚未完成的实施顺序；完成事实见 `STATUS.md`。
+更新于 2026-09-10。方向依据：[App-server 与多 Client 方向](app-server-redesign.md)。本篇只记录尚未完成的实施顺序；完成事实见 `STATUS.md`。
 
 ## 当前基线
 
-第一、二步的完成事实与验证入口见 `STATUS.md`；本篇从第三步继续。旧 Web 只用于过渡，不作为新 Client 的目录模板。
+第一、二步的完成事实与验证入口见 `STATUS.md`；先完成下面的第二步收口，再进入第三步。旧 Web 只用于过渡，不作为新 Client 的目录模板。
 
 ## 职责
 
@@ -26,9 +26,21 @@ app-server
 
 app-server 到处理函数始终是进程内 Go 调用，不是第二次网络请求。
 
+## 第二步收口：用协议库替换手写 JSON-RPC
+
+这是下一次代码工作，先做完再扩充后台 API：
+
+- 使用 `github.com/sourcegraph/jsonrpc2` 接管封套、请求 ID、响应和通知；继续使用 `github.com/coder/websocket`，不采用库内基于 Gorilla 的 WebSocket 子包。
+- 删除手写 `protocol.go` 及 Batch、畸形封套等无正式 Client 消费者的兼容测试；正式 Client 只承诺合法的单请求、响应和通知，协议边角采用库行为。
+- 将现有 `RPCServer` 收口为类型化 `MethodRegistry`，继续保留登记时 Schema 编译、运行时输入输出校验和稳定业务错误映射。
+- `Connection` 只保存初始化、RPC 连接、订阅、一个有界通知通道和断线清理。它不得保存产品状态或执行业务判断；Start / Steer / Stop 等规则只能由 Product 或对应公共服务决定。
+- 保留订阅先监听再取 Snapshot、响应先于通知、慢 Client 不阻塞 Runner，以及断线清理监听但不停止已接受 Run。
+
+完成标准：真实网络验收、断线、重连、订阅顺序、慢连接、关闭和 race 检查通过；appserver 生产代码与状态数量必须净减少，不以新的适配层补回被删除的自制协议。
+
 ## 第三步：完整后台 API 与多 Client
 
-这是下一步。复用最小网络闭环，不重写接入层。
+完成第二步收口后，复用新的最小网络闭环。
 
 补齐 React 迁移需要的正式接口：
 
