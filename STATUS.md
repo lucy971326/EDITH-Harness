@@ -1,6 +1,6 @@
 # 项目状态
 
-更新日期：2026-09-10
+更新日期：2026-09-11
 
 ## 现在是什么
 
@@ -21,6 +21,15 @@ App-server 第一、二步已经完成：`products/harness` 接替原 `kernel/ch
 运行 `go run ./cmd/harness` 会读取 `harness.yaml`，组装完整服务链，并在 `http://127.0.0.1:8888` 打开 Chat。
 
 ## 已完成
+
+### React Web 交互原型（非正式 Client）
+
+- 用户已确认本版原型为正式迁移的 UI 基准；统一字号为 12 / 13 / 14 / 18 / 24 的 rem 等效值。确认不代表真实后台功能已接入。
+- 迁移文档已收口为产品定义、七步计划与当前任务入口；当前任务尚未派发。旧方向与旧施工计划已合并，未确认的桌面、多 Client 与反向请求范围仍保留在新计划中。
+- 辅助工作区已独立于聊天页：空态选择文件/浏览器/终端，支持创建、切换、关闭标签和“＋”菜单；收起再打开保留本次页面标签，标签内容仍为未接入提示。
+- `prototypes/web` 提供独立 React + Vite 原型，实际使用 shadcn Registry 组件、Stone 亮暗语义 Token、Tailwind、Lucide 和系统字体；不修改原有 Go 服务或接入真实模型。
+- 可体验项目/会话、草稿、发送与直接 Steer、停止、三级工作过程展开、正常完成收起、模型与思考合并菜单、图片附件、回答分叉、外观与 Agent 设置，以及空白辅助区的展开和调宽。命令/技能只插入示例文本。
+- 示例状态覆盖空会话、运行、完成、失败、停止、断线重连。浏览器实测了草稿保留、Steer/停止、完成折叠、模型图片限制、Agent 保存、附件/分叉/项目创建与宽窄屏辅助区；类型检查与静态构建通过。原型不等于正式 React 迁移完成，目录选择、工具输出和回答均为模拟。
 
 ### App-server 第一批：产品迁移与类型化契约
 
@@ -255,14 +264,7 @@ npm run rpc:test
 
 ## 下一步
 
-```text
-第三步：完整 Harness / 公共服务接口、反向请求、业务防重与多 Client
-第四步：React + TypeScript + Vite Client
-第五步：Wails 与唯一后台启动/发现
-第六步：删除旧 surface/web、plugins/web、Templ、HTMX、POST 与 SSE
-```
-
-方向见 `docs/plan/app-server-redesign.md`，实施顺序见 `docs/plan/app-server-refactoring.md`。UI 规范见 `WEB_UI.md`；已完成事实只写本文件，稳定产品形状写入 `docs/设计书.md`。
+实施顺序与范围见 `docs/plan/Web迁移计划.md`，每步派发与审核见 `docs/plan/当前任务.md`；不在本文件重复维护步骤。UI 基准见 `docs/plan/ProductDefine.md` 和 `WEB_UI.md`，稳定架构见 `docs/设计书.md`。
 
 ## 运行前提
 

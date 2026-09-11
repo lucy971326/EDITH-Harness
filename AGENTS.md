@@ -6,12 +6,15 @@
 - `docs/设计书.md`：目标产品形状与稳定架构决策。
 - `DATA_MODEL.md`：数据归属、持久化与运行时状态。
 - `WEB_UI.md`：React Client 的界面、状态与通信边界。
-- `docs/plan/app-server-redesign.md`：尚未完成的总体迁移方向。
-- `docs/plan/app-server-refactoring.md`：当前实施顺序与验收。
+- `docs/plan/ProductDefine.md`：已拍板原型与待迁移交互。
+- `docs/plan/Web迁移计划.md`：分步顺序、唯一功能验收清单及待确认后续范围。
+- `docs/plan/当前任务.md`：Codex 派发、Grok 回报与 Codex 审核；只执行当前已派发步骤。
 
 `docs/codex-docs/` 与 `docs/reference/` 只是外部项目对照，不是 Harness 规范。优先读本项目文档，不先翻 DSH / pi 源码。
 
 文档纪律：完成事实只写 `STATUS.md`；稳定结论写设计书；`docs/plan/` 只保留仍在执行的方向和计划，完成后删除或收口。不要维护第二份功能清单。
+
+本轮迁移允许中途完整入口不可运行，不为维持旧页面增加兼容层；交付必须说明不可用入口与恢复步骤。每步由 Codex 审核后再派下一步，不能一次执行全部迁移。
 
 ---
 

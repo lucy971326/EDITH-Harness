@@ -31,3 +31,6 @@ playground/
 reference.zip
 .codegraph/
 learn/
+# 保存已拍板的 Web 原型源码，其他实验原型仍忽略。
+prototypes/*
+!prototypes/web/
