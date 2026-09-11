@@ -6,7 +6,7 @@
 
 Harness 的内核、聊天业务和旧 Web 已经能完整运行。旧 `surface/web` / `plugins/web` 使用 Templ、HTMX、POST 与 SSE；它是迁移期现状，不是目标前端架构。
 
-App-server 第一、二步已经完成：`products/harness` 接替原 `kernel/chat`，类型化接口接受 Schema 校验，Go / TS 分别手工维护；本机 WebSocket / JSON-RPC 2.0 已接通真实产品与 Runner，具备初始化、会话操作和运行订阅。当前尚未实现反向请求、完整公共服务 API、业务防重和 React Client。
+App-server 第一、二步已经完成：`products/harness` 接替原 `kernel/chat`，类型化接口接受 Schema 校验，Go / TS 分别手工维护；本机 WebSocket / JSON-RPC 2.0 已接通真实产品与 Runner，具备初始化、会话操作和运行订阅。当前尚未实现反向请求、完整公共服务 API、业务防重；`clients/web` 已有未接后台的 React 空壳，正式启动仍打开旧 Web。
 
 ```text
 当前：浏览器 POST → 旧 Web → HarnessProduct → Runner → ReAct Loop → LLM / Tools
@@ -25,11 +25,18 @@ App-server 第一、二步已经完成：`products/harness` 接替原 `kernel/ch
 ### React Web 交互原型（非正式 Client）
 
 - 用户已确认本版原型为正式迁移的 UI 基准；统一字号为 12 / 13 / 14 / 18 / 24 的 rem 等效值。确认不代表真实后台功能已接入。
-- 迁移文档已收口为产品定义、七步计划与当前任务入口；当前任务尚未派发。旧方向与旧施工计划已合并，未确认的桌面、多 Client 与反向请求范围仍保留在新计划中。
+- 迁移文档已收口为产品定义与七步计划；用户选择亲自转交任务与回报，已删除当前任务文件。旧方向与旧施工计划已合并，未确认的桌面、多 Client 与反向请求范围仍保留在新计划中。
 - 辅助工作区已独立于聊天页：空态选择文件/浏览器/终端，支持创建、切换、关闭标签和“＋”菜单；收起再打开保留本次页面标签，标签内容仍为未接入提示。
 - `prototypes/web` 提供独立 React + Vite 原型，实际使用 shadcn Registry 组件、Stone 亮暗语义 Token、Tailwind、Lucide 和系统字体；不修改原有 Go 服务或接入真实模型。
 - 可体验项目/会话、草稿、发送与直接 Steer、停止、三级工作过程展开、正常完成收起、模型与思考合并菜单、图片附件、回答分叉、外观与 Agent 设置，以及空白辅助区的展开和调宽。命令/技能只插入示例文本。
 - 示例状态覆盖空会话、运行、完成、失败、停止、断线重连。浏览器实测了草稿保留、Steer/停止、完成折叠、模型图片限制、Agent 保存、附件/分叉/项目创建与宽窄屏辅助区；类型检查与静态构建通过。原型不等于正式 React 迁移完成，目录选择、工具输出和回答均为模拟。
+
+### Web 迁移第 1 步：正式前端空壳
+
+- 已从拍板原型建立独立 npm 工程 `clients/web`：React + TypeScript + Vite，沿用 shadcn Registry 组件、Lucide、系统字体和 Stone 亮暗 Token；五档字号仍为 12 / 13 / 14 / 18 / 24 的 rem 等效值。
+- 去掉示例项目、会话、回答、Agent、模型、工具输出，以及模拟运行、停止、重连、伪造用量和“原型演示”入口。未创建 RPC Client，未改 Go 后端、手写契约、测试 Client、旧 Web 或 `prototypes/web`。
+- 项目列表为空态；打开项目、发送、Steer、停止、分叉、Agent 增删改均禁用，就近标明“后台尚未接入”。Agent / 模型／思考显示“未加载”，用量为“—”。输入可编辑，Enter 不发送、不清空。外观设置可用。辅助工作区仍是标签壳，文件／浏览器／终端只提示尚未接入。
+- 验证：在 `clients/web` 执行 `npm ci` 与 `npm run build`（`tsc -b` + Vite 生产构建）通过。浏览器打开 `http://127.0.0.1:5173`，检查了宽屏、窄屏覆盖层、亮暗主题、设置导航、输入框与草稿保留、本地图片预览、辅助区创建／切换／关闭及收起后保留标签；未接入按钮没有造出会话或发出业务请求。字号实测为 12 / 13 / 14 / 24 px。本步未接 WebSocket，也未改根目录构建入口。
 
 ### App-server 第一批：产品迁移与类型化契约
 
@@ -264,12 +271,13 @@ npm run rpc:test
 
 ## 下一步
 
-实施顺序与范围见 `docs/plan/Web迁移计划.md`，每步派发与审核见 `docs/plan/当前任务.md`；不在本文件重复维护步骤。UI 基准见 `docs/plan/ProductDefine.md` 和 `WEB_UI.md`，稳定架构见 `docs/设计书.md`。
+实施顺序与范围见 `docs/plan/Web迁移计划.md`，每步任务与审核通过用户在会话中转交；不在本文件重复维护步骤。UI 基准见 `docs/plan/ProductDefine.md` 和 `WEB_UI.md`，稳定架构见 `docs/设计书.md`。
 
 ## 运行前提
 
 - Go 1.25。
-- 当前旧 Web：修改 `.templ` 后运行 `go tool templ generate`；修改样式后运行 `npm run web:build`，首次需要 `npm install`。React Client 建立后再替换这些命令。
+- 当前旧 Web：修改 `.templ` 后运行 `go tool templ generate`；修改样式后运行 `npm run web:build`，首次需要 `npm install`。
+- React 空壳：`cd clients/web && npm ci && npm run dev`，默认 `http://127.0.0.1:5173`；不替代 `go run ./cmd/harness` 的旧界面。生产构建为 `npm run build`。根目录构建入口尚未改为 embed 这套产物。
 - 数据根目录固定为 `~/.harness`；全局 `config.yaml` 留在根目录，每场会话位于 `sessions/<session-id>/`，其中分别保存账本、元数据与 SessionSettings。项目内旧 `.harness-data/` 和用户目录旧平铺会话文件均不再读取，可由用户自行删除。
 - machine-local 直接操作本机文件和进程，没有沙箱与路径限制。
 - 本机需要 `~/.harness/config.yaml` 配置 LLM Provider：
