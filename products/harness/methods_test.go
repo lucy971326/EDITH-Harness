@@ -106,6 +106,7 @@ func TestSessionMethodsUseRealProduct(t *testing.T) {
 		{"harness/session/get", `{"sessionID":""}`, appserver.CodeInvalidParams},
 		{"harness/session/create", `{"workspace":"relative"}`, appserver.CodeInvalidParams},
 		{"harness/session/list", `{"filter":"all"}`, appserver.CodeInvalidParams},
+		{"workspace/select", `{"extra":true}`, appserver.CodeInvalidParams},
 		{"harness/session/start", `{}`, appserver.CodeUnknownMethod},
 		{"harness/session/send", `{"sessionID":"missing","text":"  "}`, appserver.CodeNotFound},
 		{"harness/session/send", `{"sessionID":"` + id + `","text":"  "}`, appserver.CodeInvalidParams},

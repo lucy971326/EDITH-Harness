@@ -1,4 +1,5 @@
 import type { Methods } from '../clients/contracts/harness';
+import type { ServerMethods } from '../clients/contracts/appserver';
 
 type Create = Methods['harness/session/create'];
 type Get = Methods['harness/session/get'];
@@ -38,3 +39,13 @@ const queued: Send['result'] = { mode: 'queued' };
 // @ts-expect-error 快照里的账本必须是数组。
 const nullEntries: Subscribe['result'] = { subscriptionID: 'sub', snapshot: { entries: null, runs: [] } };
 void [steer, subscribed, imageSend, queued, nullEntries];
+
+type SelectWorkspace = ServerMethods['workspace/select'];
+const picked: SelectWorkspace['result'] = { canceled: false, workspace: '/work' };
+const canceledPick: SelectWorkspace['result'] = { canceled: true, workspace: '' };
+const selectParams: SelectWorkspace['params'] = {};
+// @ts-expect-error 目录选择不接受参数。
+const selectUnknown: SelectWorkspace['params'] = { workspace: '/work' };
+// @ts-expect-error 取消也必须带上空字符串工作区。
+const cancelMissingPath: SelectWorkspace['result'] = { canceled: true };
+void [picked, canceledPick, selectParams, selectUnknown, cancelMissingPath];

@@ -1,4 +1,4 @@
-// 手工维护，与 products/harness/types.go 和 methods.go 同步修改。
+// 手工维护，与 products/harness/types.go 和 appserver/harness_types.go 同步修改。
 // TS 只约束调用方写法；必填、长度和时间格式仍由服务端校验。
 import type { Snapshot } from './run.js';
 

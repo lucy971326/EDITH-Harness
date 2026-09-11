@@ -114,6 +114,10 @@ func TestWebSocketInitializationAndOrigin(t *testing.T) {
 	if err == nil || res == nil || res.StatusCode != http.StatusForbidden {
 		t.Fatal("foreign origin accepted", err)
 	}
+	_, res, err = websocket.Dial(t.Context(), url, &websocket.DialOptions{HTTPHeader: http.Header{"Origin": []string{"http://127.0.0.1:5173"}}})
+	if err == nil || res == nil || res.StatusCode != http.StatusForbidden {
+		t.Fatal("vite origin accepted without proxy rewrite", err)
+	}
 	_, err = New().Listen("0.0.0.0:0")
 	if err == nil {
 		t.Fatal("public listener accepted")

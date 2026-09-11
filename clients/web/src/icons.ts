@@ -31,4 +31,6 @@ export {
   Circle,
   Command,
   BookOpen,
+  WifiOff,
+  RefreshCw,
 } from "lucide-react";

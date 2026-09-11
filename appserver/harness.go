@@ -29,7 +29,11 @@ func (s *Server) BindHarness(product *harness.Product, registry *events.Registry
 	}
 	s.harnessProduct = product
 	s.events = registry
-	err := Register(s, createMethod, s.handleCreate)
+	err := s.registerWorkspaceSelect()
+	if err != nil {
+		return err
+	}
+	err = Register(s, createMethod, s.handleCreate)
 	if err != nil {
 		return err
 	}

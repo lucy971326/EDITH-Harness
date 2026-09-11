@@ -6,7 +6,7 @@
 
 Harness 的内核、聊天业务和旧 Web 已经能完整运行。旧 `surface/web` / `plugins/web` 使用 Templ、HTMX、POST 与 SSE；它是迁移期现状，不是目标前端架构。
 
-App-server 第一、二步已经完成：`products/harness` 接替原 `kernel/chat`，类型化接口接受 Schema 校验，Go / TS 分别手工维护；本机 WebSocket / JSON-RPC 2.0 已接通真实产品与 Runner，具备初始化、会话操作和运行订阅。当前尚未实现反向请求、完整公共服务 API、业务防重；`clients/web` 已有未接后台的 React 空壳，正式启动仍打开旧 Web。
+App-server 第一、二步已经完成：`products/harness` 接替原 `kernel/chat`，类型化接口接受 Schema 校验，Go / TS 分别手工维护；本机 WebSocket / JSON-RPC 2.0 已接通真实产品与 Runner，具备初始化、会话操作和运行订阅。当前尚未实现反向请求、完整公共服务 API、业务防重；`clients/web` 已接通项目与会话，聊天尚未接入。正式启动仍打开旧 Web。
 
 ```text
 当前：浏览器 POST → 旧 Web → HarnessProduct → Runner → ReAct Loop → LLM / Tools
@@ -37,6 +37,18 @@ App-server 第一、二步已经完成：`products/harness` 接替原 `kernel/ch
 - 去掉示例项目、会话、回答、Agent、模型、工具输出，以及模拟运行、停止、重连、伪造用量和“原型演示”入口。未创建 RPC Client，未改 Go 后端、手写契约、测试 Client、旧 Web 或 `prototypes/web`。
 - 项目列表为空态；打开项目、发送、Steer、停止、分叉、Agent 增删改均禁用，就近标明“后台尚未接入”。Agent / 模型／思考显示“未加载”，用量为“—”。输入可编辑，Enter 不发送、不清空。外观设置可用。辅助工作区仍是标签壳，文件／浏览器／终端只提示尚未接入。
 - 验证：在 `clients/web` 执行 `npm ci` 与 `npm run build`（`tsc -b` + Vite 生产构建）通过。浏览器打开 `http://127.0.0.1:5173`，检查了宽屏、窄屏覆盖层、亮暗主题、设置导航、输入框与草稿保留、本地图片预览、辅助区创建／切换／关闭及收起后保留标签；未接入按钮没有造出会话或发出业务请求。字号实测为 12 / 13 / 14 / 24 px。本步未接 WebSocket，也未改根目录构建入口。
+
+### Web 迁移第 2 步：接通真实项目与会话
+
+- `clients/web` 使用浏览器原生 WebSocket 调用手写契约；先 `initialize({protocolVersion: 1})`，成功后才允许 list / create / get / workspace/select。组件调用具名方法，不在 JSX 中拼 JSON。普通请求 10 秒超时；目录选择不套短超时。断线拒绝未完成请求，不自动重发；提供连接状态和手动重连，不做自动重连或运行订阅。
+- 开发页连接同源 `/rpc`，Vite 代理到 `127.0.0.1:8889`。代理先核对原始 Origin 与当前页 Host，通过后才 `changeOrigin` 并改写成后台地址；开发和 preview 共用同一套守卫。后台 Origin 校验保持关闭跨源。生产端点仍由通信入口使用当前页同源 `/rpc`；未改 Go embed 或正式静态入口。
+- 新增 `workspace/select`：输入 `{}`，成功 `{canceled:false, workspace}`，取消 `{canceled:true, workspace:""}`，真实失败为 RPC 错误。实现放在 appserver 私有平台文件，不 import 旧 Web/plugin，不进入 Product 或 kernel。旧选择器暂留。目录选择本身不创建会话；前端再调现有 create，空会话复用仍由 Product 决定。
+- 左栏按 `settings.workspace` 分组、组内 `createdAt` 倒序、可折叠。打开项目：选目录 → create → 刷新列表 → 选中新会话。项目旁「＋」对该 workspace create。首次加载不自动选中。点击会话 get，更新标题和 Agent／模型投影；快速切换时旧 get 不能覆盖新选择。选中后只提示「聊天内容将在下一步接入」，不把已有历史说成空会话。发送、Steer、停止、模型／Agent 修改仍禁用。
+- 草稿和图片预览按会话存在前端内存；未选中时的临时草稿单独保存。切换聊天／设置不丢草稿。重连后会话仍在则重新 get；已不存在则清除选择并提示。查询中断线或超时保留当前会话和草稿，只在明确「会话不存在」时取消选中。
+- 异常 JSON-RPC 响应先校验再结束等待；目录选择无短超时时，格式错误也会拒绝 Promise，不会一直占着按钮。
+- Windows 目录弹窗的取消改用所属 STA 线程的消息定时器调用 `IFileDialog.Close`；移除跨线程 watcher，Show 返回后撤销定时器状态再释放对象。增加已取消 Context 与交互式 Windows 原生取消测试入口；未在 Windows 实机运行原生弹窗测试。
+- 上述修复后，相关 Go 测试／race／vet、契约与 RPC 验收、前端 16 项测试和生产构建重新通过；Windows amd64／arm64 的 appserver 测试程序交叉编译通过，不等于原生测试已运行。Windows 验收命令见 `clients/web/README.md`。
+- 验证：`go test ./appserver ./products/harness`、`go test ./appserver -race`、`go vet ./appserver ./products/harness` 通过。`npm run contracts:check`、`npm run rpc:check`、`npm run rpc:test` 通过。`clients/web` 的 `npm test` 与 `npm run build` 通过。新增回归：代理拒绝 `https://attacker.example` 且不改写 Origin；`shouldClearSessionOnGetError` 只对 not-found 清选择；畸形 error 结束无超时的 `workspace/select`；目录选择 Context 取消返回错误。隔离 `HOME=/tmp/harness-step2-home` 启动后台，不使用 `~/.harness`，不调用外部模型。浏览器经 Vite 代理实测：已连接后列出按工作区分组的真实会话且首次不选中；直接连接 `ws://127.0.0.1:8889/rpc` 被 Origin 拒绝；切换、设置往返、图片附件不串草稿；项目「＋」复用空会话；断线禁用后台操作并保留草稿；手动重连恢复列表与所选会话；所选会话删除后重连会清除选择并提示「所选会话已不存在」，未选中草稿仍在。原生文件夹窗口未做自动化点击，只覆盖了替身选择器的成功／取消／失败与 Context 取消 Go 测试。本轮四项修正未重做完整浏览器验收。
 
 ### App-server 第一批：产品迁移与类型化契约
 
@@ -277,7 +289,7 @@ npm run rpc:test
 
 - Go 1.25。
 - 当前旧 Web：修改 `.templ` 后运行 `go tool templ generate`；修改样式后运行 `npm run web:build`，首次需要 `npm install`。
-- React 空壳：`cd clients/web && npm ci && npm run dev`，默认 `http://127.0.0.1:5173`；不替代 `go run ./cmd/harness` 的旧界面。生产构建为 `npm run build`。根目录构建入口尚未改为 embed 这套产物。
+- React 前端：`cd clients/web && npm ci && npm run dev`，默认 `http://127.0.0.1:5173`，开发代理把同源 `/rpc` 转到 `127.0.0.1:8889`。需同时 `go run ./cmd/harness`。不替代旧界面。生产构建为 `npm run build`。根目录构建入口尚未改为 embed 这套产物。
 - 数据根目录固定为 `~/.harness`；全局 `config.yaml` 留在根目录，每场会话位于 `sessions/<session-id>/`，其中分别保存账本、元数据与 SessionSettings。项目内旧 `.harness-data/` 和用户目录旧平铺会话文件均不再读取，可由用户自行删除。
 - machine-local 直接操作本机文件和进程，没有沙箱与路径限制。
 - 本机需要 `~/.harness/config.yaml` 配置 LLM Provider：
