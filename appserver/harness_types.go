@@ -46,16 +46,30 @@ type SessionView struct {
 	Settings  settings.SessionSettings `json:"settings"`
 }
 
-// 对外运行接口：本步先接通文字发送，图片随完整 API 迁移。
+// 对外会话接口：下一轮设置
+
+// 数据。只更新运行设置，工作区始终沿用当前会话。
+type UpdateSettingsParams struct {
+	SessionID       string `json:"sessionID" jsonschema:"minLength=1"`
+	AgentID         string `json:"agentID" jsonschema:"minLength=1"`
+	Model           string `json:"model"`
+	ReasoningEffort string `json:"reasoningEffort"`
+}
+
+// 对外运行接口：文字与压缩后的图片发送。
+
+// 数据。Client 已压缩的一张图片；服务端仍会核对实际内容。
+type ImageInput struct {
+	MIME string `json:"mime" jsonschema:"enum=image/png,enum=image/jpeg,enum=image/webp"`
+	Data string `json:"data" jsonschema:"minLength=1"`
+}
 
 // 数据。闲时启动、忙时插话；忙时不修改当前运行设置。
 type SendParams struct {
-	SessionID       string `json:"sessionID" jsonschema:"minLength=1"`
-	Text            string `json:"text" jsonschema:"minLength=1"`
-	AgentID         string `json:"agentID,omitempty"`
-	Model           string `json:"model,omitempty"`
-	ReasoningEffort string `json:"reasoningEffort,omitempty"`
-	ExpectedRunID   string `json:"expectedRunID,omitempty" jsonschema:"minLength=1"`
+	SessionID     string       `json:"sessionID" jsonschema:"minLength=1"`
+	Text          string       `json:"text,omitempty"`
+	Images        []ImageInput `json:"images,omitempty" jsonschema:"maxItems=4"`
+	ExpectedRunID string       `json:"expectedRunID,omitempty" jsonschema:"minLength=1"`
 }
 
 // 数据。输入已接受；完整结果通过订阅或快照取得，不自动重试。

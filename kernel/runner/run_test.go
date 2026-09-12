@@ -274,7 +274,7 @@ func (p testRunnerSkillErrorProvider) List(string) ([]skills.Skill, error) {
 	return nil, p.err
 }
 
-func TestRunPublishesUsageWithoutPersisting(t *testing.T) {
+func TestRunPublishesAndPersistsLatestUsage(t *testing.T) {
 	loop := &runnerTestLoop{run: func(ctx context.Context, invocation loops.Invocation) error {
 		return invocation.Emit(ctx, loops.Event{
 			Kind:  loops.EventUsage,
@@ -283,9 +283,15 @@ func TestRunPublishesUsageWithoutPersisting(t *testing.T) {
 	}}
 	fixture := newRunnerFixture(t, loop)
 	var got RunEvent
+	var during RunState
 	_, err := events.Subscribe(fixture.events, func(_ context.Context, event RunEvent) error {
 		if event.Kind == ContextUsage {
 			got = event
+			view, viewErr := fixture.runner.SessionView("session-1")
+			if viewErr != nil {
+				return viewErr
+			}
+			during = view.Runs[0]
 		}
 		return nil
 	})
@@ -299,8 +305,32 @@ func TestRunPublishesUsageWithoutPersisting(t *testing.T) {
 	if got.Usage == nil || got.Usage.InputTokens != 12 || got.Usage.CacheReadTokens != 19 || got.Usage.ContextWindow != 1000 {
 		t.Fatalf("usage event = %#v", got)
 	}
+	if during.Status != RunRunning || during.Usage == nil || during.Usage.CacheReadTokens != 19 {
+		t.Fatalf("usage was not recoverable before its event: %#v", during)
+	}
 	if len(fixture.session.History()) != 1 {
 		t.Fatalf("history = %#v", fixture.session.History())
+	}
+	view, err := fixture.runner.SessionView("session-1")
+	if err != nil || len(view.Runs) != 1 || view.Runs[0].Usage == nil || view.Runs[0].Usage.InputTokens != 12 {
+		t.Fatalf("live runner usage = %#v %v", view.Runs, err)
+	}
+	restarted, err := NewRunner(
+		fixture.sessions,
+		fixture.settings,
+		fixture.agents,
+		fixture.runner.loops,
+		events.NewRegistry(),
+		fixture.runner.llm,
+		fixture.tools,
+		fixture.persistence,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err = restarted.SessionView("session-1")
+	if err != nil || view.Runs[0].Usage == nil || view.Runs[0].Usage.CacheReadTokens != 19 {
+		t.Fatalf("restored usage = %#v %v", view.Runs, err)
 	}
 }
 

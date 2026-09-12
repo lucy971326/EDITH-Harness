@@ -36,7 +36,7 @@
    ├─ settings.json
    │  此会话的运行设置
    └─ runs.json
-      各轮运行身份、状态、锚点与错误；不重复保存消息正文
+      各轮运行身份、状态、锚点、错误与最后一次模型用量；不重复保存消息正文
 ```
 
 旧项目内 `.harness-data/`、用户目录根下旧平铺会话文件、`~/.harness/*.agent.json` 和 `~/.harness/system-skills/` 都不再读取。Agent 配置迁移时必须同时去掉文件名中的 `.agent`，不能只移动目录。
@@ -66,7 +66,7 @@ Skill 发现
    Todo、审批、游戏状态、插件设置等
 
 Runner 运行结果
-└─ 每轮 RunID、状态、账本锚点和错误；与对话正文分开
+└─ 每轮 RunID、状态、账本锚点、错误和最后一次模型用量；与对话正文分开
    生成中草稿只在 liveRun 内存，不写硬盘
    重启把未收尾的 running 标为 interrupted，不自动续跑
 
@@ -104,14 +104,14 @@ Session
 Client 状态
   不写 Session
   刷新后可丢失的状态不必持久化
-  当前会话 ID 只记在本标签页 sessionStorage；输入草稿／图片预览按会话留内存
+  当前会话 ID 只记在本标签页 sessionStorage；输入草稿／压缩图片预览按会话留内存
   Snapshot 本身是投影底稿，实时更新同一份 entries / runs，不另存前端账本
 
 运行事件
   Runner 产生稳定事件，app-server 按订阅投影给 Client
   不是账本，也不是插件存储
   生成中的正文／思考草稿只在 liveRun 内存；完整消息先落账，再移除同 Entry.ID 草稿
-  运行结果（身份、状态、锚点、错误）由 Runner 写入 runs.json，不伪造结束消息
+  运行结果（身份、状态、锚点、错误、最后一次模型用量）由 Runner 写入 runs.json，不伪造结束消息
 
 连接与请求
   JSON-RPC 请求 ID 只匹配一次响应；连接、订阅和待发送队列都在内存
@@ -152,7 +152,7 @@ messages.jsonl
 └─ #6 助手最终回答
 ```
 
-`blocks` 只记录实际发生的对话内容：`text`、`reasoning`、`tool-call`、`tool-result`、`summary`。页面长什么样、哪些内容展开，不是账本事实。`summary` 是压缩落账的助手块；`History()` 把它收成普通文本再发给模型。未完成消息保留半截正文与思考，并附「未完成」说明；不把思考改成普通正文，不携带悬空工具调用。工具结果按 `ToolCall.ID` 回填，工具结果消息有自己的 Entry.ID。
+`blocks` 只记录实际发生的对话内容：`text`、`image`、`reasoning`、`tool-call`、`tool-result`、`summary`。图片保存 Client 压缩后的 MIME 与 Base64，不另存原始大图。页面长什么样、哪些内容展开，不是账本事实。`summary` 是压缩落账的助手块；`History()` 把它收成普通文本再发给模型。未完成消息保留半截正文与思考，并附「未完成」说明；不把思考改成普通正文，不携带悬空工具调用。工具结果按 `ToolCall.ID` 回填，工具结果消息有自己的 Entry.ID。
 
 协作消息在账本使用 `role=collaboration`，`runID` 是接收它的父 Run，`sourceSessionID/sourceRunID` 是孩子的来源。启动前失败没有真实子 Run，来源 RunID 留空，不捏造身份。发给模型时转换成带来源说明的普通输入，不提升为系统指令。通知重试按父账本中实际存在的 `messageID` 去重，不靠内存中的“已发送”判断。
 

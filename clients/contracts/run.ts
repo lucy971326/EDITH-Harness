@@ -38,6 +38,7 @@ export interface RunState {
   status: 'running' | 'success' | 'cancelled' | 'failed' | 'interrupted';
   error?: string;
   drafts?: RunDraft[];
+  usage?: { inputTokens: number; cacheReadTokens: number; contextWindow: number };
 }
 
 export interface Snapshot {

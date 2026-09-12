@@ -191,7 +191,7 @@ func newTestFixture(t *testing.T) testFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = os.WriteFile(filepath.Join(home, ".harness", "config.yaml"), []byte("providers:\n  deepseek:\n    apiKey: test-key\n"), 0o600)
+	err = os.WriteFile(filepath.Join(home, ".harness", "config.yaml"), []byte("providers:\n  deepseek:\n    apiKey: test-key\n  google:\n    apiKey: test-key\n"), 0o600)
 	if err != nil {
 		t.Fatal(err)
 	}

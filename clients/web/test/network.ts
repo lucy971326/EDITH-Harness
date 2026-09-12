@@ -25,6 +25,8 @@ chat.connect();
 try {
   await until(() => !!chat.client?.connected, "connect");
   const client = chat.client!;
+  const agents = await client.agents();
+  assert.equal(agents.agents[0]?.id, "default");
   const { models } = await client.models();
   assert.ok(
     models.some(
@@ -38,16 +40,23 @@ try {
   chat.select(id);
   await until(() => !chat.state.syncing && !!chat.state.snapshot, "snapshot");
   assert.equal(chat.state.snapshot!.entries.length, 0);
-  const params = {
-    sessionID: id,
+  const params = { sessionID: id };
+  await client.updateSettings({
+    ...params,
+    agentID: "default",
     model: "deepseek/deepseek-v4-flash",
     reasoningEffort: "high",
-  };
+  });
   await client.send({ ...params, text: "你好" });
   await until(
     () => chat.state.snapshot?.runs[0]?.status === "success",
     "instant completion",
   );
+  assert.deepEqual(chat.state.snapshot!.runs[0].usage, {
+    inputTokens: 13,
+    cacheReadTokens: 8,
+    contextWindow: 1_000_000,
+  });
   const live = chatMessages(chat.state.snapshot!);
   const restored = await client.call("harness/session/snapshot", {
     sessionID: id,

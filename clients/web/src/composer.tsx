@@ -6,11 +6,19 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ArrowUp, Square, X, Bot, Plus } from "./icons";
+import { ArrowUp, Square, X, Plus } from "./icons";
 import { ModelMenu, type ModelSelection } from "./model-menu";
+import { AgentMenu } from "./agent-menu";
 import type { ModelChoice } from "../../contracts/appserver.ts";
+import type { AgentView } from "../../contracts/appserver.ts";
 
-export type Attachment = { id: string; name: string; url: string };
+export type Attachment = {
+  id: string;
+  name: string;
+  url: string;
+  mime: "image/webp";
+  data: string;
+};
 export type ComposerHandle = { focus: () => void };
 
 export function isComposerSubmitKey(event: {
@@ -32,6 +40,11 @@ export function Composer({
   images,
   notice,
   agentLabel,
+  agents,
+  agentID,
+  settingsDisabled,
+  usage,
+  compressingImages,
   running,
   stopping,
   busySending,
@@ -42,12 +55,14 @@ export function Composer({
   models,
   modelSelection,
   modelError,
+  imageDisabled,
   onDraftChange,
   onSend,
   onStop,
   onAddImages,
   onRemoveImage,
   onModelChange,
+  onAgentChange,
   onRetryModels,
   onDismissNotice,
   composerRef,
@@ -56,6 +71,15 @@ export function Composer({
   images: Attachment[];
   notice: string;
   agentLabel: string;
+  agents: AgentView[] | null;
+  agentID: string;
+  settingsDisabled: boolean;
+  usage?: {
+    inputTokens: number;
+    cacheReadTokens: number;
+    contextWindow: number;
+  };
+  compressingImages: boolean;
   running: boolean;
   stopping: boolean;
   busySending: boolean;
@@ -66,12 +90,14 @@ export function Composer({
   models: ModelChoice[] | null;
   modelSelection: ModelSelection;
   modelError: string;
+  imageDisabled: boolean;
   onDraftChange: (text: string) => void;
   onSend: () => void;
   onStop: () => void;
   onAddImages: (files: FileList | File[] | null) => void;
   onRemoveImage: (id: string) => void;
   onModelChange: (value: ModelSelection) => void;
+  onAgentChange: (agentID: string) => void;
   onRetryModels: () => void;
   onDismissNotice: () => void;
   composerRef?: RefObject<ComposerHandle | null>;
@@ -150,27 +176,43 @@ export function Composer({
                     variant="ghost"
                     size="icon"
                     aria-label="添加图片"
+                    disabled={imageDisabled}
                     onClick={() => imageInput.current?.click()}
                   >
                     <Plus />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>添加图片，也可以粘贴。不会发送。</TooltipContent>
+                <TooltipContent>
+                  {imageDisabled
+                    ? "请先选择支持图片的模型"
+                    : "添加图片，也可以粘贴"}
+                </TooltipContent>
               </Tooltip>
-              <Button
-                variant="ghost"
-                className="agent-select"
-                disabled
-                aria-label="选择 Agent"
-              >
-                <Bot />
-                {agentLabel}
-              </Button>
+              <AgentMenu
+                agents={agents}
+                value={agentID}
+                disabled={settingsDisabled}
+                onChange={onAgentChange}
+              />
             </div>
             <div className="composer-right">
-              <span className="usage" aria-label="上下文用量未接入">
-                —
-              </span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span
+                    className="usage"
+                    aria-label="最近一次模型调用的上下文用量"
+                  >
+                    {usage
+                      ? `${usage.inputTokens + usage.cacheReadTokens}/${usage.contextWindow}`
+                      : "—"}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  最近一次模型调用：输入与缓存{" "}
+                  {usage ? usage.inputTokens + usage.cacheReadTokens : "暂无"}{" "}
+                  tokens
+                </TooltipContent>
+              </Tooltip>
               <ModelMenu
                 models={models}
                 value={modelSelection}
@@ -178,6 +220,7 @@ export function Composer({
                 error={modelError}
                 onRetry={onRetryModels}
                 onChange={onModelChange}
+                requiresVision={images.length > 0}
               />
               {running && (
                 <Button
@@ -219,17 +262,16 @@ export function Composer({
           <span>
             {stopping
               ? "停止中，等待后台收尾…"
-              : busySending
-                ? "等待后台确认…"
-                : running
-                  ? "Enter 调整当前任务 · 不排队"
-                  : "Enter 发送 · Shift + Enter 换行"}
+              : compressingImages
+                ? "正在压缩图片…"
+                : busySending
+                  ? "等待后台确认…"
+                  : running
+                    ? "Enter 调整当前任务 · 不排队"
+                    : "Enter 发送 · Shift + Enter 换行"}
           </span>
           <span>
-            {modelError ||
-              (models?.length === 0
-                ? "尚未配置模型"
-                : "图片、用量与完整工具展示尚未接入")}
+            {modelError || (models?.length === 0 ? "尚未配置模型" : agentLabel)}
           </span>
         </div>
       </div>

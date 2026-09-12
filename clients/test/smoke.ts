@@ -10,6 +10,12 @@ let client = await TestClient.connect(url);
 try {
   const { session } = await client.call('harness/session/create', { workspace });
   const params = { sessionID: session.sessionID };
+  await client.call('harness/session/settings/update', {
+    ...params,
+    agentID: 'default',
+    model: 'deepseek/deepseek-v4-flash',
+    reasoningEffort: 'off',
+  });
   assert.equal((await client.call('harness/session/get', params)).session.sessionID, session.sessionID);
   await assert.rejects(client.call('harness/session/get', { sessionID: 'missing' }), (error: unknown) => error instanceof RPCFailure && error.code === -32004);
 
@@ -17,7 +23,7 @@ try {
   let subscription = await client.call('harness/session/subscribe', params);
   assert.deepEqual(subscription.snapshot.entries, []);
   assert.deepEqual(subscription.snapshot.runs, []);
-  const sent = await client.call('harness/session/send', { ...params, text: 'complete', model: 'deepseek/deepseek-v4-flash', reasoningEffort: 'off' });
+  const sent = await client.call('harness/session/send', { ...params, text: 'complete' });
   assert.equal(sent.mode, 'started');
   assert.equal((await client.untilEnded(subscription.subscriptionID)).status, 'success');
   const snapshot = await client.call('harness/session/snapshot', params);
@@ -30,7 +36,7 @@ try {
 
   // 模型持续等待：确认开始后断线，再用新连接恢复同一个 Run。
   subscription = await client.call('harness/session/subscribe', params);
-  await client.call('harness/session/send', { ...params, text: 'hold', model: 'deepseek/deepseek-v4-flash', reasoningEffort: 'off' });
+  await client.call('harness/session/send', { ...params, text: 'hold' });
   let runID = '';
   let draftID = '';
   for (;;) {

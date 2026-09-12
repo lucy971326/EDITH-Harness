@@ -38,12 +38,22 @@ export interface SessionSettings {
   workspace: string;
 }
 
+export interface UpdateSettingsParams {
+  sessionID: string;
+  agentID: string;
+  model: string;
+  reasoningEffort: string;
+}
+
+export interface ImageInput {
+  mime: 'image/png' | 'image/jpeg' | 'image/webp';
+  data: string;
+}
+
 export interface SendParams {
   sessionID: string;
-  text: string;
-  agentID?: string;
-  model?: string;
-  reasoningEffort?: string;
+  text?: string;
+  images?: ImageInput[];
   expectedRunID?: string; // 非空时只插入指定 Run；结束或换轮返回 -32009。
 }
 
@@ -53,6 +63,7 @@ export interface Methods {
   'harness/session/create': { params: CreateParams; result: SessionResult };
   'harness/session/list': { params: ListParams; result: ListResult };
   'harness/session/get': { params: SessionIDParams; result: SessionResult };
+  'harness/session/settings/update': { params: UpdateSettingsParams; result: SessionResult };
   'harness/session/send': { params: SendParams; result: { mode: 'started' | 'steered' } };
   'harness/session/snapshot': { params: SessionIDParams; result: Snapshot };
   'harness/session/subscribe': { params: SessionIDParams; result: SubscribeResult };

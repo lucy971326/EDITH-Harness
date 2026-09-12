@@ -16,7 +16,7 @@ func (r *Runner) emit(ctx context.Context, sessionID, runID string, sess *sessio
 		return r.applyDelta(ctx, sessionID, runID, current, event)
 	case loops.EventMessage:
 		return r.persistLoopMessage(ctx, sessionID, runID, sess, current, event)
-	case loops.EventToolStarted, loops.EventToolFinished, loops.EventUsage:
+	case loops.EventToolStarted, loops.EventToolFinished:
 		runEvent, err := mapEvent(sessionID, runID, event)
 		if err != nil {
 			return err
@@ -30,9 +30,33 @@ func (r *Runner) emit(ctx context.Context, sessionID, runID string, sess *sessio
 		}
 		runEvent.AfterEntrySeq = current.afterSeq()
 		return r.publish(ctx, r.liveEvent(current, runEvent))
+	case loops.EventUsage:
+		runEvent, err := mapEvent(sessionID, runID, event)
+		if err != nil {
+			return err
+		}
+		runEvent.AfterEntrySeq = current.afterSeq()
+		return r.publishUsage(ctx, sessionID, current, runEvent)
 	default:
 		return fmt.Errorf("runner: unsupported loop event %q", event.Kind)
 	}
+}
+
+func (r *Runner) publishUsage(ctx context.Context, sessionID string, current *liveRun, event RunEvent) error {
+	event = r.liveEvent(current, event)
+	current.mu.Lock()
+	record := runRecord{
+		RunID:         current.runID,
+		Status:        RunRunning,
+		AfterEntrySeq: current.afterEntrySeq,
+		Usage:         cloneUsage(current.usage),
+	}
+	current.mu.Unlock()
+	err := r.upsertRecord(sessionID, record)
+	if err != nil {
+		return err
+	}
+	return r.publish(ctx, event)
 }
 
 func (r *Runner) startDraft(ctx context.Context, sessionID, runID string, current *liveRun, entryID string) error {
@@ -267,6 +291,9 @@ func (r *Runner) liveEvent(current *liveRun, event RunEvent) RunEvent {
 		current.ended = true
 		current.endStatus = event.Status
 		current.endError = event.Error
+	}
+	if event.Kind == ContextUsage {
+		current.usage = cloneUsage(event.Usage)
 	}
 	event.SeqEpoch = r.epoch
 	if event.UpdateSeq == 0 {

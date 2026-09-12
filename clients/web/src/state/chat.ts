@@ -93,10 +93,13 @@ export function applyRunEvent(
       // 半截正文由后台以 incomplete Entry 保存；没有落账的内容不能假装耐久。
       run.drafts = [];
       break;
-    // 工具关联保存在 Entry.blocks 中；本步不做工具运行卡片和用量显示。
+    case "usage":
+      if (!event.usage) return null;
+      run.usage = event.usage;
+      break;
+    // 工具关联保存在 Entry.blocks 中。
     case "tool-started":
     case "tool-finished":
-    case "usage":
     case "run-started":
       break;
   }
@@ -163,6 +166,16 @@ export function activeRun(snapshot: Snapshot | null): RunState | undefined {
   return snapshot?.runs.find((run) => run.status === "running");
 }
 
+export function latestUsage(snapshot: Snapshot | null): RunState["usage"] {
+  if (!snapshot) return undefined;
+  const running = activeRun(snapshot);
+  if (running?.usage) return running.usage;
+  for (let index = snapshot.runs.length - 1; index >= 0; index--) {
+    if (snapshot.runs[index].usage) return snapshot.runs[index].usage;
+  }
+  return undefined;
+}
+
 export function runLabel(status?: RunState["status"]): string {
   switch (status) {
     case "running":
@@ -181,7 +194,7 @@ export function runLabel(status?: RunState["status"]): string {
 }
 
 export function blockText(block: Block): string {
-  if (block.kind === "image") return "[图片，展示将在后续接入]";
+  if (block.kind === "image") return "[图片]";
   if (block.kind === "tool-call")
     return `工具调用：${block.tool?.name ?? "未知工具"}`;
   if (block.kind === "tool-result")

@@ -125,6 +125,7 @@ func (r *Runner) runCompact(runCtx context.Context, sessionID, runID string, cur
 			Status:        status,
 			AfterEntrySeq: current.afterSeq(),
 			Error:         errorText(err),
+			Usage:         current.usageCopy(),
 		})
 		if endSave != nil {
 			err = errors.Join(err, endSave)
@@ -293,7 +294,7 @@ func (r *Runner) finishCompact(
 	if err != nil {
 		return err
 	}
-	return r.publish(ctx, r.liveEvent(current, RunEvent{
+	return r.publishUsage(ctx, sessionID, current, RunEvent{
 		SessionID:     sessionID,
 		RunID:         runID,
 		Kind:          ContextUsage,
@@ -304,5 +305,5 @@ func (r *Runner) finishCompact(
 			CacheReadTokens: usage.CacheReadTokens,
 			ContextWindow:   r.llm.ContextWindow(model),
 		},
-	}))
+	})
 }

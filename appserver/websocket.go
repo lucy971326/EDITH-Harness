@@ -13,6 +13,8 @@ import (
 	"github.com/coder/websocket"
 )
 
+const maxRPCMessageBytes = 16 << 20
+
 // Listen 在数字回环地址启动唯一的 WebSocket RPC 入口。
 func (s *Server) Listen(address string) (string, error) {
 	addr, err := netip.ParseAddrPort(address)
@@ -65,7 +67,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, request *http.Request) {
 	if err != nil {
 		return
 	}
-	socket.SetReadLimit(1 << 20)
+	socket.SetReadLimit(maxRPCMessageBytes)
 	stream := &websocketObjectStream{ctx: request.Context(), socket: socket}
 	connection := newConnection(request.Context(), stream, s)
 

@@ -6,7 +6,7 @@
 
 Harness 的内核和聊天业务已具备运行能力。旧 `surface/web` / `plugins/web` 使用 Templ、HTMX、POST 与 SSE，仍是默认启动入口；3A 移除 stepSeq 后，其实时过程会错位，不代表旧页面仍完整可用，也不是目标前端架构。
 
-App-server 第一、二步已经完成：`products/harness` 接替原 `kernel/chat`，类型化接口接受 Schema 校验，Go / TS 分别手工维护；本机 WebSocket / JSON-RPC 2.0 已接通真实产品与 Runner。Web 迁移 3A 提供后台恢复，3B 已接通 `clients/web` 的真实文字聊天、历史／实时统一投影、插话、停止、刷新与自动重连，以及最小模型／思考菜单。尚未进入第 4 步完整消息呈现，也未实现反向请求、完整公共服务 API、业务防重。正式启动仍打开旧 Web。
+App-server 第一、二步已经完成：`products/harness` 接替原 `kernel/chat`，类型化接口接受 Schema 校验，Go / TS 分别手工维护；本机 WebSocket / JSON-RPC 2.0 已接通真实产品与 Runner。React Web 已完成第 1 至第 5 步：真实项目／会话、聊天恢复、消息呈现、设置、Agent、图片和上下文用量均已接通。尚未实现第 6 步分叉／Skill／命令，以及第 7 步正式入口切换与旧 Web 清理；反向请求和业务防重仍属后续待确认范围。
 
 ```text
 当前：浏览器 POST → 旧 Web → HarnessProduct → Runner → ReAct Loop → LLM / Tools
@@ -312,6 +312,15 @@ npm run rpc:test
 - 项目记录的工作区已移动或删除时，项目旁“＋”不再只显示英文后台错误，而是打开目录选择要求重新定位；历史会话不删除，也不静默猜测新路径。
 - 验证：基线 36 项测试通过；新增及本轮修复后前端 47 项测试、生产构建、contracts:check、rpc:check、rpc:test 通过。真实网络验收覆盖原有发送／恢复／Steer／停止；浏览器独立测试页使用真实消息组件和固定 Snapshot，检查三级展开、详情限高（218px 内容高约 3697px）、增量不抢滚动、手动收起不被增量覆盖、完成自动收起、失败／停止／中断、停止中标题、亮暗与 390px 窄屏。复制成功／失败通过浏览器替身检查，未写系统剪贴板。
 - 未使用付费模型，未重新跑 Go 全量测试和 Windows 原生弹窗；本步没有 Go 修改。浏览器截图 CDP 超时，已执行的检查依据 DOM／交互结果，不宣称截图视觉验收。构建通过但主 JS 约 589 kB，Vite 提示超过 500 kB；未靠提高阈值隐藏警告。图片展示／发送留第 5 步，正式入口仍为旧 Web。
+
+### Web 迁移第 5 步：输入与设置
+
+- 新增 `harness/session/settings/update`。Agent、模型和思考档位组成有效设置后立即写入后台，保留 workspace；运行中前后端都拒绝修改。`send` 不再携带设置，只使用已保存的 SessionSettings。
+- 新增 `agent/list`、`agent/save`、`agent/delete`，appserver 直接调用公共 Agent 服务。设置页接通新建、编辑、执行类型、系统提示词、普通工具和删除确认；默认 Agent 与被会话使用的 Agent 不可删除。
+- 发送支持文字、图片或二者同时。浏览器把 PNG／JPEG／WebP／GIF 解码后压成 WebP，最长边 2048px、单张不超过 2MB、最多 4 张；后台重新核验 Base64、实际 MIME、大小、数量和模型视觉能力。历史与实时都从同一 Snapshot 渲染图片，成功只清本次提交的草稿。
+- 每轮最后一次真实用量写入 `runs.json` 并随 Snapshot 返回；页面显示 `inputTokens + cacheReadTokens`，刷新、重连和后台重启后可恢复，不新增用量查询接口。
+- WebSocket 单条消息上限提高到 16MB，只为容纳至多四张压缩图片。未增加上传服务、前端 Store 或新架构层。
+- 验证：相关 Go 测试、49 项前端测试、生产构建、Go／TS 契约检查与真实网络链路通过。隔离浏览器验收覆盖设置立即保存、Agent 增删改、纯图片压缩／发送／历史恢复、真实用量刷新恢复和后台重启；未调用付费模型或修改用户真实数据。
 
 ## 验证
 

@@ -13,6 +13,28 @@ import {
   type ProcessItem,
 } from "./state/chat-process";
 import { runLabel } from "./state/chat";
+import type { Block } from "../../contracts/run.ts";
+
+function MessageImages({ blocks }: { blocks: Block[] }) {
+  const images = blocks.filter(
+    (block) =>
+      block.kind === "image" &&
+      block.media &&
+      ["image/png", "image/jpeg", "image/webp"].includes(block.media.mime),
+  );
+  if (images.length === 0) return null;
+  return (
+    <div className="message-images">
+      {images.map((block, index) => (
+        <img
+          key={`${block.media!.mime}:${index}`}
+          src={`data:${block.media!.mime};base64,${block.media!.data}`}
+          alt={`发送的图片 ${index + 1}`}
+        />
+      ))}
+    </div>
+  );
+}
 
 function CopyMessage({ text, label }: { text: string; label: string }) {
   const [notice, setNotice] = useState("");
@@ -101,10 +123,8 @@ export function WorkProcess({
       {turn.prompt && (
         <div data-entry-id={turn.prompt.id}>
           <div className="user-message">
+            <MessageImages blocks={turn.prompt.message.blocks} />
             <MessageMarkdown text={promptText} />
-            {turn.prompt.message.blocks.some((b) => b.kind === "image") && (
-              <span className="metadata">[图片，第 5 步接入展示]</span>
-            )}
           </div>
           <CopyMessage text={promptText} label="复制用户消息" />
         </div>
@@ -182,6 +202,18 @@ export function WorkProcess({
                   )
                 ) : group.kind === "detail" ? (
                   <Detail key={group.id} item={group} onInspect={onInspect} />
+                ) : group.kind === "image" && group.media ? (
+                  <div
+                    key={group.id}
+                    className={group.status ? "progress-text" : "steer-message"}
+                  >
+                    {group.status && (
+                      <span className="metadata">{group.status}</span>
+                    )}
+                    <MessageImages
+                      blocks={[{ kind: "image", media: group.media }]}
+                    />
+                  </div>
                 ) : (
                   <div
                     key={group.id}

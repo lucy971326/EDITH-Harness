@@ -136,3 +136,30 @@ test("Markdown supports structure but removes HTML and unsafe links", () => {
   assert.match(html, /<li>列表<\/li>/);
   assert.doesNotMatch(html, /<script|javascript:|<img/);
 });
+
+test("durable user images render from the same snapshot as text", () => {
+  const snapshot: Snapshot = {
+    seqEpoch: "e",
+    updateSeq: 0,
+    runs: [{ runID: "r", status: "success", afterEntrySeq: 1 }],
+    entries: [
+      {
+        id: "u",
+        seq: 1,
+        message: {
+          runID: "r",
+          role: "user",
+          blocks: [
+            { kind: "image", media: { mime: "image/webp", data: "YWJj" } },
+            { kind: "text", text: "看图" },
+          ],
+        },
+      },
+    ],
+  };
+  const html = renderToStaticMarkup(
+    createElement(ChatMessages, { sessionID: "s", snapshot }),
+  );
+  assert.match(html, /src="data:image\/webp;base64,YWJj"/);
+  assert.match(html, /看图/);
+});

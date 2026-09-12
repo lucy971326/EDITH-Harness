@@ -27,12 +27,18 @@ import {
   shouldClearSessionOnGetError,
 } from "./client/rpc";
 import { ChatConnection, initialChatState } from "./client/chat";
-import { activeRun } from "./state/chat";
+import { activeRun, latestUsage } from "./state/chat";
 import { ChatMessages } from "./chat-messages";
 import { type ModelSelection } from "./model-menu";
+import { compressImage } from "./image-compression";
 import { workspaceName } from "./state/projects";
 import type { SendParams, SessionView } from "../../contracts/harness.ts";
-import type { ModelChoice } from "../../contracts/appserver.ts";
+import type {
+  AgentListResult,
+  AgentSaveParams,
+  AgentView,
+  ModelChoice,
+} from "../../contracts/appserver.ts";
 
 type Draft = { text: string; images: Attachment[] };
 
@@ -66,14 +72,15 @@ function restoredSession(): string | null {
 export function chatSendParams(
   sessionID: string,
   text: string,
-  selection: ModelSelection,
+  images: Attachment[],
   expectedRunID?: string,
 ): SendParams {
   return {
     sessionID,
-    text,
-    model: selection.model,
-    reasoningEffort: selection.reasoningEffort,
+    ...(text ? { text } : {}),
+    ...(images.length
+      ? { images: images.map(({ mime, data }) => ({ mime, data })) }
+      : {}),
     ...(expectedRunID ? { expectedRunID } : {}),
   };
 }
@@ -106,9 +113,14 @@ export default function App() {
   const { connection, detail: connectionDetail } = chatState;
   const [models, setModels] = useState<ModelChoice[] | null>(null);
   const [modelError, setModelError] = useState("");
-  const [modelSelections, setModelSelections] = useState<
-    Record<string, ModelSelection>
-  >({});
+  const [agentCatalog, setAgentCatalog] = useState<AgentListResult | null>(
+    null,
+  );
+  const [agentError, setAgentError] = useState("");
+  const [agentLoading, setAgentLoading] = useState(false);
+  const [agentSaving, setAgentSaving] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [compressingImages, setCompressingImages] = useState(false);
   const [sending, setSending] = useState<string[]>([]);
   const [stopping, setStopping] = useState<{
     sessionID: string;
@@ -131,6 +143,8 @@ export default function App() {
   const draftVersions = useRef(new Map<string, number>());
   const sendingRef = useRef(new Set<string>());
   const stopPending = useRef(false);
+  const settingsPending = useRef(false);
+  const compressionPending = useRef(false);
   const draftRef = useRef(draft);
   const imagesRef = useRef(images);
   const selectGeneration = useRef(0);
@@ -152,7 +166,7 @@ export default function App() {
   const busySending = selectedID !== null && sending.includes(selectedID);
   const stoppingCurrent =
     stopping?.sessionID === selectedID && stopping.runID === currentRun?.runID;
-  const modelSelection = (selectedID && modelSelections[selectedID]) || {
+  const modelSelection: ModelSelection = {
     model: selected?.settings.model ?? "",
     reasoningEffort: selected?.settings.reasoningEffort ?? "",
   };
@@ -161,13 +175,35 @@ export default function App() {
       item.id === modelSelection.model &&
       item.reasoningEfforts.includes(modelSelection.reasoningEffort),
   );
+  const selectedModel = models?.find(
+    (item) => item.id === modelSelection.model,
+  );
+  const validAgent = agentCatalog?.agents.some(
+    (agent) => agent.id === selected?.settings.agentID,
+  );
+  const sessionUsage = latestUsage(snapshot);
+  const settingsDisabled =
+    !connected ||
+    !selected ||
+    !synchronized ||
+    !!currentRun ||
+    busySending ||
+    settingsSaving;
+  const agentLabel =
+    agentCatalog?.agents.find(
+      (agent) => agent.id === selected?.settings.agentID,
+    )?.name ??
+    selected?.settings.agentID ??
+    "未加载";
   const canSend =
     synchronized &&
     !!selected &&
     !busySending &&
     !stoppingCurrent &&
-    !!draft.trim() &&
-    (!!currentRun || (validModel && !modelError));
+    !compressingImages &&
+    (!!draft.trim() || images.length > 0) &&
+    (!!currentRun || (!!validAgent && !!validModel && !modelError)) &&
+    (!images.length || !!selectedModel?.vision);
 
   function editDraft(text: string) {
     const key = draftKey(selectedIDRef.current);
@@ -210,30 +246,57 @@ export default function App() {
     setSettings(true);
     if (window.innerWidth < 760) setSidebar(false);
   }
-  function addImages(files: FileList | File[] | null) {
+  async function addImages(files: FileList | File[] | null) {
     if (!files) return;
-    const attachments: Attachment[] = [];
-    for (const file of Array.from(files)) {
-      if (
-        !["image/png", "image/jpeg", "image/webp", "image/gif"].includes(
-          file.type,
-        )
-      ) {
-        setNotice("请选择 PNG、JPEG、WebP 或 GIF 图片。");
-        continue;
-      }
-      if (file.size > 10 * 1024 * 1024) {
-        setNotice("单张图片请不超过 10 MB。");
-        continue;
-      }
-      const url = URL.createObjectURL(file);
-      objectUrls.current.push(url);
-      attachments.push({ id: crypto.randomUUID(), name: file.name, url });
+    if (!selectedModel?.vision) {
+      setNotice("当前模型不能识别图片，请先选择视觉模型。");
+      return;
     }
-    setImages((current) => [...current, ...attachments].slice(0, 4));
+    const targetID = selectedIDRef.current;
+    const initialImages = [...imagesRef.current];
+    const available = 4 - initialImages.length;
+    if (available <= 0) {
+      setNotice("每次最多发送 4 张图片。");
+      return;
+    }
+    const chosen = Array.from(files).slice(0, available);
+    if (chosen.length < Array.from(files).length)
+      setNotice("每次最多发送 4 张图片。");
+    compressionPending.current = true;
+    setCompressingImages(true);
+    try {
+      const attachments: Attachment[] = [];
+      for (const file of chosen) attachments.push(await compressImage(file));
+      for (const attachment of attachments)
+        objectUrls.current.push(attachment.url);
+      const next = [...initialImages, ...attachments].slice(0, 4);
+      const key = draftKey(targetID);
+      if (selectedIDRef.current === targetID) {
+        imagesRef.current = next;
+        setImages(next);
+      } else {
+        const stored = drafts.current.get(key) ?? {
+          text: "",
+          images: initialImages,
+        };
+        drafts.current.set(key, { ...stored, images: next });
+      }
+      setNotice("");
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : "图片压缩失败，原草稿已保留。",
+      );
+    } finally {
+      compressionPending.current = false;
+      setCompressingImages(false);
+    }
   }
   function removeImage(id: string) {
-    setImages((current) => current.filter((item) => item.id !== id));
+    const removed = imagesRef.current.find((item) => item.id === id);
+    if (removed) URL.revokeObjectURL(removed.url);
+    const next = imagesRef.current.filter((item) => item.id !== id);
+    imagesRef.current = next;
+    setImages(next);
   }
 
   async function loadSessions(client: RPCClient) {
@@ -376,6 +439,103 @@ export default function App() {
     }
   }
 
+  async function loadAgents(client: RPCClient) {
+    setAgentLoading(true);
+    setAgentError("");
+    try {
+      const result = await client.agents();
+      if (client !== clientRef.current || !client.connected) return;
+      setAgentCatalog(result);
+    } catch (error) {
+      if (client !== clientRef.current) return;
+      const message = formatRPCError(error, "Agent 加载失败");
+      setAgentError(message);
+      setNotice(message);
+    } finally {
+      if (client === clientRef.current) setAgentLoading(false);
+    }
+  }
+
+  function replaceSession(session: SessionView) {
+    setSessions(
+      (current) =>
+        current?.map((item) =>
+          item.sessionID === session.sessionID ? session : item,
+        ) ?? current,
+    );
+    if (selectedIDRef.current === session.sessionID) setSelected(session);
+  }
+
+  async function updateSessionSettings(value: {
+    agentID: string;
+    model: string;
+    reasoningEffort: string;
+  }) {
+    const client = clientRef.current;
+    const session = selected;
+    if (
+      !client?.connected ||
+      !session ||
+      !synchronized ||
+      currentRun ||
+      settingsPending.current
+    )
+      return;
+    settingsPending.current = true;
+    setSettingsSaving(true);
+    setNotice("");
+    try {
+      const result = await client.updateSettings({
+        sessionID: session.sessionID,
+        ...value,
+      });
+      if (client !== clientRef.current || !client.connected) return;
+      replaceSession(result.session);
+      if (result.session.settings.agentID !== session.settings.agentID) {
+        await loadAgents(client);
+      }
+    } catch (error) {
+      setNotice(`${formatRPCError(error, "设置保存失败")}。仍使用后台原设置。`);
+    } finally {
+      settingsPending.current = false;
+      setSettingsSaving(false);
+    }
+  }
+
+  async function saveAgent(input: AgentSaveParams): Promise<AgentView | null> {
+    const client = clientRef.current;
+    if (!client?.connected || agentSaving) return null;
+    setAgentSaving(true);
+    setAgentError("");
+    try {
+      const result = await client.saveAgent(input);
+      await loadAgents(client);
+      return result.agent;
+    } catch (error) {
+      setAgentError(formatRPCError(error, "Agent 保存失败"));
+      return null;
+    } finally {
+      setAgentSaving(false);
+    }
+  }
+
+  async function deleteAgent(agentID: string): Promise<boolean> {
+    const client = clientRef.current;
+    if (!client?.connected || agentSaving) return false;
+    setAgentSaving(true);
+    setAgentError("");
+    try {
+      await client.deleteAgent(agentID);
+      await loadAgents(client);
+      return true;
+    } catch (error) {
+      setAgentError(formatRPCError(error, "Agent 删除失败"));
+      return false;
+    } finally {
+      setAgentSaving(false);
+    }
+  }
+
   async function sendMessage() {
     const client = clientRef.current;
     const id = selectedIDRef.current;
@@ -384,30 +544,44 @@ export default function App() {
       !client?.connected ||
       !canSend ||
       chatRef.current?.state.syncing ||
-      sendingRef.current.has(id)
+      sendingRef.current.has(id) ||
+      settingsPending.current ||
+      compressionPending.current
     )
       return;
-    if (imagesRef.current.length) {
-      setNotice("图片发送尚未接入，请先移除附件。不会只发送文字。");
-      return;
-    }
     const text = draftRef.current;
+    const submittedImages = [...imagesRef.current];
     const version = draftVersions.current.get(id) ?? 0;
     sendingRef.current.add(id);
     setSending([...sendingRef.current]);
     setNotice("");
     try {
       await client.send(
-        chatSendParams(id, text, modelSelection, currentRun?.runID),
+        chatSendParams(id, text, submittedImages, currentRun?.runID),
       );
-      // 确认只清这次输入；用户编辑过或已切到别的会话都不能被覆盖。
-      if (shouldClearSubmittedDraft(draftVersions.current, id, version)) {
-        const saved = drafts.current.get(id);
-        if (saved) drafts.current.set(id, { ...saved, text: "" });
-        if (selectedIDRef.current === id) {
-          draftRef.current = "";
-          setDraft("");
-        }
+      // 文字按编辑版本清理；图片按 ID 清理，保留等待期间的新输入。
+      const visible = selectedIDRef.current === id;
+      const currentDraft = visible
+        ? { text: draftRef.current, images: imagesRef.current }
+        : (drafts.current.get(id) ?? { text, images: submittedImages });
+      const submittedImageIDs = new Set(
+        submittedImages.map((image) => image.id),
+      );
+      const nextDraft = {
+        text: shouldClearSubmittedDraft(draftVersions.current, id, version)
+          ? ""
+          : currentDraft.text,
+        images: currentDraft.images.filter(
+          (image) => !submittedImageIDs.has(image.id),
+        ),
+      };
+      drafts.current.set(id, nextDraft);
+      for (const image of submittedImages) URL.revokeObjectURL(image.url);
+      if (visible) {
+        draftRef.current = nextDraft.text;
+        imagesRef.current = nextDraft.images;
+        setDraft(nextDraft.text);
+        setImages(nextDraft.images);
       }
       if (client === clientRef.current && client.connected)
         void loadSessions(client);
@@ -415,8 +589,8 @@ export default function App() {
       if (selectedIDRef.current === id) {
         setNotice(
           error instanceof RPCError && error.code === -32009
-            ? "本轮已结束或变化，文字已保留。请确认后再次发送。"
-            : `${formatRPCError(error, "发送失败")}。文字已保留；结果不明时请先核对历史，不会自动重发。`,
+            ? "本轮已结束或变化，草稿已保留。请确认后再次发送。"
+            : `${formatRPCError(error, "发送失败")}。草稿已保留；结果不明时请先核对历史，不会自动重发。`,
         );
       }
     } finally {
@@ -483,6 +657,7 @@ export default function App() {
         clientRef.current = client;
         void loadSessions(client);
         void loadModels(client);
+        void loadAgents(client);
       },
       (client) => {
         void loadSessions(client);
@@ -591,6 +766,18 @@ export default function App() {
                 theme={theme}
                 setTheme={setTheme}
                 onBack={() => setSettings(false)}
+                agents={agentCatalog?.agents ?? null}
+                kinds={agentCatalog?.kinds ?? []}
+                tools={agentCatalog?.tools ?? []}
+                loading={agentLoading}
+                error={agentError}
+                saving={agentSaving}
+                onReload={() => {
+                  const client = clientRef.current;
+                  if (client?.connected) void loadAgents(client);
+                }}
+                onSave={saveAgent}
+                onDelete={deleteAgent}
               />
             ) : (
               <section className="chat" aria-label="聊天">
@@ -687,37 +874,42 @@ export default function App() {
                   draft={draft}
                   images={images}
                   notice={notice}
-                  agentLabel={
-                    selected ? selected.settings.agentID || "未设置" : "未加载"
-                  }
+                  agentLabel={agentLabel}
+                  agents={agentCatalog?.agents ?? null}
+                  agentID={selected?.settings.agentID ?? ""}
+                  settingsDisabled={settingsDisabled}
+                  usage={sessionUsage}
+                  compressingImages={compressingImages}
                   running={!!currentRun}
                   stopping={stoppingCurrent}
                   busySending={busySending}
                   canSend={!!canSend}
                   stopDisabled={!synchronized || stoppingCurrent}
-                  modelDisabled={
-                    !connected ||
-                    !selected ||
-                    !synchronized ||
-                    !!currentRun ||
-                    busySending
-                  }
+                  modelDisabled={settingsDisabled}
                   validModel={!!validModel}
                   models={models}
                   modelSelection={modelSelection}
                   modelError={modelError}
+                  imageDisabled={compressingImages || !selectedModel?.vision}
                   onDraftChange={editDraft}
                   onSend={() => void sendMessage()}
                   onStop={() => void stopRun()}
-                  onAddImages={addImages}
+                  onAddImages={(files) => void addImages(files)}
                   onRemoveImage={removeImage}
-                  onModelChange={(value) => {
-                    if (selectedID)
-                      setModelSelections((current) => ({
-                        ...current,
-                        [selectedID]: value,
-                      }));
-                  }}
+                  onModelChange={(value) =>
+                    void updateSessionSettings({
+                      agentID: selected?.settings.agentID ?? "",
+                      model: value.model,
+                      reasoningEffort: value.reasoningEffort,
+                    })
+                  }
+                  onAgentChange={(agentID) =>
+                    void updateSessionSettings({
+                      agentID,
+                      model: selected?.settings.model ?? "",
+                      reasoningEffort: selected?.settings.reasoningEffort ?? "",
+                    })
+                  }
                   onRetryModels={() => {
                     if (clientRef.current?.connected)
                       void loadModels(clientRef.current);

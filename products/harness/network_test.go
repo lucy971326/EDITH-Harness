@@ -48,7 +48,7 @@ func TestTypeScriptClient(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = os.WriteFile(filepath.Join(data, "config.yaml"), []byte(fmt.Sprintf("providers:\n  deepseek:\n    apiKey: test-key\n    baseURL: %s\n", modelServer.URL)), 0600)
+	err = os.WriteFile(filepath.Join(data, "config.yaml"), []byte(fmt.Sprintf("providers:\n  deepseek:\n    apiKey: test-key\n    baseURL: %s\n  google:\n    apiKey: test-key\n    baseURL: %s\n", modelServer.URL, modelServer.URL)), 0600)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,6 +161,14 @@ func newNetworkHost(t *testing.T, data string) (*host.Host, *appserver.Server, *
 	if err != nil {
 		t.Fatal(err)
 	}
+	agentService, err := host.Resolve[*agents.Service](h, "agents")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = server.BindAgents(agentService)
+	if err != nil {
+		t.Fatal(err)
+	}
 	return h, server, product
 }
 
@@ -215,9 +223,9 @@ func (m *networkModel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			default:
 			}
 		case <-m.release:
-			fmt.Fprint(w, "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\" 已继续\"}}]}\n\ndata: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")
+			fmt.Fprint(w, "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\" 已继续\"}}]}\n\ndata: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":21,\"completion_tokens\":2,\"total_tokens\":23,\"prompt_tokens_details\":{\"cached_tokens\":8}}}\n\ndata: [DONE]\n\n")
 		}
 		return
 	}
-	fmt.Fprint(w, "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"local model completed\"}}]}\n\ndata: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")
+	fmt.Fprint(w, "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"local model completed\"}}]}\n\ndata: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":21,\"completion_tokens\":2,\"total_tokens\":23,\"prompt_tokens_details\":{\"cached_tokens\":8}}}\n\ndata: [DONE]\n\n")
 }

@@ -6,17 +6,19 @@ import (
 	"fmt"
 
 	"harness/kernel/events"
+	"harness/kernel/session/settings"
 	"harness/products/harness"
 )
 
 const (
-	createMethod    = "harness/session/create"
-	listMethod      = "harness/session/list"
-	getMethod       = "harness/session/get"
-	sendMethod      = "harness/session/send"
-	snapshotMethod  = "harness/session/snapshot"
-	subscribeMethod = "harness/session/subscribe"
-	stopMethod      = "harness/session/stop"
+	createMethod         = "harness/session/create"
+	listMethod           = "harness/session/list"
+	getMethod            = "harness/session/get"
+	updateSettingsMethod = "harness/session/settings/update"
+	sendMethod           = "harness/session/send"
+	snapshotMethod       = "harness/session/snapshot"
+	subscribeMethod      = "harness/session/subscribe"
+	stopMethod           = "harness/session/stop"
 )
 
 // BindHarness 在监听前接入产品与事件来源，登记 Harness 的对外方法。
@@ -42,6 +44,10 @@ func (s *Server) BindHarness(product *harness.Product, registry *events.Registry
 		return err
 	}
 	err = Register(s, getMethod, s.handleGet)
+	if err != nil {
+		return err
+	}
+	err = Register(s, updateSettingsMethod, s.handleUpdateSettings)
 	if err != nil {
 		return err
 	}
@@ -83,6 +89,15 @@ func (s *Server) handleGet(_ context.Context, input SessionIDParams) (SessionRes
 	return SessionResult{Session: sessionView(info)}, methodError(err)
 }
 
+func (s *Server) handleUpdateSettings(ctx context.Context, input UpdateSettingsParams) (SessionResult, error) {
+	info, err := s.harnessProduct.UpdateSettings(ctx, input.SessionID, settings.SessionSettings{
+		AgentID:         input.AgentID,
+		Model:           input.Model,
+		ReasoningEffort: input.ReasoningEffort,
+	})
+	return SessionResult{Session: sessionView(info)}, methodError(err)
+}
+
 func sessionView(info harness.SessionInfo) SessionView {
 	return SessionView{
 		SessionID: info.Meta.ID,
@@ -100,13 +115,16 @@ func methodError(err error) error {
 		return &Error{Code: CodeConflict, Message: "expected run has ended or changed", Cause: err}
 	}
 	if errors.Is(err, harness.ErrInvalidMessage) {
-		return &Error{Code: CodeInvalidParams, Message: "text is empty", Cause: err}
+		return &Error{Code: CodeInvalidParams, Message: "message is empty", Cause: err}
 	}
 	if errors.Is(err, harness.ErrWorkspace) {
 		return &Error{Code: CodeInvalidParams, Message: "workspace is not available", Cause: err}
 	}
 	if errors.Is(err, harness.ErrInvalidRunSettings) {
 		return &Error{Code: CodeInvalidParams, Message: "model, reasoning effort or agent is unavailable", Cause: err}
+	}
+	if errors.Is(err, harness.ErrRunActive) {
+		return &Error{Code: CodeConflict, Message: "session settings cannot change while a run is active", Cause: err}
 	}
 	// 底层文件缺失不是目标会话不存在，只有产品的明确判断才能映射为未找到。
 	if errors.Is(err, harness.ErrSessionNotFound) {

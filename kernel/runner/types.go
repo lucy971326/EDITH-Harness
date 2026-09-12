@@ -43,13 +43,14 @@ type RunDraft struct {
 	Blocks        []session.Block `json:"blocks"`
 }
 
-// 数据。一场 Run 的可恢复运行事实，含状态与未落账草稿。
+// 数据。一场 Run 的可恢复运行事实，含状态、未落账草稿与最后一次模型用量。
 type RunState struct {
 	RunID         string     `json:"runID"`
 	AfterEntrySeq uint64     `json:"afterEntrySeq"`
 	Status        RunStatus  `json:"status"`
 	Error         string     `json:"error,omitempty"`
 	Drafts        []RunDraft `json:"drafts,omitempty"`
+	Usage         *Usage     `json:"usage,omitempty"`
 }
 
 // 数据。一本会话的账本、运行状态和可比较的更新边界。

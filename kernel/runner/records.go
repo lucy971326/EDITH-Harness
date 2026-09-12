@@ -13,6 +13,7 @@ type runRecord struct {
 	Status        RunStatus `json:"status"`
 	AfterEntrySeq uint64    `json:"afterEntrySeq"`
 	Error         string    `json:"error,omitempty"`
+	Usage         *Usage    `json:"usage,omitempty"`
 }
 
 func (r *Runner) loadRecords(sessionID string) ([]runRecord, error) {

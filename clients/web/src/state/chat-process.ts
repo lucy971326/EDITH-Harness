@@ -4,10 +4,11 @@ import { chatMessages, type ChatMessage } from "./chat.ts";
 // 只读展示结构；身份和内容来自 Snapshot，不另存聊天账本。
 export interface ProcessItem {
   id: string;
-  kind: "text" | "steer" | "tool" | "detail" | "reasoning";
+  kind: "text" | "steer" | "tool" | "detail" | "reasoning" | "image";
   title: string;
   text: string;
   status?: string;
+  media?: NonNullable<Block["media"]>;
 }
 export interface ChatTurn {
   id: string;
@@ -122,13 +123,15 @@ export function chatTurns(snapshot: Snapshot): ChatTurn[] {
           items.push({
             id: itemID,
             kind:
-              block.kind === "reasoning"
-                ? "reasoning"
-                : detail
-                  ? "detail"
-                  : role === "user"
-                    ? "steer"
-                    : "text",
+              block.kind === "image" && block.media
+                ? "image"
+                : block.kind === "reasoning"
+                  ? "reasoning"
+                  : detail
+                    ? "detail"
+                    : role === "user"
+                      ? "steer"
+                      : "text",
             title:
               block.kind === "reasoning"
                 ? "思考"
@@ -144,9 +147,8 @@ export function chatTurns(snapshot: Snapshot): ChatTurn[] {
             text:
               block.text ??
               block.error ??
-              (block.kind === "image"
-                ? "图片展示尚未接入"
-                : JSON.stringify(block)),
+              (block.kind === "image" ? "图片" : JSON.stringify(block)),
+            media: block.media,
             status: item.message.incomplete
               ? "未完成"
               : item.draft

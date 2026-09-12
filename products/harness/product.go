@@ -83,11 +83,44 @@ func (p *Product) Send(ctx context.Context, input RunInput) (string, error) {
 		return "steered", err
 	}
 	// 接受之后由 Runner 的 Stop / Close 管生命周期，不继承连接取消。
-	err = p.Start(context.Background(), input)
+	err = p.start(context.Background(), input)
 	if err != nil {
 		return "", err
 	}
 	return "started", nil
+}
+
+// UpdateSettings 在会话空闲时保存下一轮使用的 Agent、模型和思考档位。
+func (p *Product) UpdateSettings(ctx context.Context, sessionID string, next settings.SessionSettings) (SessionInfo, error) {
+	p.sendMu.Lock()
+	defer p.sendMu.Unlock()
+
+	err := ctx.Err()
+	if err != nil {
+		return SessionInfo{}, err
+	}
+	info, err := p.Session(sessionID)
+	if err != nil {
+		return SessionInfo{}, err
+	}
+	if _, running := p.runner.State(sessionID); running {
+		return SessionInfo{}, ErrRunActive
+	}
+
+	next.Workspace = info.Settings.Workspace
+	err = p.validateRunSettings(next, false)
+	if err != nil {
+		return SessionInfo{}, fmt.Errorf("%w: %w", ErrInvalidRunSettings, err)
+	}
+	err = p.agents.SaveSessionSettings(sessionID, next)
+	if err != nil {
+		if errors.Is(err, agents.ErrInvalid) {
+			return SessionInfo{}, fmt.Errorf("%w: %w", ErrInvalidRunSettings, err)
+		}
+		return SessionInfo{}, fmt.Errorf("%w: %w", ErrSessionSettings, err)
+	}
+	info.Settings = next
+	return info, nil
 }
 
 // Create 创建或复用指定工作区中的空会话。
@@ -188,6 +221,12 @@ func (s *Product) Snapshot(sessionID string) (Snapshot, error) {
 
 // Start 保存下一轮设置并启动 Runner 自己管理的后台 Run。
 func (s *Product) Start(ctx context.Context, input RunInput) error {
+	s.sendMu.Lock()
+	defer s.sendMu.Unlock()
+	return s.start(ctx, input)
+}
+
+func (s *Product) start(ctx context.Context, input RunInput) error {
 	if s.subagents.IsChildSession(input.SessionID) {
 		return fmt.Errorf("%w: session %q", os.ErrNotExist, input.SessionID)
 	}
@@ -209,10 +248,13 @@ func (s *Product) Start(ctx context.Context, input RunInput) error {
 	}
 	err = s.ensureVision(setup.Model, input.Message)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %w", ErrInvalidRunSettings, err)
 	}
-	err = s.settings.Put(input.SessionID, setup)
+	err = s.agents.SaveSessionSettings(input.SessionID, setup)
 	if err != nil {
+		if errors.Is(err, agents.ErrInvalid) {
+			return fmt.Errorf("%w: %w", ErrInvalidRunSettings, err)
+		}
 		return err
 	}
 	_, err = s.runner.Start(ctx, input.SessionID, input.Message)
@@ -245,7 +287,7 @@ func (s *Product) steer(sessionID, expectedRunID string, message session.UserMes
 	}
 	err = s.ensureVision(setup.Model, message)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %w", ErrInvalidRunSettings, err)
 	}
 	if expectedRunID != "" {
 		err = s.runner.SteerRun(sessionID, expectedRunID, message)
@@ -335,26 +377,41 @@ func (s *Product) CallCommand(ctx context.Context, name, sessionID string) error
 }
 
 func (s *Product) selectRunSettings(setup *settings.SessionSettings, input RunInput) error {
-	if strings.TrimSpace(input.Model) == "" || strings.TrimSpace(input.ReasoningEffort) == "" {
-		return fmt.Errorf("请先选择模型和思考档位")
+	if agentID := strings.TrimSpace(input.AgentID); agentID != "" {
+		setup.AgentID = agentID
 	}
-	agentID := strings.TrimSpace(input.AgentID)
-	if agentID == "" {
-		agentID = setup.AgentID
+	if model := strings.TrimSpace(input.Model); model != "" {
+		setup.Model = model
 	}
-	_, err := s.agents.Get(agentID)
+	if effort := strings.TrimSpace(input.ReasoningEffort); effort != "" {
+		setup.ReasoningEffort = effort
+	}
+	return s.validateRunSettings(*setup, true)
+}
+
+func (s *Product) validateRunSettings(setup settings.SessionSettings, requireModel bool) error {
+	if strings.TrimSpace(setup.AgentID) == "" {
+		return fmt.Errorf("请先选择 Agent")
+	}
+	_, err := s.agents.Get(setup.AgentID)
 	if err != nil {
 		return fmt.Errorf("Agent 不可用：%w", err)
 	}
+
+	model := strings.TrimSpace(setup.Model)
+	effort := strings.TrimSpace(setup.ReasoningEffort)
+	if model == "" && effort == "" && !requireModel {
+		return nil
+	}
+	if model == "" || effort == "" {
+		return fmt.Errorf("请同时选择模型和思考档位")
+	}
 	for _, choice := range s.models.Models() {
-		if choice.ID != input.Model {
+		if choice.ID != model {
 			continue
 		}
-		for _, effort := range choice.ReasoningEfforts {
-			if effort == input.ReasoningEffort {
-				setup.AgentID = agentID
-				setup.Model = input.Model
-				setup.ReasoningEffort = input.ReasoningEffort
+		for _, available := range choice.ReasoningEfforts {
+			if available == effort {
 				return nil
 			}
 		}

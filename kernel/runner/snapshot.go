@@ -48,7 +48,7 @@ func (r *Runner) SessionView(sessionID string) (SessionView, error) {
 	runs := make([]RunState, 0, len(records)+1)
 	seen := make(map[string]int, len(records)+1)
 	for _, rec := range records {
-		state := RunState{RunID: rec.RunID, AfterEntrySeq: rec.AfterEntrySeq, Status: rec.Status, Error: rec.Error}
+		state := RunState{RunID: rec.RunID, AfterEntrySeq: rec.AfterEntrySeq, Status: rec.Status, Error: rec.Error, Usage: cloneUsage(rec.Usage)}
 		seen[rec.RunID] = len(runs)
 		runs = append(runs, state)
 	}
@@ -60,6 +60,9 @@ func (r *Runner) SessionView(sessionID string) (SessionView, error) {
 			}
 			if liveState.Error == "" {
 				liveState.Error = runs[index].Error
+			}
+			if liveState.Usage == nil {
+				liveState.Usage = cloneUsage(runs[index].Usage)
 			}
 			runs[index] = liveState
 		} else {
@@ -102,6 +105,7 @@ func (r *liveRun) snapshotLocked() RunState {
 		Status:        status,
 		Error:         errText,
 		Drafts:        drafts,
+		Usage:         cloneUsage(r.usage),
 	}
 }
 

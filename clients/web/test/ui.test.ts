@@ -6,7 +6,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createServer, type ViteDevServer } from "vite";
 import type { SessionView } from "../../contracts/harness.ts";
 import type { ModelChoice } from "../../contracts/appserver.ts";
-import type { ModelSelection } from "../src/model-menu.tsx";
 import type { Attachment } from "../src/composer.tsx";
 
 let server: ViteDevServer;
@@ -22,13 +21,12 @@ let isComposerSubmitKey: (event: {
 let chatSendParams: (
   sessionID: string,
   text: string,
-  selection: ModelSelection,
+  images: Attachment[],
   expectedRunID?: string,
 ) => {
   sessionID: string;
-  text: string;
-  model?: string;
-  reasoningEffort?: string;
+  text?: string;
+  images?: { mime: string; data: string }[];
   expectedRunID?: string;
 };
 let shouldClearSubmittedDraft: (
@@ -46,22 +44,16 @@ before(async () => {
     "/src/components/ui/tooltip.tsx",
   ));
   ({ Sidebar } = await server.ssrLoadModule("/src/sidebar.tsx"));
-  ({ Composer, isComposerSubmitKey } = await server.ssrLoadModule(
-    "/src/composer.tsx",
-  ));
-  ({ chatSendParams, shouldClearSubmittedDraft } = await server.ssrLoadModule(
-    "/src/App.tsx",
-  ));
+  ({ Composer, isComposerSubmitKey } =
+    await server.ssrLoadModule("/src/composer.tsx"));
+  ({ chatSendParams, shouldClearSubmittedDraft } =
+    await server.ssrLoadModule("/src/App.tsx"));
 });
 after(async () => {
   await server?.close();
 });
 
-function session(
-  id: string,
-  workspace: string,
-  title = id,
-): SessionView {
+function session(id: string, workspace: string, title = id): SessionView {
   return {
     sessionID: id,
     title,
@@ -105,6 +97,20 @@ const idleComposer = {
   images: [] as Attachment[],
   notice: "",
   agentLabel: "default",
+  agents: [
+    {
+      id: "default",
+      name: "Harness",
+      kind: "react",
+      systemPrompt: "",
+      tools: [],
+      inUse: true,
+    },
+  ],
+  agentID: "default",
+  settingsDisabled: false,
+  usage: undefined,
+  compressingImages: false,
   running: false,
   stopping: false,
   busySending: false,
@@ -112,17 +118,17 @@ const idleComposer = {
   stopDisabled: true,
   modelDisabled: false,
   validModel: true,
-  models: [
-    { id: "demo", reasoningEfforts: ["high"] },
-  ] as ModelChoice[],
+  models: [{ id: "demo", reasoningEfforts: ["high"] }] as ModelChoice[],
   modelSelection: { model: "demo", reasoningEffort: "high" },
   modelError: "",
+  imageDisabled: false,
   onDraftChange() {},
   onSend() {},
   onStop() {},
   onAddImages() {},
   onRemoveImage() {},
   onModelChange() {},
+  onAgentChange() {},
   onRetryModels() {},
   onDismissNotice() {},
 };
@@ -137,25 +143,25 @@ function renderComposer(props: Record<string, unknown>) {
   );
 }
 
-test("busy send includes expectedRunID; idle send omits it", () => {
-  const selection = { model: "demo", reasoningEffort: "high" };
-  assert.deepEqual(chatSendParams("s", "插话", selection, "run-1"), {
+test("send carries only content and expected run identity", () => {
+  const image: Attachment = {
+    id: "i",
+    name: "a.webp",
+    url: "blob:a",
+    mime: "image/webp",
+    data: "YWJj",
+  };
+  assert.deepEqual(chatSendParams("s", "插话", [image], "run-1"), {
     sessionID: "s",
     text: "插话",
-    model: "demo",
-    reasoningEffort: "high",
+    images: [{ mime: "image/webp", data: "YWJj" }],
     expectedRunID: "run-1",
   });
-  assert.deepEqual(chatSendParams("s", "新一轮", selection), {
+  assert.deepEqual(chatSendParams("s", "新一轮", []), {
     sessionID: "s",
     text: "新一轮",
-    model: "demo",
-    reasoningEffort: "high",
   });
-  assert.equal(
-    "expectedRunID" in chatSendParams("s", "新一轮", selection),
-    false,
-  );
+  assert.equal("expectedRunID" in chatSendParams("s", "新一轮", []), false);
 });
 
 test("send confirmation only clears the submitted draft version", () => {
@@ -203,7 +209,15 @@ test("sidebar highlights the selected session and disables project actions offli
 
 test("composer keeps image preview, model menu and stop button states", () => {
   const withImage = renderComposer({
-    images: [{ id: "img-1", name: "shot.png", url: "blob:preview" }],
+    images: [
+      {
+        id: "img-1",
+        name: "shot.png",
+        url: "blob:preview",
+        mime: "image/webp",
+        data: "YWJj",
+      },
+    ],
     canSend: false,
   });
   assert.match(withImage, /alt="shot.png"/);

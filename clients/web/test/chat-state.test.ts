@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { applyRunEvent, chatMessages, runLabel } from "../src/state/chat.ts";
+import {
+  applyRunEvent,
+  chatMessages,
+  latestUsage,
+  runLabel,
+} from "../src/state/chat.ts";
 import type { Entry, RunEvent, Snapshot } from "../../contracts/run.ts";
 
 const empty = (): Snapshot => ({
@@ -113,6 +118,19 @@ test("duplicate updates do not append text; gaps and epoch changes request recov
     applyRunEvent(next, { ...event, seqEpoch: "new", updateSeq: 2 }),
     null,
   );
+});
+
+test("usage event updates the same snapshot used after reconnect", () => {
+  let state = update(empty(), { kind: "run-started", afterEntrySeq: 0 });
+  state = update(state, {
+    kind: "usage",
+    usage: { inputTokens: 12, cacheReadTokens: 19, contextWindow: 1000 },
+  });
+  assert.deepEqual(latestUsage(state), {
+    inputTokens: 12,
+    cacheReadTokens: 19,
+    contextWindow: 1000,
+  });
 });
 
 test("late delta cannot turn a durable entry into a draft", () => {

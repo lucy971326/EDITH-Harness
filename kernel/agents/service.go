@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 
 	"harness/kernel/loops"
 	"harness/kernel/session/settings"
@@ -17,6 +18,12 @@ import (
 
 const defaultSystemPrompt = "You are Harness, a helpful assistant."
 
+var (
+	ErrInvalid       = errors.New("agents: invalid agent")
+	ErrDefaultDelete = errors.New("agents: default agent cannot be deleted")
+	ErrInUse         = errors.New("agents: agent is used by a session")
+)
+
 // 活对象。挂在 Host 的 agents 键上的 Agent 设置服务。
 type Service struct {
 	store    AgentStore
@@ -24,6 +31,9 @@ type Service struct {
 	loops    loops.Loops
 	tools    tools.Tools
 	skills   skills.Skills
+
+	// Agent 引用写入与删除必须互斥，不能留下悬空的会话设置。
+	references sync.RWMutex
 }
 
 // NewService 组装 Agent 设置服务。
@@ -87,7 +97,7 @@ func (s *Service) Save(agent Agent) (Agent, error) {
 		agent.ID = id
 	}
 	if err := s.validate(agent); err != nil {
-		return Agent{}, err
+		return Agent{}, fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
 	if err := s.store.PutAgent(copyAgent(agent)); err != nil {
 		return Agent{}, err
@@ -97,17 +107,32 @@ func (s *Service) Save(agent Agent) (Agent, error) {
 
 // Delete 删除一份未被会话使用的自建 Agent；默认 Agent 不可删除。
 func (s *Service) Delete(id string) error {
+	s.references.Lock()
+	defer s.references.Unlock()
+
 	if id == DefaultID {
-		return fmt.Errorf("agents: default agent cannot be deleted")
+		return ErrDefaultDelete
 	}
 	inUse, err := s.InUse(id)
 	if err != nil {
 		return err
 	}
 	if inUse {
-		return fmt.Errorf("agents: agent %q is used by a session", id)
+		return fmt.Errorf("%w: %q", ErrInUse, id)
 	}
 	return s.store.DeleteAgent(id)
+}
+
+// SaveSessionSettings 确认 Agent 仍存在后保存会话设置，并与删除保持原子。
+func (s *Service) SaveSessionSettings(sessionID string, setup settings.SessionSettings) error {
+	s.references.RLock()
+	defer s.references.RUnlock()
+
+	_, err := s.store.ForAgent(setup.AgentID)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalid, err)
+	}
+	return s.settings.Put(sessionID, setup)
 }
 
 // InUse 返回指定 Agent 是否仍被某本会话选择。

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sync"
 
+	"harness/kernel/agents"
 	"harness/kernel/events"
 	"harness/kernel/llm"
 	"harness/products/harness"
@@ -18,6 +19,7 @@ type Server struct {
 	harnessProduct *harness.Product
 	events         *events.Registry
 	models         *llm.Client
+	agents         *agents.Service
 
 	// 对外方法。
 	methods map[string]registeredMethod

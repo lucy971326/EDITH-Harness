@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -20,6 +20,7 @@ export function ModelMenu({
   error,
   onChange,
   onRetry,
+  requiresVision,
 }: {
   models: ModelChoice[] | null;
   value: ModelSelection;
@@ -27,11 +28,20 @@ export function ModelMenu({
   error: string;
   onChange: (value: ModelSelection) => void;
   onRetry: () => void;
+  requiresVision: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const model = models?.find((item) => item.id === value.model);
+  const [pendingModel, setPendingModel] = useState(value.model);
+  useEffect(() => setPendingModel(value.model), [value.model]);
+  const model = models?.find((item) => item.id === pendingModel);
   return (
-    <Popover open={open && !disabled} onOpenChange={setOpen}>
+    <Popover
+      open={open && !disabled}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (next) setPendingModel(value.model);
+      }}
+    >
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
@@ -64,17 +74,17 @@ export function ModelMenu({
           {models?.map((item) => (
             <button
               key={item.id}
-              aria-pressed={value.model === item.id}
-              onClick={() =>
-                onChange({
-                  model: item.id,
-                  reasoningEffort:
-                    item.id === value.model ? value.reasoningEffort : "",
-                })
+              aria-pressed={pendingModel === item.id}
+              disabled={requiresVision && !item.vision}
+              title={
+                requiresVision && !item.vision
+                  ? "当前图片需要视觉模型"
+                  : undefined
               }
+              onClick={() => setPendingModel(item.id)}
             >
               <strong>{item.id}</strong>
-              {value.model === item.id && <Check />}
+              {pendingModel === item.id && <Check />}
             </button>
           ))}
         </div>
@@ -87,9 +97,15 @@ export function ModelMenu({
                   key={effort}
                   size="sm"
                   variant={
-                    value.reasoningEffort === effort ? "default" : "outline"
+                    pendingModel === value.model &&
+                    value.reasoningEffort === effort
+                      ? "default"
+                      : "outline"
                   }
-                  aria-pressed={value.reasoningEffort === effort}
+                  aria-pressed={
+                    pendingModel === value.model &&
+                    value.reasoningEffort === effort
+                  }
                   onClick={() => {
                     onChange({ model: model.id, reasoningEffort: effort });
                     setOpen(false);

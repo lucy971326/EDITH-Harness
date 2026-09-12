@@ -4,6 +4,7 @@ import type {
   SubscribeResult,
 } from "../../../contracts/harness.ts";
 import type { ServerMethods } from "../../../contracts/appserver.ts";
+import type { AgentSaveParams } from "../../../contracts/appserver.ts";
 import type { RunNotification } from "../../../contracts/run.ts";
 
 type Calls = Methods & ServerMethods;
@@ -182,6 +183,22 @@ export class RPCClient {
 
   models() {
     return this.call("model/list", {});
+  }
+
+  agents() {
+    return this.call("agent/list", {});
+  }
+
+  saveAgent(params: AgentSaveParams) {
+    return this.call("agent/save", params);
+  }
+
+  deleteAgent(agentID: string) {
+    return this.call("agent/delete", { agentID });
+  }
+
+  updateSettings(params: Methods["harness/session/settings/update"]["params"]) {
+    return this.call("harness/session/settings/update", params);
   }
 
   send(params: SendParams) {

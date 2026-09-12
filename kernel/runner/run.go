@@ -55,6 +55,7 @@ type liveRun struct {
 	compact   bool
 	endStatus RunStatus
 	endError  string
+	usage     *Usage
 	drafts    map[string]*runDraft
 	toolCalls map[string]toolCallLoc
 	persisted map[string]struct{}
@@ -344,6 +345,7 @@ func (r *Runner) executePrepared(runCtx context.Context, sessionID, runID string
 			Status:        status,
 			AfterEntrySeq: current.afterSeq(),
 			Error:         errorText(err),
+			Usage:         current.usageCopy(),
 		})
 		if saveErr != nil {
 			err = errors.Join(err, saveErr)
@@ -563,4 +565,18 @@ func cloneBlocks(blocks []session.Block) []session.Block {
 		}
 	}
 	return out
+}
+
+func cloneUsage(usage *Usage) *Usage {
+	if usage == nil {
+		return nil
+	}
+	copy := *usage
+	return &copy
+}
+
+func (r *liveRun) usageCopy() *Usage {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return cloneUsage(r.usage)
 }

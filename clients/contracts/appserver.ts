@@ -13,9 +13,38 @@ export interface SelectWorkspaceResult {
   workspace: string;
 }
 
+export interface AgentView {
+  id: string;
+  name: string;
+  kind: string;
+  systemPrompt: string;
+  tools: string[];
+  inUse: boolean;
+}
+
+export interface AgentKindChoice { kind: string; description: string }
+export interface AgentToolChoice { name: string; description: string }
+
+export interface AgentListResult {
+  agents: AgentView[];
+  kinds: AgentKindChoice[];
+  tools: AgentToolChoice[];
+}
+
+export interface AgentSaveParams {
+  id?: string;
+  name: string;
+  kind: string;
+  systemPrompt: string;
+  tools: string[];
+}
+
 export interface ServerMethods {
   initialize: { params: { protocolVersion: number }; result: InitializeResult };
   'server/unsubscribe': { params: { subscriptionID: string }; result: Record<string, never> };
   'workspace/select': { params: Record<string, never>; result: SelectWorkspaceResult };
   'model/list': { params: Record<string, never>; result: { models: ModelChoice[] } };
+  'agent/list': { params: Record<string, never>; result: AgentListResult };
+  'agent/save': { params: AgentSaveParams; result: { agent: AgentView } };
+  'agent/delete': { params: { agentID: string }; result: Record<string, never> };
 }
