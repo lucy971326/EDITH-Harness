@@ -1,4 +1,4 @@
-const backendOrigin = "http://127.0.0.1:8889";
+const backendOrigin = "http://127.0.0.1:8888";
 
 export type ProxyRequest = {
   setHeader: (name: string, value: string) => void;

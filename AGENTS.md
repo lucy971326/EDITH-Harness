@@ -6,22 +6,16 @@
 - `docs/设计书.md`：目标产品形状与稳定架构决策。
 - `DATA_MODEL.md`：数据归属、持久化与运行时状态。
 - `WEB_UI.md`：React Client 的界面、状态与通信边界。
-- `docs/plan/ProductDefine.md`：已拍板原型与待迁移交互。
-- `docs/plan/Web迁移计划.md`：分步顺序、唯一功能验收清单及待确认后续范围。
 
 `docs/codex-docs/` 与 `docs/reference/` 只是外部项目对照，不是 Harness 规范。优先读本项目文档，不先翻 DSH / pi 源码。
 
 文档纪律：完成事实只写 `STATUS.md`；稳定结论写设计书；`docs/plan/` 只保留仍在执行的方向和计划，完成后删除或收口。不要维护第二份功能清单。
 
-本轮迁移允许中途完整入口不可运行，不为维持旧页面增加兼容层；交付必须说明不可用入口与恢复步骤。默认由 Codex 在会话中给出任务，用户转交 Grok 并带回回报，不维护当前任务文件；用户明确指定某步由 Codex 直接实现时，按该步安排。Grok 先只读理解项目，理解经审核后才派实现任务；每步验收后再进入下一步，不能一次执行全部迁移。
-
 ---
 
-## 1. 当前事实与目标架构
+## 1. 当前事实与架构
 
-当前仓库处于迁移期；已完成的批次与可运行入口只看 `STATUS.md`。旧 `surface/web`、`plugins/web`、Templ、HTMX、POST 与 SSE 只用于过渡。不要继续给旧页面体系增加新架构、新插槽或长期规则。
-
-目标调用链只有一条：
+正式调用链只有一条：
 
 ```text
 React / Web / Wails / 其他 Client
@@ -43,8 +37,6 @@ HarnessProduct      公共服务接口
 - Product 负责业务编排；不拥有协议、页面组件或公共内核数据。
 - kernel 提供执行和数据能力；不依赖 appserver、products、clients、surface 或 plugins。
 - Client 只保存界面状态和服务端投影，不成为业务事实来源。
-
-旧 Web 的真实完成情况写在 `STATUS.md`；目标边界以本篇、设计书和 `WEB_UI.md` 为准。
 
 ---
 
@@ -95,9 +87,9 @@ Client 调用 create(params)
 - 入口在所有插件安装、方法登记成功后才启动监听；组装失败则关闭清理，不开放网络接入。
 - 手写 TS 契约放 `clients/contracts/`，由各 Client 共用，不自动从 Go 生成。
 - Client 按手写契约调用，不提供运行时接口目录；Schema 只用于服务端校验。
-- `npm run contracts:check` 检查手写 TS 类型及类型测试，不保证 Go / TS 自动一致；接口改动需对照两端审查。
+- `npm --prefix clients run contracts:check` 检查手写 TS 类型及类型测试，不保证 Go / TS 自动一致；接口改动需对照两端审查。
 - 运行时仍校验输入和输出；TypeScript 不能表达的格式、长度等约束以 Schema 为准。
-- appserver 直接 import Product 和所需公共服务；Product、kernel 和业务插件不得 import appserver。入口从 Host 取出依赖，调用 `server.BindHarness(product, events)`；appserver 不登记进 Host，不读取 Host，也不依赖旧 Web 或具体 Client。
+- appserver 直接 import Product 和所需公共服务；Product、kernel 和业务插件不得 import appserver。入口从 Host 取出依赖，调用 `server.BindHarness(product, events)`；appserver 不登记进 Host，不读取 Host，也不依赖具体 Client。
 - 不自动暴露 Host 方法；只有显式登记的对外方法可调用。
 - `sourcegraph/jsonrpc2` 负责 JSON-RPC 封套、请求 ID、响应与通知；appserver 只保留类型化方法登记、校验和产品调用，不在库外重写一套协议兼容层。
 - appserver 只有一个入口 `Server`，方法表、WebSocket 监听和关闭生命周期不再拆成两个 Server。每个 Client 对应一个 `Connection`；它是 IM 网关式的基础设施对象，只保存初始化、RPC 连接、订阅、发送保护和断线清理等瞬时连接状态，绝不保存 Session、Run、设置或任何产品业务状态，也不决定 Start / Steer / Stop 等业务行为。
@@ -181,17 +173,15 @@ app-server       连接、订阅、请求配对等瞬时状态
 目标结构：
 
 ```text
-cmd/harness/          进程组装、配置、启动与关闭
+cmd/harness/          进程组装、启动与关闭
 clients/contracts/    手写 TypeScript 契约
 clients/test/         无界面的网络验收 Client，不是正式 SDK
 appserver/            方法契约、登记、校验、协议与连接
 products/harness/     Harness 后台业务
 kernel/               公共执行、数据与登记处
 plugins/kernel/       内核服务提供者、登记处填充者
-clients/web/          React + TypeScript + Vite（迁移时建立）
+clients/web/          React + TypeScript + Vite 与嵌入静态资源
 ```
-
-当前的 `surface/web` 与 `plugins/web` 是待迁移旧实现，不是目标目录模板。
 
 依赖方向：
 
@@ -227,7 +217,7 @@ Client    只依赖手写 TS 契约和自身 UI；不读取 Go Host
 
 - Start 解析依赖、构造服务、登记服务或条目。
 - 谁打开长期资源、启动 goroutine 或监听器，谁负责 Close、取消并等待退出。
-- 固定启动顺序只写在 `cmd/harness`；yaml 只选择已编译提供者或可选插件，不重排。
+- 固定启动顺序只写在 `cmd/harness`；用户配置只提供模型、MCP 等运行数据，不重排插件。
 - 启动中途失败，已 Start 的插件倒序关闭。
 - 启动时固定登记的条目随 Host 一起消失，不需要 unregister；运行期会离场的订阅才返回幂等取消函数。
 - Host 只关闭通过 Install 安装的插件；入口直接创建的 app-server 由入口关闭。
@@ -254,7 +244,7 @@ Client    只依赖手写 TS 契约和自身 UI；不读取 Go Host
 - 泛型只用于必要的公共类型转换，类型参数写成 `Input / Output`。一次调用的校验、解码、业务调用、编码与输出校验顺序写在同一方法，不拆成绕行的小助手。
 - 搜索优先 `rg` / `rg --files`。
 - 改代码后执行与风险匹配的单测、race、vet、两端契约审查与前端检查；不要为了通过检查改无关代码。
-- 旧 Web 迁移期间的具体构建命令以 `STATUS.md` 为准；新 Client 建立后再替换，不把尚未完成写成事实。
+- 构建与启动命令以 `STATUS.md` 为准；不把尚未完成写成事实。
 
 
 

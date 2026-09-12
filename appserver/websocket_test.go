@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -13,12 +14,12 @@ import (
 
 func startTestSocket(t *testing.T, server *Server) (*Server, string) {
 	t.Helper()
-	url, err := server.Listen("127.0.0.1:0")
+	url, err := server.Listen("127.0.0.1:0", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = server.Close() })
-	return server, url
+	return server, "ws" + strings.TrimPrefix(url, "http") + "/rpc"
 }
 
 type rpcResponse struct {
@@ -118,7 +119,7 @@ func TestWebSocketInitializationAndOrigin(t *testing.T) {
 	if err == nil || res == nil || res.StatusCode != http.StatusForbidden {
 		t.Fatal("vite origin accepted without proxy rewrite", err)
 	}
-	_, err = New().Listen("0.0.0.0:0")
+	_, err = New().Listen("0.0.0.0:0", nil)
 	if err == nil {
 		t.Fatal("public listener accepted")
 	}
@@ -130,6 +131,29 @@ func TestWebSocketInitializationAndOrigin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestWebAndRPCShareListener(t *testing.T) {
+	server := newEchoServer(t)
+	web := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("react"))
+	})
+	url, err := server.Listen("127.0.0.1:0", web)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	response, err := http.Get(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatal(response.Status)
+	}
+
+	ws := dialTestSocket(t, "ws"+strings.TrimPrefix(url, "http")+"/rpc")
+	initializeSocket(t, ws)
 }
 
 type subscriptionHandler struct{ connection chan *Connection }

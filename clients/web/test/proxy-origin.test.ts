@@ -44,7 +44,7 @@ test("dev and preview rewrite origin only after the original source is allowed",
     { headers: { origin: "http://127.0.0.1:5173", host: "127.0.0.1:5173" } },
     { write() {}, destroy() {} },
   );
-  assert.equal(headers.Origin, "http://127.0.0.1:8889");
+  assert.equal(headers.Origin, "http://127.0.0.1:8888");
   assert.equal(destroyed, false);
 
   const attackerHeaders: Record<string, string> = {};
@@ -87,7 +87,7 @@ test("preview proxy uses the same origin guard", () => {
     { headers: { origin: "http://127.0.0.1:4173", host: "127.0.0.1:4173" } },
     {},
   );
-  assert.equal(headers.Origin, "http://127.0.0.1:8889");
+  assert.equal(headers.Origin, "http://127.0.0.1:8888");
 
   let status = 0;
   proxy.emit(

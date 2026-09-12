@@ -5,7 +5,7 @@ import { fileURLToPath, URL } from "node:url";
 import { guardRpcProxy } from "./rpc-proxy.ts";
 
 const rpcProxy: ProxyOptions = {
-  target: "http://127.0.0.1:8889",
+  target: "http://127.0.0.1:8888",
   ws: true,
   changeOrigin: true,
   configure(proxy) {

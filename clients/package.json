@@ -1,0 +1,14 @@
+{
+  "name": "harness-clients",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "contracts:check": "tsc -p contracts/tsconfig.json",
+    "rpc:check": "tsc -p test/tsconfig.json",
+    "rpc:test": "go test ../products/harness -run TestTypeScriptClient -count=1 -v"
+  },
+  "devDependencies": {
+    "@types/node": "26.5.0",
+    "typescript": "5.9.3"
+  }
+}

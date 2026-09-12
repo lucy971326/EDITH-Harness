@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -59,12 +60,13 @@ func TestTypeScriptClient(t *testing.T) {
 	h, server, product := newNetworkHost(t, data)
 	address := "127.0.0.1:0"
 	if manual {
-		address = "127.0.0.1:8889"
+		address = "127.0.0.1:8888"
 	}
-	url, err := server.Listen(address)
+	webURL, err := server.Listen(address, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+	url := "ws" + strings.TrimPrefix(webURL, "http") + "/rpc"
 	if manual {
 		workspace := filepath.Join(testHome, "浏览器验收")
 		err = os.Mkdir(workspace, 0700)
@@ -92,7 +94,7 @@ func TestTypeScriptClient(t *testing.T) {
 					t.Fatal(err)
 				}
 				h, server, product = newNetworkHost(t, data)
-				_, err = server.Listen(address)
+				_, err = server.Listen(address, nil)
 				if err != nil {
 					t.Fatal(err)
 				}

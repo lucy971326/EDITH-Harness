@@ -11,8 +11,9 @@ __MACOSX/
 .forward/
 .harness-data/
 .agy/
+.build/
 
-# Tailwind 的本地编译工具；产物 site.css 会提交并嵌入二进制。
+# Node 依赖。
 node_modules/
 
 # 练习与实验目录
@@ -31,6 +32,6 @@ playground/
 reference.zip
 .codegraph/
 learn/
-# 保存已拍板的 Web 原型源码，其他实验原型仍忽略。
+# 实验原型不进入正式源码。
 prototypes/*
-!prototypes/web/
+.codegraph/

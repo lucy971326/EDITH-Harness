@@ -4,7 +4,7 @@ import { TestClient, RPCFailure } from './client.ts';
 // 只由 Go 集成测试启动；地址和工作区都指向临时测试环境。
 const url = process.env.HARNESS_TEST_RPC_URL;
 const workspace = process.env.HARNESS_TEST_WORKSPACE;
-if (!url || !workspace) throw new Error('Run via npm run rpc:test; do not use real user data');
+if (!url || !workspace) throw new Error('Run via npm --prefix clients run rpc:test; do not use real user data');
 
 let client = await TestClient.connect(url);
 try {

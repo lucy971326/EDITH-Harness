@@ -15,7 +15,7 @@ import (
 	"harness/products/harness"
 )
 
-// 活对象。应用唯一的 RPC 接入服务，拥有方法表、监听器和当前连接。
+// 活对象。应用唯一的接入服务，拥有方法表、页面监听和当前连接。
 type Server struct {
 	// 产品入口与公共能力；业务状态由产品和内核管理。
 	harnessProduct *harness.Product
@@ -34,9 +34,10 @@ type Server struct {
 	active      sync.WaitGroup
 	connections map[*Connection]struct{}
 
-	// WebSocket 监听。
+	// React 页面与 WebSocket 监听。
 	httpServer *http.Server
 	serveDone  chan error
+	web        http.Handler
 }
 
 // 契约。登记表中的处理函数，已绑定运行时校验与类型转换。
