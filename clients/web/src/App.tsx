@@ -17,13 +17,10 @@ import {
 import { SettingsPage } from "./settings-page";
 import { WorkspaceTabs } from "./workspace-tabs";
 import { Sidebar } from "./sidebar";
-import {
-  Composer,
-  type Attachment,
-  type ComposerHandle,
-} from "./composer";
+import { Composer, type Attachment, type ComposerHandle } from "./composer";
 import {
   formatRPCError,
+  isWorkspaceUnavailable,
   RPCClient,
   RPCError,
   rpcURL,
@@ -322,9 +319,8 @@ export default function App() {
       rememberDraft(selectedIDRef.current, draftRef.current, imagesRef.current);
       setCurrentSession(result.session.sessionID, result.session);
       applyDraft(result.session.sessionID);
+      setNotice("");
       setSettings(false);
-    } catch (error) {
-      setNotice(formatRPCError(error, "创建会话失败，当前界面已保留"));
     } finally {
       setCreatingWorkspace(null);
     }
@@ -332,7 +328,19 @@ export default function App() {
 
   async function createInWorkspace(workspace: string) {
     if (!clientRef.current?.connected || backendBusy) return;
-    await createSession(workspace);
+    try {
+      await createSession(workspace);
+      return;
+    } catch (error) {
+      if (!isWorkspaceUnavailable(error)) {
+        setNotice(formatRPCError(error, "创建会话失败，当前界面已保留"));
+        return;
+      }
+    }
+
+    // 历史会话可以保留已移动的目录；新会话必须重新定位到真实目录。
+    setNotice("项目目录已移动或删除，请重新选择目录。历史会话仍会保留。");
+    await openProject();
   }
 
   async function openProject() {
@@ -623,7 +631,15 @@ export default function App() {
                       )}
                     </div>
                   )}
-                <ChatMessages snapshot={snapshot} sessionID={selectedID}>
+                <ChatMessages
+                  snapshot={snapshot}
+                  sessionID={selectedID}
+                  stoppingRunID={
+                    stopping?.sessionID === selectedID
+                      ? stopping.runID
+                      : undefined
+                  }
+                >
                   <div className="empty-chat">
                     <div className="empty-symbol">
                       <Command />

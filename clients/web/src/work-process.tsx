@@ -5,197 +5,225 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
+import { ChevronRight, FileText, LoaderCircle, Copy, Brain } from "./icons";
+import { MessageMarkdown } from "./message-markdown";
 import {
-  ChevronRight,
-  FileText,
-  Brain,
-  LoaderCircle,
-  CircleAlert,
-  Copy,
-  GitBranch,
-} from "./icons";
+  processGroups,
+  type ChatTurn,
+  type ProcessItem,
+} from "./state/chat-process";
+import { runLabel } from "./state/chat";
 
-export type RunStatus =
-  | "running"
-  | "stopping"
-  | "completed"
-  | "failed"
-  | "stopped";
-export type Activity = {
-  id: string;
-  kind: "progress" | "tool" | "reasoning" | "steer";
-  text: string;
-  detail?: string;
-};
-export type Attachment = { id: string; name: string; url: string };
-export type Turn = {
-  id: string;
-  prompt: string;
-  images: Attachment[];
-  status: RunStatus;
-  activity: Activity[];
-  answer: string;
-};
+function CopyMessage({ text, label }: { text: string; label: string }) {
+  const [notice, setNotice] = useState("");
+  return (
+    <span className="answer-actions">
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label={label}
+        onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(text);
+            setNotice("已复制");
+          } catch {
+            setNotice("复制失败，请手动选择文字复制");
+          }
+        }}
+      >
+        <Copy />
+      </Button>
+      <span className="metadata" role="status">
+        {notice}
+      </span>
+    </span>
+  );
+}
 
-// 按可见进展说明分组，不按模型调用次数切断工具链。
-function groupActivity(activity: Activity[]) {
-  const groups: (Activity | Activity[])[] = [];
-  for (const item of activity) {
-    if (item.kind === "progress" || item.kind === "steer") groups.push(item);
-    else {
-      const last = groups.at(-1);
-      if (Array.isArray(last)) last.push(item);
-      else groups.push([item]);
-    }
-  }
-  return groups;
+function Detail({
+  item,
+  onInspect,
+}: {
+  item: ProcessItem;
+  onInspect: () => void;
+}) {
+  return (
+    <Collapsible
+      onOpenChange={(open) => {
+        if (open) onInspect();
+      }}
+    >
+      <CollapsibleTrigger className="tool-summary tool-row">
+        {item.kind === "reasoning" ? <Brain /> : <FileText />}
+        <span>
+          {item.title}
+          {item.status && ` · ${item.status}`}
+        </span>
+        <ChevronRight />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <pre
+          className="tool-output"
+          tabIndex={0}
+          aria-label={`${item.title}详情`}
+        >
+          {item.text}
+        </pre>
+      </CollapsibleContent>
+    </Collapsible>
+  );
 }
 
 export function WorkProcess({
   turn,
   onInspect,
-  onCopy,
-  onFork,
+  stopping = false,
 }: {
-  turn: Turn;
+  turn: ChatTurn;
   onInspect: () => void;
-  onCopy: (text: string) => void;
-  onFork: () => void;
+  stopping?: boolean;
 }) {
-  const [open, setOpen] = useState(turn.status !== "completed");
+  const status = turn.run?.status;
+  const [open, setOpen] = useState(status !== "success");
+  // 只在运行状态变化时收展；普通增量不覆盖用户的手动选择。
   useEffect(() => {
-    setOpen(turn.status !== "completed");
-  }, [turn.status]);
-  const running = turn.status === "running" || turn.status === "stopping";
-  const title = running
-    ? turn.status === "stopping"
-      ? "停止中，正在收尾"
-      : "正在工作"
-    : turn.status === "completed"
-      ? "工作过程"
-      : turn.status === "failed"
-        ? "运行失败"
-        : "已停止";
+    setOpen(status !== "success");
+  }, [status]);
+  const promptText =
+    turn.prompt?.message.blocks
+      .filter((b) => b.kind === "text")
+      .map((b) => b.text ?? "")
+      .join("\n\n") ?? "";
+  const title =
+    stopping && status === "running" ? "停止中，正在收尾" : runLabel(status);
   return (
-    <article className="turn">
-      <div className="user-message">
-        {turn.images.length > 0 && (
-          <div className="attachments">
-            {turn.images.map((image) => (
-              <img key={image.id} src={image.url} alt={image.name} />
-            ))}
+    <article className="turn" data-run-id={turn.id}>
+      {turn.prompt && (
+        <div data-entry-id={turn.prompt.id}>
+          <div className="user-message">
+            <MessageMarkdown text={promptText} />
+            {turn.prompt.message.blocks.some((b) => b.kind === "image") && (
+              <span className="metadata">[图片，第 5 步接入展示]</span>
+            )}
           </div>
+          <CopyMessage text={promptText} label="复制用户消息" />
+        </div>
+      )}
+      {turn.standalone &&
+        turn.items.map((item) =>
+          item.kind === "detail" ||
+          item.kind === "tool" ||
+          item.kind === "reasoning" ? (
+            <Detail key={item.id} item={item} onInspect={onInspect} />
+          ) : (
+            <div key={item.id} className="progress-text">
+              {item.text}
+            </div>
+          ),
         )}
-        {turn.prompt}
-      </div>
-      <div className="user-actions">
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="复制用户消息"
-          onClick={() => onCopy(turn.prompt)}
-        >
-          <Copy />
-        </Button>
-      </div>
-      <Collapsible open={open} onOpenChange={setOpen} className="process">
-        <CollapsibleTrigger className="process-heading">
-          {running ? (
-            <LoaderCircle className="animate-spin" />
-          ) : turn.status !== "completed" ? (
-            <CircleAlert />
-          ) : null}
-          {title}
-          <ChevronRight className={open ? "rotate-90" : ""} />
-        </CollapsibleTrigger>
-        <CollapsibleContent className="process-body">
-          {groupActivity(turn.activity).map((group) =>
-            Array.isArray(group) ? (
-              <Collapsible key={group[0].id} className="tool-group">
-                <CollapsibleTrigger className="tool-summary">
-                  <FileText />
-                  <span>
-                    已读取文件、执行操作 ·{" "}
-                    {group.filter((item) => item.kind === "tool").length} 项
-                  </span>
-                  <ChevronRight className="disclosure-chevron" />
-                </CollapsibleTrigger>
-                <CollapsibleContent
-                  className="tool-list"
-                  tabIndex={0}
-                  aria-label="工具列表"
-                >
-                  {group.map((item) => (
-                    <Collapsible
-                      key={item.id}
-                      onOpenChange={(value) => {
-                        if (value) onInspect();
-                      }}
-                    >
-                      <CollapsibleTrigger className="tool-summary tool-row">
-                        {item.kind === "reasoning" ? <Brain /> : <FileText />}
-                        <span>{item.text}</span>
-                        <ChevronRight className="disclosure-chevron" />
+      {!turn.standalone &&
+        (turn.items.length > 0 ||
+          (turn.run !== undefined && status !== "success") ||
+          !turn.answer) && (
+          <Collapsible open={open} onOpenChange={setOpen} className="process">
+            <CollapsibleTrigger className="process-heading">
+              {status === "running" && (
+                <LoaderCircle className="animate-spin" />
+              )}
+              工作过程 · {title}
+              <ChevronRight className={open ? "rotate-90" : ""} />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="process-body">
+              {processGroups(turn.items).map((group) =>
+                Array.isArray(group) ? (
+                  group.every((item) => item.kind === "reasoning") ? (
+                    <div key={group[0].id}>
+                      {group.map((item) => (
+                        <Detail
+                          key={item.id}
+                          item={item}
+                          onInspect={onInspect}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <Collapsible key={group[0].id} className="tool-group">
+                      <CollapsibleTrigger className="tool-summary">
+                        <FileText />
+                        <span>
+                          工具：
+                          {[
+                            ...new Set(
+                              group
+                                .filter((item) => item.kind === "tool")
+                                .map((item) => item.title),
+                            ),
+                          ].join("、")}{" "}
+                          ·{" "}
+                          {group.filter((item) => item.kind === "tool").length}{" "}
+                          项
+                        </span>
+                        <ChevronRight />
                       </CollapsibleTrigger>
-                      <CollapsibleContent>
-                        <pre
-                          className="tool-output"
-                          tabIndex={0}
-                          aria-label="工具详情"
-                        >
-                          {item.detail}
-                        </pre>
+                      <CollapsibleContent
+                        className="tool-list"
+                        tabIndex={0}
+                        aria-label="工具列表"
+                      >
+                        {group.map((item) => (
+                          <Detail
+                            key={item.id}
+                            item={item}
+                            onInspect={onInspect}
+                          />
+                        ))}
                       </CollapsibleContent>
                     </Collapsible>
-                  ))}
-                </CollapsibleContent>
-              </Collapsible>
-            ) : (
-              <p
-                key={group.id}
-                className={
-                  group.kind === "steer" ? "steer-message" : "progress-text"
-                }
-              >
-                {group.kind === "steer" && (
-                  <span className="metadata">已调整方向</span>
-                )}
-                {group.text}
+                  )
+                ) : group.kind === "detail" ? (
+                  <Detail key={group.id} item={group} onInspect={onInspect} />
+                ) : (
+                  <div
+                    key={group.id}
+                    className={
+                      group.kind === "steer" ? "steer-message" : "progress-text"
+                    }
+                  >
+                    {(group.kind === "steer" || group.status) && (
+                      <span className="metadata">
+                        {group.kind === "steer" ? "已调整方向" : group.status}
+                      </span>
+                    )}
+                    {group.kind === "steer" ? (
+                      <MessageMarkdown text={group.text} />
+                    ) : (
+                      group.text
+                    )}
+                    {group.kind === "steer" && (
+                      <CopyMessage text={group.text} label="复制插话" />
+                    )}
+                  </div>
+                ),
+              )}
+              {turn.run?.error && (
+                <p className="inline-error">{turn.run.error}</p>
+              )}
+              <p className="metadata" role="status">
+                {title}
               </p>
-            ),
-          )}
-          {turn.status === "failed" && (
-            <p className="inline-error">
-              模型请求失败。过程已保留，你可以重新发送；不会自动重试。
-            </p>
-          )}
-          {turn.status === "stopped" && (
-            <p className="muted">任务已停止，未开始的操作不会继续执行。</p>
-          )}
-        </CollapsibleContent>
-      </Collapsible>
-      {turn.status === "completed" && (
-        <>
-          <div className="answer">{turn.answer}</div>
-          <div className="answer-actions">
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="复制回答"
-              onClick={() => onCopy(turn.answer)}
-            >
-              <Copy />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="从此回答分叉"
-              onClick={onFork}
-            >
-              <GitBranch />
-            </Button>
+            </CollapsibleContent>
+          </Collapsible>
+        )}
+      {turn.answer && (
+        <div data-entry-id={turn.answer.id}>
+          <div className="answer">
+            <MessageMarkdown text={turn.answer.text} />
           </div>
-        </>
+          <CopyMessage text={turn.answer.text} label="复制回答" />
+        </div>
+      )}
+      {status === "success" && turn.items.length === 0 && turn.answer && (
+        <span className="metadata">已完成</span>
       )}
     </article>
   );

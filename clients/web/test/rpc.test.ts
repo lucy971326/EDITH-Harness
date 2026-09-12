@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  isWorkspaceUnavailable,
   RPCClient,
   RPCError,
   shouldClearSessionOnGetError,
@@ -20,7 +21,11 @@ class FakeSocket extends EventTarget {
     queueMicrotask(() => {
       const body =
         reply ??
-        JSON.stringify({ jsonrpc: "2.0", id: envelope.id, result: defaultResult(envelope.method) });
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: envelope.id,
+          result: defaultResult(envelope.method),
+        });
       this.dispatchEvent(new MessageEvent("message", { data: body }));
     });
   }
@@ -53,7 +58,11 @@ function factory(socket: FakeSocket): SocketFactory {
 test("initialize must succeed before business calls", async () => {
   const socket = new FakeSocket();
   const statuses: string[] = [];
-  const client = new RPCClient("ws://example/rpc", (status) => statuses.push(status), factory(socket));
+  const client = new RPCClient(
+    "ws://example/rpc",
+    (status) => statuses.push(status),
+    factory(socket),
+  );
   await client.connect();
   assert.deepEqual(statuses, ["connecting", "connected"]);
   const listed = await client.list();
@@ -65,9 +74,19 @@ test("initialize must succeed before business calls", async () => {
 
 test("initialize failure disconnects and blocks business calls", async () => {
   const socket = new FakeSocket();
-  socket.replies.push(JSON.stringify({ jsonrpc: "2.0", id: "1", error: { code: -32001, message: "Initialization rejected" } }));
+  socket.replies.push(
+    JSON.stringify({
+      jsonrpc: "2.0",
+      id: "1",
+      error: { code: -32001, message: "Initialization rejected" },
+    }),
+  );
   const statuses: string[] = [];
-  const client = new RPCClient("ws://example/rpc", (status) => statuses.push(status), factory(socket));
+  const client = new RPCClient(
+    "ws://example/rpc",
+    (status) => statuses.push(status),
+    factory(socket),
+  );
   await assert.rejects(() => client.connect(), RPCError);
   assert.equal(statuses.at(-1), "disconnected");
   await assert.rejects(() => client.list(), /未连接或尚未初始化/);
@@ -89,7 +108,10 @@ test("request timeout says outcome is unknown", async () => {
   const client = new RPCClient("ws://example/rpc", () => {}, factory(socket));
   await client.connect();
   socket.replies.push("timeout");
-  await assert.rejects(client.call("harness/session/list", {}, { timeoutMs: 20 }), /结果不明/);
+  await assert.rejects(
+    client.call("harness/session/list", {}, { timeoutMs: 20 }),
+    /结果不明/,
+  );
   client.close();
 });
 
@@ -99,7 +121,12 @@ test("unsupported reverse requests return method not found", async () => {
   await client.connect();
   socket.dispatchEvent(
     new MessageEvent("message", {
-      data: JSON.stringify({ jsonrpc: "2.0", id: "srv", method: "client/ask", params: {} }),
+      data: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "srv",
+        method: "client/ask",
+        params: {},
+      }),
     }),
   );
   await Promise.resolve();
@@ -115,7 +142,11 @@ test("unknown notifications are ignored", async () => {
   await client.connect();
   socket.dispatchEvent(
     new MessageEvent("message", {
-      data: JSON.stringify({ jsonrpc: "2.0", method: "harness/run/event", params: {} }),
+      data: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "harness/run/event",
+        params: {},
+      }),
     }),
   );
   const listed = await client.list();
@@ -139,10 +170,24 @@ test("malformed error still finishes a request that has no timeout", async () =>
 });
 
 test("only session-not-found clears the current selection", () => {
-  assert.equal(shouldClearSessionOnGetError(new RPCError(-32004, "session not found")), true);
-  assert.equal(shouldClearSessionOnGetError(new Error("连接已断开；已接受的操作可能仍在后台执行")), false);
-  assert.equal(shouldClearSessionOnGetError(new Error("请求超时，结果不明，不会自动重发")), false);
-  assert.equal(shouldClearSessionOnGetError(new RPCError(-32603, "Internal error")), false);
+  assert.equal(
+    shouldClearSessionOnGetError(new RPCError(-32004, "session not found")),
+    true,
+  );
+  assert.equal(
+    shouldClearSessionOnGetError(
+      new Error("连接已断开；已接受的操作可能仍在后台执行"),
+    ),
+    false,
+  );
+  assert.equal(
+    shouldClearSessionOnGetError(new Error("请求超时，结果不明，不会自动重发")),
+    false,
+  );
+  assert.equal(
+    shouldClearSessionOnGetError(new RPCError(-32603, "Internal error")),
+    false,
+  );
 });
 
 test("workspace select does not use the short timeout", async () => {
@@ -150,10 +195,29 @@ test("workspace select does not use the short timeout", async () => {
   const client = new RPCClient("ws://example/rpc", () => {}, factory(socket));
   await client.connect();
   socket.replies.push(
-    JSON.stringify({ jsonrpc: "2.0", id: "2", result: { canceled: false, workspace: "/tmp/work" } }),
+    JSON.stringify({
+      jsonrpc: "2.0",
+      id: "2",
+      result: { canceled: false, workspace: "/tmp/work" },
+    }),
   );
   const result = await client.selectWorkspace();
   assert.equal(result.canceled, false);
   assert.equal(result.workspace, "/tmp/work");
   client.close();
+});
+
+test("recognizes only the stable unavailable-workspace error", () => {
+  assert.equal(
+    isWorkspaceUnavailable(new RPCError(-32602, "workspace is not available")),
+    true,
+  );
+  assert.equal(
+    isWorkspaceUnavailable(new RPCError(-32602, "text is empty")),
+    false,
+  );
+  assert.equal(
+    isWorkspaceUnavailable(new RPCError(-32004, "workspace is not available")),
+    false,
+  );
 });

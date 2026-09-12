@@ -57,7 +57,7 @@ test("long history finds run statuses with linear work", () => {
   assert.ok(runReads <= count * 20, `repeated history scans: ${runReads}`);
 });
 
-test("status stays after the last visible message, including drafts and legacy runs", () => {
+test("legacy answers render normally while live and interrupted statuses stay visible", () => {
   const snapshot: Snapshot = {
     seqEpoch: "epoch",
     updateSeq: 3,
@@ -100,12 +100,39 @@ test("status stays after the last visible message, including drafts and legacy r
   const html = renderToStaticMarkup(
     createElement(ChatMessages, { sessionID: "session", snapshot }),
   );
-  assert.match(html, /旧回答[\s\S]*状态未记录/);
-  assert.equal((html.match(/运行中/g) ?? []).length, 1);
-  assert.match(html, /data-entry-id="draft"[\s\S]*半句[\s\S]*运行中/);
-  assert.equal((html.match(/运行已中断/g) ?? []).length, 1);
-  assert.ok(
-    html.indexOf('data-entry-id="user"') <
-      html.indexOf('data-entry-id="draft"'),
+  assert.match(html, /class="answer"[\s\S]*旧回答/);
+  assert.doesNotMatch(html, /状态未记录/);
+  assert.match(html, /半句[\s\S]*运行中/);
+  assert.match(html, /运行已中断/);
+  assert.ok(html.indexOf('data-entry-id="user"') < html.indexOf("半句"));
+});
+
+test("Markdown supports structure but removes HTML and unsafe links", () => {
+  const snapshot: Snapshot = {
+    seqEpoch: "e",
+    updateSeq: 0,
+    runs: [{ runID: "r", status: "success", afterEntrySeq: 1 }],
+    entries: [
+      {
+        id: "a",
+        seq: 2,
+        message: {
+          runID: "r",
+          role: "assistant",
+          blocks: [
+            {
+              kind: "text",
+              text: "**粗体**\n\n- 列表\n\n[x](javascript:alert%281%29)\n\n<script>alert(1)</script>\n\n![远程](https://example.com/track.png)",
+            },
+          ],
+        },
+      },
+    ],
+  };
+  const html = renderToStaticMarkup(
+    createElement(ChatMessages, { sessionID: "s", snapshot }),
   );
+  assert.match(html, /<strong>粗体<\/strong>/);
+  assert.match(html, /<li>列表<\/li>/);
+  assert.doesNotMatch(html, /<script|javascript:|<img/);
 });

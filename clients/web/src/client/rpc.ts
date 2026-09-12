@@ -19,6 +19,8 @@ const defaultTimeoutMs = 10_000;
 const openTimeoutMs = 5_000;
 
 export const jsonrpcNotFound = -32004;
+const jsonrpcInvalidParams = -32602;
+const workspaceUnavailableMessage = "workspace is not available";
 
 export class RPCError extends Error {
   code: number;
@@ -34,6 +36,14 @@ export function isSessionNotFound(error: unknown): boolean {
 
 export function shouldClearSessionOnGetError(error: unknown): boolean {
   return isSessionNotFound(error);
+}
+
+export function isWorkspaceUnavailable(error: unknown): boolean {
+  return (
+    error instanceof RPCError &&
+    error.code === jsonrpcInvalidParams &&
+    error.message === workspaceUnavailableMessage
+  );
 }
 
 interface Pending {

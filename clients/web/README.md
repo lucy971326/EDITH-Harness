@@ -33,7 +33,10 @@ npm test
 client/rpc.ts      收发请求与通知
 client/chat.ts     当前订阅、切换和重连
 state/chat.ts      Snapshot + 事件 → 一份投影
-chat-messages.tsx  同一套纯文本显示
+state/chat-process.ts  从投影只读派生分轮、工具配对、最终正文
+chat-messages.tsx  消息列表与滚动
+work-process.tsx   三级展开与复制
+message-markdown.tsx  Markdown 与清洗
 App.tsx            连接、会话、草稿和发送／停止流程
 sidebar.tsx        项目列表展示与回调
 composer.tsx       输入区展示与回调
@@ -53,7 +56,9 @@ HARNESS_WEB_QA=1 go test ./products/harness -run '^TestTypeScriptClient$' -count
 
 再启动 Vite。选择「浏览器验收」里的会话与模型／思考；普通文字立即返回固定测试回答，输入 `hold` 生成 `waiting` 后等待，可插话／停止／刷新。测试日志打印本机控制 URL：`/qa/release` 让等待中的模型继续；`/qa/restart` 关闭并重新创建 Host／Runner，沿用隔离账本，检查自动恢复。这是正常关闭重启，不冒充进程崩溃验收。退出测试进程会清理临时数据；这些控制口不进入正式后台。
 
-聊天目前只按纯文本呈现。图片发送、完整工作过程／工具卡、Markdown、Agent 管理、用量和分叉／命令等仍按迁移计划接入；辅助工作区仍只有标签壳。有附件时整条发送被阻止。正式入口切换与旧 Web 清理不在本步。
+图片展示／发送、Agent 管理、用量和分叉／命令等仍按迁移计划接入；辅助工作区仍只有标签壳。有附件时整条发送被阻止。正式入口切换与旧 Web 清理不在本步。
+
+第 4 步的独立浏览器验收页：启动 Vite 后打开 `/test/process-browser.html`。它直接使用正式消息组件和固定 Snapshot，不连接后台、不进入生产构建。检查：展开工具组和 read 详情 → 点击文字增量（阅读位置不被抢走）→ 正常完成（过程收起、Markdown 答案只一份）；重置后分别检查停止中、失败、停止、中断、亮暗与窄屏。复制失败应就地提示，不静默成功。此页不能替代真实网络验收。
 
 ## Windows 原生目录取消验收
 
