@@ -1,11 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import {
   Tooltip,
   TooltipContent,
@@ -16,21 +10,18 @@ import {
   PanelLeft,
   PanelRight,
   Folder,
-  FolderOpen,
-  Plus,
-  ChevronRight,
-  ArrowUp,
-  Square,
-  X,
-  Settings,
-  Bot,
-  Circle,
   Command,
   WifiOff,
   RefreshCw,
 } from "./icons";
 import { SettingsPage } from "./settings-page";
 import { WorkspaceTabs } from "./workspace-tabs";
+import { Sidebar } from "./sidebar";
+import {
+  Composer,
+  type Attachment,
+  type ComposerHandle,
+} from "./composer";
 import {
   formatRPCError,
   RPCClient,
@@ -41,12 +32,11 @@ import {
 import { ChatConnection, initialChatState } from "./client/chat";
 import { activeRun } from "./state/chat";
 import { ChatMessages } from "./chat-messages";
-import { ModelMenu, type ModelSelection } from "./model-menu";
-import { groupSessions, workspaceName } from "./state/projects";
-import type { SessionView } from "../../contracts/harness.ts";
+import { type ModelSelection } from "./model-menu";
+import { workspaceName } from "./state/projects";
+import type { SendParams, SessionView } from "../../contracts/harness.ts";
 import type { ModelChoice } from "../../contracts/appserver.ts";
 
-type Attachment = { id: string; name: string; url: string };
 type Draft = { text: string; images: Attachment[] };
 
 function preference(key: string, fallback: string) {
@@ -74,6 +64,29 @@ function restoredSession(): string | null {
   } catch {
     return null;
   }
+}
+
+export function chatSendParams(
+  sessionID: string,
+  text: string,
+  selection: ModelSelection,
+  expectedRunID?: string,
+): SendParams {
+  return {
+    sessionID,
+    text,
+    model: selection.model,
+    reasoningEffort: selection.reasoningEffort,
+    ...(expectedRunID ? { expectedRunID } : {}),
+  };
+}
+
+export function shouldClearSubmittedDraft(
+  versions: Map<string, number>,
+  sessionID: string,
+  submittedVersion: number,
+): boolean {
+  return (versions.get(sessionID) ?? 0) === submittedVersion;
 }
 
 export default function App() {
@@ -112,8 +125,7 @@ export default function App() {
   const [creatingWorkspace, setCreatingWorkspace] = useState<string | null>(
     null,
   );
-  const imageInput = useRef<HTMLInputElement>(null);
-  const input = useRef<HTMLTextAreaElement>(null);
+  const composer = useRef<ComposerHandle>(null);
   const objectUrls = useRef<string[]>([]);
   const drafts = useRef(new Map<string, Draft>());
   const clientRef = useRef<RPCClient | null>(null);
@@ -131,7 +143,6 @@ export default function App() {
 
   const connected = connection === "connected";
   const backendBusy = opening || creatingWorkspace !== null;
-  const projects = sessions ? groupSessions(sessions) : [];
   const snapshot =
     chatState.sessionID === selectedID ? chatState.snapshot : null;
   const currentRun = activeRun(snapshot);
@@ -223,6 +234,9 @@ export default function App() {
       attachments.push({ id: crypto.randomUUID(), name: file.name, url });
     }
     setImages((current) => [...current, ...attachments].slice(0, 4));
+  }
+  function removeImage(id: string) {
+    setImages((current) => current.filter((item) => item.id !== id));
   }
 
   async function loadSessions(client: RPCClient) {
@@ -375,15 +389,11 @@ export default function App() {
     setSending([...sendingRef.current]);
     setNotice("");
     try {
-      await client.send({
-        sessionID: id,
-        text,
-        model: modelSelection.model,
-        reasoningEffort: modelSelection.reasoningEffort,
-        ...(currentRun ? { expectedRunID: currentRun.runID } : {}),
-      });
+      await client.send(
+        chatSendParams(id, text, modelSelection, currentRun?.runID),
+      );
       // 确认只清这次输入；用户编辑过或已切到别的会话都不能被覆盖。
-      if ((draftVersions.current.get(id) ?? 0) === version) {
+      if (shouldClearSubmittedDraft(draftVersions.current, id, version)) {
         const saved = drafts.current.get(id);
         if (saved) drafts.current.set(id, { ...saved, text: "" });
         if (selectedIDRef.current === id) {
@@ -499,13 +509,6 @@ export default function App() {
       setStopping(null);
   }, [chatState, stopping]);
 
-  const connectionLabel =
-    connection === "connecting"
-      ? "正在连接"
-      : connection === "connected"
-        ? "已连接"
-        : "已断开";
-
   return (
     <TooltipProvider>
       <div
@@ -513,138 +516,24 @@ export default function App() {
         style={{ "--panel-width": `${panelWidth}px` } as CSSProperties}
       >
         {sidebar && (
-          <>
-            <button
-              className="sidebar-scrim"
-              aria-label="关闭项目侧栏"
-              onClick={() => setSidebar(false)}
-            />
-            <aside className="sidebar">
-              <div className="brand-row">
-                <span className="brand">
-                  Harness<span className="brand-period">.</span>
-                </span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label="收起项目侧栏"
-                  onClick={() => setSidebar(false)}
-                >
-                  <PanelLeft />
-                </Button>
-              </div>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="open-project-wrap">
-                    <Button
-                      variant="ghost"
-                      className="open-project"
-                      disabled={!connected || backendBusy}
-                      onClick={() => void openProject()}
-                    >
-                      <FolderOpen />
-                      打开项目
-                      <Plus className="ml-auto" />
-                    </Button>
-                  </span>
-                </TooltipTrigger>
-                {!connected && <TooltipContent>尚未连接后台</TooltipContent>}
-              </Tooltip>
-              <div className="sidebar-heading">项目</div>
-              <nav className="project-list" aria-label="项目与会话">
-                {connection !== "connected" &&
-                  sessions === null &&
-                  !listError && (
-                    <p className="metadata sidebar-empty">
-                      {connection === "connecting"
-                        ? "正在连接后台…"
-                        : "尚未连接后台。"}
-                    </p>
-                  )}
-                {connected && sessions === null && !listError && (
-                  <p className="metadata sidebar-empty">正在加载项目…</p>
-                )}
-                {listError && (
-                  <div className="sidebar-empty">
-                    <p className="metadata">{listError}</p>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={!connected}
-                      onClick={() => {
-                        const client = clientRef.current;
-                        if (client?.connected) void loadSessions(client);
-                      }}
-                    >
-                      重新加载列表
-                    </Button>
-                  </div>
-                )}
-                {sessions && sessions.length === 0 && !listError && (
-                  <p className="metadata sidebar-empty">
-                    还没有项目。打开一个目录开始。
-                  </p>
-                )}
-                {projects.map((project) => (
-                  <Collapsible
-                    defaultOpen
-                    key={project.workspace}
-                    className="project-group"
-                  >
-                    <div className="project-heading">
-                      <CollapsibleTrigger className="project-trigger">
-                        <ChevronRight className="disclosure-chevron" />
-                        <Folder />
-                        <span title={project.workspace}>{project.name}</span>
-                      </CollapsibleTrigger>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label={`在 ${project.name} 新建会话`}
-                        disabled={!connected || backendBusy}
-                        onClick={() =>
-                          void createInWorkspace(project.workspace)
-                        }
-                      >
-                        <Plus />
-                      </Button>
-                    </div>
-                    <CollapsibleContent>
-                      {project.sessions.map((item) => (
-                        <button
-                          key={item.sessionID}
-                          className={`session-row ${item.sessionID === selectedID && !settings ? "selected" : ""}`}
-                          onClick={() => void selectSession(item.sessionID)}
-                        >
-                          <span>{item.title}</span>
-                        </button>
-                      ))}
-                    </CollapsibleContent>
-                  </Collapsible>
-                ))}
-              </nav>
-              <div className="sidebar-bottom">
-                <Button
-                  variant="ghost"
-                  className={settings ? "selected" : ""}
-                  onClick={openSettings}
-                >
-                  <Settings />
-                  设置
-                </Button>
-                <div className="local-caption">
-                  <Circle />
-                  本机工作空间<span>{connectionLabel}</span>
-                </div>
-                {connection === "disconnected" && (
-                  <Button variant="ghost" size="sm" onClick={reconnect}>
-                    <RefreshCw />
-                    重新连接
-                  </Button>
-                )}
-              </div>
-            </aside>
-          </>
+          <Sidebar
+            connection={connection}
+            backendBusy={backendBusy}
+            sessions={sessions}
+            listError={listError}
+            selectedID={selectedID}
+            settingsOpen={settings}
+            onClose={() => setSidebar(false)}
+            onOpenProject={() => void openProject()}
+            onReload={() => {
+              const client = clientRef.current;
+              if (client?.connected) void loadSessions(client);
+            }}
+            onSelect={(sessionID) => void selectSession(sessionID)}
+            onCreate={(workspace) => void createInWorkspace(workspace)}
+            onOpenSettings={openSettings}
+            onReconnect={reconnect}
+          />
         )}
         <main className="main">
           <header className="topbar">
@@ -767,7 +656,7 @@ export default function App() {
                               variant="outline"
                               onClick={() => {
                                 editDraft(text);
-                                input.current?.focus();
+                                composer.current?.focus();
                               }}
                             >
                               {text}
@@ -778,194 +667,48 @@ export default function App() {
                     )}
                   </div>
                 </ChatMessages>
-                <div className="composer-area">
-                  <div className="composer-column">
-                    {notice && (
-                      <div role="status" className="inline-notice">
-                        {notice}
-                        <button
-                          aria-label="关闭提示"
-                          onClick={() => setNotice("")}
-                        >
-                          <X />
-                        </button>
-                      </div>
-                    )}
-                    <div className="composer">
-                      {images.length > 0 && (
-                        <div className="attachments">
-                          {images.map((image) => (
-                            <div key={image.id}>
-                              <img src={image.url} alt={image.name} />
-                              <button
-                                aria-label={`移除图片 ${image.name}`}
-                                onClick={() =>
-                                  setImages(
-                                    images.filter(
-                                      (item) => item.id !== image.id,
-                                    ),
-                                  )
-                                }
-                              >
-                                <X />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      <Textarea
-                        ref={input}
-                        aria-label="消息输入"
-                        placeholder={
-                          currentRun ? "发送以调整当前任务" : "说说你的想法"
-                        }
-                        value={draft}
-                        onChange={(event) => editDraft(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (
-                            event.key === "Enter" &&
-                            !event.shiftKey &&
-                            !event.nativeEvent.isComposing &&
-                            event.keyCode !== 229
-                          ) {
-                            event.preventDefault();
-                            void sendMessage();
-                          }
-                        }}
-                        onPaste={(event) => {
-                          const files = Array.from(event.clipboardData.files);
-                          if (files.length) {
-                            event.preventDefault();
-                            addImages(files);
-                          }
-                        }}
-                      />
-                      <div className="composer-toolbar">
-                        <div className="composer-left">
-                          <input
-                            ref={imageInput}
-                            type="file"
-                            hidden
-                            accept="image/png,image/jpeg,image/webp,image/gif"
-                            multiple
-                            onChange={(event) => {
-                              addImages(event.target.files);
-                              event.target.value = "";
-                            }}
-                          />
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                aria-label="添加图片"
-                                onClick={() => imageInput.current?.click()}
-                              >
-                                <Plus />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              添加图片，也可以粘贴。不会发送。
-                            </TooltipContent>
-                          </Tooltip>
-                          <Button
-                            variant="ghost"
-                            className="agent-select"
-                            disabled
-                            aria-label="选择 Agent"
-                          >
-                            <Bot />
-                            {selected
-                              ? selected.settings.agentID || "未设置"
-                              : "未加载"}
-                          </Button>
-                        </div>
-                        <div className="composer-right">
-                          <span className="usage" aria-label="上下文用量未接入">
-                            —
-                          </span>
-                          <ModelMenu
-                            models={models}
-                            value={modelSelection}
-                            disabled={
-                              !connected ||
-                              !selected ||
-                              !synchronized ||
-                              !!currentRun ||
-                              busySending
-                            }
-                            error={modelError}
-                            onRetry={() => {
-                              if (clientRef.current?.connected)
-                                void loadModels(clientRef.current);
-                            }}
-                            onChange={(value) => {
-                              if (selectedID)
-                                setModelSelections((current) => ({
-                                  ...current,
-                                  [selectedID]: value,
-                                }));
-                            }}
-                          />
-                          {currentRun && (
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              aria-label={
-                                stoppingCurrent ? "停止中" : "停止任务"
-                              }
-                              disabled={!synchronized || stoppingCurrent}
-                              onClick={() => void stopRun()}
-                            >
-                              <Square className="stop-icon" />
-                            </Button>
-                          )}
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span>
-                                <Button
-                                  size="icon"
-                                  className="send-button"
-                                  aria-label={
-                                    currentRun ? "调整当前任务" : "发送消息"
-                                  }
-                                  disabled={!canSend}
-                                  onClick={() => void sendMessage()}
-                                >
-                                  <ArrowUp />
-                                </Button>
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              {currentRun
-                                ? "直接插话，不排队"
-                                : validModel
-                                  ? "发送消息"
-                                  : "请先选择模型和思考档位"}
-                            </TooltipContent>
-                          </Tooltip>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="composer-caption">
-                      <span>
-                        {stoppingCurrent
-                          ? "停止中，等待后台收尾…"
-                          : busySending
-                            ? "等待后台确认…"
-                            : currentRun
-                              ? "Enter 调整当前任务 · 不排队"
-                              : "Enter 发送 · Shift + Enter 换行"}
-                      </span>
-                      <span>
-                        {modelError ||
-                          (models?.length === 0
-                            ? "尚未配置模型"
-                            : "图片、用量与完整工具展示尚未接入")}
-                      </span>
-                    </div>
-                  </div>
-                </div>
+                <Composer
+                  draft={draft}
+                  images={images}
+                  notice={notice}
+                  agentLabel={
+                    selected ? selected.settings.agentID || "未设置" : "未加载"
+                  }
+                  running={!!currentRun}
+                  stopping={stoppingCurrent}
+                  busySending={busySending}
+                  canSend={!!canSend}
+                  stopDisabled={!synchronized || stoppingCurrent}
+                  modelDisabled={
+                    !connected ||
+                    !selected ||
+                    !synchronized ||
+                    !!currentRun ||
+                    busySending
+                  }
+                  validModel={!!validModel}
+                  models={models}
+                  modelSelection={modelSelection}
+                  modelError={modelError}
+                  onDraftChange={editDraft}
+                  onSend={() => void sendMessage()}
+                  onStop={() => void stopRun()}
+                  onAddImages={addImages}
+                  onRemoveImage={removeImage}
+                  onModelChange={(value) => {
+                    if (selectedID)
+                      setModelSelections((current) => ({
+                        ...current,
+                        [selectedID]: value,
+                      }));
+                  }}
+                  onRetryModels={() => {
+                    if (clientRef.current?.connected)
+                      void loadModels(clientRef.current);
+                  }}
+                  onDismissNotice={() => setNotice("")}
+                  composerRef={composer}
+                />
               </section>
             )}
           </div>

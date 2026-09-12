@@ -34,7 +34,9 @@ client/rpc.ts      收发请求与通知
 client/chat.ts     当前订阅、切换和重连
 state/chat.ts      Snapshot + 事件 → 一份投影
 chat-messages.tsx  同一套纯文本显示
-App.tsx           输入、选择、确认清草稿和停止
+App.tsx            连接、会话、草稿和发送／停止流程
+sidebar.tsx        项目列表展示与回调
+composer.tsx       输入区展示与回调
 ```
 
 以上文件位于 `src/`。模型与思考菜单在 `src/model-menu.tsx`；已选会话需模型和思考均有效才能首次发送。运行中直接插话，无等待队列。

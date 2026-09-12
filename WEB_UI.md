@@ -64,7 +64,7 @@ clients/web/
 - 不使用 Next.js，不引入服务端 React。
 - TypeScript 写法直白、类型明确，少语法糖和高级类型技巧。
 - 没有真实复用前，不建立通用 Store、组件框架或插件化 UI。
-- 聊天阅读路线：`src/client/rpc.ts` 收发 → `src/client/chat.ts` 订阅／恢复 → `src/state/chat.ts` 统一投影 → `src/chat-messages.tsx` 渲染。`App` 只接页面操作和局部状态，不另存一份消息列表；不为符合目标目录图预建空壳。
+- 聊天阅读路线：`src/client/rpc.ts` 收发 → `src/client/chat.ts` 订阅／恢复 → `src/state/chat.ts` 统一投影 → `src/chat-messages.tsx` 渲染。`App` 保留连接、会话选择、草稿和发送／停止流程；`sidebar.tsx` 与 `composer.tsx` 只展示并回调，不发 RPC。不为符合目标目录图预建空壳。
 - 后台插件传数据，不传 HTML、React 组件或任意 SVG。
 - 目标架构不保留旧页面插槽；产品内部扩展由真实需求再设计，不迁移 demo 插槽。
 

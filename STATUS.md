@@ -76,6 +76,11 @@ App-server 第一、二步已经完成：`products/harness` 接替原 `kernel/ch
 - 可复现的隔离浏览器后台入口为 `HARNESS_WEB_QA=1 go test ./products/harness -run '^TestTypeScriptClient$' -count=1 -v -timeout=0`，使用方法见 `clients/web/README.md`。没有调用付费模型、读取或删除用户真实会话；Windows 原生目录弹窗仍未实机验证。窄屏菜单／覆盖层交互和 DOM 尺寸检查通过，截图工具超时未取得窄屏图片；暗色宽屏截图已查看。
 - 未进入第 4 步。三级过程／完整工具卡／Markdown、图片发送、Agent 管理、用量、分叉／命令仍按后续计划接入。正式入口仍是旧 Web，新聊天需后台加 Vite 开发页；旧实时过程错位仍不在本步修复。3B 施工计划已收口到本节和稳定规范，不再保留第二份完成清单。
 
+### 前端整理：抽出侧栏与输入区
+
+- 从 `clients/web/src/App.tsx` 抽出 `sidebar.tsx` 与 `composer.tsx`。App 仍创建唯一 `ChatConnection`，并保留会话切换、草稿、发送／停止和设置／辅助区开关；两个组件只接收展示数据与回调，不拿 RPCClient、不管理订阅。未搬设置页、辅助区、消息列表，未接入 `sessionInList`，未进入第 4 步。
+- 验证：`clients/web` 的 `npm test`（36 项）与 `npm run build` 通过。新增回归覆盖忙时 `expectedRunID`、草稿版本保护、IME／Enter、侧栏选中与输入区图片／停止按钮。浏览器验收见该轮回报。
+
 ### App-server 第一批：产品迁移与类型化契约
 
 - 整体迁移 `kernel/chat` 到 `products/harness`，Host 键为 `harnessProduct`；不留旧包或兼容包装。发送、Steer、父子停止、快照、分叉与命令业务仍用原内核执行和存储。
