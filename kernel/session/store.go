@@ -88,7 +88,7 @@ func (s *Store) Fork(sourceID, destinationID, throughEntryID, title string) (*Se
 		if err != nil {
 			return nil, fmt.Errorf("session: fork encode entry %q: %w", entry.ID, err)
 		}
-		id, err := newNodeID()
+		id, err := NewEntryID()
 		if err != nil {
 			return nil, err
 		}

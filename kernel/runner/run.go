@@ -12,6 +12,7 @@ import (
 	"harness/kernel/events"
 	"harness/kernel/llm"
 	"harness/kernel/loops"
+	"harness/kernel/persist"
 	"harness/kernel/session"
 	"harness/kernel/session/settings"
 	"harness/kernel/tools"
@@ -28,19 +29,48 @@ const (
 
 // 活对象。一本 Session 当前尚未结束的一轮运行。
 type liveRun struct {
-	mu                sync.Mutex
+	// 账本交接和内存状态；不跨 Publish 持锁。
+	mu      sync.Mutex
+	handoff sync.Mutex
+
+	// 本轮身份与配置，afterEntrySeq 是本轮起点，不随插话移动。
+	runID         string
+	settings      *settings.SessionSettings // 准备完成前为空。
+	afterEntrySeq uint64
+
+	// 输入准入、检查点与收尾等待。
 	cancel            context.CancelFunc
 	steeringState     steeringState
 	steers            []session.Message
 	inputErr          error
 	inputPublications sync.WaitGroup
-	afterEntrySeq     uint64
-	ended             bool // 结束通知发布前置位；live 仍保留到完整收尾，不提前放行新 Run。
-	runID             string
-	settings          *settings.SessionSettings // 准备完成前为空，不能拿半成品当配置快照。
+	outputAfterSeq    uint64 // 下一条模型输出的位置；仅在检查点消费输入后前移。
+	pendingAfterSeq   uint64 // 最近接收但尚未被检查点消费的输入。
 	// 当前代次的通道在有待处理 Steer 时关闭广播；Checkpoint 消费后才换代次。
 	inputSignal chan struct{}
-	toolBlocks  map[string]toolBlock
+
+	// 可恢复投影；结束状态置位后，仍占用 live 到完整收尾。
+	updateSeq uint64
+	ended     bool
+	compact   bool
+	endStatus RunStatus
+	endError  string
+	drafts    map[string]*runDraft
+	toolCalls map[string]toolCallLoc
+	persisted map[string]struct{}
+}
+
+// 数据。尚未落账的一条生成中消息。
+type runDraft struct {
+	entryID       string
+	afterEntrySeq uint64
+	blocks        []session.Block
+}
+
+// 数据。工具调用所在的助手消息块位置。
+type toolCallLoc struct {
+	entryID  string
+	blockSeq uint64
 }
 
 // 数据。一轮 Run 在进入 Loop 前读取的一致配置快照。
@@ -49,12 +79,6 @@ type runPreparation struct {
 	settings settings.SessionSettings
 	prepared agents.PreparedAgent
 	loop     loops.Loop
-}
-
-// 数据。一场 Run 内工具调用所在的原始块位置。
-type toolBlock struct {
-	stepSeq  uint64
-	blockSeq uint64
 }
 
 // 活对象。挂在 Host 上、管理尚未结束 Run 的对话运行器。
@@ -66,9 +90,13 @@ type Runner struct {
 	events   *events.Registry
 	llm      *llm.Client
 	tools    tools.Tools
+	persist  persist.Persistence
+	epoch    string
 
 	mu           sync.Mutex
+	recordsMu    sync.Mutex // runs.json 的整次读改写；快照同样遵守。
 	live         map[string]*liveRun
+	clocks       map[string]uint64 // 本进程内每场会话的更新序号，结束后仍保留。
 	closeStarted bool
 	wg           sync.WaitGroup
 }
@@ -121,6 +149,7 @@ func NewRunner(
 	eventRegistry *events.Registry,
 	llmClient *llm.Client,
 	toolRegistry tools.Tools,
+	persistence persist.Persistence,
 ) (*Runner, error) {
 	if sessions == nil {
 		return nil, fmt.Errorf("runner: nil sessions")
@@ -143,6 +172,13 @@ func NewRunner(
 	if toolRegistry == nil {
 		return nil, fmt.Errorf("runner: nil tools")
 	}
+	if persistence == nil {
+		return nil, fmt.Errorf("runner: nil persistence")
+	}
+	epoch, err := newRunID()
+	if err != nil {
+		return nil, err
+	}
 	return &Runner{
 		sessions: sessions,
 		settings: settingsStore,
@@ -151,7 +187,10 @@ func NewRunner(
 		events:   eventRegistry,
 		llm:      llmClient,
 		tools:    toolRegistry,
+		persist:  persistence,
+		epoch:    epoch,
 		live:     make(map[string]*liveRun),
+		clocks:   make(map[string]uint64),
 	}, nil
 }
 
@@ -225,7 +264,9 @@ func (r *Runner) openLive(ctx context.Context, sessionID string) (string, *liveR
 		steeringState: steeringInitializing,
 		runID:         runID,
 		inputSignal:   make(chan struct{}),
-		toolBlocks:    make(map[string]toolBlock),
+		drafts:        make(map[string]*runDraft),
+		toolCalls:     make(map[string]toolCallLoc),
+		persisted:     make(map[string]struct{}),
 	}
 	err = r.begin(sessionID, current)
 	if err != nil {
@@ -278,6 +319,7 @@ func (r *Runner) executePrepared(runCtx context.Context, sessionID, runID string
 	prepared := preparation.prepared
 	loop := preparation.loop
 	runStartedAttempted := false
+	runRecorded := false
 	defer func() {
 		// 不再接收协作输入后，等待已落账输入的事件发布结束，保留迟到的发布错误。
 		current.closeSteering()
@@ -285,8 +327,11 @@ func (r *Runner) executePrepared(runCtx context.Context, sessionID, runID string
 		current.mu.Lock()
 		err = errors.Join(err, current.inputErr)
 		current.mu.Unlock()
-		if !runStartedAttempted {
+		if !runRecorded {
 			return
+		}
+		if !current.compact {
+			err = errors.Join(err, r.persistOpenDrafts(sess, current, sessionID, runID))
 		}
 		status := RunSucceeded
 		if isCancellationOnly(err) {
@@ -294,26 +339,54 @@ func (r *Runner) executePrepared(runCtx context.Context, sessionID, runID string
 		} else if err != nil {
 			status = RunFailed
 		}
-		endErr := r.publish(context.Background(), RunEvent{
+		saveErr := r.upsertRecord(sessionID, runRecord{
+			RunID:         runID,
+			Status:        status,
+			AfterEntrySeq: current.afterSeq(),
+			Error:         errorText(err),
+		})
+		if saveErr != nil {
+			err = errors.Join(err, saveErr)
+			if status == RunSucceeded {
+				status = RunFailed
+			}
+		}
+		if !runStartedAttempted {
+			return
+		}
+		endErr := r.publish(context.Background(), r.liveEvent(current, RunEvent{
 			SessionID:     sessionID,
 			RunID:         runID,
 			Kind:          RunEnded,
 			AfterEntrySeq: current.afterSeq(),
 			Status:        status,
 			Error:         errorText(err),
-		})
+		}))
 		if endErr != nil {
 			err = errors.Join(err, endErr)
 		}
 	}()
 
 	message := messageFromInput(runID, input)
+	current.handoff.Lock()
 	entry, err := sess.Append(message)
 	if err != nil {
+		current.handoff.Unlock()
 		return err
 	}
 	current.setAfterEntrySeq(entry.Seq)
-	if err = r.publish(runCtx, RunEvent{SessionID: sessionID, RunID: runID, Kind: Message, Entry: &entry}); err != nil {
+	current.markPersisted(entry.ID)
+	current.handoff.Unlock()
+	saveErr := r.upsertRecord(sessionID, runRecord{
+		RunID:         runID,
+		Status:        RunRunning,
+		AfterEntrySeq: entry.Seq,
+	})
+	if saveErr != nil {
+		return saveErr
+	}
+	runRecorded = true
+	if err = r.publish(runCtx, r.liveEvent(current, RunEvent{SessionID: sessionID, RunID: runID, Kind: Message, EntryID: entry.ID, AfterEntrySeq: entry.Seq, Entry: &entry})); err != nil {
 		return err
 	}
 	history := sess.History()
@@ -326,7 +399,7 @@ func (r *Runner) executePrepared(runCtx context.Context, sessionID, runID string
 		return err
 	}
 	runStartedAttempted = true
-	if err = r.publish(runCtx, RunEvent{SessionID: sessionID, RunID: runID, Kind: RunStarted, AfterEntrySeq: entry.Seq}); err != nil {
+	if err = r.publish(runCtx, r.liveEvent(current, RunEvent{SessionID: sessionID, RunID: runID, Kind: RunStarted, AfterEntrySeq: entry.Seq})); err != nil {
 		return err
 	}
 	// 启动通知投递的协作输入进入初始历史，所有 Loop 的首次请求都能看到。
@@ -406,6 +479,7 @@ func (r *Runner) begin(sessionID string, current *liveRun) error {
 	if _, exists := r.live[sessionID]; exists {
 		return fmt.Errorf("runner: session %q is already running", sessionID)
 	}
+	current.updateSeq = r.clocks[sessionID]
 	r.live[sessionID] = current
 	r.wg.Add(1)
 	return nil
@@ -413,60 +487,19 @@ func (r *Runner) begin(sessionID string, current *liveRun) error {
 
 func (r *Runner) release(sessionID string, current *liveRun) {
 	current.closeSteering()
+	current.mu.Lock()
+	seq := current.updateSeq
+	current.mu.Unlock()
 	r.mu.Lock()
 	if r.live[sessionID] == current {
+		r.clocks[sessionID] = seq
 		delete(r.live, sessionID)
 	}
 	r.mu.Unlock()
 }
 
-func (r *Runner) emit(ctx context.Context, sessionID, runID string, sess *session.Session, current *liveRun, event loops.Event) error {
-	if event.Kind == loops.EventMessage {
-		if event.Message == nil {
-			return fmt.Errorf("runner: message event has nil message")
-		}
-		message := *event.Message
-		message.RunID = runID
-		entry, err := sess.Append(message)
-		if err != nil {
-			return err
-		}
-		if message.Role == session.RoleAssistant {
-			current.registerToolBlocks(message, event.StepSeq)
-		}
-		position := current.toolBlockForMessage(message, event.StepSeq, event.BlockSeq)
-		return r.publish(ctx, RunEvent{
-			SessionID:     sessionID,
-			RunID:         runID,
-			Kind:          Message,
-			AfterEntrySeq: current.afterSeq(),
-			StepSeq:       position.stepSeq,
-			BlockSeq:      position.blockSeq,
-			Entry:         &entry,
-		})
-	}
-	runEvent, err := mapEvent(sessionID, runID, event)
-	if err != nil {
-		return err
-	}
-	runEvent.AfterEntrySeq = current.afterSeq()
-	if event.Tool != nil {
-		position := current.toolBlock(event.Tool.ID)
-		runEvent.StepSeq = position.stepSeq
-		runEvent.BlockSeq = position.blockSeq
-	}
-	return r.publish(ctx, runEvent)
-}
-
 func (r *Runner) publish(ctx context.Context, event RunEvent) error {
-	if event.Kind == RunEnded {
-		current, err := r.current(event.SessionID)
-		if err == nil && current.runID == event.RunID {
-			current.mu.Lock()
-			current.ended = true
-			current.mu.Unlock()
-		}
-	}
+	// 同步监听允许重入 Runner；不能持运行锁或发送锁调用它们。
 	return events.Publish(ctx, r.events, event)
 }
 
@@ -490,38 +523,6 @@ func (r *Runner) close() {
 		current.shutdown()
 	}
 	r.wg.Wait()
-}
-
-func mapEvent(sessionID, runID string, event loops.Event) (RunEvent, error) {
-	out := RunEvent{SessionID: sessionID, RunID: runID, StepSeq: event.StepSeq, BlockSeq: event.BlockSeq}
-	switch event.Kind {
-	case loops.EventTextDelta:
-		out.Kind = TextDelta
-		out.Text = event.Text
-	case loops.EventReasoningDelta:
-		out.Kind = ReasoningDelta
-		out.Text = event.Text
-	case loops.EventToolStarted:
-		out.Kind = ToolStarted
-	case loops.EventToolFinished:
-		out.Kind = ToolFinished
-	case loops.EventUsage:
-		out.Kind = ContextUsage
-		if event.Usage != nil {
-			usage := Usage{
-				InputTokens:     event.Usage.InputTokens,
-				CacheReadTokens: event.Usage.CacheReadTokens,
-				ContextWindow:   event.Usage.ContextWindow,
-			}
-			out.Usage = &usage
-		}
-	default:
-		return RunEvent{}, fmt.Errorf("runner: unsupported loop event %q", event.Kind)
-	}
-	if event.Tool != nil {
-		out.Tool = &ToolEvent{ID: event.Tool.ID, Name: event.Tool.Name, IsError: event.Tool.IsError}
-	}
-	return out, nil
 }
 
 func errorText(err error) string {

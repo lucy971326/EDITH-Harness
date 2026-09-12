@@ -18,15 +18,16 @@ func (r *Runner) Receive(sessionID string, message session.Message) (bool, error
 	if err != nil {
 		return false, nil
 	}
-	current.mu.Lock()
 	sess, err := r.sessions.Get(sessionID)
 	if err != nil {
-		current.mu.Unlock()
 		return false, err
 	}
+	current.handoff.Lock()
+	current.mu.Lock()
 	for _, entry := range sess.Entries() {
 		if entry.Message.MessageID == message.MessageID {
 			current.mu.Unlock()
+			current.handoff.Unlock()
 			if entry.Message.Role != message.Role || entry.Message.SourceSessionID != message.SourceSessionID || entry.Message.SourceRunID != message.SourceRunID {
 				return false, fmt.Errorf("runner: collaboration ID conflicts with existing message")
 			}
@@ -35,24 +36,41 @@ func (r *Runner) Receive(sessionID string, message session.Message) (bool, error
 	}
 	if current.steeringState != steeringOpen {
 		current.mu.Unlock()
+		current.handoff.Unlock()
 		return false, nil
 	}
-	message.RunID = current.runID
+	runID := current.runID
+	message.RunID = runID
 	message.Blocks = cloneBlocks(message.Blocks)
 	entry, err := sess.Append(message)
 	if err != nil {
 		current.inputErr = errors.Join(current.inputErr, err)
 		current.mu.Unlock()
+		current.handoff.Unlock()
 		current.stop()
 		return false, err
 	}
 	current.steers = append(current.steers, message)
+	current.pendingAfterSeq = entry.Seq
 	current.signalInputLocked()
-	current.inputPublications.Add(1)
-	defer current.inputPublications.Done()
+	current.persisted[entry.ID] = struct{}{}
+	current.updateSeq++
+	seq := current.updateSeq
 	after := current.afterEntrySeq
+	current.inputPublications.Add(1)
 	current.mu.Unlock()
-	err = r.publish(context.Background(), RunEvent{SessionID: sessionID, RunID: message.RunID, Kind: Message, AfterEntrySeq: after, Entry: &entry})
+	current.handoff.Unlock()
+	defer current.inputPublications.Done()
+	err = r.publish(context.Background(), RunEvent{
+		SessionID:     sessionID,
+		RunID:         runID,
+		Kind:          Message,
+		EntryID:       entry.ID,
+		AfterEntrySeq: after,
+		Entry:         &entry,
+		UpdateSeq:     seq,
+		SeqEpoch:      r.epoch,
+	})
 	if err != nil {
 		current.mu.Lock()
 		current.inputErr = errors.Join(current.inputErr, err)

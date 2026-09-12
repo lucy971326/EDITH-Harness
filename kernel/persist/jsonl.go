@@ -261,3 +261,49 @@ func (s *jsonl) Add(id string, node Node) error {
 	}
 	return nil
 }
+
+func (s *jsonl) runRecordsFile(id string) string {
+	return filepath.Join(s.sessionDir(id), "runs.json")
+}
+
+func (s *jsonl) LoadRunRecords(id string) ([]byte, error) {
+	err := checkID(id)
+	if err != nil {
+		return nil, err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	body, err := os.ReadFile(s.runRecordsFile(id))
+	if err != nil {
+		return nil, err
+	}
+	return body, nil
+}
+
+func (s *jsonl) SaveRunRecords(id string, body []byte) error {
+	err := checkID(id)
+	if err != nil {
+		return err
+	}
+	if body == nil {
+		body = []byte("[]")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	err = s.ensureSessionDir(id)
+	if err != nil {
+		return err
+	}
+
+	path := s.runRecordsFile(id)
+	tmp := path + ".tmp"
+	err = os.WriteFile(tmp, body, 0o644)
+	if err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return os.Rename(tmp, path)
+}

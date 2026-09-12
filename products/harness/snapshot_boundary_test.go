@@ -40,8 +40,8 @@ func TestSnapshotAfterEndPublicationDoesNotResurrectRun(t *testing.T) {
 	f.loop.release()
 	select {
 	case snapshot := <-observed:
-		if len(snapshot.Runs) != 0 {
-			t.Fatalf("finished run reappeared: %+v", snapshot.Runs)
+		if len(snapshot.Runs) != 1 || snapshot.Runs[0].Status != runner.RunSucceeded || len(snapshot.Runs[0].Drafts) != 0 {
+			t.Fatalf("finished run = %+v", snapshot.Runs)
 		}
 		if len(snapshot.Entries) != 2 {
 			t.Fatalf("missing durable result: %+v", snapshot)

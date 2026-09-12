@@ -22,21 +22,33 @@ try {
   assert.equal((await client.untilEnded(subscription.subscriptionID)).status, 'success');
   const snapshot = await client.call('harness/session/snapshot', params);
   assert(snapshot.entries.some(entry => entry.message.role === 'assistant' && entry.message.blocks.some(block => block.text === 'local model completed')));
-  assert.deepEqual(snapshot.runs, []);
+  assert.equal(snapshot.runs.length, 1);
+  assert.equal(snapshot.runs[0].status, 'success');
+  assert.equal(typeof snapshot.seqEpoch, 'string');
+  assert.ok(snapshot.seqEpoch.length > 0);
   await client.call('server/unsubscribe', { subscriptionID: subscription.subscriptionID });
 
   // 模型持续等待：确认开始后断线，再用新连接恢复同一个 Run。
   subscription = await client.call('harness/session/subscribe', params);
   await client.call('harness/session/send', { ...params, text: 'hold', model: 'deepseek/deepseek-v4-flash', reasoningEffort: 'off' });
   let runID = '';
+  let draftID = '';
   for (;;) {
     const event = await client.nextEvent(subscription.subscriptionID);
-    if (event.kind === 'text-delta') { runID = event.runID; break; }
+    if (event.kind === 'text-delta') {
+      runID = event.runID;
+      draftID = event.entryID ?? '';
+      break;
+    }
   }
+  assert.ok(draftID, 'first delta needs an entry id');
   client.close();
   client = await TestClient.connect(url);
   subscription = await client.call('harness/session/subscribe', params);
-  assert(subscription.snapshot.runs.some(run => run.runID === runID), 'Disconnect cancelled the run');
+  const live = subscription.snapshot.runs.find(run => run.runID === runID);
+  assert(live, 'Disconnect cancelled the run');
+  assert.equal(live.status, 'running');
+  assert(live.drafts?.some(draft => draft.entryID === draftID && draft.blocks.some(block => block.text === 'waiting')), 'snapshot lost in-progress text');
   const steered = await client.call('harness/session/send', { ...params, text: 'steer while busy' });
   assert.equal(steered.mode, 'steered');
   await client.call('harness/session/stop', params);
@@ -44,8 +56,9 @@ try {
   assert.equal(ended.runID, runID);
   assert.equal(ended.status, 'cancelled');
   const stopped = await client.call('harness/session/snapshot', params);
-  assert.deepEqual(stopped.runs, []);
+  assert.equal(stopped.runs.at(-1)?.status, 'cancelled');
   assert(stopped.entries.some(entry => entry.message.blocks.some(block => block.text === 'steer while busy')));
+  assert(stopped.entries.some(entry => entry.message.incomplete && entry.message.blocks.some(block => block.text === 'waiting')));
   console.log('PASS: create / query / send / completion / reconnect / steer / stop');
 } finally {
   client.close();

@@ -31,13 +31,13 @@ void [create, get, empty, session, missing, unknown, wrongTime, nullList];
 type Send = Methods['harness/session/send'];
 type Subscribe = Methods['harness/session/subscribe'];
 const steer: Send['params'] = { sessionID: 'abc', text: '继续' };
-const subscribed: Subscribe['result'] = { subscriptionID: 'sub', snapshot: { entries: [], runs: [] } };
+const subscribed: Subscribe['result'] = { subscriptionID: 'sub', snapshot: { entries: [], runs: [], updateSeq: 0, seqEpoch: 'epoch' } };
 // @ts-expect-error 第二步只开放文字输入，不能悄悄加入未实现的图片参数。
 const imageSend: Send['params'] = { sessionID: 'abc', text: '图', image: 'base64' };
 // @ts-expect-error 发送不是下一轮队列。
 const queued: Send['result'] = { mode: 'queued' };
 // @ts-expect-error 快照里的账本必须是数组。
-const nullEntries: Subscribe['result'] = { subscriptionID: 'sub', snapshot: { entries: null, runs: [] } };
+const nullEntries: Subscribe['result'] = { subscriptionID: 'sub', snapshot: { entries: null, runs: [], updateSeq: 0, seqEpoch: 'epoch' } };
 void [steer, subscribed, imageSend, queued, nullEntries];
 
 type SelectWorkspace = ServerMethods['workspace/select'];

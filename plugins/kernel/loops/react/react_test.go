@@ -107,6 +107,7 @@ func TestReactRunsToolRoundTrip(t *testing.T) {
 	}
 
 	wantKinds := []loops.EventKind{
+		loops.EventMessageStarted,
 		loops.EventReasoningDelta,
 		loops.EventTextDelta,
 		loops.EventUsage,
@@ -114,6 +115,7 @@ func TestReactRunsToolRoundTrip(t *testing.T) {
 		loops.EventToolStarted,
 		loops.EventMessage,
 		loops.EventToolFinished,
+		loops.EventMessageStarted,
 		loops.EventTextDelta,
 		loops.EventUsage,
 		loops.EventMessage,
@@ -423,6 +425,63 @@ func TestReactReturnsMalformedToolArgumentsToModel(t *testing.T) {
 	}
 }
 
+func TestReactCancelDuringTextPersistsIncompleteWithSameEntryID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeSSE(w, `{"choices":[{"delta":{"content":"半截"},"index":0}]}`)
+		flusher, ok := w.(http.Flusher)
+		if ok {
+			flusher.Flush()
+		}
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+	loop, _ := installReact(t, server.URL)
+	ctx, cancel := context.WithCancel(context.Background())
+	var events []loops.Event
+	var once sync.Once
+	err := loop.Run(ctx, loops.Invocation{
+		History: []session.Message{{Role: session.RoleUser, Blocks: []session.Block{{Kind: "text", Text: "ask"}}}},
+		LLMConfig: llm.RunConfig{
+			Model:           "deepseek/deepseek-v4-flash",
+			ReasoningEffort: "off",
+		},
+		Emit: func(_ context.Context, event loops.Event) error {
+			events = append(events, event)
+			if event.Kind == loops.EventTextDelta {
+				once.Do(cancel)
+			}
+			return nil
+		},
+		Checkpoint: func(context.Context, loops.CheckpointPhase) ([]session.Message, error) {
+			return nil, nil
+		},
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("run error = %v", err)
+	}
+	var startID, deltaID, messageID string
+	var incomplete bool
+	for _, event := range events {
+		switch event.Kind {
+		case loops.EventMessageStarted:
+			startID = event.EntryID
+		case loops.EventTextDelta:
+			deltaID = event.EntryID
+		case loops.EventMessage:
+			if event.Message != nil {
+				messageID = event.EntryID
+				incomplete = event.Message.Incomplete
+			}
+		}
+	}
+	if startID == "" || startID != deltaID || startID != messageID {
+		t.Fatalf("ids start=%q delta=%q message=%q events=%#v", startID, deltaID, messageID, events)
+	}
+	if !incomplete {
+		t.Fatalf("incomplete not marked: %#v", events)
+	}
+}
+
 func TestReactPersistsCancelledToolResult(t *testing.T) {
 	registry := tools.NewRegistry()
 	if err := registry.Register(tools.New("echo", "Echo a value.", func(context.Context, tools.Call, echoArgs) (tools.Result, error) {
@@ -440,7 +499,7 @@ func TestReactPersistsCancelledToolResult(t *testing.T) {
 			events = append(events, event)
 			return nil
 		},
-	}, session.ToolCall{ID: "call_1", Name: "echo", Args: `{"value":"hello"}`}, 1, 1)
+	}, "assistant-1", session.ToolCall{ID: "call_1", Name: "echo", Args: `{"value":"hello"}`}, 1)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("execute error = %v", err)
 	}

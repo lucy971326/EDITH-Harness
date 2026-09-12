@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"harness/kernel/loops"
@@ -16,35 +17,55 @@ func (r *Runner) Steer(sessionID string, input session.UserMessage) error {
 		return err
 	}
 
+	sess, err := r.sessions.Get(sessionID)
+	if err != nil {
+		return err
+	}
+
+	// 准入、落账和交给检查点是一件事；最终检查点不能从中间穿过。
+	current.handoff.Lock()
 	current.mu.Lock()
-	if current.steeringState != steeringOpen || current.runID == "" {
+	if current.steeringState != steeringOpen {
 		current.mu.Unlock()
+		current.handoff.Unlock()
 		return fmt.Errorf("runner: session %q is not running", sessionID)
 	}
-	message := messageFromInput(current.runID, input)
-	entry, err := r.sessions.Get(sessionID)
+	runID := current.runID
+	message := messageFromInput(runID, input)
+	durable, err := sess.Append(message)
 	if err != nil {
 		current.mu.Unlock()
+		current.handoff.Unlock()
 		return err
 	}
-	durable, err := entry.Append(message)
-	if err != nil {
-		current.mu.Unlock()
-		return err
-	}
+
 	current.steers = append(current.steers, message)
+	current.pendingAfterSeq = durable.Seq
 	current.signalInputLocked()
+	current.persisted[durable.ID] = struct{}{}
+	current.updateSeq++
+	seq := current.updateSeq
 	afterEntrySeq := current.afterEntrySeq
+	current.inputPublications.Add(1)
 	current.mu.Unlock()
+	current.handoff.Unlock()
+	defer current.inputPublications.Done()
 
 	err = r.publish(context.Background(), RunEvent{
 		SessionID:     sessionID,
-		RunID:         message.RunID,
+		RunID:         runID,
 		Kind:          Message,
+		EntryID:       durable.ID,
 		AfterEntrySeq: afterEntrySeq,
 		Entry:         &durable,
+		UpdateSeq:     seq,
+		SeqEpoch:      r.epoch,
 	})
 	if err != nil {
+		current.mu.Lock()
+		// 保留 Steer 的既有语义：发布失败取消本轮，原错误返回给调用方。
+		current.inputErr = errors.Join(current.inputErr, context.Canceled)
+		current.mu.Unlock()
 		current.stop()
 		return err
 	}
@@ -117,6 +138,7 @@ func (r *liveRun) takeSteers(phase loops.CheckpointPhase) ([]session.Message, er
 	r.steers = nil
 	if len(steers) > 0 {
 		r.inputSignal = make(chan struct{})
+		r.outputAfterSeq = r.pendingAfterSeq
 	}
 	if phase == loops.CheckpointFinal && len(steers) == 0 {
 		r.steeringState = steeringClosed
@@ -148,13 +170,21 @@ func (r *liveRun) inputSignalForWait() <-chan struct{} {
 func (r *liveRun) setAfterEntrySeq(seq uint64) {
 	r.mu.Lock()
 	r.afterEntrySeq = seq
+	r.outputAfterSeq = seq
 	r.mu.Unlock()
 }
 
 func (r *liveRun) state() (RunState, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return RunState{RunID: r.runID, AfterEntrySeq: r.afterEntrySeq}, !r.ended
+	status := RunRunning
+	if r.ended {
+		status = r.endStatus
+		if status == "" {
+			status = RunSucceeded
+		}
+	}
+	return RunState{RunID: r.runID, AfterEntrySeq: r.afterEntrySeq, Status: status}, !r.ended
 }
 
 func (r *liveRun) afterSeq() uint64 {
@@ -163,28 +193,19 @@ func (r *liveRun) afterSeq() uint64 {
 	return r.afterEntrySeq
 }
 
-func (r *liveRun) registerToolBlocks(message session.Message, stepSeq uint64) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+func (r *liveRun) registerToolCallsLocked(entryID string, message session.Message) {
 	for index, block := range message.Blocks {
 		if block.Kind != "tool-call" || block.Tool == nil {
 			continue
 		}
-		r.toolBlocks[block.Tool.ID] = toolBlock{stepSeq: stepSeq, blockSeq: uint64(index + 1)}
+		r.toolCalls[block.Tool.ID] = toolCallLoc{entryID: entryID, blockSeq: uint64(index + 1)}
 	}
 }
 
-func (r *liveRun) toolBlock(id string) toolBlock {
+func (r *liveRun) toolCall(id string) toolCallLoc {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.toolBlocks[id]
-}
-
-func (r *liveRun) toolBlockForMessage(message session.Message, stepSeq, blockSeq uint64) toolBlock {
-	if message.Role != session.RoleTool || len(message.Blocks) != 1 || message.Blocks[0].Result == nil {
-		return toolBlock{stepSeq: stepSeq, blockSeq: blockSeq}
-	}
-	return r.toolBlock(message.Blocks[0].Result.ID)
+	return r.toolCalls[id]
 }
 
 func (r *liveRun) signalInputLocked() {

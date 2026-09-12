@@ -27,8 +27,10 @@
    │  对话账本
    ├─ meta.json
    │  会话元数据
-   └─ settings.json
-      此会话的运行设置
+   ├─ settings.json
+   │  此会话的运行设置
+   └─ runs.json
+      各轮运行身份、状态、锚点与错误；不重复保存消息正文
 ```
 
 旧项目内 `.harness-data/` 和用户目录根下旧平铺会话文件都不再读取，可由用户自行删除。
@@ -56,6 +58,11 @@ Skill 发现
 插件状态
 └─ 插件自己的业务事实
    Todo、审批、游戏状态、插件设置等
+
+Runner 运行结果
+└─ 每轮 RunID、状态、账本锚点和错误；与对话正文分开
+   生成中草稿只在 liveRun 内存，不写硬盘
+   重启把未收尾的 running 标为 interrupted，不自动续跑
 
 Subagents
 └─ 父子 Session 关系、稳定任务 ID、每轮 RunID 与结果 EntryID、错误和通知
@@ -95,12 +102,17 @@ Client 状态
 运行事件
   Runner 产生稳定事件，app-server 按订阅投影给 Client
   不是账本，也不是插件存储
+  生成中的正文／思考草稿只在 liveRun 内存；完整消息先落账，再移除同 Entry.ID 草稿
+  运行结果（身份、状态、锚点、错误）由 Runner 写入 runs.json，不伪造结束消息
 
 连接与请求
   JSON-RPC 请求 ID 只匹配一次响应；连接、订阅和待发送队列都在内存
   Connection 只是 IM 网关式的临时连接对象，不能成为业务状态或业务规则的主人
   后台重启后全部失效，Client 必须重新初始化，通过订阅接口一起取得 Snapshot 与后续事件
-  Snapshot 与通知的重叠耐久消息按 Entry.ID 去重；不复制成第二份账本
+  Snapshot 与通知的重叠：耐久消息按 Entry.ID 去重；实时增量按本进程会话更新序号过滤快照边界之后的事件
+  更新序号不能跨会话或跨后台重启混用；重启后未收尾的运行标记中断，不自动续跑
+  状态与更新序号一起提交；网络订阅按序号整理乱序，快照已含的更新不再发送
+  runs.json 的读改写与快照互斥；快照不能用旧记录覆盖新结果
 
 Skill 正文
   保留在各自 Skill 目录的 SKILL.md 和相对资源中
@@ -112,11 +124,14 @@ Skill 正文
 `messages.jsonl` 是追加式账本，每行一条 `Entry`：
 
 ```text
-id      这一条是谁
+id      这一条是谁；生成开始时分配，增量、草稿和落账共用，不靠 stepSeq 对应
 parent  接在前一条哪里；支持分叉
-seq     全局写入顺序
+seq     全局写入顺序，只在实际落账时分配
 body    本条事实：role、runID、blocks；协作消息另带 messageID、sourceSessionID、sourceRunID
+        未完成助手消息带 incomplete；生成开始时的账本锚点为 afterSeq
 ```
+
+Run 的起点与单条输出的位置分开：已开始的输出不会因 Steer 移位；检查点消费新输入后，新输出的 `afterSeq` 才前移。
 
 ```text
 messages.jsonl
@@ -128,7 +143,7 @@ messages.jsonl
 └─ #6 助手最终回答
 ```
 
-`blocks` 只记录实际发生的对话内容：`text`、`reasoning`、`tool-call`、`tool-result`、`summary`。页面长什么样、哪些内容展开，不是账本事实。`summary` 是压缩落账的助手块；`History()` 把它收成普通文本再发给模型。
+`blocks` 只记录实际发生的对话内容：`text`、`reasoning`、`tool-call`、`tool-result`、`summary`。页面长什么样、哪些内容展开，不是账本事实。`summary` 是压缩落账的助手块；`History()` 把它收成普通文本再发给模型。未完成消息保留半截正文与思考，并附「未完成」说明；不把思考改成普通正文，不携带悬空工具调用。工具结果按 `ToolCall.ID` 回填，工具结果消息有自己的 Entry.ID。
 
 协作消息在账本使用 `role=collaboration`，`runID` 是接收它的父 Run，`sourceSessionID/sourceRunID` 是孩子的来源。启动前失败没有真实子 Run，来源 RunID 留空，不捏造身份。发给模型时转换成带来源说明的普通输入，不提升为系统指令。通知重试按父账本中实际存在的 `messageID` 去重，不靠内存中的“已发送”判断。
 

@@ -39,4 +39,8 @@ type Persistence interface {
 	Load(id string) (*Tree, error)
 	Save(id string, tree *Tree) error
 	Add(id string, node Node) error
+
+	// 运行记录字节，与对话账本分开；内容由 Runner 解释。
+	LoadRunRecords(id string) ([]byte, error)
+	SaveRunRecords(id string, body []byte) error
 }

@@ -1,12 +1,14 @@
 # 项目状态
 
-更新日期：2026-09-11
+更新日期：2026-09-12
 
 ## 现在是什么
 
-Harness 的内核、聊天业务和旧 Web 已经能完整运行。旧 `surface/web` / `plugins/web` 使用 Templ、HTMX、POST 与 SSE；它是迁移期现状，不是目标前端架构。
+Harness 的内核和聊天业务已具备运行能力。旧 `surface/web` / `plugins/web` 使用 Templ、HTMX、POST 与 SSE，仍是默认启动入口；3A 移除 stepSeq 后，其实时过程会错位，不代表旧页面仍完整可用，也不是目标前端架构。
 
-App-server 第一、二步已经完成：`products/harness` 接替原 `kernel/chat`，类型化接口接受 Schema 校验，Go / TS 分别手工维护；本机 WebSocket / JSON-RPC 2.0 已接通真实产品与 Runner，具备初始化、会话操作和运行订阅。当前尚未实现反向请求、完整公共服务 API、业务防重；`clients/web` 已接通项目与会话，聊天尚未接入。正式启动仍打开旧 Web。
+App-server 第一、二步已经完成：`products/harness` 接替原 `kernel/chat`，类型化接口接受 Schema 校验，Go / TS 分别手工维护；本机 WebSocket / JSON-RPC 2.0 已接通真实产品与 Runner，具备初始化、会话操作和运行订阅。Web 迁移第 3A 步已让快照恢复账本、生成中草稿和明确运行状态；`clients/web` 已接通项目与会话，聊天页面尚未接入（3B）。当前尚未实现反向请求、完整公共服务 API、业务防重。正式启动仍打开旧 Web。
+
+3B 的交互与最小接口方案已拍板并保存到 [文字聊天接入计划](docs/plan/3B-文字聊天接入.md)，尚未实现；用户指定压缩会话后由 Codex 直接实施本步。
 
 ```text
 当前：浏览器 POST → 旧 Web → HarnessProduct → Runner → ReAct Loop → LLM / Tools
@@ -49,6 +51,18 @@ App-server 第一、二步已经完成：`products/harness` 接替原 `kernel/ch
 - Windows 目录弹窗的取消改用所属 STA 线程的消息定时器调用 `IFileDialog.Close`；移除跨线程 watcher，Show 返回后撤销定时器状态再释放对象。增加已取消 Context 与交互式 Windows 原生取消测试入口；未在 Windows 实机运行原生弹窗测试。
 - 上述修复后，相关 Go 测试／race／vet、契约与 RPC 验收、前端 16 项测试和生产构建重新通过；Windows amd64／arm64 的 appserver 测试程序交叉编译通过，不等于原生测试已运行。Windows 验收命令见 `clients/web/README.md`。
 - 验证：`go test ./appserver ./products/harness`、`go test ./appserver -race`、`go vet ./appserver ./products/harness` 通过。`npm run contracts:check`、`npm run rpc:check`、`npm run rpc:test` 通过。`clients/web` 的 `npm test` 与 `npm run build` 通过。新增回归：代理拒绝 `https://attacker.example` 且不改写 Origin；`shouldClearSessionOnGetError` 只对 not-found 清选择；畸形 error 结束无超时的 `workspace/select`；目录选择 Context 取消返回错误。隔离 `HOME=/tmp/harness-step2-home` 启动后台，不使用 `~/.harness`，不调用外部模型。浏览器经 Vite 代理实测：已连接后列出按工作区分组的真实会话且首次不选中；直接连接 `ws://127.0.0.1:8889/rpc` 被 Origin 拒绝；切换、设置往返、图片附件不串草稿；项目「＋」复用空会话；断线禁用后台操作并保留草稿；手动重连恢复列表与所选会话；所选会话删除后重连会清除选择并提示「所选会话已不存在」，未选中草稿仍在。原生文件夹窗口未做自动化点击，只覆盖了替身选择器的成功／取消／失败与 Context 取消 Go 测试。本轮四项修正未重做完整浏览器验收。
+
+### Web 迁移第 3A 步：后台聊天恢复能力
+
+- 生成开始时分配 `Entry.ID`；`message-started`、文字／思考增量、内存草稿和最终落账使用同一 ID。定位为 SessionID → RunID → EntryID → BlockSeq。`Entry.Seq` 仍只在落账时分配。已删除用 `stepSeq` 对应落账消息的字段与 Runner 工具位置映射；工具开始／完成用助手 EntryID + BlockSeq 定位原调用，工具结果消息另有自己的 Entry.ID，配对仍靠 `ToolCall.ID`。协作 `MessageID` 语义未改。
+- 草稿存在 `liveRun` 内存，快照返回副本。完整消息成功落账后才移除同 ID 草稿；落账与快照用 `handoff` 互斥，不跨 `events.Publish` 持锁。迟到增量若该 ID 已落账则忽略，不重新建草稿。
+- Snapshot 含 `entries`、各轮 `runs`（running／success／cancelled／failed／interrupted）、草稿、`updateSeq` 与进程 `seqEpoch`。Client 采用快照后只应用更大序号；耐久消息仍按 Entry.ID 去重。序号按会话、按本进程生命周期保留，结束后不归零；跨重启换 `seqEpoch`。
+- 运行结果写入 `sessions/<id>/runs.json`，只保存身份、状态、锚点和错误。写入失败会返回，不宣称已保存。后台重启后未收尾的 running 记录标为 interrupted，不自动续跑。分叉仍为复制节点重新分配 Entry.ID，并按 Seq 重映射运行记录锚点。
+- 停止或模型报错保存已产生的正文／思考并标 `incomplete`；不把半截思考改成普通正文，不携带悬空工具调用。`History()` 附「未完成」说明。compact 失败／取消不把半截摘要写入账本。失败发生在完整消息已保存之后不重复追加。
+- 未改正式 React 页面、发送按钮或模型菜单。旧 Chat 的 `runview.js` 仍按 `stepSeq` 定位，本步已去掉该字段，旧页面实时过程会错位；第 7 步删除旧 Web。
+- 3A 审核修复：快照与运行记录读改写串行，正常结束不会被旧快照改成 interrupted；结束状态与序号原子提交。Steer／协作输入的准入、落账与检查点交接保持互斥，并等待输入通知发布后才释放 Run。已有草稿保留位置，消费插话后的新输出使用新锚点。App-server 运行订阅按连续序号放行并发／重入通知，乱序积压超限断线，Connection 不新增业务状态。
+- 修复验证：全量 `go test ./...`、`go vet ./...`、Runner／Session／Persistence／Subagents／ReAct／子任务工具／Product／App-server 相关 race 通过；新增恢复与订阅顺序回归重复 20 次通过。TS 契约与 RPC 检查、真实本机网络验收、Web 的 16 项测试和生产构建通过。回归保留 Steer 发布失败的取消语义，不自动重发、不另起一轮；仍未进入 3B。
+- 验证：`go test ./kernel/runner ./kernel/session ./kernel/persist ./products/harness ./plugins/kernel/loops/react ./appserver ./kernel/subagents`、相关 race／vet、`npm run contracts:check`、`npm run rpc:check`、`npm run rpc:test` 通过。隔离数据与本地模拟模型覆盖：半句话快照恢复、中文增量、落账并发无双份、快照边界后不重放已含增量、停止保存半截、未收尾标中断、断线不杀 Run。未在 Windows 实测原生目录弹窗；未做 3B 浏览器聊天验收；未删除用户真实会话。
 
 ### App-server 第一批：产品迁移与类型化契约
 

@@ -438,3 +438,25 @@ func TestTreeFileName(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestRunRecordsRoundTripAndMissing(t *testing.T) {
+	s, err := openJSONL(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.LoadRunRecords("chat1")
+	if !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("missing records error = %v", err)
+	}
+	err = s.SaveRunRecords("chat1", []byte(`[{"runID":"r1","status":"success"}]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := s.LoadRunRecords("chat1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), `"r1"`) {
+		t.Fatalf("body = %s", body)
+	}
+}

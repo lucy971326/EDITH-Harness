@@ -39,11 +39,12 @@ type memoryPersistence struct {
 	mu      sync.Mutex
 	trees   map[string][]persist.Node
 	metas   map[string]persist.Meta
+	runs    map[string][]byte
 	addFail error
 }
 
 func newMemoryPersistence() *memoryPersistence {
-	return &memoryPersistence{trees: make(map[string][]persist.Node), metas: make(map[string]persist.Meta)}
+	return &memoryPersistence{trees: make(map[string][]persist.Node), metas: make(map[string]persist.Meta), runs: make(map[string][]byte)}
 }
 
 func (p *memoryPersistence) Load(id string) (*persist.Tree, error) {
@@ -107,6 +108,23 @@ func (p *memoryPersistence) Add(id string, node persist.Node) error {
 		return p.addFail
 	}
 	p.trees[id] = append(p.trees[id], node)
+	return nil
+}
+
+func (p *memoryPersistence) LoadRunRecords(id string) ([]byte, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	body, ok := p.runs[id]
+	if !ok {
+		return nil, os.ErrNotExist
+	}
+	return append([]byte(nil), body...), nil
+}
+
+func (p *memoryPersistence) SaveRunRecords(id string, body []byte) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.runs[id] = append([]byte(nil), body...)
 	return nil
 }
 
@@ -225,7 +243,7 @@ func newRunnerFixtureWithLLM(t *testing.T, loop loops.Loop, client *llm.Client) 
 		t.Fatal(err)
 	}
 	eventRegistry := events.NewRegistry()
-	r, err := NewRunner(sessions, settingsStore, agentService, loopRegistry, eventRegistry, client, toolRegistry)
+	r, err := NewRunner(sessions, settingsStore, agentService, loopRegistry, eventRegistry, client, toolRegistry, persistence)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -290,7 +308,7 @@ func TestRunBuildsInvocationPersistsMessagesAndPublishesInOrder(t *testing.T) {
 	var gotInvocation loops.Invocation
 	loop := &runnerTestLoop{run: func(ctx context.Context, invocation loops.Invocation) error {
 		gotInvocation = invocation
-		err := invocation.Emit(ctx, loops.Event{Kind: loops.EventTextDelta, Text: "hello"})
+		err := invocation.Emit(ctx, loops.Event{Kind: loops.EventTextDelta, EntryID: "assist-1", BlockSeq: 1, Text: "hello"})
 		if err != nil {
 			return err
 		}
@@ -432,27 +450,31 @@ func TestRunStopsAfterPublishedDurableMessageFails(t *testing.T) {
 }
 
 func TestRunAnchorsToolEventsToOriginalAssistantBlock(t *testing.T) {
+	assistantID := "assistant-entry"
 	loop := &runnerTestLoop{run: func(ctx context.Context, invocation loops.Invocation) error {
 		assistant := session.Message{Role: session.RoleAssistant, Blocks: []session.Block{
 			{Kind: "reasoning", Text: "inspect"},
 			{Kind: "tool-call", Tool: &session.ToolCall{ID: "call-1", Name: "read", Args: `{}`}},
 		}}
-		err := invocation.Emit(ctx, loops.Event{Kind: loops.EventMessage, StepSeq: 1, Message: &assistant})
+		err := invocation.Emit(ctx, loops.Event{Kind: loops.EventMessage, EntryID: assistantID, Message: &assistant})
 		if err != nil {
 			return err
 		}
-		err = invocation.Emit(ctx, loops.Event{Kind: loops.EventToolStarted, StepSeq: 1, BlockSeq: 2, Tool: &loops.ToolEvent{ID: "call-1", Name: "read"}})
+		err = invocation.Emit(ctx, loops.Event{Kind: loops.EventToolStarted, EntryID: assistantID, BlockSeq: 2, Tool: &loops.ToolEvent{ID: "call-1", Name: "read"}})
 		if err != nil {
 			return err
 		}
 		result := session.Message{Role: session.RoleTool, Blocks: []session.Block{{Kind: "tool-result", Result: &session.ToolResult{ID: "call-1", Name: "read", Content: "done"}}}}
-		return invocation.Emit(ctx, loops.Event{Kind: loops.EventMessage, StepSeq: 1, BlockSeq: 2, Message: &result})
+		return invocation.Emit(ctx, loops.Event{Kind: loops.EventMessage, Message: &result})
 	}}
 	fixture := newRunnerFixture(t, loop)
-	var started, result RunEvent
+	var started, result, assistantEvent RunEvent
 	_, err := events.Subscribe(fixture.events, func(_ context.Context, event RunEvent) error {
 		if event.Kind == ToolStarted {
 			started = event
+		}
+		if event.Kind == Message && event.Entry != nil && event.Entry.Message.Role == session.RoleAssistant {
+			assistantEvent = event
 		}
 		if event.Kind == Message && event.Entry != nil && event.Entry.Message.Role == session.RoleTool {
 			result = event
@@ -466,11 +488,14 @@ func TestRunAnchorsToolEventsToOriginalAssistantBlock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if started.AfterEntrySeq != 1 || started.StepSeq != 1 || started.BlockSeq != 2 {
-		t.Fatalf("tool start position = %#v", started)
+	if assistantEvent.EntryID != assistantID || started.EntryID != assistantID || started.BlockSeq != 2 {
+		t.Fatalf("assistant=%#v start=%#v", assistantEvent, started)
 	}
-	if result.AfterEntrySeq != 1 || result.StepSeq != 1 || result.BlockSeq != 2 {
-		t.Fatalf("tool result position = %#v", result)
+	if result.EntryID == "" || result.EntryID == assistantID {
+		t.Fatalf("tool result reused assistant id: %#v", result)
+	}
+	if result.Entry == nil || result.Entry.Message.Blocks[0].Result.ID != "call-1" {
+		t.Fatalf("tool result pairing = %#v", result)
 	}
 }
 
@@ -488,7 +513,7 @@ func TestRunKeepsInitialAnchorAfterSteer(t *testing.T) {
 			return ctx.Err()
 		case <-continueRun:
 		}
-		return invocation.Emit(ctx, loops.Event{Kind: loops.EventTextDelta, StepSeq: 2, BlockSeq: 1, Text: "continued"})
+		return invocation.Emit(ctx, loops.Event{Kind: loops.EventTextDelta, EntryID: "draft-1", BlockSeq: 1, Text: "continued"})
 	}}
 	fixture := newRunnerFixture(t, loop)
 	var afterEntrySeq uint64

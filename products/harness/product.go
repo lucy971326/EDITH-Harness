@@ -174,19 +174,16 @@ func (s *Product) Session(id string) (SessionInfo, error) {
 	return SessionInfo{}, fmt.Errorf("%w: %w: session %q", ErrSessionNotFound, os.ErrNotExist, id)
 }
 
-// Snapshot 返回聊天投影所需的耐久账本与活跃 Run。
+// Snapshot 返回聊天投影所需的耐久账本、运行状态、草稿和更新边界。
 func (s *Product) Snapshot(sessionID string) (Snapshot, error) {
-	sess, err := s.sessions.Get(sessionID)
+	view, err := s.runner.SessionView(sessionID)
 	if err != nil {
 		return Snapshot{}, err
 	}
-	out := Snapshot{Runs: []runner.RunState{}}
-	// 先读运行身份，再读账本；不把尚未落下首条输入的准备期当成可恢复运行。
-	if state, ok := s.runner.State(sessionID); ok && state.AfterEntrySeq != 0 {
-		out.Runs = []runner.RunState{state}
+	if view.Runs == nil {
+		view.Runs = []runner.RunState{}
 	}
-	out.Entries = sess.Entries()
-	return out, nil
+	return Snapshot{Entries: view.Entries, Runs: view.Runs, UpdateSeq: view.UpdateSeq, SeqEpoch: view.SeqEpoch}, nil
 }
 
 // Start 保存下一轮设置并启动 Runner 自己管理的后台 Run。
@@ -297,9 +294,22 @@ func (s *Product) Fork(input ForkInput) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("harness product: copy session settings: %w", err)
 	}
+	sourceEntries := sess.Entries()
 	_, err = s.sessions.Fork(input.SessionID, destinationID, through, info.Meta.Title+" · 分叉")
 	if err != nil {
 		return "", fmt.Errorf("harness product: copy session: %w", err)
+	}
+	dest, err := s.sessions.Get(destinationID)
+	if err != nil {
+		return "", fmt.Errorf("harness product: load forked session: %w", err)
+	}
+	seqMap := map[uint64]uint64{}
+	for index, entry := range dest.Entries() {
+		seqMap[sourceEntries[index].Seq] = entry.Seq
+	}
+	err = s.runner.CopyRecordsForFork(input.SessionID, destinationID, seqMap)
+	if err != nil {
+		return "", fmt.Errorf("harness product: copy run records: %w", err)
 	}
 	return destinationID, nil
 }

@@ -33,7 +33,9 @@ Client 不写账本，不把本地状态冒充业务事实。刷新可丢失的�
 
 运行详情采用“先建立订阅边界，再取得 Snapshot，最后应用边界后的事件”或等价无空档方案。重连时重新初始化、恢复 Snapshot 和待回答请求，再续订；不要求重放每个文字 Delta，但最终投影不能漏耐久事实。
 
-`harness/session/subscribe` 把订阅 ID 与初始 Snapshot 一起返回，随后发送 `harness/run/event` 通知。Client 先采用 Snapshot，再应用通知；重叠耐久消息按 Entry.ID 去重。`clients/test` 仅用于协议验收，不作为 React 页面或正式 SDK 的目录模板。
+`harness/session/subscribe` 把订阅 ID 与初始 Snapshot 一起返回，随后发送 `harness/run/event` 通知。Client 先采用 Snapshot，再应用 `updateSeq` 大于快照边界且 `seqEpoch` 相同的通知；重叠耐久消息按 Entry.ID 去重。生成中的草稿与实时增量、最终 Entry 共用 Entry.ID。`clients/test` 仅用于协议验收，不作为 React 页面或正式 SDK 的目录模板。
+
+App-server 的运行订阅负责把内核并发通知排成连续序号，Client 不再造一套乱序队列。输出位置以消息的 `afterSeq`／草稿的 `afterEntrySeq` 为准，不把本轮 Run 的起点套给插话后的所有回答。
 
 请求 ID 只匹配响应。发送、回答等有副作用操作如需安全重试，必须使用后台定义的业务操作 ID，不能拿 JSON-RPC `id` 代替。
 
@@ -79,8 +81,8 @@ Token 是颜色、排版、间距、圆角、边框、阴影、动画和主题�
 ## 5. Chat 与运行投影
 
 - 运行时工作过程展开，正常完成自动收起，最终回答留在过程外；失败与停止保持过程展开。工具组和单个详情默认收起，按三级结构查看，长内容限高滚动。具体迁移交互见 `docs/plan/ProductDefine.md`。
-- Snapshot 与实时事件进入同一个 reducer；工具结果按原 tool call 回填，Steer 分段不能串位。
-- 只有已落账的最终回答能成为最终结果；运行中的临时正文不能冒充完成。
+- Snapshot 与实时事件进入同一个 reducer；内容定位为 SessionID → RunID → EntryID → BlockSeq。工具结果按 ToolCall.ID 回填，Steer 分段看 afterSeq，不能按 ID 或落账 Seq 让生成中的内容跳位。
+- 只有已落账且未标 incomplete 的最终回答能成为最终结果；运行中的临时正文和半截保存不能冒充完成。
 - Markdown 只用于用户消息和最终回答，渲染后必须清洗；推理、工具参数和结果默认按纯文本显示。
 - 图片、模型、思考档位、Agent、命令和 Skill 候选都通过类型化接口取得，不从旧页面 HTML 中解析。
 - 关闭窗口或断开连接不停止后台任务；只有明确 Stop 才取消。

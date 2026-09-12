@@ -10,9 +10,10 @@
 - `loops`：按 Kind 运行 Loop；
 - `llm`：压缩时直接 Stream；
 - `tools`：压缩时取当前工具 schema；
-- `events`：发布稳定 `RunEvent`。
+- `events`：发布稳定 `RunEvent`；
+- `sessionPersistence`：读写与账本分开的运行记录字节。
 
-【提供能力】注册服务 `runner`：`Start`、`Run`、`Steer`、`Receive`、`Stop`、`StopRun`、`Compact`，并管理活 Run。准备设置前就占用 live，停止与关闭覆盖准备期；`StopRun` 只取消匹配 RunID 的运行。`Receive` 接收带来源的协作消息，以账本中的消息 ID 去重；不接收时返回待投递，不启动新 Run。
+【提供能力】注册服务 `runner`：`Start`、`Run`、`Steer`、`Receive`、`Stop`、`StopRun`、`Compact`、`SessionView`，并管理活 Run。生成期草稿留在 liveRun；完整消息先落账再清除同 Entry.ID 草稿。运行结果写入 `runs.json`。准备设置前就占用 live，停止与关闭覆盖准备期；`StopRun` 只取消匹配 RunID 的运行。`Receive` 接收带来源的协作消息，以账本中的消息 ID 去重；不接收时返回待投递，不启动新 Run。
 
 【填充插槽】不填。
 

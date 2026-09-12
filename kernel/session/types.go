@@ -59,6 +59,10 @@ type Message struct {
 	RunID           string  `json:"runID,omitempty"`
 	Role            Role    `json:"role"`
 	Blocks          []Block `json:"blocks"`
+	// Incomplete 表示停止或失败时保存的半截内容，不能冒充最终回答。
+	Incomplete bool `json:"incomplete,omitempty"`
+	// AfterSeq 是开始生成本条时已落账的最大 Seq；Steer 插入后仍按此分段，不随落账 Seq 跳位。
+	AfterSeq uint64 `json:"afterSeq,omitempty"`
 }
 
 // 数据。当前分叉上一条已落账消息及其稳定位置。

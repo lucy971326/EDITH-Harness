@@ -17,7 +17,7 @@ type Definition struct {
 // 数据。Loop 产出的一条本轮事件。
 type Event struct {
 	Kind     EventKind
-	StepSeq  uint64
+	EntryID  string
 	BlockSeq uint64
 	Text     string
 	Message  *session.Message
@@ -43,6 +43,7 @@ type Usage struct {
 type EventKind string
 
 const (
+	EventMessageStarted EventKind = "message-started"
 	EventTextDelta      EventKind = "text-delta"
 	EventReasoningDelta EventKind = "reasoning-delta"
 	EventToolStarted    EventKind = "tool-started"

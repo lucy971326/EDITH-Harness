@@ -7,7 +7,6 @@ import (
 	"harness/products/harness"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -80,8 +79,8 @@ func TestProductRunsWithoutWebAndForksCompletedSegment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(encoded) == "" || !containsRunsArray(string(encoded)) {
-		t.Fatalf("snapshot JSON = %s", encoded)
+	if len(snapshot.Runs) != 1 || snapshot.Runs[0].Status != runner.RunSucceeded {
+		t.Fatalf("snapshot runs = %#v json=%s", snapshot.Runs, encoded)
 	}
 
 	forkID, err := fixture.service.Fork(harness.ForkInput{SessionID: created.Meta.ID, RunID: snapshot.Entries[1].Message.RunID, BoundaryEntryID: snapshot.Entries[1].ID})
@@ -352,8 +351,6 @@ func waitEnded(t *testing.T, received <-chan runner.RunEvent, sessionID string) 
 		}
 	}
 }
-
-func containsRunsArray(value string) bool { return strings.Contains(value, "\"runs\":[]") }
 
 func TestSubagentsChatIsolation(t *testing.T) {
 	fixture := newTestFixture(t)

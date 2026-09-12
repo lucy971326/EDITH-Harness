@@ -9,16 +9,14 @@ import (
 	"github.com/zendev-sh/goai/provider"
 
 	"harness/kernel/llm"
+	"harness/kernel/loops"
 	"harness/kernel/session"
 	"harness/kernel/session/settings"
 )
 
 const compactInstruction = "请把到目前为止的对话压缩成一份后续可继续使用的摘要。保留目标、约束、已完成事项、关键结论和未完成工作。不要调用工具。只输出摘要正文。"
 
-const (
-	compactStepSeq  = uint64(1)
-	compactBlockSeq = uint64(1)
-)
+const compactBlockSeq = uint64(1)
 
 type compactPreparation struct {
 	sess         *session.Session
@@ -96,37 +94,63 @@ func (r *Runner) runCompact(runCtx context.Context, sessionID, runID string, cur
 
 	sess := prepared.sess
 	entries := sess.Entries()
+	current.compact = true
 	current.setAfterEntrySeq(entries[len(entries)-1].Seq)
+	saveErr := r.upsertRecord(sessionID, runRecord{
+		RunID:         runID,
+		Status:        RunRunning,
+		AfterEntrySeq: current.afterSeq(),
+	})
+	if saveErr != nil {
+		return saveErr
+	}
 	runStartedAttempted := false
 	defer func() {
 		if !runStartedAttempted {
 			return
 		}
+		current.handoff.Lock()
+		current.mu.Lock()
+		current.drafts = make(map[string]*runDraft)
+		current.mu.Unlock()
+		current.handoff.Unlock()
 		status := RunSucceeded
 		if isCancellationOnly(err) {
 			status = RunCancelled
 		} else if err != nil {
 			status = RunFailed
 		}
-		endErr := r.publish(context.Background(), RunEvent{
+		endSave := r.upsertRecord(sessionID, runRecord{
+			RunID:         runID,
+			Status:        status,
+			AfterEntrySeq: current.afterSeq(),
+			Error:         errorText(err),
+		})
+		if endSave != nil {
+			err = errors.Join(err, endSave)
+			if status == RunSucceeded {
+				status = RunFailed
+			}
+		}
+		endErr := r.publish(context.Background(), r.liveEvent(current, RunEvent{
 			SessionID:     sessionID,
 			RunID:         runID,
 			Kind:          RunEnded,
 			AfterEntrySeq: current.afterSeq(),
 			Status:        status,
 			Error:         errorText(err),
-		})
+		}))
 		if endErr != nil {
 			err = errors.Join(err, endErr)
 		}
 	}()
 	runStartedAttempted = true
-	err = r.publish(runCtx, RunEvent{
+	err = r.publish(runCtx, r.liveEvent(current, RunEvent{
 		SessionID:     sessionID,
 		RunID:         runID,
 		Kind:          RunStarted,
 		AfterEntrySeq: current.afterSeq(),
-	})
+	}))
 	if err != nil {
 		return err
 	}
@@ -156,6 +180,15 @@ func (r *Runner) runCompact(runCtx context.Context, sessionID, runID string, cur
 		return err
 	}
 
+	entryID, err := session.NewEntryID()
+	if err != nil {
+		return err
+	}
+	err = r.startDraft(runCtx, sessionID, runID, current, entryID)
+	if err != nil {
+		return err
+	}
+
 	text := ""
 	sawToolCall := false
 	finishReason := provider.FinishReason("")
@@ -166,21 +199,18 @@ func (r *Runner) runCompact(runCtx context.Context, sessionID, runID string, cur
 			return runCtx.Err()
 		case chunk, ok := <-stream:
 			if !ok {
-				return r.finishCompact(runCtx, sessionID, runID, sess, current, prepared.model, text, sawToolCall, finishReason, usage)
+				return r.finishCompact(runCtx, sessionID, runID, sess, current, prepared.model, entryID, text, sawToolCall, finishReason, usage)
 			}
 			switch chunk.Type {
 			case provider.ChunkReasoning:
 				continue
 			case provider.ChunkText:
 				text += chunk.Text
-				err = r.publish(runCtx, RunEvent{
-					SessionID:     sessionID,
-					RunID:         runID,
-					Kind:          TextDelta,
-					AfterEntrySeq: current.afterSeq(),
-					StepSeq:       compactStepSeq,
-					BlockSeq:      compactBlockSeq,
-					Text:          chunk.Text,
+				err = r.applyDelta(runCtx, sessionID, runID, current, loops.Event{
+					Kind:     loops.EventTextDelta,
+					EntryID:  entryID,
+					BlockSeq: compactBlockSeq,
+					Text:     chunk.Text,
 				})
 				if err != nil {
 					return err
@@ -211,7 +241,7 @@ func (r *Runner) finishCompact(
 	sessionID, runID string,
 	sess *session.Session,
 	current *liveRun,
-	model, text string,
+	model, entryID, text string,
 	sawToolCall bool,
 	finishReason provider.FinishReason,
 	usage provider.Usage,
@@ -233,34 +263,46 @@ func (r *Runner) finishCompact(
 	}
 
 	blocks := []session.Block{{Kind: "summary", Text: text}}
-	message := session.Message{RunID: runID, Role: session.RoleAssistant, Blocks: blocks}
-	entry, err := sess.Append(message)
+	message := session.Message{RunID: runID, Role: session.RoleAssistant, Blocks: blocks, AfterSeq: current.afterSeq()}
+	current.handoff.Lock()
+	entry, err := sess.AppendID(entryID, message)
 	if err != nil {
+		current.handoff.Unlock()
 		return err
 	}
 	current.setAfterEntrySeq(entry.Seq)
+	current.mu.Lock()
+	delete(current.drafts, entryID)
+	current.persisted[entryID] = struct{}{}
+	current.updateSeq++
+	seq := current.updateSeq
+	after := current.afterEntrySeq
+	current.mu.Unlock()
+	current.handoff.Unlock()
 	err = r.publish(ctx, RunEvent{
 		SessionID:     sessionID,
 		RunID:         runID,
 		Kind:          Message,
-		AfterEntrySeq: current.afterSeq(),
-		StepSeq:       compactStepSeq,
+		EntryID:       entry.ID,
+		AfterEntrySeq: after,
 		BlockSeq:      compactBlockSeq,
 		Entry:         &entry,
+		UpdateSeq:     seq,
+		SeqEpoch:      r.epoch,
 	})
 	if err != nil {
 		return err
 	}
-	return r.publish(ctx, RunEvent{
+	return r.publish(ctx, r.liveEvent(current, RunEvent{
 		SessionID:     sessionID,
 		RunID:         runID,
 		Kind:          ContextUsage,
+		EntryID:       entry.ID,
 		AfterEntrySeq: current.afterSeq(),
-		StepSeq:       compactStepSeq,
 		Usage: &Usage{
 			InputTokens:     usage.InputTokens,
 			CacheReadTokens: usage.CacheReadTokens,
 			ContextWindow:   r.llm.ContextWindow(model),
 		},
-	})
+	}))
 }

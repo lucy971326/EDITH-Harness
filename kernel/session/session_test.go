@@ -605,3 +605,76 @@ func TestToolResultNeedsOnePairedBlock(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestAppendIDKeepsAssignedIdentityAndRejectsDuplicates(t *testing.T) {
+	store, _ := newTestStore(t)
+	s, err := store.Create("chat1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := NewEntryID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := s.AppendID(id, textMessage(RoleUser, "hi"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.ID != id || first.Seq != 1 {
+		t.Fatalf("entry = %#v", first)
+	}
+	_, err = s.AppendID(id, textMessage(RoleAssistant, "again"))
+	if err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("duplicate error = %v", err)
+	}
+	if len(s.Entries()) != 1 {
+		t.Fatalf("entries = %#v", s.Entries())
+	}
+	_, err = s.AppendID("../escape", textMessage(RoleUser, "bad"))
+	if err == nil {
+		t.Fatal("path-like id was accepted")
+	}
+}
+
+func TestHistoryProjectsIncompleteWithoutDanglingTools(t *testing.T) {
+	store, _ := newTestStore(t)
+	s, err := store.Create("chat1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.Append(textMessage(RoleUser, "ask"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.Append(Message{
+		Role:       RoleAssistant,
+		Incomplete: true,
+		Blocks: []Block{
+			{Kind: "reasoning", Text: "think"},
+			{Kind: "text", Text: "半截"},
+			{Kind: "tool-call", Tool: &ToolCall{ID: "call", Name: "read", Args: `{}`}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := s.History()
+	if len(got) != 2 {
+		t.Fatalf("history = %#v", got)
+	}
+	if got[1].Blocks[0].Kind != "reasoning" || got[1].Blocks[0].Text != "think" {
+		t.Fatalf("reasoning converted: %#v", got[1])
+	}
+	if got[1].Blocks[1].Text != "半截" {
+		t.Fatalf("text = %#v", got[1])
+	}
+	last := got[1].Blocks[len(got[1].Blocks)-1]
+	if last.Kind != "text" || last.Text != "（未完成）" {
+		t.Fatalf("incomplete note = %#v", got[1])
+	}
+	for _, block := range got[1].Blocks {
+		if block.Kind == "tool-call" {
+			t.Fatalf("dangling tool call in history: %#v", got[1])
+		}
+	}
+}

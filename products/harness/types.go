@@ -33,8 +33,10 @@ type SessionInfo struct {
 	Settings settings.SessionSettings
 }
 
-// 数据。浏览器恢复聊天运行视图所需的耐久事实与活跃 Run。
+// 数据。浏览器恢复聊天运行视图所需的耐久事实、运行状态与更新边界。
 type Snapshot struct {
-	Entries []session.Entry   `json:"entries"`
-	Runs    []runner.RunState `json:"runs"`
+	Entries   []session.Entry   `json:"entries"`
+	Runs      []runner.RunState `json:"runs"`
+	UpdateSeq uint64            `json:"updateSeq"`
+	SeqEpoch  string            `json:"seqEpoch"`
 }

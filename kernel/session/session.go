@@ -1,8 +1,6 @@
 package session
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -21,8 +19,25 @@ type Session struct {
 	next  uint64
 }
 
-// Append 在当前光标下面写入一个完整节点。
+// Append 在当前光标下面写入一个完整节点，并现场分配 Entry ID。
 func (s *Session) Append(m Message) (Entry, error) {
+	id, err := NewEntryID()
+	if err != nil {
+		return Entry{}, err
+	}
+	return s.appendEntry(id, m)
+}
+
+// AppendID 使用已经分配的 Entry ID 落账；Seq 与 Parent 仍在持锁时确定。
+func (s *Session) AppendID(id string, m Message) (Entry, error) {
+	err := checkEntryID(id)
+	if err != nil {
+		return Entry{}, err
+	}
+	return s.appendEntry(id, m)
+}
+
+func (s *Session) appendEntry(id string, m Message) (Entry, error) {
 	err := checkMessage(m)
 	if err != nil {
 		return Entry{}, err
@@ -35,9 +50,8 @@ func (s *Session) Append(m Message) (Entry, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	id, err := newNodeID()
-	if err != nil {
-		return Entry{}, err
+	if _, exists := s.nodes[id]; exists {
+		return Entry{}, fmt.Errorf("session: entry %q already exists", id)
 	}
 	node := persist.Node{ID: id, Parent: s.head, Seq: s.next + 1, Body: body}
 	err = s.disk.Add(s.id, node)
@@ -111,6 +125,10 @@ func (s *Session) History() []Message {
 			out = append(out, projectSummary(message))
 			continue
 		}
+		if message.Incomplete {
+			out = append(out, projectIncomplete(message))
+			continue
+		}
 		out = append(out, message)
 	}
 	return out
@@ -137,6 +155,19 @@ func projectSummary(message Message) Message {
 		Role:   RoleAssistant,
 		Blocks: []Block{{Kind: "text", Text: text}},
 	}
+}
+
+func projectIncomplete(message Message) Message {
+	blocks := make([]Block, 0, len(message.Blocks)+1)
+	for _, block := range message.Blocks {
+		switch block.Kind {
+		case "text", "reasoning":
+			blocks = append(blocks, block)
+		}
+	}
+	blocks = append(blocks, Block{Kind: "text", Text: "（未完成）"})
+	message.Blocks = blocks
+	return message
 }
 
 // Entries 沿当前分叉回到根，再按对话顺序返回已落账消息和节点身份。
@@ -227,11 +258,12 @@ func checkMessage(m Message) error {
 	return nil
 }
 
-func newNodeID() (string, error) {
-	var b [16]byte
-	_, err := rand.Read(b[:])
-	if err != nil {
-		return "", fmt.Errorf("session: make node id: %w", err)
+func checkEntryID(id string) error {
+	if id == "" || id == "." || id == ".." {
+		return fmt.Errorf("session: bad entry id %q", id)
 	}
-	return hex.EncodeToString(b[:]), nil
+	if strings.ContainsAny(id, `/\`) {
+		return fmt.Errorf("session: bad entry id %q", id)
+	}
+	return nil
 }

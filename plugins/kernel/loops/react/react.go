@@ -43,12 +43,15 @@ func (l *reactLoop) Run(ctx context.Context, invocation loops.Invocation) error 
 	}
 	history := append([]session.Message(nil), invocation.History...)
 
-	for stepSeq := uint64(1); ; stepSeq++ {
-		assistant, calls, err := l.request(ctx, invocation, history, definitions, stepSeq)
+	for {
+		assistant, assistantID, calls, err := l.request(ctx, invocation, history, definitions)
 		if err != nil {
 			return err
 		}
-		err = invocation.Emit(context.WithoutCancel(ctx), loops.Event{Kind: loops.EventMessage, StepSeq: stepSeq, Message: &assistant})
+		if assistantID == "" {
+			return nil
+		}
+		err = invocation.Emit(context.WithoutCancel(ctx), loops.Event{Kind: loops.EventMessage, EntryID: assistantID, Message: &assistant})
 		if err != nil {
 			return err
 		}
@@ -57,13 +60,13 @@ func (l *reactLoop) Run(ctx context.Context, invocation loops.Invocation) error 
 		for index, call := range calls {
 			err = ctx.Err()
 			if err != nil {
-				return l.finishUnexecuted(ctx, invocation, assistant, calls[index:], stepSeq, err)
+				return l.finishUnexecuted(ctx, invocation, assistantID, assistant, calls[index:], err)
 			}
-			resultMessage, err := l.execute(ctx, invocation, call, stepSeq, blockForCall(assistant, call.ID))
+			resultMessage, err := l.execute(ctx, invocation, assistantID, call, blockForCall(assistant, call.ID))
 			if err != nil {
 				// 当前取消结果已成功落账后，补齐这批尚未执行的调用。
 				if resultMessage.Role == session.RoleTool && ctx.Err() != nil {
-					return l.finishUnexecuted(ctx, invocation, assistant, calls[index+1:], stepSeq, err)
+					return l.finishUnexecuted(ctx, invocation, assistantID, assistant, calls[index+1:], err)
 				}
 				return err
 			}
@@ -90,8 +93,7 @@ func (l *reactLoop) request(
 	invocation loops.Invocation,
 	history []session.Message,
 	definitions []tools.Definition,
-	stepSeq uint64,
-) (session.Message, []session.ToolCall, error) {
+) (session.Message, string, []session.ToolCall, error) {
 	requestCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	stream, err := l.llm.Stream(requestCtx, invocation.LLMConfig, llm.Input{
@@ -100,43 +102,58 @@ func (l *reactLoop) request(
 		Tools:   definitions,
 	})
 	if err != nil {
-		return session.Message{}, nil, err
+		return session.Message{}, "", nil, err
+	}
+
+	entryID, err := session.NewEntryID()
+	if err != nil {
+		return session.Message{}, "", nil, err
+	}
+	err = invocation.Emit(ctx, loops.Event{Kind: loops.EventMessageStarted, EntryID: entryID})
+	if err != nil {
+		return session.Message{}, "", nil, err
 	}
 
 	message := session.Message{Role: session.RoleAssistant}
 	var calls []session.ToolCall
 	var usage provider.Usage
+	fail := func(cause error) (session.Message, string, []session.ToolCall, error) {
+		return l.failRequest(ctx, invocation, entryID, message, cause)
+	}
 	for {
 		select {
 		case <-ctx.Done():
-			return session.Message{}, nil, ctx.Err()
+			return fail(ctx.Err())
 		case chunk, ok := <-stream:
 			if !ok {
 				if err := ctx.Err(); err != nil {
-					return session.Message{}, nil, err
+					return fail(err)
 				}
-				err = l.emitUsage(ctx, invocation, stepSeq, usage)
+				if len(message.Blocks) == 0 && len(calls) == 0 {
+					return session.Message{}, "", nil, nil
+				}
+				err = l.emitUsage(ctx, invocation, entryID, usage)
 				if err != nil {
-					return session.Message{}, nil, err
+					return session.Message{}, "", nil, err
 				}
-				return message, calls, nil
+				return message, entryID, calls, nil
 			}
 			switch chunk.Type {
 			case provider.ChunkReasoning:
 				blockSeq := appendTextBlock(&message, "reasoning", chunk.Text)
-				err = invocation.Emit(ctx, loops.Event{Kind: loops.EventReasoningDelta, StepSeq: stepSeq, BlockSeq: blockSeq, Text: chunk.Text})
+				err = invocation.Emit(ctx, loops.Event{Kind: loops.EventReasoningDelta, EntryID: entryID, BlockSeq: blockSeq, Text: chunk.Text})
 				if err != nil {
-					return session.Message{}, nil, err
+					return session.Message{}, "", nil, err
 				}
 			case provider.ChunkText:
 				blockSeq := appendTextBlock(&message, "text", chunk.Text)
-				err = invocation.Emit(ctx, loops.Event{Kind: loops.EventTextDelta, StepSeq: stepSeq, BlockSeq: blockSeq, Text: chunk.Text})
+				err = invocation.Emit(ctx, loops.Event{Kind: loops.EventTextDelta, EntryID: entryID, BlockSeq: blockSeq, Text: chunk.Text})
 				if err != nil {
-					return session.Message{}, nil, err
+					return session.Message{}, "", nil, err
 				}
 			case provider.ChunkToolCall:
 				if chunk.ToolCallID == "" || chunk.ToolName == "" {
-					return session.Message{}, nil, fmt.Errorf("react: tool call needs id and name")
+					return session.Message{}, "", nil, fmt.Errorf("react: tool call needs id and name")
 				}
 				call := session.ToolCall{
 					ID:   chunk.ToolCallID,
@@ -149,18 +166,30 @@ func (l *reactLoop) request(
 				usage = chunk.Usage
 			case provider.ChunkError:
 				if chunk.Error == nil {
-					return session.Message{}, nil, fmt.Errorf("react: model stream failed")
+					return fail(fmt.Errorf("react: model stream failed"))
 				}
-				return session.Message{}, nil, chunk.Error
+				return fail(chunk.Error)
 			}
 		}
 	}
 }
 
-func (l *reactLoop) emitUsage(ctx context.Context, invocation loops.Invocation, stepSeq uint64, usage provider.Usage) error {
+func (l *reactLoop) failRequest(ctx context.Context, invocation loops.Invocation, entryID string, message session.Message, cause error) (session.Message, string, []session.ToolCall, error) {
+	incomplete, ok := incompleteAssistant(message)
+	if !ok {
+		return session.Message{}, "", nil, cause
+	}
+	err := invocation.Emit(context.WithoutCancel(ctx), loops.Event{Kind: loops.EventMessage, EntryID: entryID, Message: &incomplete})
+	if err != nil {
+		return session.Message{}, "", nil, errors.Join(cause, err)
+	}
+	return session.Message{}, "", nil, cause
+}
+
+func (l *reactLoop) emitUsage(ctx context.Context, invocation loops.Invocation, entryID string, usage provider.Usage) error {
 	return invocation.Emit(ctx, loops.Event{
 		Kind:    loops.EventUsage,
-		StepSeq: stepSeq,
+		EntryID: entryID,
 		Usage: &loops.Usage{
 			InputTokens:     usage.InputTokens,
 			CacheReadTokens: usage.CacheReadTokens,
@@ -172,14 +201,14 @@ func (l *reactLoop) emitUsage(ctx context.Context, invocation loops.Invocation, 
 func (l *reactLoop) execute(
 	ctx context.Context,
 	invocation loops.Invocation,
+	assistantID string,
 	call session.ToolCall,
-	stepSeq uint64,
 	blockSeq uint64,
 ) (session.Message, error) {
 	finishCtx := context.WithoutCancel(ctx)
 	err := invocation.Emit(finishCtx, loops.Event{
 		Kind:     loops.EventToolStarted,
-		StepSeq:  stepSeq,
+		EntryID:  assistantID,
 		BlockSeq: blockSeq,
 		Tool:     &loops.ToolEvent{ID: call.ID, Name: call.Name},
 	})
@@ -204,13 +233,17 @@ func (l *reactLoop) execute(
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			message := cancelledToolMessage(call)
-			err = invocation.Emit(finishCtx, loops.Event{Kind: loops.EventMessage, StepSeq: stepSeq, BlockSeq: blockSeq, Message: &message})
+			resultID, idErr := session.NewEntryID()
+			if idErr != nil {
+				return session.Message{}, idErr
+			}
+			err = invocation.Emit(finishCtx, loops.Event{Kind: loops.EventMessage, EntryID: resultID, Message: &message})
 			if err != nil {
 				return session.Message{}, err
 			}
 			err = invocation.Emit(finishCtx, loops.Event{
 				Kind:     loops.EventToolFinished,
-				StepSeq:  stepSeq,
+				EntryID:  assistantID,
 				BlockSeq: blockSeq,
 				Tool:     &loops.ToolEvent{ID: call.ID, Name: call.Name, IsError: true},
 			})
@@ -237,13 +270,17 @@ func (l *reactLoop) execute(
 			},
 		}},
 	}
-	err = invocation.Emit(finishCtx, loops.Event{Kind: loops.EventMessage, StepSeq: stepSeq, BlockSeq: blockSeq, Message: &message})
+	resultID, err := session.NewEntryID()
+	if err != nil {
+		return session.Message{}, err
+	}
+	err = invocation.Emit(finishCtx, loops.Event{Kind: loops.EventMessage, EntryID: resultID, Message: &message})
 	if err != nil {
 		return session.Message{}, err
 	}
 	err = invocation.Emit(finishCtx, loops.Event{
 		Kind:     loops.EventToolFinished,
-		StepSeq:  stepSeq,
+		EntryID:  assistantID,
 		BlockSeq: blockSeq,
 		Tool:     &loops.ToolEvent{ID: call.ID, Name: call.Name, IsError: result.IsError},
 	})
@@ -254,18 +291,22 @@ func (l *reactLoop) execute(
 }
 
 // finishUnexecuted 只补结果，不执行剩余工具；写入或通知失败时直接返回，不重复落账。
-func (l *reactLoop) finishUnexecuted(ctx context.Context, invocation loops.Invocation, assistant session.Message, calls []session.ToolCall, stepSeq uint64, cause error) error {
+func (l *reactLoop) finishUnexecuted(ctx context.Context, invocation loops.Invocation, assistantID string, assistant session.Message, calls []session.ToolCall, cause error) error {
 	finishCtx := context.WithoutCancel(ctx)
 	for _, call := range calls {
 		message := cancelledToolMessage(call)
 		message.Blocks[0].Result.Content = "未执行：任务已停止"
 		blockSeq := blockForCall(assistant, call.ID)
-		err := invocation.Emit(finishCtx, loops.Event{Kind: loops.EventMessage, StepSeq: stepSeq, BlockSeq: blockSeq, Message: &message})
+		resultID, err := session.NewEntryID()
+		if err != nil {
+			return err
+		}
+		err = invocation.Emit(finishCtx, loops.Event{Kind: loops.EventMessage, EntryID: resultID, Message: &message})
 		if err != nil {
 			return err
 		}
 		err = invocation.Emit(finishCtx, loops.Event{
-			Kind: loops.EventToolFinished, StepSeq: stepSeq, BlockSeq: blockSeq,
+			Kind: loops.EventToolFinished, EntryID: assistantID, BlockSeq: blockSeq,
 			Tool: &loops.ToolEvent{ID: call.ID, Name: call.Name, IsError: true},
 		})
 		if err != nil {
@@ -273,6 +314,19 @@ func (l *reactLoop) finishUnexecuted(ctx context.Context, invocation loops.Invoc
 		}
 	}
 	return cause
+}
+
+func incompleteAssistant(message session.Message) (session.Message, bool) {
+	blocks := make([]session.Block, 0, len(message.Blocks))
+	for _, block := range message.Blocks {
+		if (block.Kind == "text" || block.Kind == "reasoning") && block.Text != "" {
+			blocks = append(blocks, block)
+		}
+	}
+	if len(blocks) == 0 {
+		return session.Message{}, false
+	}
+	return session.Message{Role: session.RoleAssistant, Blocks: blocks, Incomplete: true}, true
 }
 
 func cancelledToolMessage(call session.ToolCall) session.Message {
