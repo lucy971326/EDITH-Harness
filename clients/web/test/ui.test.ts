@@ -12,6 +12,12 @@ let server: ViteDevServer;
 let TooltipProvider: ComponentType<{ children?: ReactNode }>;
 let Sidebar: ComponentType<Record<string, unknown>>;
 let Composer: ComponentType<Record<string, unknown>>;
+let composerTrigger: (value: string, cursor: number) => {
+  prefix: "/" | "$";
+  query: string;
+  start: number;
+  end: number;
+} | null;
 let isComposerSubmitKey: (event: {
   key: string;
   shiftKey: boolean;
@@ -44,7 +50,7 @@ before(async () => {
     "/src/components/ui/tooltip.tsx",
   ));
   ({ Sidebar } = await server.ssrLoadModule("/src/sidebar.tsx"));
-  ({ Composer, isComposerSubmitKey } =
+  ({ Composer, composerTrigger, isComposerSubmitKey } =
     await server.ssrLoadModule("/src/composer.tsx"));
   ({ chatSendParams, shouldClearSubmittedDraft } =
     await server.ssrLoadModule("/src/App.tsx"));
@@ -122,6 +128,10 @@ const idleComposer = {
   modelSelection: { model: "demo", reasoningEffort: "high" },
   modelError: "",
   imageDisabled: false,
+  skills: [],
+  commands: [],
+  suggestionsDisabled: false,
+  commandBusy: false,
   onDraftChange() {},
   onSend() {},
   onStop() {},
@@ -130,6 +140,9 @@ const idleComposer = {
   onModelChange() {},
   onAgentChange() {},
   onRetryModels() {},
+  async onCommand() {
+    return true;
+  },
   onDismissNotice() {},
 };
 
@@ -191,6 +204,31 @@ test("Enter submits; Shift+Enter, IME composing and keyCode 229 do not", () => {
   );
   assert.equal(isComposerSubmitKey({ ...enter, keyCode: 229 }), false);
   assert.equal(isComposerSubmitKey({ ...enter, key: "Tab" }), false);
+});
+
+test("slash offers commands and skills; dollar offers only skills", () => {
+  assert.deepEqual(composerTrigger("先做 /com 后做", 7), {
+    prefix: "/",
+    query: "com",
+    start: 3,
+    end: 7,
+  });
+  assert.deepEqual(composerTrigger("$skill-creator", 6), {
+    prefix: "$",
+    query: "skill",
+    start: 0,
+    end: 14,
+  });
+  const catalog = {
+    skills: [{ name: "review", description: "审查代码", scope: "workspace" }],
+    commands: [{ name: "compact", description: "压缩对话" }],
+  };
+  const slash = renderComposer({ ...catalog, draft: "/" });
+  assert.match(slash, /\/compact/);
+  assert.match(slash, /\$review/);
+  const dollar = renderComposer({ ...catalog, draft: "$" });
+  assert.doesNotMatch(dollar, /\/compact/);
+  assert.match(dollar, /\$review/);
 });
 
 test("sidebar highlights the selected session and disables project actions offline", () => {

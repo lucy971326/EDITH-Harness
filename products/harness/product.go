@@ -317,11 +317,14 @@ func (s *Product) Stop(sessionID string) error {
 
 // Fork 复制账本中一段已结束助手回答之前的历史与会话设置。
 func (s *Product) Fork(input ForkInput) (string, error) {
+	s.sendMu.Lock()
+	defer s.sendMu.Unlock()
+
 	if input.SessionID == "" || input.RunID == "" || input.BoundaryEntryID == "" {
 		return "", fmt.Errorf("harness product: fork has empty required field")
 	}
-	if state, running := s.runner.State(input.SessionID); running && state.RunID == input.RunID {
-		return "", fmt.Errorf("harness product: assistant response is still running")
+	if _, running := s.runner.State(input.SessionID); running {
+		return "", fmt.Errorf("%w: assistant response is still running", ErrRunActive)
 	}
 	sess, err := s.sessions.Get(input.SessionID)
 	if err != nil {
@@ -369,11 +372,30 @@ func (s *Product) Fork(input ForkInput) (string, error) {
 
 // CallCommand 执行一条平台命令。
 func (s *Product) CallCommand(ctx context.Context, name, sessionID string) error {
-	_, err := s.sessions.Get(sessionID)
+	s.sendMu.Lock()
+	defer s.sendMu.Unlock()
+
+	err := ctx.Err()
 	if err != nil {
 		return err
 	}
-	return s.commands.Call(ctx, name, sessionID)
+	_, err = s.Session(sessionID)
+	if err != nil {
+		return err
+	}
+	if _, running := s.runner.State(sessionID); running {
+		return ErrRunActive
+	}
+	command, err := s.commands.Get(name)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidCommand, err)
+	}
+	// 命令一经接受便由 Runner 管理，断开 Client 不能取消它。
+	err = command.Run(context.Background(), sessionID)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrCommandRejected, err)
+	}
+	return nil
 }
 
 func (s *Product) selectRunSettings(setup *settings.SessionSettings, input RunInput) error {

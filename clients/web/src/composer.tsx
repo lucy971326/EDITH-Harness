@@ -1,4 +1,11 @@
-import { useImperativeHandle, useRef, type RefObject } from "react";
+import {
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -6,11 +13,15 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ArrowUp, Square, X, Plus } from "./icons";
+import { ArrowUp, BookOpen, Command, Square, X, Plus } from "./icons";
 import { ModelMenu, type ModelSelection } from "./model-menu";
 import { AgentMenu } from "./agent-menu";
 import type { ModelChoice } from "../../contracts/appserver.ts";
-import type { AgentView } from "../../contracts/appserver.ts";
+import type {
+  AgentView,
+  CommandView,
+  SkillView,
+} from "../../contracts/appserver.ts";
 
 export type Attachment = {
   id: string;
@@ -20,6 +31,46 @@ export type Attachment = {
   data: string;
 };
 export type ComposerHandle = { focus: () => void };
+export type CommandSelection = {
+  draft: string;
+  start: number;
+  end: number;
+};
+
+export interface ComposerTrigger {
+  prefix: "/" | "$";
+  query: string;
+  start: number;
+  end: number;
+}
+
+type Suggestion =
+  | { kind: "command"; name: string; description: string }
+  | { kind: "skill"; name: string; description: string; scope: string };
+
+// 候选只识别光标前最后一个独立的 / 或 $ 词段。
+export function composerTrigger(
+  value: string,
+  cursor: number,
+): ComposerTrigger | null {
+  const beforeCursor = value.slice(0, cursor);
+  const match = /(?:^|\s)([/$])([^\s]*)$/.exec(beforeCursor);
+  if (!match) return null;
+  const remaining = value.slice(cursor);
+  const nextWhitespace = remaining.search(/\s/);
+  return {
+    prefix: match[1] as "/" | "$",
+    query: match[2].toLowerCase(),
+    start: cursor - match[2].length - 1,
+    end: nextWhitespace < 0 ? value.length : cursor + nextWhitespace,
+  };
+}
+
+function scopeLabel(scope: SkillView["scope"]): string {
+  if (scope === "system") return "系统";
+  if (scope === "user") return "个人";
+  return "项目";
+}
 
 export function isComposerSubmitKey(event: {
   key: string;
@@ -56,6 +107,10 @@ export function Composer({
   modelSelection,
   modelError,
   imageDisabled,
+  skills,
+  commands,
+  suggestionsDisabled,
+  commandBusy,
   onDraftChange,
   onSend,
   onStop,
@@ -64,6 +119,7 @@ export function Composer({
   onModelChange,
   onAgentChange,
   onRetryModels,
+  onCommand,
   onDismissNotice,
   composerRef,
 }: {
@@ -91,6 +147,10 @@ export function Composer({
   modelSelection: ModelSelection;
   modelError: string;
   imageDisabled: boolean;
+  skills: SkillView[];
+  commands: CommandView[];
+  suggestionsDisabled: boolean;
+  commandBusy: boolean;
   onDraftChange: (text: string) => void;
   onSend: () => void;
   onStop: () => void;
@@ -99,16 +159,75 @@ export function Composer({
   onModelChange: (value: ModelSelection) => void;
   onAgentChange: (agentID: string) => void;
   onRetryModels: () => void;
+  onCommand: (name: string, selection: CommandSelection) => Promise<void>;
   onDismissNotice: () => void;
   composerRef?: RefObject<ComposerHandle | null>;
 }) {
   const input = useRef<HTMLTextAreaElement>(null);
   const imageInput = useRef<HTMLInputElement>(null);
+  const [cursor, setCursor] = useState(draft.length);
+  const [activeSuggestion, setActiveSuggestion] = useState(0);
+  const [dismissedTrigger, setDismissedTrigger] = useState("");
+  const trigger = composerTrigger(draft, Math.min(cursor, draft.length));
+  const triggerKey = trigger ? `${draft}\u0000${cursor}` : "";
+  const suggestions = useMemo(() => {
+    if (!trigger || suggestionsDisabled) return [];
+    const matches = (name: string) =>
+      name.toLowerCase().includes(trigger.query);
+    const items: Suggestion[] = [];
+    if (trigger.prefix === "/" && !running && !commandBusy) {
+      for (const command of commands) {
+        if (matches(command.name)) items.push({ kind: "command", ...command });
+      }
+    }
+    for (const skill of skills) {
+      if (matches(skill.name))
+        items.push({
+          kind: "skill",
+          name: skill.name,
+          description: skill.description,
+          scope: scopeLabel(skill.scope),
+        });
+    }
+    return items;
+  }, [commandBusy, commands, running, skills, suggestionsDisabled, trigger]);
+  const showSuggestions =
+    suggestions.length > 0 && triggerKey !== dismissedTrigger;
+
+  useEffect(() => {
+    setActiveSuggestion(0);
+  }, [triggerKey, suggestions.length]);
   useImperativeHandle(composerRef, () => ({
     focus() {
       input.current?.focus();
     },
   }));
+
+  function replaceTrigger(value: string, current: ComposerTrigger) {
+    const next = `${draft.slice(0, current.start)}${value}${draft.slice(current.end)}`;
+    const nextCursor = current.start + value.length;
+    onDraftChange(next);
+    setCursor(nextCursor);
+    setDismissedTrigger("");
+    requestAnimationFrame(() => {
+      input.current?.focus();
+      input.current?.setSelectionRange(nextCursor, nextCursor);
+    });
+  }
+
+  async function selectSuggestion(item: Suggestion) {
+    if (!trigger || commandBusy) return;
+    setDismissedTrigger(triggerKey);
+    if (item.kind === "skill") {
+      replaceTrigger(`$${item.name} `, trigger);
+      return;
+    }
+    await onCommand(item.name, {
+      draft,
+      start: trigger.start,
+      end: trigger.end,
+    });
+  }
 
   return (
     <div className="composer-area">
@@ -122,6 +241,30 @@ export function Composer({
           </div>
         )}
         <div className="composer">
+          {showSuggestions && (
+            <div className="suggestions" role="listbox" aria-label="输入候选">
+              {suggestions.map((item, index) => (
+                <button
+                  key={`${item.kind}:${item.name}`}
+                  type="button"
+                  role="option"
+                  aria-selected={index === activeSuggestion}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => void selectSuggestion(item)}
+                >
+                  {item.kind === "command" ? <Command /> : <BookOpen />}
+                  <span>
+                    <strong>
+                      {item.kind === "command" ? "/" : "$"}
+                      {item.name}
+                    </strong>
+                    <small>{item.description}</small>
+                  </span>
+                  {item.kind === "skill" && <small>{item.scope}</small>}
+                </button>
+              ))}
+            </div>
+          )}
           {images.length > 0 && (
             <div className="attachments">
               {images.map((image) => (
@@ -142,8 +285,36 @@ export function Composer({
             aria-label="消息输入"
             placeholder={running ? "发送以调整当前任务" : "说说你的想法"}
             value={draft}
-            onChange={(event) => onDraftChange(event.target.value)}
+            onChange={(event) => {
+              setCursor(event.target.selectionStart);
+              setDismissedTrigger("");
+              onDraftChange(event.target.value);
+            }}
+            onSelect={(event) => setCursor(event.currentTarget.selectionStart)}
             onKeyDown={(event) => {
+              if (showSuggestions) {
+                if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                  event.preventDefault();
+                  const direction = event.key === "ArrowDown" ? 1 : -1;
+                  setActiveSuggestion(
+                    (activeSuggestion + direction + suggestions.length) %
+                      suggestions.length,
+                  );
+                  return;
+                }
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  setDismissedTrigger(triggerKey);
+                  return;
+                }
+                if (isComposerSubmitKey(event)) {
+                  event.preventDefault();
+                  void selectSuggestion(
+                    suggestions[activeSuggestion] ?? suggestions[0],
+                  );
+                  return;
+                }
+              }
               if (isComposerSubmitKey(event)) {
                 event.preventDefault();
                 onSend();

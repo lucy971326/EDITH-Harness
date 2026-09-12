@@ -8,8 +8,10 @@ import (
 	"sync"
 
 	"harness/kernel/agents"
+	"harness/kernel/commands"
 	"harness/kernel/events"
 	"harness/kernel/llm"
+	"harness/kernel/skills"
 	"harness/products/harness"
 )
 
@@ -20,6 +22,8 @@ type Server struct {
 	events         *events.Registry
 	models         *llm.Client
 	agents         *agents.Service
+	skills         skills.Skills
+	commands       commands.Commands
 
 	// 对外方法。
 	methods map[string]registeredMethod

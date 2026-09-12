@@ -6,7 +6,7 @@
 
 Harness 的内核和聊天业务已具备运行能力。旧 `surface/web` / `plugins/web` 使用 Templ、HTMX、POST 与 SSE，仍是默认启动入口；3A 移除 stepSeq 后，其实时过程会错位，不代表旧页面仍完整可用，也不是目标前端架构。
 
-App-server 第一、二步已经完成：`products/harness` 接替原 `kernel/chat`，类型化接口接受 Schema 校验，Go / TS 分别手工维护；本机 WebSocket / JSON-RPC 2.0 已接通真实产品与 Runner。React Web 已完成第 1 至第 5 步：真实项目／会话、聊天恢复、消息呈现、设置、Agent、图片和上下文用量均已接通。尚未实现第 6 步分叉／Skill／命令，以及第 7 步正式入口切换与旧 Web 清理；反向请求和业务防重仍属后续待确认范围。
+App-server 第一、二步已经完成：`products/harness` 接替原 `kernel/chat`，类型化接口接受 Schema 校验，Go / TS 分别手工维护；本机 WebSocket / JSON-RPC 2.0 已接通真实产品与 Runner。React Web 已完成第 1 至第 6 步：真实项目／会话、聊天恢复、消息呈现、设置、Agent、图片、用量、分叉、Skill 与命令均已接通。尚未实施第 7 步正式入口切换与旧 Web 清理；反向请求和业务防重仍属后续待确认范围。
 
 ```text
 当前：浏览器 POST → 旧 Web → HarnessProduct → Runner → ReAct Loop → LLM / Tools
@@ -321,6 +321,14 @@ npm run rpc:test
 - 每轮最后一次真实用量写入 `runs.json` 并随 Snapshot 返回；页面显示 `inputTokens + cacheReadTokens`，刷新、重连和后台重启后可恢复，不新增用量查询接口。
 - WebSocket 单条消息上限提高到 16MB，只为容纳至多四张压缩图片。未增加上传服务、前端 Store 或新架构层。
 - 验证：相关 Go 测试、49 项前端测试、生产构建、Go／TS 契约检查与真实网络链路通过。隔离浏览器验收覆盖设置立即保存、Agent 增删改、纯图片压缩／发送／历史恢复、真实用量刷新恢复和后台重启；未调用付费模型或修改用户真实数据。
+
+### Web 迁移第 6 步：分叉、Skill 与命令
+
+- 新增 `harness/session/fork`、`skill/list`、`command/list`、`command/call`。分叉复用现有账本截断、运行记录复制和设置继承；成功后刷新左栏并自动进入新会话，任何活跃 Run 期间都拒绝分叉。
+- `/` 同时列出命令与 Skill，`$` 只列 Skill；支持包含搜索、鼠标、上下键、Enter 和 Escape。Skill 替换当前触发词为 `$skill-name `；命令立即执行，运行中隐藏命令但仍允许插入 Skill 用于 Steer。
+- appserver 直接从公共服务读取 Skill 与命令目录，不暴露 Skill 文件路径。Product 串行完成“检查会话空闲 → 接受命令”；已接受的 compact 使用后台生命周期，连接断开不会取消。
+- 只新增一项前端候选核心测试；其余复用现有 Product 分叉、命令、Skill、网络与投影测试。全量 Go test／vet、相关 race、Go／TS 契约检查、50 项前端测试和生产构建通过。
+- 隔离浏览器使用本机模型替身验收：`/`／`$` 候选和键盘选择、Skill 插入、空历史命令失败保留输入、compact 成功、运行中隐藏命令、回答分叉及自动切换均通过；未调用付费模型或修改用户真实数据。
 
 ## 验证
 

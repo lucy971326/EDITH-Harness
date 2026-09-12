@@ -39,6 +39,17 @@ export interface AgentSaveParams {
   tools: string[];
 }
 
+export interface SkillView {
+  name: string;
+  description: string;
+  scope: 'system' | 'user' | 'workspace';
+}
+
+export interface CommandView {
+  name: string;
+  description: string;
+}
+
 export interface ServerMethods {
   initialize: { params: { protocolVersion: number }; result: InitializeResult };
   'server/unsubscribe': { params: { subscriptionID: string }; result: Record<string, never> };
@@ -47,4 +58,7 @@ export interface ServerMethods {
   'agent/list': { params: Record<string, never>; result: AgentListResult };
   'agent/save': { params: AgentSaveParams; result: { agent: AgentView } };
   'agent/delete': { params: { agentID: string }; result: Record<string, never> };
+  'skill/list': { params: { sessionID: string }; result: { skills: SkillView[] } };
+  'command/list': { params: Record<string, never>; result: { commands: CommandView[] } };
+  'command/call': { params: { sessionID: string; name: string }; result: Record<string, never> };
 }

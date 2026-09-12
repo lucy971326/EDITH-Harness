@@ -561,6 +561,14 @@
 .answer-actions .metadata {
   margin-left: 9px;
 }
+.answer-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.answer-controls > button {
+  margin-top: 17px;
+}
 .steer-message {
   white-space: pre-wrap;
   background: var(--bubble);
@@ -774,6 +782,9 @@
   border-radius: var(--radius);
   background: var(--popover);
   box-shadow: var(--shadow-floating);
+  max-height: 280px;
+  overflow-y: auto;
+  z-index: 8;
 }
 .suggestions button {
   display: flex;
@@ -784,9 +795,35 @@
   text-align: left;
   font-size: var(--font-size-label);
   border-radius: var(--radius-sm);
+  border: 0;
+  color: var(--foreground);
+  background: transparent;
 }
-.suggestions button:hover {
+.suggestions button:hover,
+.suggestions button[aria-selected="true"] {
   background: var(--accent);
+}
+.suggestions button > svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+}
+.suggestions button > span {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+}
+.suggestions strong {
+  font-weight: 550;
+}
+.suggestions small {
+  color: var(--muted-foreground);
+  font-size: var(--font-size-meta);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .back-latest {
   position: absolute;

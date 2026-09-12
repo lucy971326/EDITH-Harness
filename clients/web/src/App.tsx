@@ -17,7 +17,12 @@ import {
 import { SettingsPage } from "./settings-page";
 import { WorkspaceTabs } from "./workspace-tabs";
 import { Sidebar } from "./sidebar";
-import { Composer, type Attachment, type ComposerHandle } from "./composer";
+import {
+  Composer,
+  type Attachment,
+  type CommandSelection,
+  type ComposerHandle,
+} from "./composer";
 import {
   formatRPCError,
   isWorkspaceUnavailable,
@@ -37,7 +42,9 @@ import type {
   AgentListResult,
   AgentSaveParams,
   AgentView,
+  CommandView,
   ModelChoice,
+  SkillView,
 } from "../../contracts/appserver.ts";
 
 type Draft = { text: string; images: Attachment[] };
@@ -119,9 +126,13 @@ export default function App() {
   const [agentError, setAgentError] = useState("");
   const [agentLoading, setAgentLoading] = useState(false);
   const [agentSaving, setAgentSaving] = useState(false);
+  const [skills, setSkills] = useState<SkillView[]>([]);
+  const [commands, setCommands] = useState<CommandView[]>([]);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [compressingImages, setCompressingImages] = useState(false);
   const [sending, setSending] = useState<string[]>([]);
+  const [commandBusy, setCommandBusy] = useState(false);
+  const [forkingEntryID, setForkingEntryID] = useState("");
   const [stopping, setStopping] = useState<{
     sessionID: string;
     runID: string;
@@ -145,6 +156,8 @@ export default function App() {
   const stopPending = useRef(false);
   const settingsPending = useRef(false);
   const compressionPending = useRef(false);
+  const commandPending = useRef(false);
+  const forkPending = useRef(false);
   const draftRef = useRef(draft);
   const imagesRef = useRef(images);
   const selectGeneration = useRef(0);
@@ -200,6 +213,7 @@ export default function App() {
     !!selected &&
     !busySending &&
     !stoppingCurrent &&
+    !commandBusy &&
     !compressingImages &&
     (!!draft.trim() || images.length > 0) &&
     (!!currentRun || (!!validAgent && !!validModel && !modelError)) &&
@@ -230,6 +244,7 @@ export default function App() {
     imagesRef.current = stored.images;
   }
   function setCurrentSession(id: string | null, session: SessionView | null) {
+    if (id !== selectedIDRef.current) setSkills([]);
     selectedIDRef.current = id;
     setSelectedID(id);
     setSelected(session);
@@ -336,6 +351,7 @@ export default function App() {
         return;
       if (selectedIDRef.current !== sessionID) return;
       setSelected(result.session);
+      void loadSkills(client, sessionID);
     } catch (error) {
       if (
         generation !== selectGeneration.current ||
@@ -382,6 +398,7 @@ export default function App() {
       rememberDraft(selectedIDRef.current, draftRef.current, imagesRef.current);
       setCurrentSession(result.session.sessionID, result.session);
       applyDraft(result.session.sessionID);
+      void loadSkills(client, result.session.sessionID);
       setNotice("");
       setSettings(false);
     } finally {
@@ -453,6 +470,36 @@ export default function App() {
       setNotice(message);
     } finally {
       if (client === clientRef.current) setAgentLoading(false);
+    }
+  }
+
+  async function loadSkills(client: RPCClient, sessionID: string) {
+    try {
+      const result = await client.skills(sessionID);
+      if (
+        client !== clientRef.current ||
+        !client.connected ||
+        selectedIDRef.current !== sessionID
+      )
+        return;
+      setSkills(result.skills);
+    } catch (error) {
+      if (client !== clientRef.current || selectedIDRef.current !== sessionID)
+        return;
+      setSkills([]);
+      setNotice(formatRPCError(error, "Skill 候选加载失败"));
+    }
+  }
+
+  async function loadCommands(client: RPCClient) {
+    try {
+      const result = await client.commands();
+      if (client !== clientRef.current || !client.connected) return;
+      setCommands(result.commands);
+    } catch (error) {
+      if (client !== clientRef.current) return;
+      setCommands([]);
+      setNotice(formatRPCError(error, "命令目录加载失败"));
     }
   }
 
@@ -626,6 +673,105 @@ export default function App() {
     }
   }
 
+  async function executeCommand(
+    name: string,
+    selection: CommandSelection,
+  ): Promise<void> {
+    const client = clientRef.current;
+    const sessionID = selectedIDRef.current;
+    if (
+      !client?.connected ||
+      !sessionID ||
+      !synchronized ||
+      currentRun ||
+      commandPending.current
+    )
+      return;
+    const key = draftKey(sessionID);
+    const version = draftVersions.current.get(key) ?? 0;
+    commandPending.current = true;
+    setCommandBusy(true);
+    setNotice("");
+    try {
+      await client.callCommand(sessionID, name);
+
+      const visible = selectedIDRef.current === sessionID;
+      const currentDraft = visible
+        ? { text: draftRef.current, images: imagesRef.current }
+        : drafts.current.get(key);
+      if (
+        !currentDraft ||
+        currentDraft.text !== selection.draft ||
+        (draftVersions.current.get(key) ?? 0) !== version
+      )
+        return;
+
+      const nextDraft = {
+        text: `${selection.draft.slice(0, selection.start)}${selection.draft.slice(selection.end)}`,
+        images: currentDraft.images,
+      };
+      drafts.current.set(key, nextDraft);
+      draftVersions.current.set(key, version + 1);
+      if (visible) {
+        draftRef.current = nextDraft.text;
+        setDraft(nextDraft.text);
+      }
+    } catch (error) {
+      if (selectedIDRef.current === sessionID)
+        setNotice(
+          `${formatRPCError(error, "命令执行失败")}。输入已保留，不会自动重试。`,
+        );
+    } finally {
+      commandPending.current = false;
+      setCommandBusy(false);
+    }
+  }
+
+  async function forkAnswer(runID: string, boundaryEntryID: string) {
+    const client = clientRef.current;
+    const sourceID = selectedIDRef.current;
+    if (
+      !client?.connected ||
+      !sourceID ||
+      !synchronized ||
+      forkPending.current
+    )
+      return;
+    forkPending.current = true;
+    setForkingEntryID(boundaryEntryID);
+    setNotice("");
+    try {
+      const result = await client.fork(sourceID, runID, boundaryEntryID);
+      if (client !== clientRef.current || !client.connected) return;
+      setSessions((current) => {
+        if (!current) return [result.session];
+        return [
+          result.session,
+          ...current.filter(
+            (item) => item.sessionID !== result.session.sessionID,
+          ),
+        ];
+      });
+      if (selectedIDRef.current === sourceID) {
+        rememberDraft(sourceID, draftRef.current, imagesRef.current);
+        setCurrentSession(result.session.sessionID, result.session);
+        applyDraft(result.session.sessionID);
+        setSettings(false);
+        setNotice("已从该回答创建分叉会话。");
+        void loadSkills(client, result.session.sessionID);
+      }
+      void loadSessions(client);
+    } catch (error) {
+      if (selectedIDRef.current === sourceID)
+        setNotice(
+          `${formatRPCError(error, "分叉失败")}。当前会话和草稿已保留，不会自动重试。`,
+        );
+    } finally {
+      forkPending.current = false;
+      setForkingEntryID("");
+    }
+  }
+
   useEffect(() => {
     const query = matchMedia("(prefers-color-scheme: dark)");
     function applyTheme() {
@@ -658,6 +804,7 @@ export default function App() {
         void loadSessions(client);
         void loadModels(client);
         void loadAgents(client);
+        void loadCommands(client);
       },
       (client) => {
         void loadSessions(client);
@@ -826,6 +973,11 @@ export default function App() {
                       ? stopping.runID
                       : undefined
                   }
+                  forkingEntryID={forkingEntryID || undefined}
+                  forkDisabled={!synchronized || !!currentRun}
+                  onFork={(runID, boundaryEntryID) =>
+                    void forkAnswer(runID, boundaryEntryID)
+                  }
                 >
                   <div className="empty-chat">
                     <div className="empty-symbol">
@@ -891,6 +1043,10 @@ export default function App() {
                   modelSelection={modelSelection}
                   modelError={modelError}
                   imageDisabled={compressingImages || !selectedModel?.vision}
+                  skills={skills}
+                  commands={commands}
+                  suggestionsDisabled={!selected || !synchronized}
+                  commandBusy={commandBusy}
                   onDraftChange={editDraft}
                   onSend={() => void sendMessage()}
                   onStop={() => void stopRun()}
@@ -914,6 +1070,7 @@ export default function App() {
                     if (clientRef.current?.connected)
                       void loadModels(clientRef.current);
                   }}
+                  onCommand={executeCommand}
                   onDismissNotice={() => setNotice("")}
                   composerRef={composer}
                 />

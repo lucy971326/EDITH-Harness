@@ -5,7 +5,14 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, FileText, LoaderCircle, Copy, Brain } from "./icons";
+import {
+  ChevronRight,
+  FileText,
+  LoaderCircle,
+  Copy,
+  Brain,
+  GitBranch,
+} from "./icons";
 import { MessageMarkdown } from "./message-markdown";
 import {
   processGroups,
@@ -99,10 +106,16 @@ function Detail({
 export function WorkProcess({
   turn,
   onInspect,
+  onFork,
+  forkDisabled = false,
+  forking = false,
   stopping = false,
 }: {
   turn: ChatTurn;
   onInspect: () => void;
+  onFork?: (runID: string, boundaryEntryID: string) => void;
+  forkDisabled?: boolean;
+  forking?: boolean;
   stopping?: boolean;
 }) {
   const status = turn.run?.status;
@@ -251,7 +264,20 @@ export function WorkProcess({
           <div className="answer">
             <MessageMarkdown text={turn.answer.text} />
           </div>
-          <CopyMessage text={turn.answer.text} label="复制回答" />
+          <div className="answer-controls">
+            <CopyMessage text={turn.answer.text} label="复制回答" />
+            {!turn.standalone && turn.prompt && onFork && (
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={forking ? "正在分叉" : "从此回答分叉"}
+                disabled={forkDisabled || forking}
+                onClick={() => onFork(turn.id, turn.prompt!.id)}
+              >
+                <GitBranch />
+              </Button>
+            )}
+          </div>
         </div>
       )}
       {status === "success" && turn.items.length === 0 && turn.answer && (

@@ -177,6 +177,14 @@ export class RPCClient {
     return this.call("harness/session/get", { sessionID });
   }
 
+  fork(sessionID: string, runID: string, boundaryEntryID: string) {
+    return this.call("harness/session/fork", {
+      sessionID,
+      runID,
+      boundaryEntryID,
+    });
+  }
+
   selectWorkspace() {
     return this.call("workspace/select", {}, { timeoutMs: null });
   }
@@ -187,6 +195,18 @@ export class RPCClient {
 
   agents() {
     return this.call("agent/list", {});
+  }
+
+  skills(sessionID: string) {
+    return this.call("skill/list", { sessionID });
+  }
+
+  commands() {
+    return this.call("command/list", {});
+  }
+
+  callCommand(sessionID: string, name: string) {
+    return this.call("command/call", { sessionID, name });
   }
 
   saveAgent(params: AgentSaveParams) {

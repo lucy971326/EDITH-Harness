@@ -15,11 +15,17 @@ export function ChatMessages({
   snapshot,
   sessionID,
   stoppingRunID,
+  forkingEntryID,
+  forkDisabled = true,
+  onFork,
   children,
 }: {
   snapshot: Snapshot | null;
   sessionID: string | null;
   stoppingRunID?: string;
+  forkingEntryID?: string;
+  forkDisabled?: boolean;
+  onFork?: (runID: string, boundaryEntryID: string) => void;
   children?: ReactNode;
 }) {
   const scroll = useRef<HTMLDivElement>(null);
@@ -88,6 +94,9 @@ export function ChatMessages({
               key={`${sessionID}:${turn.id}`}
               turn={turn}
               stopping={stoppingRunID === turn.id}
+              forking={forkingEntryID === turn.prompt?.id}
+              forkDisabled={forkDisabled}
+              onFork={onFork}
               onInspect={() => {
                 follow.current = false;
                 userScroll.current = false;

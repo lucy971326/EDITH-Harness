@@ -242,6 +242,22 @@ func run(configPath string) (result error) {
 	if err != nil {
 		return err
 	}
+	skillService, err := host.Resolve[skills.Skills](h, "skills")
+	if err != nil {
+		return err
+	}
+	err = server.BindSkills(skillService)
+	if err != nil {
+		return err
+	}
+	commandService, err := host.Resolve[commands.Commands](h, "commands")
+	if err != nil {
+		return err
+	}
+	err = server.BindCommands(commandService)
+	if err != nil {
+		return err
+	}
 	rpcURL, err := server.Listen("127.0.0.1:8889")
 	if err != nil {
 		return err

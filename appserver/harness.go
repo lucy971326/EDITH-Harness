@@ -15,6 +15,7 @@ const (
 	listMethod           = "harness/session/list"
 	getMethod            = "harness/session/get"
 	updateSettingsMethod = "harness/session/settings/update"
+	forkMethod           = "harness/session/fork"
 	sendMethod           = "harness/session/send"
 	snapshotMethod       = "harness/session/snapshot"
 	subscribeMethod      = "harness/session/subscribe"
@@ -48,6 +49,10 @@ func (s *Server) BindHarness(product *harness.Product, registry *events.Registry
 		return err
 	}
 	err = Register(s, updateSettingsMethod, s.handleUpdateSettings)
+	if err != nil {
+		return err
+	}
+	err = Register(s, forkMethod, s.handleFork)
 	if err != nil {
 		return err
 	}
@@ -98,6 +103,19 @@ func (s *Server) handleUpdateSettings(ctx context.Context, input UpdateSettingsP
 	return SessionResult{Session: sessionView(info)}, methodError(err)
 }
 
+func (s *Server) handleFork(_ context.Context, input ForkParams) (SessionResult, error) {
+	destinationID, err := s.harnessProduct.Fork(harness.ForkInput{
+		SessionID:       input.SessionID,
+		RunID:           input.RunID,
+		BoundaryEntryID: input.BoundaryEntryID,
+	})
+	if err != nil {
+		return SessionResult{}, methodError(err)
+	}
+	info, err := s.harnessProduct.Session(destinationID)
+	return SessionResult{Session: sessionView(info)}, methodError(err)
+}
+
 func sessionView(info harness.SessionInfo) SessionView {
 	return SessionView{
 		SessionID: info.Meta.ID,
@@ -124,7 +142,13 @@ func methodError(err error) error {
 		return &Error{Code: CodeInvalidParams, Message: "model, reasoning effort or agent is unavailable", Cause: err}
 	}
 	if errors.Is(err, harness.ErrRunActive) {
-		return &Error{Code: CodeConflict, Message: "session settings cannot change while a run is active", Cause: err}
+		return &Error{Code: CodeConflict, Message: "session has an active run", Cause: err}
+	}
+	if errors.Is(err, harness.ErrInvalidCommand) {
+		return &Error{Code: CodeInvalidParams, Message: "command is unavailable", Cause: err}
+	}
+	if errors.Is(err, harness.ErrCommandRejected) {
+		return &Error{Code: CodeConflict, Message: "command cannot run in the current session", Cause: err}
 	}
 	// 底层文件缺失不是目标会话不存在，只有产品的明确判断才能映射为未找到。
 	if errors.Is(err, harness.ErrSessionNotFound) {

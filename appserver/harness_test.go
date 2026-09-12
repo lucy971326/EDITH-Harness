@@ -15,6 +15,8 @@ func TestMethodErrorsDoNotConfuseMissingFilesWithMissingSession(t *testing.T) {
 	assertMethodError(t, methodError(harness.ErrSessionNotFound), CodeNotFound)
 	assertMethodError(t, methodError(harness.ErrWorkspace), CodeInvalidParams)
 	assertMethodError(t, methodError(harness.ErrInvalidRunSettings), CodeInvalidParams)
+	assertMethodError(t, methodError(harness.ErrInvalidCommand), CodeInvalidParams)
+	assertMethodError(t, methodError(harness.ErrCommandRejected), CodeConflict)
 }
 
 func assertMethodError(t *testing.T, err error, code ErrorCode) {

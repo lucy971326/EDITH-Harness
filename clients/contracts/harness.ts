@@ -45,6 +45,12 @@ export interface UpdateSettingsParams {
   reasoningEffort: string;
 }
 
+export interface ForkParams {
+  sessionID: string;
+  runID: string;
+  boundaryEntryID: string;
+}
+
 export interface ImageInput {
   mime: 'image/png' | 'image/jpeg' | 'image/webp';
   data: string;
@@ -64,6 +70,7 @@ export interface Methods {
   'harness/session/list': { params: ListParams; result: ListResult };
   'harness/session/get': { params: SessionIDParams; result: SessionResult };
   'harness/session/settings/update': { params: UpdateSettingsParams; result: SessionResult };
+  'harness/session/fork': { params: ForkParams; result: SessionResult };
   'harness/session/send': { params: SendParams; result: { mode: 'started' | 'steered' } };
   'harness/session/snapshot': { params: SessionIDParams; result: Snapshot };
   'harness/session/subscribe': { params: SessionIDParams; result: SubscribeResult };

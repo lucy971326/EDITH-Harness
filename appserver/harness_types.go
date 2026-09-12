@@ -56,6 +56,15 @@ type UpdateSettingsParams struct {
 	ReasoningEffort string `json:"reasoningEffort"`
 }
 
+// 对外会话接口：从完整回答分叉
+
+// 数据。用回答所在 Run 与落账消息定位分叉边界。
+type ForkParams struct {
+	SessionID       string `json:"sessionID" jsonschema:"minLength=1"`
+	RunID           string `json:"runID" jsonschema:"minLength=1"`
+	BoundaryEntryID string `json:"boundaryEntryID" jsonschema:"minLength=1"`
+}
+
 // 对外运行接口：文字与压缩后的图片发送。
 
 // 数据。Client 已压缩的一张图片；服务端仍会核对实际内容。

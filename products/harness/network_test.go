@@ -27,7 +27,11 @@ import (
 	"harness/kernel/skills"
 	"harness/kernel/subagents"
 	"harness/kernel/tools"
+	compactcmd "harness/plugins/kernel/commands/compact"
 	"harness/plugins/kernel/loops/react"
+	machinelocal "harness/plugins/kernel/machine/local"
+	skillsbuiltin "harness/plugins/kernel/skills/builtin"
+	skillsfilesystem "harness/plugins/kernel/skills/filesystem"
 	"harness/products/harness"
 )
 
@@ -134,7 +138,7 @@ func newNetworkHost(t *testing.T, data string) (*host.Host, *appserver.Server, *
 	server := appserver.New()
 	t.Cleanup(func() { _ = h.Close() })
 	t.Cleanup(func() { _ = server.Close() })
-	plugins := []host.Plugin{&persist.Plugin{Dir: data}, &session.Plugin{}, &llm.Plugin{}, events.NewPlugin(), tools.NewPlugin(), loops.NewPlugin(), react.New(), skills.NewPlugin(), agents.NewPlugin(), commands.NewPlugin(), runner.NewPlugin(), subagents.NewPlugin(data), harness.NewPlugin()}
+	plugins := []host.Plugin{&persist.Plugin{Dir: data}, &session.Plugin{}, &llm.Plugin{}, machinelocal.New(), events.NewPlugin(), tools.NewPlugin(), loops.NewPlugin(), react.New(), skills.NewPlugin(), skillsbuiltin.New(), skillsfilesystem.New(), agents.NewPlugin(), commands.NewPlugin(), runner.NewPlugin(), compactcmd.New(), subagents.NewPlugin(data), harness.NewPlugin()}
 	for _, plugin := range plugins {
 		err := h.Install(plugin)
 		if err != nil {
@@ -166,6 +170,22 @@ func newNetworkHost(t *testing.T, data string) (*host.Host, *appserver.Server, *
 		t.Fatal(err)
 	}
 	err = server.BindAgents(agentService)
+	if err != nil {
+		t.Fatal(err)
+	}
+	skillService, err := host.Resolve[skills.Skills](h, "skills")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = server.BindSkills(skillService)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commandService, err := host.Resolve[commands.Commands](h, "commands")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = server.BindCommands(commandService)
 	if err != nil {
 		t.Fatal(err)
 	}
