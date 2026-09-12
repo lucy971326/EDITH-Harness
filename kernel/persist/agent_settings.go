@@ -11,14 +11,14 @@ import (
 )
 
 func (s *jsonl) agentFile(id string) string {
-	return filepath.Join(s.dir, id+".agent.json")
+	return filepath.Join(s.dir, "agents", id+".json")
 }
 
 func (s *jsonl) ListAgents() ([]config.Agent, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	paths, err := filepath.Glob(filepath.Join(s.dir, "*.agent.json"))
+	paths, err := filepath.Glob(filepath.Join(s.dir, "agents", "*.json"))
 	if err != nil {
 		return nil, err
 	}
@@ -72,6 +72,10 @@ func (s *jsonl) PutAgent(agent config.Agent) error {
 	defer s.mu.Unlock()
 
 	path := s.agentFile(agent.ID)
+	err = os.MkdirAll(filepath.Dir(path), 0o755)
+	if err != nil {
+		return err
+	}
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, b, 0o644); err != nil {
 		return err

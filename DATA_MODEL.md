@@ -13,10 +13,16 @@
 ├─ config.yaml
 │  全局 LLM 配置
 │
-├─ default.agent.json
-│  新会话默认使用、可编辑但不可删除的 Agent 配置
-├─ <agent-id>.agent.json
-│  其他用户创建的 Agent 配置
+├─ agents/
+│  ├─ default.json
+│  │  新会话默认使用、可编辑但不可删除的 Agent 配置
+│  └─ <agent-id>.json
+│     其他用户创建的 Agent 配置
+│
+├─ skills/<skill-name>/
+│  用户安装的 Skill；正文为 SKILL.md
+├─ system/skills/<skill-name>/
+│  Harness 内置 Skill；与用户可编辑内容分开
 │
 ├─ subagents/tasks/<task-id>.json
 │  委派关系、逐轮状态与结果位置、待投递通知；版本化 JSON 原子替换
@@ -33,7 +39,7 @@
       各轮运行身份、状态、锚点与错误；不重复保存消息正文
 ```
 
-旧项目内 `.harness-data/` 和用户目录根下旧平铺会话文件都不再读取，可由用户自行删除。
+旧项目内 `.harness-data/`、用户目录根下旧平铺会话文件、`~/.harness/*.agent.json` 和 `~/.harness/system-skills/` 都不再读取。Agent 配置迁移时必须同时去掉文件名中的 `.agent`，不能只移动目录。
 
 ## 谁拥有什么数据
 

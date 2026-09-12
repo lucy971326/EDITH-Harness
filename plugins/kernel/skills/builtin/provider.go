@@ -7,7 +7,7 @@ import (
 	kernskills "harness/kernel/skills"
 )
 
-const skillCreatorLocation = ".harness/system-skills/skill-creator/SKILL.md"
+const skillCreatorLocation = ".harness/system/skills/skill-creator/SKILL.md"
 
 // 活对象。把内置 Skill 物化到当前用户目录的 Provider。
 type Provider struct {

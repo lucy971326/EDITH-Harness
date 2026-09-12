@@ -150,7 +150,8 @@ npm run rpc:test
 - `models.json` 为每条模型手写 `contextWindow` 和 `vision`；`Models()` 带给 Chat，模型下拉用 `data-context-window` / `data-vision` 挂上。当前 DeepSeek 两条窗口 100 万、不看图；Google `gemini-3.5-flash-lite` 窗口 104 万、能看图。
 - Chat 在模型选择旁画用量球：每次模型调用结束后，ReAct Loop 读 `ChunkFinish.Usage`，Runner 发 `usage` 事件，走现有 SSE，`chat.js` 更新。已用 = InputTokens + CacheReadTokens。不进账本，刷新后从 0% 开始。
 - Chat 可附图（选文件或粘贴）；只发图也行。当前模型 `vision` 决定按钮是否可用。图进账本原样保存；发给不看图的模型时，`llm` 把图换成文字占位。用户气泡由 RunView 画图。当前 DeepSeek 两条都不看图，按钮默认禁用。
-- Agent 设置已持久化为 `~/.harness/<agent-id>.agent.json`；`default` 是可编辑、不可删除的新会话默认项，首次生成时显式选中当时全部普通 Tool。Chat 普通发送可切换下一轮 Agent；Steer 不改变正在运行的 Run。Agent 设置页把普通 Tool 清单放在默认折叠的「高级配置」。
+- Agent 设置已持久化为 `~/.harness/agents/<agent-id>.json`；`default` 是可编辑、不可删除的新会话默认项，首次生成时显式选中当时全部普通 Tool。Chat 普通发送可切换下一轮 Agent；Steer 不改变正在运行的 Run。Agent 设置页把普通 Tool 清单放在默认折叠的「高级配置」。
+- 本机原有 `*.agent.json` 已移动并改名为 `agents/<id>.json`；代码不保留旧根目录读取分支。Agent 目录首次写入时自动创建，写入仍使用同目录临时文件原子替换。
 - `plugins/web/settings/agents` 填入 Web 公共设置页，使用 HTMX 管理 Agent 的新建、编辑与删除；仍被任一会话选择的 Agent 不可删除。
 
 ### 真实 Skills
@@ -163,7 +164,8 @@ npm run rpc:test
 
 ### 第一版 Chat Skill 输入候选
 
-- `kernel/skills` 增加 `system` 作用域；内置 `skill-creator` 由 Harness 自己提供，启动时物化到 `~/.harness/system-skills/skill-creator/SKILL.md`，所有 Agent 自动可见。
+- `kernel/skills` 增加 `system` 作用域；内置 `skill-creator` 由 Harness 自己提供，启动时物化到 `~/.harness/system/skills/skill-creator/SKILL.md`，所有 Agent 自动可见。
+- 本机内置 Skill 已从 `system-skills/` 精确迁移到 `system/skills/`；用户 `~/.harness/skills` 与项目级 Skill 路径不变，系统内容不混入用户目录。
 - `agents.Service.AvailableSkills(workspace)` 返回当前作用域全部 Skill；`Prepare` 与 Chat 候选共用同一套可用范围。
 - Chat 增加自身的 `composer.suggestions` 登记处；`plugins/web/chat/composer/skills` 把同一 Skill 来源登记给 `/` 与 `$`，内核 Skills 不依赖 Chat。
 - 输入 `/` 或 `$` 显示单行 Skill 候选；选择后在 textarea 当前光标处插入 `$skill-name`，发送顺序与文字顺序一致，消息卡在原位置显示图标和名称。

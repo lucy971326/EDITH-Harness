@@ -53,13 +53,17 @@ func TestInstall_twoKeysSameStore(t *testing.T) {
 }
 
 func TestAgentStore_roundTripListAndDelete(t *testing.T) {
-	s, err := openJSONL(t.TempDir())
+	dir := t.TempDir()
+	s, err := openJSONL(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	input := config.Agent{ID: "coding", Name: "Coding", Kind: "react", Tools: []string{"bash"}}
 	if err := s.PutAgent(input); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "agents", "coding.json")); err != nil {
+		t.Fatalf("agent file: %v", err)
 	}
 	got, err := s.ForAgent("coding")
 	if err != nil {
@@ -89,7 +93,10 @@ func TestAgentStore_ignoresLegacySkillsField(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(dir, "legacy.agent.json")
+	path := filepath.Join(dir, "agents", "legacy.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	err = os.WriteFile(path, []byte(`{"id":"legacy","name":"Legacy","kind":"react","systemPrompt":"Be careful.","tools":["bash","mcp__tavily__search"],"skills":["git"]}`), 0o644)
 	if err != nil {
 		t.Fatal(err)
