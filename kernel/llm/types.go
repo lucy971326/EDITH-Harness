@@ -7,10 +7,10 @@ import (
 
 // 数据。当前本机配置可供会话选择的一种模型。
 type ModelChoice struct {
-	ID               string
-	ContextWindow    int
-	Vision           bool
-	ReasoningEfforts []string
+	ID               string   `json:"id"`
+	ContextWindow    int      `json:"contextWindow"`
+	Vision           bool     `json:"vision"`
+	ReasoningEfforts []string `json:"reasoningEfforts"`
 }
 
 // 数据。一次模型调用使用的模型和思考档位。

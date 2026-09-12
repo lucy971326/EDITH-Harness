@@ -44,6 +44,7 @@ export interface SendParams {
   agentID?: string;
   model?: string;
   reasoningEffort?: string;
+  expectedRunID?: string; // 非空时只插入指定 Run；结束或换轮返回 -32009。
 }
 
 export interface SubscribeResult { subscriptionID: string; snapshot: Snapshot }

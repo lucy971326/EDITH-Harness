@@ -10,10 +10,28 @@ import (
 	"harness/kernel/session/settings"
 )
 
+// ErrRunChanged 表示预期运行已结束、关闭插话或被另一轮替代。
+var ErrRunChanged = errors.New("runner: expected run is no longer accepting input")
+
 // Steer 先把一条用户输入落账，再交给当前 Run 的下一个检查点。
 func (r *Runner) Steer(sessionID string, input session.UserMessage) error {
+	return r.steer(sessionID, "", input)
+}
+
+// SteerRun 只向预期的那轮插话；身份检查与准入、落账不可分割。
+func (r *Runner) SteerRun(sessionID, expectedRunID string, input session.UserMessage) error {
+	if expectedRunID == "" {
+		return ErrRunChanged
+	}
+	return r.steer(sessionID, expectedRunID, input)
+}
+
+func (r *Runner) steer(sessionID, expectedRunID string, input session.UserMessage) error {
 	current, err := r.current(sessionID)
 	if err != nil {
+		if expectedRunID != "" {
+			return ErrRunChanged
+		}
 		return err
 	}
 
@@ -25,9 +43,12 @@ func (r *Runner) Steer(sessionID string, input session.UserMessage) error {
 	// 准入、落账和交给检查点是一件事；最终检查点不能从中间穿过。
 	current.handoff.Lock()
 	current.mu.Lock()
-	if current.steeringState != steeringOpen {
+	if current.steeringState != steeringOpen || (expectedRunID != "" && current.runID != expectedRunID) {
 		current.mu.Unlock()
 		current.handoff.Unlock()
+		if expectedRunID != "" {
+			return ErrRunChanged
+		}
 		return fmt.Errorf("runner: session %q is not running", sessionID)
 	}
 	runID := current.runID

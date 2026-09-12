@@ -78,8 +78,8 @@ func (p *Product) Send(ctx context.Context, input RunInput) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("%w: %w", ErrInvalidMessage, err)
 	}
-	if _, running := p.runner.State(input.SessionID); running {
-		err = p.Steer(input.SessionID, input.Message)
+	if _, running := p.runner.State(input.SessionID); running || input.ExpectedRunID != "" {
+		err = p.steer(input.SessionID, input.ExpectedRunID, input.Message)
 		return "steered", err
 	}
 	// 接受之后由 Runner 的 Stop / Close 管生命周期，不继承连接取消。
@@ -224,6 +224,10 @@ func (s *Product) Start(ctx context.Context, input RunInput) error {
 
 // Steer 将一条输入交给当前 Run；不修改下一轮设置。
 func (s *Product) Steer(sessionID string, message session.UserMessage) error {
+	return s.steer(sessionID, "", message)
+}
+
+func (s *Product) steer(sessionID, expectedRunID string, message session.UserMessage) error {
 	if s.subagents.IsChildSession(sessionID) {
 		return fmt.Errorf("%w: session %q", os.ErrNotExist, sessionID)
 	}
@@ -243,7 +247,14 @@ func (s *Product) Steer(sessionID string, message session.UserMessage) error {
 	if err != nil {
 		return err
 	}
-	err = s.runner.Steer(sessionID, message)
+	if expectedRunID != "" {
+		err = s.runner.SteerRun(sessionID, expectedRunID, message)
+	} else {
+		err = s.runner.Steer(sessionID, message)
+	}
+	if errors.Is(err, runner.ErrRunChanged) {
+		return fmt.Errorf("%w: %w", ErrRunChanged, err)
+	}
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrRunSteer, err)
 	}

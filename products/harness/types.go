@@ -12,6 +12,7 @@ import (
 // 数据。启动新一轮聊天所需的已解析输入。
 type RunInput struct {
 	SessionID       string
+	ExpectedRunID   string
 	AgentID         string
 	Model           string
 	ReasoningEffort string

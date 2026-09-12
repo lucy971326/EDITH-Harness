@@ -55,6 +55,7 @@ type SendParams struct {
 	AgentID         string `json:"agentID,omitempty"`
 	Model           string `json:"model,omitempty"`
 	ReasoningEffort string `json:"reasoningEffort,omitempty"`
+	ExpectedRunID   string `json:"expectedRunID,omitempty" jsonschema:"minLength=1"`
 }
 
 // 数据。输入已接受；完整结果通过订阅或快照取得，不自动重试。

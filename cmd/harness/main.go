@@ -226,6 +226,14 @@ func run(configPath string) (result error) {
 	if err != nil {
 		return err
 	}
+	models, err := host.Resolve[*llm.Client](h, "llm")
+	if err != nil {
+		return err
+	}
+	err = server.BindModels(models)
+	if err != nil {
+		return err
+	}
 	rpcURL, err := server.Listen("127.0.0.1:8889")
 	if err != nil {
 		return err

@@ -96,6 +96,9 @@ func methodError(err error) error {
 	if err == nil {
 		return nil
 	}
+	if errors.Is(err, harness.ErrRunChanged) {
+		return &Error{Code: CodeConflict, Message: "expected run has ended or changed", Cause: err}
+	}
 	if errors.Is(err, harness.ErrInvalidMessage) {
 		return &Error{Code: CodeInvalidParams, Message: "text is empty", Cause: err}
 	}

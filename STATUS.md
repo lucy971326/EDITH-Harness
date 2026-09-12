@@ -6,16 +6,15 @@
 
 Harness 的内核和聊天业务已具备运行能力。旧 `surface/web` / `plugins/web` 使用 Templ、HTMX、POST 与 SSE，仍是默认启动入口；3A 移除 stepSeq 后，其实时过程会错位，不代表旧页面仍完整可用，也不是目标前端架构。
 
-App-server 第一、二步已经完成：`products/harness` 接替原 `kernel/chat`，类型化接口接受 Schema 校验，Go / TS 分别手工维护；本机 WebSocket / JSON-RPC 2.0 已接通真实产品与 Runner，具备初始化、会话操作和运行订阅。Web 迁移第 3A 步已让快照恢复账本、生成中草稿和明确运行状态；`clients/web` 已接通项目与会话，聊天页面尚未接入（3B）。当前尚未实现反向请求、完整公共服务 API、业务防重。正式启动仍打开旧 Web。
-
-3B 的交互与最小接口方案已拍板并保存到 [文字聊天接入计划](docs/plan/3B-文字聊天接入.md)，尚未实现；用户指定压缩会话后由 Codex 直接实施本步。
+App-server 第一、二步已经完成：`products/harness` 接替原 `kernel/chat`，类型化接口接受 Schema 校验，Go / TS 分别手工维护；本机 WebSocket / JSON-RPC 2.0 已接通真实产品与 Runner。Web 迁移 3A 提供后台恢复，3B 已接通 `clients/web` 的真实文字聊天、历史／实时统一投影、插话、停止、刷新与自动重连，以及最小模型／思考菜单。尚未进入第 4 步完整消息呈现，也未实现反向请求、完整公共服务 API、业务防重。正式启动仍打开旧 Web。
 
 ```text
 当前：浏览器 POST → 旧 Web → HarnessProduct → Runner → ReAct Loop → LLM / Tools
       浏览器 SSE  ← 旧 Web ← Runner 稳定事件 ← 完整消息先落账
       TS 测试 Client ↔ WebSocket / JSON-RPC 2.0 ↔ app-server ↔ 同一个后台产品与内核
+      React 开发页   ↔ 同源 /rpc（Vite 代理）↔ 同一个 app-server；可进行文字聊天
 
-目标：React Client → WebSocket / JSON-RPC 2.0 → app-server
+待切正式入口：React Client → WebSocket / JSON-RPC 2.0 → app-server
                                              ├→ HarnessProduct
                                              └→ 公共服务 → kernel
 ```
@@ -63,6 +62,19 @@ App-server 第一、二步已经完成：`products/harness` 接替原 `kernel/ch
 - 3A 审核修复：快照与运行记录读改写串行，正常结束不会被旧快照改成 interrupted；结束状态与序号原子提交。Steer／协作输入的准入、落账与检查点交接保持互斥，并等待输入通知发布后才释放 Run。已有草稿保留位置，消费插话后的新输出使用新锚点。App-server 运行订阅按连续序号放行并发／重入通知，乱序积压超限断线，Connection 不新增业务状态。
 - 修复验证：全量 `go test ./...`、`go vet ./...`、Runner／Session／Persistence／Subagents／ReAct／子任务工具／Product／App-server 相关 race 通过；新增恢复与订阅顺序回归重复 20 次通过。TS 契约与 RPC 检查、真实本机网络验收、Web 的 16 项测试和生产构建通过。回归保留 Steer 发布失败的取消语义，不自动重发、不另起一轮；仍未进入 3B。
 - 验证：`go test ./kernel/runner ./kernel/session ./kernel/persist ./products/harness ./plugins/kernel/loops/react ./appserver ./kernel/subagents`、相关 race／vet、`npm run contracts:check`、`npm run rpc:check`、`npm run rpc:test` 通过。隔离数据与本地模拟模型覆盖：半句话快照恢复、中文增量、落账并发无双份、快照边界后不重放已含增量、停止保存半截、未收尾标中断、断线不杀 Run。未在 Windows 实测原生目录弹窗；未做 3B 浏览器聊天验收；未删除用户真实会话。
+
+### Web 迁移第 3B 步：正式页面文字聊天
+
+- 新页面接通纯文本发送、定向插话、停止、历史与实时更新。Snapshot 本身就是状态底稿，`state/chat.ts` 按 Entry.ID 修改同一份 entries／runs；完整消息替换草稿，工具块和 ToolCall.ID 保留给第 4 步。旧历史缺状态显示“状态未记录”，半截内容标“未完成”，未伪造最终回答。
+- `client/chat.ts` 只管理一页的连接与当前订阅：切会话解除旧订阅、迟到响应主动解除、设置往返不退订；同步完成前不开放操作。发现更新缺口／epoch 变化重取快照，不造乱序队列；自动重连为 1／2／4／8／10 秒上限，手动重连替换旧尝试，不重发发送／停止。选中 ID 记在 sessionStorage，输入草稿仍只留内存。
+- 只新增 `model/list`，入口显式传入公共 LLM 服务，直接读取 `Models()`，不触发模型请求或返回密钥。公共 ModelChoice 增加 camelCase JSON 标签，调用方复用该数据；Go／TS 契约及类型测试同步。最小模型／思考菜单要求显式有效选择，运行中禁改，Agent 沿用会话设置。
+- 现有 send 增加可选非空 `expectedRunID`。Runner 在插话准入与落账的同一临界区核对身份；原轮结束／关闭检查点／换轮返回冲突，不转 Start。不带字段的旧调用仍保持原行为；停止仍调用原有父子停止路径。
+- 后台确认后只清本次提交的文字，保留等待中编辑、其他会话草稿和失败输入。连续 Enter 不重复提交；中文输入法选词不提交，Shift＋Enter 换行。有图片时阻止整条发送；用量与未接入功能明确标示。向上阅读暂停自动滚动，提供“回到最新”。
+- 审核修复：历史渲染按快照一次建立运行／末条消息索引，工具结果用 ToolCall.ID 直接查找；输入框编辑不重算历史。回归按访问次数检查线性查找，并保留每轮状态位置、生成中草稿、旧历史和工具配对显示。
+- 自动化：全量 `go test ./...`、`go vet ./...`、Runner／Subagents／子任务工具／Product／App-server 的 race，通过；前端 31 项测试、含测试源码的 TS 检查与生产构建、contracts:check、rpc:check、rpc:test 通过。网络验收同时使用旧测试 Client 和正式 Web 的连接／投影，覆盖极快完成、半句重连、同 ID 恢复、正常及迟到插话、停止和历史一致。
+- 浏览器使用临时数据、真实 Host／Product／Runner／ReAct 和本机模型替身：验证中文发送、生成半句刷新、Steer 顺序、停止保留半截、设置往返、迟到确认／跨会话草稿、输入法／换行、附件阻止、向上阅读、亮暗和窄屏。实际重新创建 Host／Runner 后自动恢复，消息 ID 与未发送草稿不变；这是正常关闭重启，不宣称浏览器模拟了进程崩溃。崩溃后 interrupted 沿用 3A 自动测试。
+- 可复现的隔离浏览器后台入口为 `HARNESS_WEB_QA=1 go test ./products/harness -run '^TestTypeScriptClient$' -count=1 -v -timeout=0`，使用方法见 `clients/web/README.md`。没有调用付费模型、读取或删除用户真实会话；Windows 原生目录弹窗仍未实机验证。窄屏菜单／覆盖层交互和 DOM 尺寸检查通过，截图工具超时未取得窄屏图片；暗色宽屏截图已查看。
+- 未进入第 4 步。三级过程／完整工具卡／Markdown、图片发送、Agent 管理、用量、分叉／命令仍按后续计划接入。正式入口仍是旧 Web，新聊天需后台加 Vite 开发页；旧实时过程错位仍不在本步修复。3B 施工计划已收口到本节和稳定规范，不再保留第二份完成清单。
 
 ### App-server 第一批：产品迁移与类型化契约
 

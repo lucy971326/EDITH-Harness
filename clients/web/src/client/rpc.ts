@@ -1,11 +1,19 @@
-import type { Methods } from "../../../contracts/harness.ts";
+import type {
+  Methods,
+  SendParams,
+  SubscribeResult,
+} from "../../../contracts/harness.ts";
 import type { ServerMethods } from "../../../contracts/appserver.ts";
+import type { RunNotification } from "../../../contracts/run.ts";
 
 type Calls = Methods & ServerMethods;
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected";
 export type SocketFactory = (url: string) => WebSocket;
-export type StatusListener = (status: ConnectionStatus, detail?: string) => void;
+export type StatusListener = (
+  status: ConnectionStatus,
+  detail?: string,
+) => void;
 
 const defaultTimeoutMs = 10_000;
 const openTimeoutMs = 5_000;
@@ -34,12 +42,15 @@ interface Pending {
   timer: ReturnType<typeof setTimeout> | null;
 }
 
-export interface CallOptions {
+export interface CallOptions<Result = unknown> {
   timeoutMs?: number | null;
+  // 订阅边界须在响应这一刻安装，先于紧随其后的通知。
+  accept?: (result: Result) => void;
 }
 
 // 浏览器 JSON-RPC 连接。请求 ID 只配对响应；有副作用的调用超时或断线后不自动重发。
 export class RPCClient {
+  onRun: ((notification: RunNotification) => void) | null = null;
   private readonly url: string;
   private readonly onStatus: StatusListener;
   private readonly openSocket: SocketFactory;
@@ -49,6 +60,7 @@ export class RPCClient {
   private closed = false;
   private initialized = false;
   private status: ConnectionStatus = "connecting";
+  private started = false;
 
   constructor(
     url: string,
@@ -66,12 +78,15 @@ export class RPCClient {
 
   async connect(): Promise<void> {
     if (this.closed) throw new Error("连接已关闭");
+    if (this.started) throw new Error("请用新连接重试");
+    this.started = true;
     this.status = "connecting";
     this.onStatus("connecting");
     const socket = this.openSocket(this.url);
     this.socket = socket;
     try {
       await waitForOpen(socket);
+      if (this.closed || this.socket !== socket) throw new Error("连接已关闭");
       socket.addEventListener("message", this.receive);
       socket.addEventListener("close", this.handleDisconnect);
       socket.addEventListener("error", this.handleDisconnect);
@@ -91,18 +106,34 @@ export class RPCClient {
   async call<Name extends keyof Calls>(
     method: Name,
     params: Calls[Name]["params"],
-    options?: CallOptions,
+    options?: CallOptions<Calls[Name]["result"]>,
   ): Promise<Calls[Name]["result"]> {
-    if (this.closed || this.socket == null || this.socket.readyState !== WebSocket.OPEN) {
+    if (
+      this.closed ||
+      this.socket == null ||
+      this.socket.readyState !== WebSocket.OPEN
+    ) {
       throw new Error("未连接或尚未初始化");
     }
     if (!this.initialized && method !== "initialize") {
       throw new Error("未连接或尚未初始化");
     }
     const id = String(++this.nextID);
-    const timeoutMs = options?.timeoutMs === undefined ? defaultTimeoutMs : options.timeoutMs;
+    const timeoutMs =
+      options?.timeoutMs === undefined ? defaultTimeoutMs : options.timeoutMs;
     const result = await new Promise<unknown>((resolve, reject) => {
-      const pending: Pending = { resolve, reject, timer: null };
+      const pending: Pending = {
+        resolve(value) {
+          try {
+            options?.accept?.(value as Calls[Name]["result"]);
+            resolve(value);
+          } catch (error) {
+            reject(error instanceof Error ? error : new Error("响应处理失败"));
+          }
+        },
+        reject,
+        timer: null,
+      };
       if (timeoutMs != null) {
         pending.timer = setTimeout(() => {
           this.pending.delete(id);
@@ -111,7 +142,9 @@ export class RPCClient {
       }
       this.pending.set(id, pending);
       try {
-        this.socket!.send(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
+        this.socket!.send(
+          JSON.stringify({ jsonrpc: "2.0", id, method, params }),
+        );
       } catch (error) {
         this.pending.delete(id);
         if (pending.timer) clearTimeout(pending.timer);
@@ -137,23 +170,54 @@ export class RPCClient {
     return this.call("workspace/select", {}, { timeoutMs: null });
   }
 
+  models() {
+    return this.call("model/list", {});
+  }
+
+  send(params: SendParams) {
+    return this.call("harness/session/send", params);
+  }
+
+  stop(sessionID: string) {
+    return this.call("harness/session/stop", { sessionID });
+  }
+
+  async subscribe(
+    sessionID: string,
+    accept: (result: SubscribeResult) => void,
+  ) {
+    try {
+      return await this.call(
+        "harness/session/subscribe",
+        { sessionID },
+        { accept },
+      );
+    } catch (error) {
+      // 结果不明时无法知道订阅 ID；断线让后台整体清理，不留下幽灵订阅。
+      if (!(error instanceof RPCError)) this.close();
+      throw error;
+    }
+  }
+
+  async unsubscribe(subscriptionID: string) {
+    try {
+      await this.call("server/unsubscribe", { subscriptionID });
+    } catch (error) {
+      this.close();
+      throw error;
+    }
+  }
+
   close(): void {
     this.closed = true;
-    this.initialized = false;
-    this.rejectAll(new Error("连接已断开；已接受的操作可能仍在后台执行"));
-    const socket = this.socket;
-    this.socket = null;
-    socket?.close();
-    if (this.status !== "disconnected") {
-      this.status = "disconnected";
-      this.onStatus("disconnected", "连接已关闭");
-    }
+    this.fail(new Error("连接已断开；已接受的操作可能仍在后台执行"));
   }
 
   private receive = (event: MessageEvent): void => {
     try {
       const envelope = JSON.parse(String(event.data));
-      if (envelope.jsonrpc !== "2.0") throw new Error("Invalid JSON-RPC version");
+      if (envelope.jsonrpc !== "2.0")
+        throw new Error("Invalid JSON-RPC version");
       if (typeof envelope.method === "string") {
         if ("id" in envelope) {
           this.socket?.send(
@@ -163,20 +227,34 @@ export class RPCClient {
               error: { code: -32601, message: "Method not found" },
             }),
           );
+        } else if (
+          envelope.method === "harness/run/event" &&
+          typeof envelope.params?.subscriptionID === "string" &&
+          envelope.params?.event
+        ) {
+          this.onRun?.(envelope.params as RunNotification);
         }
         return;
       }
-      if (typeof envelope.id !== "string" || ("result" in envelope) === ("error" in envelope)) {
+      if (
+        typeof envelope.id !== "string" ||
+        "result" in envelope === "error" in envelope
+      ) {
         throw new Error("Invalid response");
       }
       const pending = this.pending.get(envelope.id);
       if (!pending) return;
       if ("error" in envelope) {
-        if (!Number.isInteger(envelope.error?.code) || typeof envelope.error?.message !== "string") {
+        if (
+          !Number.isInteger(envelope.error?.code) ||
+          typeof envelope.error?.message !== "string"
+        ) {
           throw new Error("Invalid error");
         }
         this.settlePending(envelope.id, pending, () => {
-          pending.reject(new RPCError(envelope.error.code, envelope.error.message));
+          pending.reject(
+            new RPCError(envelope.error.code, envelope.error.message),
+          );
         });
         return;
       }
@@ -198,6 +276,9 @@ export class RPCClient {
     this.rejectAll(error instanceof Error ? error : new Error(detail));
     const socket = this.socket;
     this.socket = null;
+    socket?.removeEventListener("message", this.receive);
+    socket?.removeEventListener("close", this.handleDisconnect);
+    socket?.removeEventListener("error", this.handleDisconnect);
     socket?.close();
     if (this.status !== "disconnected") {
       this.status = "disconnected";
@@ -205,7 +286,11 @@ export class RPCClient {
     }
   }
 
-  private settlePending(id: string, pending: Pending, settle: () => void): void {
+  private settlePending(
+    id: string,
+    pending: Pending,
+    settle: () => void,
+  ): void {
     this.pending.delete(id);
     if (pending.timer) clearTimeout(pending.timer);
     settle();
@@ -224,25 +309,27 @@ function waitForOpen(socket: WebSocket): Promise<void> {
   if (socket.readyState === WebSocket.OPEN) return Promise.resolve();
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
+      cleanup();
       socket.close();
       reject(new Error("连接超时"));
     }, openTimeoutMs);
-    socket.addEventListener(
-      "open",
-      () => {
-        clearTimeout(timer);
-        resolve();
-      },
-      { once: true },
-    );
-    socket.addEventListener(
-      "error",
-      () => {
-        clearTimeout(timer);
-        reject(new Error("连接失败"));
-      },
-      { once: true },
-    );
+    function cleanup() {
+      clearTimeout(timer);
+      socket.removeEventListener("open", opened);
+      socket.removeEventListener("error", failed);
+      socket.removeEventListener("close", failed);
+    }
+    function opened() {
+      cleanup();
+      resolve();
+    }
+    function failed() {
+      cleanup();
+      reject(new Error("连接失败"));
+    }
+    socket.addEventListener("open", opened);
+    socket.addEventListener("error", failed);
+    socket.addEventListener("close", failed);
   });
 }
 

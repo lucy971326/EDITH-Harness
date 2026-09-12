@@ -98,6 +98,8 @@ Session
 Client 状态
   不写 Session
   刷新后可丢失的状态不必持久化
+  当前会话 ID 只记在本标签页 sessionStorage；输入草稿／图片预览按会话留内存
+  Snapshot 本身是投影底稿，实时更新同一份 entries / runs，不另存前端账本
 
 运行事件
   Runner 产生稳定事件，app-server 按订阅投影给 Client
@@ -107,6 +109,7 @@ Client 状态
 
 连接与请求
   JSON-RPC 请求 ID 只匹配一次响应；连接、订阅和待发送队列都在内存
+  send.expectedRunID 只是本次插话的身份前提，不新增消息身份或持久化字段
   Connection 只是 IM 网关式的临时连接对象，不能成为业务状态或业务规则的主人
   后台重启后全部失效，Client 必须重新初始化，通过订阅接口一起取得 Snapshot 与后续事件
   Snapshot 与通知的重叠：耐久消息按 Entry.ID 去重；实时增量按本进程会话更新序号过滤快照边界之后的事件

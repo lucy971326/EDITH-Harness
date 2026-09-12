@@ -31,6 +31,9 @@ void [create, get, empty, session, missing, unknown, wrongTime, nullList];
 type Send = Methods['harness/session/send'];
 type Subscribe = Methods['harness/session/subscribe'];
 const steer: Send['params'] = { sessionID: 'abc', text: '继续' };
+const guardedSteer: Send['params'] = { sessionID: 'abc', text: '继续', expectedRunID: 'run' };
+// @ts-expect-error 运行身份不是序号。
+const numberedRun: Send['params'] = { sessionID: 'abc', text: '继续', expectedRunID: 1 };
 const subscribed: Subscribe['result'] = { subscriptionID: 'sub', snapshot: { entries: [], runs: [], updateSeq: 0, seqEpoch: 'epoch' } };
 // @ts-expect-error 第二步只开放文字输入，不能悄悄加入未实现的图片参数。
 const imageSend: Send['params'] = { sessionID: 'abc', text: '图', image: 'base64' };
@@ -49,3 +52,11 @@ const selectUnknown: SelectWorkspace['params'] = { workspace: '/work' };
 // @ts-expect-error 取消也必须带上空字符串工作区。
 const cancelMissingPath: SelectWorkspace['result'] = { canceled: true };
 void [picked, canceledPick, selectParams, selectUnknown, cancelMissingPath];
+
+type ModelList = ServerMethods['model/list'];
+const modelList: ModelList['result'] = { models: [{ id: 'test', contextWindow: 1000, vision: false, reasoningEfforts: ['off'] }] };
+// @ts-expect-error 目录不是密钥配置接口。
+const modelConfig: ModelList['params'] = { apiKey: 'secret' };
+// @ts-expect-error 模型数组不能是 null。
+const nullModels: ModelList['result'] = { models: null };
+void [guardedSteer, numberedRun, modelList, modelConfig, nullModels];

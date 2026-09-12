@@ -157,6 +157,60 @@ func TestSendRejectsInvalidSettingsWithoutStartingOrSaving(t *testing.T) {
 	}
 }
 
+func TestSendExpectedRunDoesNotStartOrSteerAnotherRun(t *testing.T) {
+	fixture := newTestFixture(t)
+	defer fixture.host.Close()
+	server := newRPCServer(t, fixture)
+	created, err := fixture.service.Create(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := created.Meta.ID
+	params := json.RawMessage(`{"sessionID":"` + id + `","text":"late","expectedRunID":"old"}`)
+	_, err = server.Call(t.Context(), "harness/session/send", params)
+	assertMethodError(t, err, appserver.CodeConflict)
+	before, err := fixture.service.Snapshot(id)
+	if err != nil || len(before.Entries) != 0 || len(before.Runs) != 0 {
+		t.Fatalf("idle guard started a run: %+v %v", before, err)
+	}
+
+	setup, err := fixture.settings.For(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	setup.Model, setup.ReasoningEffort = "deepseek/deepseek-v4-flash", "high"
+	err = fixture.settings.Put(id, setup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handle, err := fixture.runner.Start(t.Context(), id, session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "first"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.loop.waitStarted(t)
+	_, err = server.Call(t.Context(), "harness/session/send", params)
+	assertMethodError(t, err, appserver.CodeConflict)
+	params = json.RawMessage(`{"sessionID":"` + id + `","text":"steer","expectedRunID":"` + handle.RunID() + `"}`)
+	raw, err := server.Call(t.Context(), "harness/session/send", params)
+	if err != nil || string(raw) != `{"mode":"steered"}` {
+		t.Fatalf("matching steer: %s %v", raw, err)
+	}
+	fixture.loop.release()
+	handle.Wait()
+	before, err = fixture.service.Snapshot(id)
+	if err != nil || len(before.Entries) != 3 {
+		t.Fatalf("unexpected ledger: %+v %v", before, err)
+	}
+	_, err = server.Call(t.Context(), "harness/session/send", params)
+	assertMethodError(t, err, appserver.CodeConflict)
+	after, err := fixture.service.Snapshot(id)
+	if err != nil || !reflect.DeepEqual(before, after) {
+		t.Fatalf("ended guard changed history: %+v %v", after, err)
+	}
+	_, err = server.Call(t.Context(), "harness/session/send", json.RawMessage(`{"sessionID":"`+id+`","text":"x","expectedRunID":""}`))
+	assertMethodError(t, err, appserver.CodeInvalidParams)
+}
+
 func TestProductInstallFailureCleanupClosesCalls(t *testing.T) {
 	fixture := newTestFixture(t)
 	defer fixture.host.Close()
@@ -173,6 +227,38 @@ func TestProductInstallFailureCleanupClosesCalls(t *testing.T) {
 	}
 	_, err = server.Call(context.Background(), "harness/session/list", json.RawMessage(`{}`))
 	assertMethodError(t, err, appserver.CodeConflict)
+}
+
+func TestModelListUsesPublicServiceWithoutSecrets(t *testing.T) {
+	fixture := newTestFixture(t)
+	defer fixture.host.Close()
+	server := newRPCServer(t, fixture)
+	err := server.BindModels(fixture.models)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := server.Call(t.Context(), "model/list", json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := json.Marshal(appserver.ModelListResult{Models: fixture.models.Models()})
+	if err != nil || string(raw) != string(want) {
+		t.Fatalf("model list: %s %v", raw, err)
+	}
+	var data struct {
+		Models []map[string]json.RawMessage `json:"models"`
+	}
+	err = json.Unmarshal(raw, &data)
+	if err != nil || len(data.Models) == 0 {
+		t.Fatalf("empty fixture models: %s %v", raw, err)
+	}
+	for _, model := range data.Models {
+		if len(model) != 4 || model["id"] == nil || model["contextWindow"] == nil || model["vision"] == nil || model["reasoningEfforts"] == nil {
+			t.Fatalf("unexpected public model fields: %s", raw)
+		}
+	}
+	_, err = server.Call(t.Context(), "model/list", json.RawMessage(`{"apiKey":"x"}`))
+	assertMethodError(t, err, appserver.CodeInvalidParams)
 }
 
 func assertMethodError(t *testing.T, err error, code appserver.ErrorCode) {

@@ -13,6 +13,7 @@ import (
 func (s *Server) handleSend(ctx context.Context, input SendParams) (SendResult, error) {
 	mode, err := s.harnessProduct.Send(ctx, harness.RunInput{
 		SessionID:       input.SessionID,
+		ExpectedRunID:   input.ExpectedRunID,
 		AgentID:         input.AgentID,
 		Model:           input.Model,
 		ReasoningEffort: input.ReasoningEffort,

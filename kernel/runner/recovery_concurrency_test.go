@@ -22,6 +22,27 @@ type recoveryGatePersistence struct {
 	resume   chan struct{}
 }
 
+func TestExpectedRunCannotEnterAfterFinalCheckpoint(t *testing.T) {
+	closed, finish := make(chan struct{}), make(chan struct{})
+	f := newRunnerFixture(t, &runnerTestLoop{run: func(ctx context.Context, in loops.Invocation) error {
+		_, err := in.Checkpoint(ctx, loops.CheckpointFinal)
+		close(closed)
+		<-finish
+		return err
+	}})
+	handle, err := f.runner.Start(t.Context(), "session-1", textInput("q"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-closed
+	err = f.runner.SteerRun("session-1", handle.RunID(), textInput("too late"))
+	close(finish)
+	handle.Wait()
+	if !errors.Is(err, ErrRunChanged) || len(f.session.Entries()) != 1 {
+		t.Fatalf("closed checkpoint accepted input: %v %+v", err, f.session.Entries())
+	}
+}
+
 func (p *recoveryGatePersistence) LoadRunRecords(id string) ([]byte, error) {
 	body, err := p.Persistence.LoadRunRecords(id)
 	if p.loadGate.Swap(false) {

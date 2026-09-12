@@ -8,14 +8,16 @@ import (
 	"sync"
 
 	"harness/kernel/events"
+	"harness/kernel/llm"
 	"harness/products/harness"
 )
 
 // 活对象。应用唯一的 RPC 接入服务，拥有方法表、监听器和当前连接。
 type Server struct {
-	// 产品入口与事件来源；业务状态由产品和内核管理。
+	// 产品入口与公共能力；业务状态由产品和内核管理。
 	harnessProduct *harness.Product
 	events         *events.Registry
+	models         *llm.Client
 
 	// 对外方法。
 	methods map[string]registeredMethod

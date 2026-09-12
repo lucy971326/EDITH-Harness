@@ -3,6 +3,8 @@ package harness
 import "errors"
 
 var (
+	// ErrRunChanged 标记定向插话的目标已结束、换轮或不再接受输入。
+	ErrRunChanged = errors.New("harness product: expected run changed")
 	// ErrInvalidMessage 标记空消息或不可用的消息内容。
 	ErrInvalidMessage = errors.New("harness product: invalid message")
 	// ErrSessionNotFound 区分普通会话不存在与底层文件读取失败。
