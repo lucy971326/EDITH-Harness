@@ -28,11 +28,11 @@ import (
 	"harness/kernel/skills"
 	"harness/kernel/subagents"
 	"harness/kernel/tools"
-	compactcmd "harness/plugins/kernel/commands/compact"
-	"harness/plugins/kernel/loops/react"
-	machinelocal "harness/plugins/kernel/machine/local"
-	skillsbuiltin "harness/plugins/kernel/skills/builtin"
-	skillsfilesystem "harness/plugins/kernel/skills/filesystem"
+	compactcmd "harness/plugins/commands/compact"
+	"harness/plugins/loops/react"
+	machinelocal "harness/plugins/machine/local"
+	skillsbuiltin "harness/plugins/skills/builtin"
+	skillsfilesystem "harness/plugins/skills/filesystem"
 	"harness/products/harness"
 )
 

@@ -34,7 +34,7 @@ agent-go:
 	go vet ./...
 
 agent-race:
-	go test -race ./appserver ./products/harness ./kernel/runner ./kernel/subagents ./plugins/kernel/tools/subagents
+	go test -race ./appserver ./products/harness ./kernel/runner ./kernel/subagents ./plugins/tools/subagents
 
 agent-contracts: clients/node_modules/.package-lock.json
 	npm --prefix clients run contracts:check

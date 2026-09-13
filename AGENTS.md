@@ -180,7 +180,7 @@ clients/test/         无界面的网络验收 Client，不是正式 SDK
 appserver/            方法契约、登记、校验、协议与连接
 products/harness/     Harness 后台业务
 kernel/               公共执行、数据与登记处
-plugins/kernel/       内核服务提供者、登记处填充者
+plugins/              内核服务提供者、登记处填充者
 clients/web/          React + TypeScript + Vite 与嵌入静态资源
 ```
 

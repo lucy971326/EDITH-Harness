@@ -27,7 +27,7 @@ import (
 	"harness/kernel/skills"
 	delegation "harness/kernel/subagents"
 	"harness/kernel/tools"
-	"harness/plugins/kernel/loops/react"
+	"harness/plugins/loops/react"
 	harnessproduct "harness/products/harness"
 )
 
