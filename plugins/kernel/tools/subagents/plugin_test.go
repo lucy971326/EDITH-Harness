@@ -237,7 +237,7 @@ func TestSchemaAndCallerIdentity(t *testing.T) {
 		{"subagent_send", `{"taskID":"x","text":"hi","model":"other"}`},
 		{"subagent_send", `{"taskID":"x","text":"   "}`},
 		{"subagent_wait", `{"taskIDs":["x"],"timeoutSeconds":-1}`},
-		{"subagent_wait", `{"taskIDs":["x"],"timeoutSeconds":61}`},
+		{"subagent_wait", `{"taskIDs":["x"],"timeoutSeconds":601}`},
 		{"subagent_wait", `{"taskIDs":["x"],"timeoutSeconds":0.5}`},
 		{"subagent_stop", "{}"},
 	} {

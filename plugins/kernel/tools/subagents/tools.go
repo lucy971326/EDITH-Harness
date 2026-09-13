@@ -41,13 +41,13 @@ func toolEntries(s *delegation.Subagents) []tools.Tool {
 			result.IsError = err != nil
 			return result, marshalErr
 		}),
-		withIdentity("subagent_wait", "Wait for any specified child's new completion (current or later turn). Pass seenNotificationIDs to skip already observed completions. Default 60 seconds; 0 queries immediately. User input wakes this wait; timeout does not stop children. Returns status, turn and notification ID only. Answer text arrives separately as a sourced collaboration message in this same run.", func(ctx context.Context, call tools.Call, args waitArgs) (tools.Result, error) {
+		withIdentity("subagent_wait", "Wait for any specified child's new completion (current or later turn). Pass seenNotificationIDs to skip already observed completions. Default 60 seconds; maximum 600; 0 queries immediately. User input wakes this wait; timeout does not stop children. Returns status, turn and notification ID only. Answer text arrives separately as a sourced collaboration message in this same run.", func(ctx context.Context, call tools.Call, args waitArgs) (tools.Result, error) {
 			seconds := 60
 			if args.TimeoutSeconds != nil {
 				seconds = *args.TimeoutSeconds
 			}
-			if seconds < 0 || seconds > 60 {
-				return tools.Result{}, fmt.Errorf("timeoutSeconds must be between 0 and 60")
+			if seconds < 0 || seconds > 600 {
+				return tools.Result{}, fmt.Errorf("timeoutSeconds must be between 0 and 600")
 			}
 			value, err := s.Wait(ctx, call.SessionID, delegation.WaitInput{TaskIDs: args.TaskIDs, SeenNotificationIDs: args.SeenNotificationIDs, Timeout: time.Duration(seconds) * time.Second, InputSignal: call.InputSignal})
 			return jsonResult(value, err)

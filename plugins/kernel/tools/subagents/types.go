@@ -34,7 +34,7 @@ type listArgs struct {
 type waitArgs struct {
 	TaskIDs             []string `json:"taskIDs" jsonschema:"minItems=1"`
 	SeenNotificationIDs []string `json:"seenNotificationIDs,omitempty"`
-	TimeoutSeconds      *int     `json:"timeoutSeconds,omitempty" jsonschema:"minimum=0,maximum=60,description=Wait duration in seconds. Default 60; 0 returns immediately. Timeout does not stop the child."`
+	TimeoutSeconds      *int     `json:"timeoutSeconds,omitempty" jsonschema:"minimum=0,maximum=600,description=Wait duration in seconds. Default 60; 0 returns immediately. Timeout does not stop the child."`
 }
 
 // 数据。停止单个孩子的参数。

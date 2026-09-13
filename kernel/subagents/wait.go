@@ -13,8 +13,8 @@ func (s *Subagents) Wait(ctx context.Context, parentSessionID string, input Wait
 	if err != nil {
 		return WaitResponse{}, err
 	}
-	if parentSessionID == "" || len(input.TaskIDs) == 0 || input.Timeout < 0 || input.Timeout > 60*time.Second {
-		return WaitResponse{}, fmt.Errorf("subagents: parent, task IDs and timeout between 0 and 60 seconds required")
+	if parentSessionID == "" || len(input.TaskIDs) == 0 || input.Timeout < 0 || input.Timeout > 600*time.Second {
+		return WaitResponse{}, fmt.Errorf("subagents: parent, task IDs and timeout between 0 and 600 seconds required")
 	}
 	s.mu.RLock()
 	if s.closed {
