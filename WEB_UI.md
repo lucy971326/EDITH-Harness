@@ -53,12 +53,14 @@ App-server 的运行订阅负责把内核并发通知排成连续序号，Client
 
 ```text
 clients/web/
-├─ src/client/       JSON-RPC 连接、手写契约适配、订阅与恢复
-├─ src/state/        后台投影 reducer 与页面级状态
-├─ src/components/   跨产品基础组件
-├─ src/products/     Harness 等产品界面
-├─ src/styles/       Token、主题与公共语义样式
-└─ src/icons/        受控图标入口
+└─ src/
+   ├─ client/        JSON-RPC 连接、手写契约适配、订阅与恢复
+   ├─ state/         后台投影 reducer 与只读展示派生
+   ├─ components/ui/ shadcn 基础组件
+   ├─ lib/           基础组件共用的小工具
+   ├─ *.tsx          当前唯一 Harness 产品的界面组件
+   ├─ styles.css     Token、主题与公共语义样式
+   └─ icons.ts       受控图标入口
 ```
 
 - 不使用 Next.js，不引入服务端 React。

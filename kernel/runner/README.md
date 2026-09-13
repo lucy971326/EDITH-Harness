@@ -17,6 +17,6 @@
 
 【填充插槽】不填。
 
-【谁在用】`chat` 发起、插话，也经 `events` 接收 Run 事件；用户停止交给 `subagents.StopFamily`，由它取消父与孩子。`subagents` 还负责启动孩子，并向正在运行的父会话投递协作消息。
+【谁在用】`HarnessProduct` 发起、插话和停止；appserver 经 `events` 接收 Run 事件。用户停止先交给 `subagents.StopFamily` 取消孩子，再停止父 Run。`subagents` 还负责启动孩子，并向正在运行的父会话投递协作消息。
 
 【不做】不自己决定怎么思考；具体推理与工具循环属于 Loop。

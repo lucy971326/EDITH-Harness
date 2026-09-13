@@ -29,7 +29,7 @@ client/chat.ts         订阅、切换和重连
 state/chat.ts          Snapshot + 事件 → 一份投影
 state/chat-process.ts  只读派生分轮、工具配对和最终正文
 chat-messages.tsx      消息列表与滚动
-work-process.tsx       三级工作过程
+work-process.tsx       结构化工作过程
 App.tsx                连接、会话、草稿和操作流程
 sidebar.tsx            项目与会话列表
 composer.tsx           输入区

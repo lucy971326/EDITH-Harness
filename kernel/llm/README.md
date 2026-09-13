@@ -8,6 +8,6 @@
 
 【填充插槽】不填。
 
-【谁在用】`react` 用 `Stream()` 调模型；`Runner.Compact` 用 `Stream()` 生成摘要；`chat` 用 `Models()` 画选择框。
+【谁在用】`react` 用 `Stream()` 调模型；`Runner.Compact` 用 `Stream()` 生成摘要；appserver 用 `Models()` 向 Client 提供模型选择。
 
 【不做】不保存会话、不决定本轮配置、不直接写页面。

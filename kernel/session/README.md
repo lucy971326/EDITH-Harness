@@ -8,6 +8,6 @@
 
 【填充插槽】不填。
 
-【谁在用】`runner` 追加对话事实；`chat` 创建、列出和展示会话。
+【谁在用】`runner` 追加对话事实；`HarnessProduct` 创建、列出和读取会话，Client 经 appserver 取得展示投影。
 
 【不做】不调用模型、不发布事件、不保存 UI、Todo 或其他业务状态。Session 只记对话。
