@@ -20,7 +20,6 @@ node_modules/
 playground/
 
 # IDE
-.vscode/
 .claude/
 .codex/
 .zed/
