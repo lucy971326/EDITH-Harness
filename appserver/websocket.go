@@ -3,7 +3,6 @@ package appserver
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -15,42 +14,22 @@ import (
 
 const maxRPCMessageBytes = 16 << 20
 
-// Listen 在数字回环地址启动 React 页面与 WebSocket RPC 入口。
-func (s *Server) Listen(address string, web http.Handler) (string, error) {
-	addr, err := netip.ParseAddrPort(address)
-	if err != nil || !addr.Addr().IsLoopback() {
-		return "", fmt.Errorf("appserver: loopback address required")
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed || s.httpServer != nil {
-		return "", fmt.Errorf("appserver: invalid listener state")
-	}
-	listener, err := net.Listen("tcp", address)
-	if err != nil {
-		return "", err
-	}
-	s.httpServer = &http.Server{
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-			s.serveHTTP(web, w, request)
-		}),
-		ReadHeaderTimeout: 5 * time.Second,
-	}
-	s.serveDone = make(chan error, 1)
-	go func() { s.serveDone <- s.httpServer.Serve(listener) }()
-	return "http://" + listener.Addr().String(), nil
-}
-
+// serveHTTP 只区分 RPC 与静态页面。
 func (s *Server) serveHTTP(web http.Handler, w http.ResponseWriter, request *http.Request) {
-	if request.URL.Path != "/rpc" {
+	switch request.URL.Path {
+	case "/rpc":
+		s.serveRPC(w, request)
+	default:
 		if web == nil {
 			http.NotFound(w, request)
 			return
 		}
 		web.ServeHTTP(w, request)
-		return
 	}
+}
+
+// serveRPC 校验本机入口，升级 WebSocket，并维持一个 Client 连接。
+func (s *Server) serveRPC(w http.ResponseWriter, request *http.Request) {
 	host, _, err := net.SplitHostPort(request.Host)
 	if err != nil {
 		http.Error(w, "invalid host", http.StatusForbidden)
@@ -62,15 +41,11 @@ func (s *Server) serveHTTP(web http.Handler, w http.ResponseWriter, request *htt
 		return
 	}
 
-	s.mu.Lock()
-	if s.closed {
-		s.mu.Unlock()
+	if !s.lifecycle.begin() {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	s.active.Add(1)
-	s.mu.Unlock()
-	defer s.active.Done()
+	defer s.lifecycle.end()
 
 	socket, err := websocket.Accept(w, request, nil)
 	if err != nil {
@@ -78,54 +53,8 @@ func (s *Server) serveHTTP(web http.Handler, w http.ResponseWriter, request *htt
 	}
 	socket.SetReadLimit(maxRPCMessageBytes)
 	stream := &websocketObjectStream{ctx: request.Context(), socket: socket}
-	connection := newConnection(request.Context(), stream, s)
-
-	s.mu.Lock()
-	if s.closed {
-		s.mu.Unlock()
-		connection.disconnect()
-		connection.run()
-		return
-	}
-	s.connections[connection] = struct{}{}
-	s.mu.Unlock()
-
+	connection := newConnection(s.lifecycle.context(), stream, s)
 	connection.run()
-	s.mu.Lock()
-	delete(s.connections, connection)
-	s.mu.Unlock()
-}
-
-// Close 拒绝新调用，断开 Client 并等待请求结束；不停止已接受的 Run。
-func (s *Server) Close() error {
-	s.mu.Lock()
-	s.closed = true
-	for connection := range s.connections {
-		connection.disconnect()
-	}
-	httpServer, serveDone := s.httpServer, s.serveDone
-	s.mu.Unlock()
-
-	var err error
-	if httpServer != nil {
-		err = httpServer.Close()
-	}
-	s.active.Wait()
-	if serveDone == nil {
-		return err
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.serveDone == nil {
-		return err
-	}
-	serveErr := <-serveDone
-	s.serveDone = nil
-	if errors.Is(serveErr, http.ErrServerClosed) {
-		return err
-	}
-	return errors.Join(err, serveErr)
 }
 
 // websocketObjectStream 只把 coder/websocket 消息交给 JSON-RPC 库。

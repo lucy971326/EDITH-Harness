@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"sync"
 
 	"harness/kernel/agents"
@@ -26,17 +25,16 @@ type Server struct {
 	commands       commands.Commands
 
 	// 对外方法。
-	methods map[string]registeredMethod
+	methodsMu sync.RWMutex
+	methods   map[string]registeredMethod
 
-	// 服务生命周期；关闭后拒绝新调用和新连接。
-	mu          sync.Mutex
-	closed      bool
-	active      sync.WaitGroup
-	connections map[*connection]struct{}
+	// 服务生命周期。
+	lifecycle serverLifecycle
+	closeOnce sync.Once
+	closeErr  error
 
 	// React 页面与 WebSocket 监听。
-	httpServer *http.Server
-	serveDone  chan error
+	listener serverListener
 }
 
 // 契约。登记表中的处理函数，已绑定运行时校验与类型转换。
@@ -45,8 +43,8 @@ type registeredMethod func(context.Context, json.RawMessage) (json.RawMessage, e
 // New 创建空服务；不启动监听、模型或后台任务。
 func New() *Server {
 	return &Server{
-		methods:     make(map[string]registeredMethod),
-		connections: make(map[*connection]struct{}),
+		methods:   make(map[string]registeredMethod),
+		lifecycle: newServerLifecycle(),
 	}
 }
 
@@ -65,11 +63,13 @@ func Register[Input, Output any](server *Server, name string, handler func(conte
 		outputSchema: outputSchema,
 	}
 
-	server.mu.Lock()
-	defer server.mu.Unlock()
-	if server.closed {
+	if !server.lifecycle.begin() {
 		return fmt.Errorf("appserver: registration is closed")
 	}
+	defer server.lifecycle.end()
+
+	server.methodsMu.Lock()
+	defer server.methodsMu.Unlock()
 	if _, exists := server.methods[name]; exists {
 		return fmt.Errorf("appserver: duplicate method %q", name)
 	}
@@ -79,19 +79,17 @@ func Register[Input, Output any](server *Server, name string, handler func(conte
 
 // Call 校验并分发一次进程内请求，不自动重试。
 func (s *Server) Call(ctx context.Context, name string, params json.RawMessage) (json.RawMessage, error) {
-	s.mu.Lock()
-	if s.closed {
-		s.mu.Unlock()
+	if !s.lifecycle.begin() {
 		return nil, &Error{CodeConflict, "server is not accepting calls", nil}
 	}
+	defer s.lifecycle.end()
+
+	s.methodsMu.RLock()
 	handler, exists := s.methods[name]
+	s.methodsMu.RUnlock()
 	if !exists {
-		s.mu.Unlock()
 		return nil, &Error{CodeUnknownMethod, "unknown method", nil}
 	}
-	s.active.Add(1)
-	s.mu.Unlock()
-	defer s.active.Done()
 
 	err := ctx.Err()
 	if err != nil {

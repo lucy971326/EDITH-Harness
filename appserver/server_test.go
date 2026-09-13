@@ -182,9 +182,9 @@ func TestCloseRejectsNewCallsAndWaitsForAcceptedCall(t *testing.T) {
 	// 同包检查关闭准入完成，避免依赖调度延迟来建立时序。
 	deadline := time.Now().Add(3 * time.Second)
 	for {
-		s.mu.Lock()
-		stopped := s.closed
-		s.mu.Unlock()
+		s.lifecycle.mu.Lock()
+		stopped := s.lifecycle.closed
+		s.lifecycle.mu.Unlock()
 		if stopped {
 			break
 		}
