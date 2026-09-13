@@ -13,8 +13,8 @@ func newOrderTestListener(t *testing.T) *runListener {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	connection := &Connection{ctx: ctx, cancel: cancel, notifications: make(chan notification, queueLimit)}
-	subscription := &Subscription{connection: connection, active: true}
+	connection := &connection{ctx: ctx, cancel: cancel, notifications: make(chan notification, queueLimit)}
+	subscription := &subscription{connection: connection, active: true}
 	return &runListener{sessionID: "s", subscription: subscription, pending: make(map[uint64]runner.RunEvent)}
 }
 

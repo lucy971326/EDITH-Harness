@@ -214,6 +214,10 @@ func (s *Product) Session(id string) (SessionInfo, error) {
 
 // Snapshot 返回聊天投影所需的耐久账本、运行状态、草稿和更新边界。
 func (s *Product) Snapshot(sessionID string) (Snapshot, error) {
+	_, err := s.Session(sessionID)
+	if err != nil {
+		return Snapshot{}, err
+	}
 	view, err := s.runner.SessionView(sessionID)
 	if err != nil {
 		return Snapshot{}, err
@@ -310,10 +314,7 @@ func (s *Product) steer(ctx context.Context, sessionID, expectedRunID string, me
 
 // Stop 取消父会话与它的孩子；父已闲置时也不能漏掉仍在运行的孩子。
 func (s *Product) Stop(sessionID string) error {
-	if s.subagents.IsChildSession(sessionID) {
-		return fmt.Errorf("%w: session %q", os.ErrNotExist, sessionID)
-	}
-	_, err := s.sessions.Get(sessionID)
+	_, err := s.Session(sessionID)
 	if err != nil {
 		return err
 	}

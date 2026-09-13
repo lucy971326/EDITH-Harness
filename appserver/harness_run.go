@@ -55,55 +55,44 @@ func invalidImage(message string, cause error) error {
 }
 
 func (s *Server) handleSnapshot(_ context.Context, input SessionIDParams) (harness.Snapshot, error) {
-	_, err := s.harnessProduct.Session(input.SessionID)
-	if err != nil {
-		return harness.Snapshot{}, methodError(err)
-	}
-	return s.harnessProduct.Snapshot(input.SessionID)
+	snapshot, err := s.harnessProduct.Snapshot(input.SessionID)
+	return snapshot, methodError(err)
 }
 
 func (s *Server) handleStop(_ context.Context, input SessionIDParams) (StopResult, error) {
-	_, err := s.harnessProduct.Session(input.SessionID)
-	if err != nil {
-		return StopResult{}, methodError(err)
-	}
-	return StopResult{}, s.harnessProduct.Stop(input.SessionID)
+	return StopResult{}, methodError(s.harnessProduct.Stop(input.SessionID))
 }
 
 func (s *Server) handleSubscribe(ctx context.Context, input SessionIDParams) (SubscribeResult, error) {
-	_, err := s.harnessProduct.Session(input.SessionID)
-	if err != nil {
-		return SubscribeResult{}, methodError(err)
-	}
-	connection, err := ConnectionFrom(ctx)
+	connection, err := connectionFrom(ctx)
 	if err != nil {
 		return SubscribeResult{}, err
 	}
-	subscription, err := connection.Subscribe()
+	subscription, err := connection.subscribe()
 	if err != nil {
 		return SubscribeResult{}, err
 	}
 	listener := &runListener{sessionID: input.SessionID, subscription: subscription, pending: make(map[uint64]runner.RunEvent)}
 	unlisten, err := events.Subscribe(s.events, listener.receive)
 	if err != nil {
-		subscription.Close()
+		subscription.close()
 		return SubscribeResult{}, err
 	}
-	subscription.SetCleanup(unlisten)
+	subscription.setCleanup(unlisten)
 	// 监听已生效，读快照期间的事件先缓冲；响应入队之后连接才发送它们。
 	// 快照已含当时的账本、草稿和运行状态；Client 用 updateSeq / Entry.ID 丢掉重叠。
 	snapshot, err := s.harnessProduct.Snapshot(input.SessionID)
 	if err != nil {
-		subscription.Close()
-		return SubscribeResult{}, err
+		subscription.close()
+		return SubscribeResult{}, methodError(err)
 	}
 	listener.start(snapshot)
-	return SubscribeResult{SubscriptionID: subscription.ID, Snapshot: snapshot}, nil
+	return SubscribeResult{SubscriptionID: subscription.id, Snapshot: snapshot}, nil
 }
 
 type runListener struct {
 	sessionID    string
-	subscription *Subscription
+	subscription *subscription
 
 	// 内核同步回调可以重入；这里只整理本订阅的发送顺序，不反压 Runner。
 	mu      sync.Mutex
@@ -166,6 +155,6 @@ func (l *runListener) flush() {
 		}
 		delete(l.pending, event.UpdateSeq)
 		l.through = event.UpdateSeq
-		l.subscription.Notify("harness/run/event", event)
+		l.subscription.notify("harness/run/event", event)
 	}
 }

@@ -156,28 +156,28 @@ func TestWebAndRPCShareListener(t *testing.T) {
 	initializeSocket(t, ws)
 }
 
-type subscriptionHandler struct{ connection chan *Connection }
+type subscriptionHandler struct{ connection chan *connection }
 type subscriptionReply struct {
 	ID string `json:"id"`
 }
 
 func (h *subscriptionHandler) call(ctx context.Context, _ struct{}) (subscriptionReply, error) {
-	c, err := ConnectionFrom(ctx)
+	c, err := connectionFrom(ctx)
 	if err != nil {
 		return subscriptionReply{}, err
 	}
-	s, err := c.Subscribe()
+	s, err := c.subscribe()
 	if err != nil {
 		return subscriptionReply{}, err
 	}
-	s.Notify("test/event", "during snapshot")
+	s.notify("test/event", "during snapshot")
 	h.connection <- c
-	return subscriptionReply{ID: s.ID}, nil
+	return subscriptionReply{ID: s.id}, nil
 }
 
 func TestSubscriptionResponsePrecedesEventsAndDisconnectCleans(t *testing.T) {
 	rpc := New()
-	h := &subscriptionHandler{connection: make(chan *Connection, 1)}
+	h := &subscriptionHandler{connection: make(chan *connection, 1)}
 	err := Register(rpc, "subscribe", h.call)
 	if err != nil {
 		t.Fatal(err)
@@ -216,8 +216,8 @@ func TestSubscriptionResponsePrecedesEventsAndDisconnectCleans(t *testing.T) {
 func TestSlowSubscriptionCancelsWithoutBlockingPublisher(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	c := &Connection{ctx: ctx, cancel: cancel, notifications: make(chan notification, 1), subscriptions: make(map[string]*Subscription)}
-	s, err := c.Subscribe()
+	c := &connection{ctx: ctx, cancel: cancel, notifications: make(chan notification, 1), subscriptions: make(map[string]*subscription)}
+	s, err := c.subscribe()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +226,7 @@ func TestSlowSubscriptionCancelsWithoutBlockingPublisher(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for range queueLimit + 1 {
-			s.Notify("event", "data")
+			s.notify("event", "data")
 		}
 	}()
 	select {
@@ -235,7 +235,7 @@ func TestSlowSubscriptionCancelsWithoutBlockingPublisher(t *testing.T) {
 		t.Fatal("publisher blocked")
 	}
 	wg.Wait()
-	s.Close()
+	s.close()
 	if len(c.subscriptions) != 0 {
 		t.Fatal("closed subscription still retained")
 	}
@@ -313,21 +313,21 @@ func TestCloseCancelsConnectionCallsAndWaits(t *testing.T) {
 func TestActiveSlowSubscriptionAndLateCleanup(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	c := &Connection{ctx: ctx, cancel: cancel, notifications: make(chan notification, 1), subscriptions: make(map[string]*Subscription)}
-	s, err := c.Subscribe()
+	c := &connection{ctx: ctx, cancel: cancel, notifications: make(chan notification, 1), subscriptions: make(map[string]*subscription)}
+	s, err := c.subscribe()
 	if err != nil {
 		t.Fatal(err)
 	}
 	s.activate()
-	s.Notify("event", 1)
-	s.Notify("event", 2)
+	s.notify("event", 1)
+	s.notify("event", 2)
 	if ctx.Err() == nil {
 		t.Fatal("slow connection not cancelled")
 	}
-	s.Close()
+	s.close()
 	cleaned := false
-	s.SetCleanup(func() { cleaned = true })
-	s.Close()
+	s.setCleanup(func() { cleaned = true })
+	s.close()
 	if !cleaned {
 		t.Fatal("late cleanup lost")
 	}

@@ -463,6 +463,14 @@ func TestSubagentsChatIsolation(t *testing.T) {
 	if !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("expected ErrNotExist, got %v", err)
 	}
+	_, err = fixture.service.Snapshot(spawnRes.ChildSessionID)
+	if !errors.Is(err, harness.ErrSessionNotFound) {
+		t.Fatalf("snapshot exposed child session: %v", err)
+	}
+	err = fixture.service.Stop(spawnRes.ChildSessionID)
+	if !errors.Is(err, harness.ErrSessionNotFound) {
+		t.Fatalf("stop exposed child session: %v", err)
+	}
 
 	// 4. HarnessProduct.Start / Steer / CallCommand 拒绝操作子会话
 	err = fixture.service.Start(context.Background(), harness.RunInput{

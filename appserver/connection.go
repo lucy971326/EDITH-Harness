@@ -18,7 +18,7 @@ const queueLimit = 128
 type connectionKey struct{}
 
 // 活对象。一个 Client 的协议状态、事件订阅和断线清理；不参与产品业务。
-type Connection struct {
+type connection struct {
 	// JSON-RPC 连接与生命周期。
 	server *Server
 	rpc    *jsonrpc2.Conn
@@ -40,7 +40,7 @@ type Connection struct {
 
 	// 当前 Client 的订阅和断线状态。
 	mu            sync.Mutex
-	subscriptions map[string]*Subscription
+	subscriptions map[string]*subscription
 }
 
 type notification struct {
@@ -53,22 +53,22 @@ type subscriptionEvent struct {
 	Event          any    `json:"event"`
 }
 
-func newConnection(parent context.Context, stream jsonrpc2.ObjectStream, server *Server) *Connection {
+func newConnection(parent context.Context, stream jsonrpc2.ObjectStream, server *Server) *connection {
 	ctx, cancel := context.WithCancel(parent)
-	connection := &Connection{
+	connection := &connection{
 		server:            server,
 		ctx:               ctx,
 		cancel:            cancel,
 		notifications:     make(chan notification, queueLimit),
 		notificationsDone: make(chan struct{}),
-		subscriptions:     make(map[string]*Subscription),
+		subscriptions:     make(map[string]*subscription),
 	}
 	connection.initializeTimer = time.AfterFunc(10*time.Second, cancel)
 	connection.rpc = jsonrpc2.NewConn(ctx, stream, connection, jsonrpc2.SetLogger(discardLogger{}))
 	return connection
 }
 
-func (c *Connection) run() {
+func (c *connection) run() {
 	go c.sendNotifications()
 	<-c.rpc.DisconnectNotify()
 
@@ -82,12 +82,12 @@ func (c *Connection) run() {
 	c.closeSubscriptions()
 }
 
-func (c *Connection) disconnect() {
+func (c *connection) disconnect() {
 	c.cancel()
 }
 
 // Handle 让协议库继续读取断线；业务请求按到达顺序处理，Stop 可独立越过等待中的请求。
-func (c *Connection) Handle(ctx context.Context, rpc *jsonrpc2.Conn, request *jsonrpc2.Request) {
+func (c *connection) Handle(ctx context.Context, rpc *jsonrpc2.Conn, request *jsonrpc2.Request) {
 	c.mu.Lock()
 	if c.disconnected {
 		c.mu.Unlock()
@@ -110,7 +110,7 @@ func (c *Connection) Handle(ctx context.Context, rpc *jsonrpc2.Conn, request *js
 }
 
 // handleRequest 写完响应后，才放行订阅期间缓存的通知。
-func (c *Connection) handleRequest(ctx context.Context, rpc *jsonrpc2.Conn, request *jsonrpc2.Request) {
+func (c *connection) handleRequest(ctx context.Context, rpc *jsonrpc2.Conn, request *jsonrpc2.Request) {
 	ctx = context.WithValue(ctx, connectionKey{}, c)
 	result, err := c.call(ctx, request)
 
@@ -131,7 +131,7 @@ func (c *Connection) handleRequest(ctx context.Context, rpc *jsonrpc2.Conn, requ
 	}
 }
 
-func (c *Connection) call(ctx context.Context, request *jsonrpc2.Request) (any, error) {
+func (c *connection) call(ctx context.Context, request *jsonrpc2.Request) (any, error) {
 	params := json.RawMessage(`{}`)
 	if request.Params != nil {
 		params = *request.Params
@@ -169,7 +169,7 @@ func (c *Connection) call(ctx context.Context, request *jsonrpc2.Request) (any, 
 	return c.server.Call(ctx, request.Method, params)
 }
 
-func (c *Connection) sendNotifications() {
+func (c *connection) sendNotifications() {
 	defer close(c.notificationsDone)
 	for {
 		select {
@@ -185,7 +185,7 @@ func (c *Connection) sendNotifications() {
 	}
 }
 
-func (c *Connection) enqueueNotification(item notification) {
+func (c *connection) enqueueNotification(item notification) {
 	select {
 	case <-c.ctx.Done():
 		return
@@ -196,28 +196,28 @@ func (c *Connection) enqueueNotification(item notification) {
 	}
 }
 
-// ConnectionFrom 只供订阅处理方法取得当前 Client 的连接能力。
-func ConnectionFrom(ctx context.Context) (*Connection, error) {
-	connection, ok := ctx.Value(connectionKey{}).(*Connection)
+// connectionFrom 只供订阅处理方法取得当前 Client 的连接能力。
+func connectionFrom(ctx context.Context) (*connection, error) {
+	connection, ok := ctx.Value(connectionKey{}).(*connection)
 	if !ok {
 		return nil, &Error{Code: CodeConflict, Message: "connection required"}
 	}
 	return connection, nil
 }
 
-// Subscribe 创建暂存事件的订阅；请求响应写完后才开放通知发送。
-func (c *Connection) Subscribe() (*Subscription, error) {
+// subscribe 创建暂存事件的订阅；请求响应写完后才开放通知发送。
+func (c *connection) subscribe() (*subscription, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.ctx.Err() != nil {
 		return nil, &Error{Code: CodeConflict, Message: "connection closed"}
 	}
-	subscription := &Subscription{ID: rand.Text(), connection: c}
-	c.subscriptions[subscription.ID] = subscription
+	subscription := &subscription{id: rand.Text(), connection: c}
+	c.subscriptions[subscription.id] = subscription
 	return subscription, nil
 }
 
-func (c *Connection) releaseBufferedNotifications() {
+func (c *connection) releaseBufferedNotifications() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for _, subscription := range c.subscriptions {
@@ -225,29 +225,29 @@ func (c *Connection) releaseBufferedNotifications() {
 	}
 }
 
-func (c *Connection) unsubscribe(id string) {
+func (c *connection) unsubscribe(id string) {
 	c.mu.Lock()
 	subscription := c.subscriptions[id]
 	c.mu.Unlock()
 	if subscription != nil {
-		subscription.Close()
+		subscription.close()
 	}
 }
 
-func (c *Connection) closeSubscriptions() {
+func (c *connection) closeSubscriptions() {
 	c.mu.Lock()
 	subscriptions := c.subscriptions
-	c.subscriptions = make(map[string]*Subscription)
+	c.subscriptions = make(map[string]*subscription)
 	c.mu.Unlock()
 	for _, subscription := range subscriptions {
-		subscription.Close()
+		subscription.close()
 	}
 }
 
 // 活对象。连接拥有的一条临时事件订阅，关闭时解除业务事件监听。
-type Subscription struct {
-	ID         string
-	connection *Connection
+type subscription struct {
+	id         string
+	connection *connection
 
 	mu      sync.Mutex
 	active  bool
@@ -256,8 +256,8 @@ type Subscription struct {
 	cleanup func()
 }
 
-// SetCleanup 安装事件注销函数；连接若已断开则立即注销。
-func (s *Subscription) SetCleanup(cleanup func()) {
+// setCleanup 安装事件注销函数；连接若已断开则立即注销。
+func (s *subscription) setCleanup(cleanup func()) {
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
@@ -268,11 +268,11 @@ func (s *Subscription) SetCleanup(cleanup func()) {
 	s.mu.Unlock()
 }
 
-// Notify 非阻塞地排队通知；积压超限时断开慢 Client。
-func (s *Subscription) Notify(method string, event any) {
+// notify 非阻塞地排队通知；积压超限时断开慢 Client。
+func (s *subscription) notify(method string, event any) {
 	item := notification{
 		method: method,
-		params: subscriptionEvent{SubscriptionID: s.ID, Event: event},
+		params: subscriptionEvent{SubscriptionID: s.id, Event: event},
 	}
 
 	s.mu.Lock()
@@ -291,7 +291,7 @@ func (s *Subscription) Notify(method string, event any) {
 	s.pending = append(s.pending, item)
 }
 
-func (s *Subscription) activate() {
+func (s *subscription) activate() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed || s.active {
@@ -304,8 +304,8 @@ func (s *Subscription) activate() {
 	s.pending = nil
 }
 
-// Close 幂等解除监听；不取消产生事件的任务。
-func (s *Subscription) Close() {
+// close 幂等解除监听；不取消产生事件的任务。
+func (s *subscription) close() {
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
@@ -320,7 +320,7 @@ func (s *Subscription) Close() {
 	}
 
 	s.connection.mu.Lock()
-	delete(s.connection.subscriptions, s.ID)
+	delete(s.connection.subscriptions, s.id)
 	s.connection.mu.Unlock()
 }
 

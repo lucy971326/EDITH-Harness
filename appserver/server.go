@@ -32,12 +32,11 @@ type Server struct {
 	mu          sync.Mutex
 	closed      bool
 	active      sync.WaitGroup
-	connections map[*Connection]struct{}
+	connections map[*connection]struct{}
 
 	// React 页面与 WebSocket 监听。
 	httpServer *http.Server
 	serveDone  chan error
-	web        http.Handler
 }
 
 // 契约。登记表中的处理函数，已绑定运行时校验与类型转换。
@@ -47,7 +46,7 @@ type registeredMethod func(context.Context, json.RawMessage) (json.RawMessage, e
 func New() *Server {
 	return &Server{
 		methods:     make(map[string]registeredMethod),
-		connections: make(map[*Connection]struct{}),
+		connections: make(map[*connection]struct{}),
 	}
 }
 

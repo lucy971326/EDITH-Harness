@@ -31,20 +31,24 @@ func (s *Server) Listen(address string, web http.Handler) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	s.web = web
-	s.httpServer = &http.Server{Handler: s, ReadHeaderTimeout: 5 * time.Second}
+	s.httpServer = &http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+			s.serveHTTP(web, w, request)
+		}),
+		ReadHeaderTimeout: 5 * time.Second,
+	}
 	s.serveDone = make(chan error, 1)
 	go func() { s.serveDone <- s.httpServer.Serve(listener) }()
 	return "http://" + listener.Addr().String(), nil
 }
 
-func (s *Server) ServeHTTP(w http.ResponseWriter, request *http.Request) {
+func (s *Server) serveHTTP(web http.Handler, w http.ResponseWriter, request *http.Request) {
 	if request.URL.Path != "/rpc" {
-		if s.web == nil {
+		if web == nil {
 			http.NotFound(w, request)
 			return
 		}
-		s.web.ServeHTTP(w, request)
+		web.ServeHTTP(w, request)
 		return
 	}
 	host, _, err := net.SplitHostPort(request.Host)
