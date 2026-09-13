@@ -1,8 +1,6 @@
 package runner
 
 import (
-	"context"
-	"errors"
 	"fmt"
 
 	"harness/kernel/session"
@@ -14,25 +12,36 @@ func (r *Runner) Receive(sessionID string, message session.Message) (bool, error
 	if message.Role != session.RoleCollaboration || message.MessageID == "" || message.SourceSessionID == "" {
 		return false, fmt.Errorf("runner: invalid collaboration identity")
 	}
-	current, err := r.current(sessionID)
-	if err != nil {
-		return false, nil
-	}
 	sess, err := r.sessions.Get(sessionID)
 	if err != nil {
 		return false, err
 	}
+	if existing, found := collaborationEntry(sess.Entries(), message.MessageID); found {
+		return collaborationMatches(existing.Message, message)
+	}
+
+	current, err := r.current(sessionID)
+	if err != nil {
+		return false, nil
+	}
 	current.handoff.Lock()
+	// Checkpoint 可能在第一次读取后完成落账；在同一交接边界内重新确认。
+	if existing, found := collaborationEntry(sess.Entries(), message.MessageID); found {
+		current.handoff.Unlock()
+		return collaborationMatches(existing.Message, message)
+	}
 	current.mu.Lock()
-	for _, entry := range sess.Entries() {
-		if entry.Message.MessageID == message.MessageID {
-			current.mu.Unlock()
-			current.handoff.Unlock()
-			if entry.Message.Role != message.Role || entry.Message.SourceSessionID != message.SourceSessionID || entry.Message.SourceRunID != message.SourceRunID {
-				return false, fmt.Errorf("runner: collaboration ID conflicts with existing message")
-			}
-			return true, nil
+	for _, input := range current.pendingInputs {
+		if input.message.MessageID != message.MessageID {
+			continue
 		}
+		matches := input.message.Role == message.Role && input.message.SourceSessionID == message.SourceSessionID && input.message.SourceRunID == message.SourceRunID
+		current.mu.Unlock()
+		current.handoff.Unlock()
+		if !matches {
+			return false, fmt.Errorf("runner: collaboration ID conflicts with pending message")
+		}
+		return false, nil
 	}
 	if current.steeringState != steeringOpen {
 		current.mu.Unlock()
@@ -42,40 +51,25 @@ func (r *Runner) Receive(sessionID string, message session.Message) (bool, error
 	runID := current.runID
 	message.RunID = runID
 	message.Blocks = cloneBlocks(message.Blocks)
-	entry, err := sess.Append(message)
-	if err != nil {
-		current.inputErr = errors.Join(current.inputErr, err)
-		current.mu.Unlock()
-		current.handoff.Unlock()
-		current.stop()
-		return false, err
-	}
-	current.steers = append(current.steers, message)
-	current.pendingAfterSeq = entry.Seq
+	current.pendingInputs = append(current.pendingInputs, pendingInput{message: message})
 	current.signalInputLocked()
-	current.persisted[entry.ID] = struct{}{}
-	current.updateSeq++
-	seq := current.updateSeq
-	after := current.afterEntrySeq
-	current.inputPublications.Add(1)
 	current.mu.Unlock()
 	current.handoff.Unlock()
-	defer current.inputPublications.Done()
-	err = r.publish(context.Background(), RunEvent{
-		SessionID:     sessionID,
-		RunID:         runID,
-		Kind:          Message,
-		EntryID:       entry.ID,
-		AfterEntrySeq: after,
-		Entry:         &entry,
-		UpdateSeq:     seq,
-		SeqEpoch:      r.epoch,
-	})
-	if err != nil {
-		current.mu.Lock()
-		current.inputErr = errors.Join(current.inputErr, err)
-		current.mu.Unlock()
-		current.stop()
+	return false, nil
+}
+
+func collaborationEntry(entries []session.Entry, messageID string) (session.Entry, bool) {
+	for _, entry := range entries {
+		if entry.Message.MessageID == messageID {
+			return entry, true
+		}
 	}
-	return true, err
+	return session.Entry{}, false
+}
+
+func collaborationMatches(existing, incoming session.Message) (bool, error) {
+	if existing.Role != incoming.Role || existing.SourceSessionID != incoming.SourceSessionID || existing.SourceRunID != incoming.SourceRunID {
+		return false, fmt.Errorf("runner: collaboration ID conflicts with existing message")
+	}
+	return true, nil
 }

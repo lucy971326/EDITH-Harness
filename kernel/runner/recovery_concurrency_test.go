@@ -143,14 +143,11 @@ func TestAcceptedInputCannotMissFinalCheckpoint(t *testing.T) {
 				consumed <- messages
 				return err
 			}})
-			gate := &recoveryGatePersistence{Persistence: f.persistence, reached: make(chan struct{}), resume: make(chan struct{})}
-			f.runner.sessions = session.NewStore(gate)
 			handle, err := f.runner.Start(context.Background(), "session-1", textInput("q"))
 			if err != nil {
 				t.Fatal(err)
 			}
 			<-started
-			gate.addGate.Store(true)
 			inputDone := make(chan error, 1)
 			go func() {
 				if collaboration {
@@ -160,25 +157,15 @@ func TestAcceptedInputCannotMissFinalCheckpoint(t *testing.T) {
 				}
 				inputDone <- f.runner.Steer("session-1", textInput("new question"))
 			}()
-			<-gate.reached
+			waitPendingInputCount(t, f.runner, "session-1", 1)
 			close(checkpoint)
-			var messages []session.Message
-			select {
-			case messages = <-consumed:
-				t.Error("final checkpoint passed an input being accepted")
-			case <-time.After(20 * time.Millisecond):
-			}
-			close(gate.resume)
 			if err := <-inputDone; err != nil {
 				t.Fatal(err)
 			}
-			handle.Wait()
-			if messages == nil {
-				select {
-				case messages = <-consumed:
-				default:
-				}
+			if result := handle.Wait(); result.Err != nil {
+				t.Fatal(result.Err)
 			}
+			messages := <-consumed
 			if len(messages) != 1 {
 				t.Fatalf("accepted input not consumed: %+v", messages)
 			}
@@ -205,10 +192,13 @@ func TestNewOutputFollowsConsumedSteer(t *testing.T) {
 		t.Fatal(err)
 	}
 	<-ready
-	if err := f.runner.Steer("session-1", textInput("new question")); err != nil {
+	steerDone := make(chan error, 1)
+	go func() { steerDone <- f.runner.Steer("session-1", textInput("new question")) }()
+	waitPendingInputCount(t, f.runner, "session-1", 1)
+	close(resume)
+	if err := <-steerDone; err != nil {
 		t.Fatal(err)
 	}
-	close(resume)
 	handle.Wait()
 	entries := f.session.Entries()
 	if entries[2].Message.AfterSeq != entries[1].Seq {
@@ -218,12 +208,12 @@ func TestNewOutputFollowsConsumedSteer(t *testing.T) {
 
 func TestRunWaitsForSteerPublicationBeforeReleasingClock(t *testing.T) {
 	started, publishing := make(chan struct{}), make(chan struct{})
-	loopReturned, resume := make(chan struct{}), make(chan struct{})
-	f := newRunnerFixture(t, &runnerTestLoop{run: func(context.Context, loops.Invocation) error {
+	checkpoint, resume := make(chan struct{}), make(chan struct{})
+	f := newRunnerFixture(t, &runnerTestLoop{run: func(ctx context.Context, invocation loops.Invocation) error {
 		close(started)
-		<-publishing
-		close(loopReturned)
-		return nil
+		<-checkpoint
+		_, err := invocation.Checkpoint(ctx, loops.CheckpointContinue)
+		return err
 	}})
 	publishErr := errors.New("steer notification failed")
 	_, err := events.Subscribe(f.events, func(_ context.Context, event RunEvent) error {
@@ -244,7 +234,9 @@ func TestRunWaitsForSteerPublicationBeforeReleasingClock(t *testing.T) {
 	<-started
 	sent := make(chan error, 1)
 	go func() { sent <- f.runner.Steer("session-1", textInput("steer")) }()
-	<-loopReturned
+	waitPendingInputCount(t, f.runner, "session-1", 1)
+	close(checkpoint)
+	<-publishing
 	select {
 	case <-handle.Done():
 		t.Error("run released while an input notification was still publishing")
@@ -254,7 +246,7 @@ func TestRunWaitsForSteerPublicationBeforeReleasingClock(t *testing.T) {
 	if err := <-sent; !errors.Is(err, publishErr) {
 		t.Fatalf("caller lost publication error: %v", err)
 	}
-	if result := handle.Wait(); result.Status != RunCancelled {
-		t.Fatalf("steer publication failure must retain cancellation semantics: %+v", result)
+	if result := handle.Wait(); result.Status != RunFailed || !errors.Is(result.Err, publishErr) {
+		t.Fatalf("steer publication failure must fail the run: %+v", result)
 	}
 }

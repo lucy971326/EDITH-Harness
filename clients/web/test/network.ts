@@ -82,19 +82,18 @@ try {
   );
   assert.equal(activeRun(chat.state.snapshot)!.runID, runID);
   assert.equal(activeRun(chat.state.snapshot)!.drafts![0].entryID, draftID);
-  await chat.client!.send({
-    sessionID: id,
-    text: "调整方向",
-    expectedRunID: runID,
-  });
-  await until(
-    () =>
-      chat.state.snapshot!.entries.some(
-        (item) => item.message.blocks[0]?.text === "调整方向",
-      ),
-    "steer",
-  );
+  const pendingSteer = chat.client!
+    .send({
+      sessionID: id,
+      text: "调整方向",
+      expectedRunID: runID,
+    })
+    .then(
+      () => undefined,
+      (error: unknown) => error,
+    );
   await chat.client!.stop(id);
+  assert(await pendingSteer);
   await until(
     () =>
       chat.state.snapshot!.runs.find((run) => run.runID === runID)?.status ===

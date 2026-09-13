@@ -300,15 +300,30 @@ func TestSendExpectedRunDoesNotStartOrSteerAnotherRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fixture.loop.waitStarted(t)
+	invocation := fixture.loop.waitStarted(t)
 	_, err = server.Call(t.Context(), "harness/session/send", params)
 	assertMethodError(t, err, appserver.CodeConflict)
 	params = json.RawMessage(`{"sessionID":"` + id + `","text":"steer","expectedRunID":"` + handle.RunID() + `"}`)
-	raw, err := server.Call(t.Context(), "harness/session/send", params)
+	type callOutcome struct {
+		raw json.RawMessage
+		err error
+	}
+	called := make(chan callOutcome, 1)
+	go func() {
+		raw, callErr := server.Call(t.Context(), "harness/session/send", params)
+		called <- callOutcome{raw: raw, err: callErr}
+	}()
+	select {
+	case <-invocation.InputSignal():
+	case <-time.After(time.Second):
+		t.Fatal("Steer did not reach Runner")
+	}
+	fixture.loop.release()
+	outcome := <-called
+	raw, err := outcome.raw, outcome.err
 	if err != nil || string(raw) != `{"mode":"steered"}` {
 		t.Fatalf("matching steer: %s %v", raw, err)
 	}
-	fixture.loop.release()
 	handle.Wait()
 	before, err = fixture.service.Snapshot(id)
 	if err != nil || len(before.Entries) != 3 {

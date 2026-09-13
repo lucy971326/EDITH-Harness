@@ -124,7 +124,7 @@ func newSubagentsFixture(t *testing.T) subagentsFixture {
 // 活对象。测试用 Loop 实现。
 type testLoop struct {
 	parentInvocations chan loops.Invocation
-	started           chan struct{}
+	started           chan loops.Invocation
 	releaseCh         chan struct{}
 	parentStarted     chan struct{}
 	parentReleaseCh   chan struct{}
@@ -133,7 +133,7 @@ type testLoop struct {
 func newTestLoop() *testLoop {
 	return &testLoop{
 		parentInvocations: make(chan loops.Invocation, 32),
-		started:           make(chan struct{}, 32),
+		started:           make(chan loops.Invocation, 32),
 		releaseCh:         make(chan struct{}, 32),
 		parentStarted:     make(chan struct{}, 32),
 		parentReleaseCh:   make(chan struct{}, 32),
@@ -156,7 +156,7 @@ func (l *testLoop) Run(ctx context.Context, invocation loops.Invocation) error {
 		}
 	}
 
-	l.started <- struct{}{}
+	l.started <- invocation
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -179,12 +179,14 @@ func (l *testLoop) Run(ctx context.Context, invocation loops.Invocation) error {
 	return invocation.Emit(ctx, loops.Event{Kind: loops.EventMessage, Message: &msg})
 }
 
-func (l *testLoop) waitStarted(t *testing.T) {
+func (l *testLoop) waitStarted(t *testing.T) loops.Invocation {
 	t.Helper()
 	select {
-	case <-l.started:
+	case invocation := <-l.started:
+		return invocation
 	case <-time.After(2 * time.Second):
 		t.Fatal("loop did not start within deadline")
+		return loops.Invocation{}
 	}
 }
 
@@ -849,20 +851,35 @@ func TestSubagentsSendRunningSteers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.loop.waitStarted(t)
+	invocation := f.loop.waitStarted(t)
 
 	// 忙碌时 Send：必须通过 Steer
-	sendRes, err := f.subagents.Send(context.Background(), parentSessionID, parentRunID, spawnRes.TaskID, session.UserMessage{
-		Blocks: []session.Block{{Kind: "text", Text: "steer child"}},
-	})
-	if err != nil {
-		t.Fatal(err)
+	type sendOutcome struct {
+		result SendResult
+		err    error
 	}
+	sent := make(chan sendOutcome, 1)
+	go func() {
+		result, sendErr := f.subagents.Send(context.Background(), parentSessionID, parentRunID, spawnRes.TaskID, session.UserMessage{
+			Blocks: []session.Block{{Kind: "text", Text: "steer child"}},
+		})
+		sent <- sendOutcome{result: result, err: sendErr}
+	}()
+	select {
+	case <-invocation.InputSignal():
+	case <-time.After(time.Second):
+		t.Fatal("Steer did not reach child Runner")
+	}
+	f.loop.release()
+	outcome := <-sent
+	if outcome.err != nil {
+		t.Fatal(outcome.err)
+	}
+	sendRes := outcome.result
 	if !sendRes.Steered || sendRes.Turn != 1 {
 		t.Fatalf("expected Steered=true, turn=1, got %+v", sendRes)
 	}
 
-	f.loop.release()
 	waitRes, err := f.subagents.Wait(context.Background(), parentSessionID, WaitInput{TaskIDs: []string{spawnRes.TaskID}, Timeout: 3 * time.Second})
 	if err != nil || waitRes.Tasks[0].Status != StatusCompleted {
 		t.Fatalf("wait after steer failed: %v", err)

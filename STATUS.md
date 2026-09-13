@@ -32,7 +32,8 @@ appserver.Server
 
 - appserver 是 Host 外的接入层，只管理静态页面、协议、连接、订阅与清理，不拥有业务状态。
 - HarnessProduct 负责创建、发送、Steer、停止、快照、分叉和命令准入。
-- Runner 负责运行、草稿、事件、取消与收尾；连接断开不停止已接受的 Run。
+- Runner 负责运行、草稿、事件、取消与收尾；模型输出及整批工具结果组成不可插入的步骤，Steer 与协作回报只在随后检查点按序落账。连接断开不停止已接受的 Run。
+- Stop 是独立的 Context 取消；它不进账本，并可取消仍在等待检查点的 Steer。
 - 耐久消息先落账再发布；增量只进入运行投影。生成、草稿和最终 Entry 共用同一个 Entry.ID。
 - 每个 Session 同时只有一个活 Run；运行状态与最近用量保存在 `runs.json`，未完成运行在重启后标记 interrupted，不自动续跑。
 - Client 只保存服务端投影和草稿、主题、折叠等临时界面状态，不成为业务事实来源。
@@ -42,9 +43,10 @@ appserver.Server
 正式命令在仓库根目录执行：
 
 ```sh
-make run      # 构建 React 并启动，自动打开浏览器
-make build    # 产出 .build/harness
-make test     # 前后端、契约、网络、vet 与相关 race
+make run          # 构建 React 并启动，自动打开浏览器
+make build        # 产出 .build/harness
+make test         # 前后端、契约、网络、vet 与相关 race
+make agent-check  # Agent 日常快速回归：构建一次，其余常用检查并行
 ```
 
 Vite 构建产物位于 `clients/web/dist/`，由 Go embed 进入二进制但不提交 Git。`make run` 与 `make build` 会先生成它；不再读取 `harness.yaml`，监听地址固定为 `127.0.0.1:8888`。

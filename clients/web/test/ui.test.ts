@@ -102,7 +102,6 @@ const idleComposer = {
   draft: "你好",
   images: [] as Attachment[],
   notice: "",
-  agentLabel: "default",
   agents: [
     {
       id: "default",
@@ -116,10 +115,8 @@ const idleComposer = {
   agentID: "default",
   settingsDisabled: false,
   usage: undefined,
-  compressingImages: false,
   running: false,
   stopping: false,
-  busySending: false,
   canSend: true,
   stopDisabled: true,
   modelDisabled: false,
@@ -272,14 +269,20 @@ test("composer keeps image preview, model menu and stop button states", () => {
   });
   assert.match(running, /aria-label="停止任务"/);
   assert.match(running, /aria-label="调整当前任务"/);
-  assert.match(running, /Enter 调整当前任务 · 不排队/);
+  assert.doesNotMatch(running, /composer-caption/);
+
+  const withUsage = renderComposer({
+    usage: { inputTokens: 10, cacheReadTokens: 10, contextWindow: 100 },
+  });
+  assert.match(withUsage, /usage-ring/);
+  assert.match(withUsage, /--usage-percent:20%/);
+  assert.match(withUsage, /上下文已使用 20%/);
+  assert.doesNotMatch(withUsage, /tokens/);
 
   const stopping = renderComposer({
     running: true,
     stopping: true,
     stopDisabled: true,
-    busySending: false,
   });
   assert.match(stopping, /aria-label="停止中"/);
-  assert.match(stopping, /停止中，等待后台收尾…/);
 });

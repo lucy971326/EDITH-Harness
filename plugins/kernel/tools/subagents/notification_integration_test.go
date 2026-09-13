@@ -256,10 +256,15 @@ func TestRealReactWaitReceivesCompletionOrUserInput(t *testing.T) {
 				return
 			}
 			if userInput {
-				err = r.Steer("parent", session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "user interruption"}}})
-				if err != nil {
-					t.Fatal(err)
-				}
+				steerDone := make(chan error, 1)
+				go func() {
+					steerDone <- r.Steer("parent", session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "user interruption"}}})
+				}()
+				defer func() {
+					if steerErr := <-steerDone; steerErr != nil {
+						t.Error(steerErr)
+					}
+				}()
 			} else {
 				close(childRelease)
 			}

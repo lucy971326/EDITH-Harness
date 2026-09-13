@@ -11,7 +11,7 @@ import (
 	"harness/kernel/session"
 )
 
-func TestSteerPersistsBeforeCheckpointAndCopiesInput(t *testing.T) {
+func TestSteerPersistsAtCheckpointAndCopiesInput(t *testing.T) {
 	ready := make(chan struct{})
 	continueRun := make(chan struct{})
 	checkpointMessages := make(chan []session.Message, 1)
@@ -38,22 +38,26 @@ func TestSteerPersistsBeforeCheckpointAndCopiesInput(t *testing.T) {
 	<-ready
 
 	steer := textInput("steer")
-	err := fixture.runner.Steer("session-1", steer)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if history := fixture.session.History(); len(history) != 2 || history[1].Blocks[0].Text != "steer" {
-		t.Fatalf("history after Steer = %#v", history)
+	first := make(chan error, 1)
+	go func() { first <- fixture.runner.Steer("session-1", steer) }()
+	waitPendingInputCount(t, fixture.runner, "session-1", 1)
+	if history := fixture.session.History(); len(history) != 1 {
+		t.Fatalf("Steer entered ledger before checkpoint = %#v", history)
 	}
 	steer.Blocks[0].Text = "mutated"
-	err = fixture.runner.Steer("session-1", textInput("second steer"))
-	if err != nil {
+	second := make(chan error, 1)
+	go func() { second <- fixture.runner.Steer("session-1", textInput("second steer")) }()
+	waitPendingInputCount(t, fixture.runner, "session-1", 2)
+	close(continueRun)
+	if err := <-first; err != nil {
 		t.Fatal(err)
 	}
-	close(continueRun)
+	if err := <-second; err != nil {
+		t.Fatal(err)
+	}
 
 	select {
-	case err = <-runDone:
+	case err := <-runDone:
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -114,7 +118,7 @@ func TestSteerCannotEnterAfterEmptyFinalCheckpoint(t *testing.T) {
 	}
 }
 
-func TestSteerSurvivesRunFailureBeforeCheckpoint(t *testing.T) {
+func TestSteerIsRejectedWhenRunFailsBeforeCheckpoint(t *testing.T) {
 	ready := make(chan struct{})
 	release := make(chan struct{})
 	loop := &runnerTestLoop{run: func(context.Context, loops.Invocation) error {
@@ -129,17 +133,39 @@ func TestSteerSurvivesRunFailureBeforeCheckpoint(t *testing.T) {
 	}()
 	<-ready
 
-	if err := fixture.runner.Steer("session-1", textInput("keep this")); err != nil {
-		t.Fatal(err)
-	}
+	steerDone := make(chan error, 1)
+	go func() { steerDone <- fixture.runner.Steer("session-1", textInput("do not persist")) }()
+	waitPendingInputCount(t, fixture.runner, "session-1", 1)
 	close(release)
 	if err := <-done; err == nil || !strings.Contains(err.Error(), "model failed") {
 		t.Fatalf("run error = %v", err)
 	}
+	if err := <-steerDone; !errors.Is(err, ErrRunChanged) {
+		t.Fatalf("Steer error = %v", err)
+	}
 	history := fixture.session.History()
-	if len(history) != 2 || history[1].Blocks[0].Text != "keep this" {
+	if len(history) != 1 {
 		t.Fatalf("history = %#v", history)
 	}
+}
+
+func waitPendingInputCount(t *testing.T, runner *Runner, sessionID string, count int) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		current, err := runner.current(sessionID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		current.mu.Lock()
+		got := len(current.pendingInputs)
+		current.mu.Unlock()
+		if got == count {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("pending inputs did not reach %d", count)
 }
 
 func TestConcurrentRunIsRejectedAndStopCancelsCurrentRun(t *testing.T) {

@@ -219,9 +219,6 @@
   font-weight: 650;
   letter-spacing: -0.8px;
 }
-.brand-period {
-  color: var(--muted-foreground);
-}
 .open-project-wrap {
   display: block;
   width: 100%;
@@ -457,6 +454,9 @@
 .user-actions:hover {
   opacity: 1;
 }
+.user-actions .answer-actions {
+  margin-top: 2px;
+}
 .process-heading {
   display: flex;
   gap: 9px;
@@ -472,15 +472,15 @@
   width: 14px;
 }
 .process-body {
-  padding-top: 14px;
+  padding-top: 8px;
 }
 .progress-text {
   white-space: pre-wrap;
   line-height: var(--leading-body);
-  margin: 8px 0 20px;
+  margin: 4px 0 10px;
 }
 .tool-group {
-  margin: 12px 0 24px;
+  margin: 4px 0 10px;
 }
 .tool-summary {
   display: flex;
@@ -488,7 +488,7 @@
   align-items: center;
   text-align: left;
   gap: 9px;
-  padding: 8px 0;
+  padding: 5px 0;
   color: var(--muted-foreground);
   font-size: var(--font-size-label);
 }
@@ -556,7 +556,7 @@
   align-items: center;
   color: var(--muted-foreground);
   gap: 2px;
-  margin-top: 17px;
+  margin-top: 8px;
 }
 .answer-actions .metadata {
   margin-left: 9px;
@@ -567,7 +567,7 @@
   gap: 2px;
 }
 .answer-controls > button {
-  margin-top: 17px;
+  margin-top: 8px;
 }
 .steer-message {
   white-space: pre-wrap;
@@ -616,20 +616,20 @@
   position: relative;
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 22px;
+  border-radius: 18px;
   box-shadow: var(--shadow-floating);
-  padding: 14px 12px 10px;
+  padding: 10px 10px 8px;
 }
 .composer:focus-within {
   border-color: var(--input);
 }
 .composer textarea {
-  min-height: 77px;
-  max-height: 180px;
+  min-height: 54px;
+  max-height: 150px;
   resize: none;
   border: none;
   box-shadow: none;
-  padding: 6px 8px 14px;
+  padding: 4px 8px 8px;
   font-size: var(--font-size-body);
   line-height: var(--leading-body);
   background: transparent;
@@ -668,13 +668,18 @@
   gap: 5px;
   font-size: var(--font-size-caption);
   color: var(--muted-foreground);
-  padding: 9px 5px;
+  padding: 9px 6px;
 }
 .usage-ring {
-  height: 15px;
-  width: 15px;
+  display: block;
+  height: 16px;
+  width: 16px;
   border-radius: 50%;
-  background: conic-gradient(var(--muted-foreground) 0%, var(--secondary) 0);
+  background: conic-gradient(
+    var(--foreground) var(--usage-percent, 0%),
+    var(--secondary) 0
+  );
+  -webkit-mask: radial-gradient(transparent 48%, black 54%);
   mask: radial-gradient(transparent 49%, black 54%);
 }
 .send-button {
@@ -684,14 +689,6 @@
 .stop-icon {
   width: 12px;
   fill: currentColor;
-}
-.composer-caption {
-  padding: 10px 8px 0;
-  display: flex;
-  gap: 8px;
-  justify-content: space-between;
-  font-size: var(--font-size-caption);
-  color: var(--muted-foreground);
 }
 .model-popover {
   width: 304px;
@@ -1165,9 +1162,6 @@
   }
   .composer-right {
     margin-left: auto;
-  }
-  .composer-caption span:last-child {
-    display: none;
   }
   .settings-page {
     padding: 20px;

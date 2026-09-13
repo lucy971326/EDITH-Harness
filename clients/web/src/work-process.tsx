@@ -49,7 +49,7 @@ function CopyMessage({ text, label }: { text: string; label: string }) {
     <span className="answer-actions">
       <Button
         variant="ghost"
-        size="icon"
+        size="icon-xs"
         aria-label={label}
         onClick={async () => {
           try {
@@ -139,7 +139,9 @@ export function WorkProcess({
             <MessageImages blocks={turn.prompt.message.blocks} />
             <MessageMarkdown text={promptText} />
           </div>
-          <CopyMessage text={promptText} label="复制用户消息" />
+          <div className="user-actions">
+            <CopyMessage text={promptText} label="复制用户消息" />
+          </div>
         </div>
       )}
       {turn.standalone &&
@@ -241,6 +243,8 @@ export function WorkProcess({
                     )}
                     {group.kind === "steer" ? (
                       <MessageMarkdown text={group.text} />
+                    ) : group.kind === "text" ? (
+                      <MessageMarkdown text={group.text} />
                     ) : (
                       group.text
                     )}
@@ -269,7 +273,7 @@ export function WorkProcess({
             {!turn.standalone && turn.prompt && onFork && (
               <Button
                 variant="ghost"
-                size="icon"
+                size="icon-xs"
                 aria-label={forking ? "正在分叉" : "从此回答分叉"}
                 disabled={forkDisabled || forking}
                 onClick={() => onFork(turn.id, turn.prompt!.id)}

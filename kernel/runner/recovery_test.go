@@ -334,7 +334,11 @@ func TestSteerDuringDraftKeepsAfterSeq(t *testing.T) {
 		close(started)
 		<-continueRun
 		message := session.Message{Role: session.RoleAssistant, Blocks: []session.Block{{Kind: "text", Text: "正在写"}}}
-		return invocation.Emit(ctx, loops.Event{Kind: loops.EventMessage, EntryID: entryID, Message: &message})
+		if err := invocation.Emit(ctx, loops.Event{Kind: loops.EventMessage, EntryID: entryID, Message: &message}); err != nil {
+			return err
+		}
+		_, err = invocation.Checkpoint(ctx, loops.CheckpointFinal)
+		return err
 	}}
 	fixture := newRunnerFixture(t, loop)
 	done := make(chan error, 1)
@@ -346,10 +350,9 @@ func TestSteerDuringDraftKeepsAfterSeq(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("loop did not start")
 	}
-	err := fixture.runner.Steer("session-1", textInput("插话"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	steerDone := make(chan error, 1)
+	go func() { steerDone <- fixture.runner.Steer("session-1", textInput("插话")) }()
+	waitPendingInputCount(t, fixture.runner, "session-1", 1)
 	view, err := fixture.runner.SessionView("session-1")
 	if err != nil {
 		t.Fatal(err)
@@ -358,6 +361,9 @@ func TestSteerDuringDraftKeepsAfterSeq(t *testing.T) {
 		t.Fatalf("draft after steer = %#v", view.Runs[0].Drafts)
 	}
 	close(continueRun)
+	if err = <-steerDone; err != nil {
+		t.Fatal(err)
+	}
 	select {
 	case err = <-done:
 		if err != nil {
@@ -375,8 +381,8 @@ func TestSteerDuringDraftKeepsAfterSeq(t *testing.T) {
 	if assistant.ID == "" || assistant.Message.AfterSeq != 1 {
 		t.Fatalf("persisted afterSeq = %#v", assistant)
 	}
-	if assistant.Seq <= 2 {
-		t.Fatalf("expected persist after steer, seq=%d", assistant.Seq)
+	if assistant.Seq != 2 {
+		t.Fatalf("assistant must finish before Steer, seq=%d", assistant.Seq)
 	}
 }
 

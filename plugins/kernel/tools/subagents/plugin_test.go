@@ -312,11 +312,18 @@ func TestToolLifecycleAndIsolation(t *testing.T) {
 	if !intruder.call(t, "subagent_send", sendArgs).IsError {
 		t.Fatal("send allowed another parent's child")
 	}
-	busy := decode[delegation.SendResult](t, f.call(t, "subagent_send", sendArgs))
+	busyDone := make(chan tools.Result, 1)
+	go func() { busyDone <- f.call(t, "subagent_send", sendArgs) }()
+	select {
+	case <-invocation.InputSignal():
+	case <-time.After(time.Second):
+		t.Fatal("Steer did not reach child Runner")
+	}
+	f.loop.release <- struct{}{}
+	busy := decode[delegation.SendResult](t, <-busyDone)
 	if !busy.Steered || busy.Turn != 1 || busy.RunID != child.RunID {
 		t.Fatalf("busy send: %+v", busy)
 	}
-	f.loop.release <- struct{}{}
 	wait = decode[delegation.WaitResponse](t, f.call(t, "subagent_wait", waitArgs))
 	if wait.Tasks[0].Status != delegation.StatusCompleted || wait.Tasks[0].ResultEntryID == "" {
 		t.Fatalf("completion: %+v", wait)
@@ -391,7 +398,7 @@ func TestIndependentSettingOverrides(t *testing.T) {
 func TestSendPublicationFailureDoesNotRepeatInput(t *testing.T) {
 	f := newFixture(t)
 	child := decode[delegation.SpawnResult](t, f.call(t, "subagent_spawn", `{"description":"child"}`))
-	f.nextRun(t)
+	invocation := f.nextRun(t)
 	registry := resolve[*events.Registry](t, f.host, "events")
 	unsubscribe, err := events.Subscribe(registry, func(ctx context.Context, event runner.RunEvent) error {
 		if event.SessionID == child.ChildSessionID && event.Kind == runner.Message && event.Entry.Message.Role == session.RoleUser {
@@ -403,12 +410,22 @@ func TestSendPublicationFailureDoesNotRepeatInput(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer unsubscribe()
-	result := f.call(t, "subagent_send", `{"taskID":"`+child.TaskID+`","text":"exactly once"}`)
+	sendDone := make(chan tools.Result, 1)
+	go func() {
+		sendDone <- f.call(t, "subagent_send", `{"taskID":"`+child.TaskID+`","text":"exactly once"}`)
+	}()
+	select {
+	case <-invocation.InputSignal():
+	case <-time.After(time.Second):
+		t.Fatal("Steer did not reach child Runner")
+	}
+	f.loop.release <- struct{}{}
+	result := <-sendDone
 	if !result.IsError {
 		t.Fatal("send hid publication failure")
 	}
 	wait := decode[delegation.WaitResponse](t, f.call(t, "subagent_wait", `{"taskIDs":["`+child.TaskID+`"]}`))
-	if wait.Tasks[0].Turn != 1 || wait.Tasks[0].Status != delegation.StatusCancelled {
+	if wait.Tasks[0].Turn != 1 || wait.Tasks[0].Status != delegation.StatusFailed {
 		t.Fatalf("send started a replacement run after ambiguous error: %+v", wait)
 	}
 	sess, err := f.sessions.Get(child.ChildSessionID)

@@ -60,12 +60,20 @@ func TestProductRunsWithoutWebAndForksCompletedSegment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fixture.loop.waitStarted(t)
-	err = fixture.service.Steer(created.Meta.ID, session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "steer"}}})
-	if err != nil {
-		t.Fatal(err)
+	invocation := fixture.loop.waitStarted(t)
+	steerDone := make(chan error, 1)
+	go func() {
+		steerDone <- fixture.service.Steer(created.Meta.ID, session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "steer"}}})
+	}()
+	select {
+	case <-invocation.InputSignal():
+	case <-time.After(time.Second):
+		t.Fatal("Steer did not reach Runner")
 	}
 	fixture.loop.release()
+	if err = <-steerDone; err != nil {
+		t.Fatal(err)
+	}
 	waitEnded(t, eventsSeen, created.Meta.ID)
 
 	snapshot, err := fixture.service.Snapshot(created.Meta.ID)
@@ -273,12 +281,12 @@ func newTestFixture(t *testing.T) testFixture {
 }
 
 type testLoop struct {
-	started   chan struct{}
+	started   chan loops.Invocation
 	releaseCh chan struct{}
 }
 
 func newTestLoop() *testLoop {
-	return &testLoop{started: make(chan struct{}, 8), releaseCh: make(chan struct{}, 8)}
+	return &testLoop{started: make(chan loops.Invocation, 8), releaseCh: make(chan struct{}, 8)}
 }
 
 func (l *testLoop) Definition() loops.Definition {
@@ -286,7 +294,7 @@ func (l *testLoop) Definition() loops.Definition {
 }
 
 func (l *testLoop) Run(ctx context.Context, invocation loops.Invocation) error {
-	l.started <- struct{}{}
+	l.started <- invocation
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -304,12 +312,14 @@ func (l *testLoop) Run(ctx context.Context, invocation loops.Invocation) error {
 	return invocation.Emit(ctx, loops.Event{Kind: loops.EventMessage, Message: &message})
 }
 
-func (l *testLoop) waitStarted(t *testing.T) {
+func (l *testLoop) waitStarted(t *testing.T) loops.Invocation {
 	t.Helper()
 	select {
-	case <-l.started:
+	case invocation := <-l.started:
+		return invocation
 	case <-time.After(time.Second):
 		t.Fatal("loop did not start")
+		return loops.Invocation{}
 	}
 }
 

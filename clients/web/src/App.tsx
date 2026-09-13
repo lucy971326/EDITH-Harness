@@ -202,12 +202,6 @@ export default function App() {
     !!currentRun ||
     busySending ||
     settingsSaving;
-  const agentLabel =
-    agentCatalog?.agents.find(
-      (agent) => agent.id === selected?.settings.agentID,
-    )?.name ??
-    selected?.settings.agentID ??
-    "未加载";
   const canSend =
     synchronized &&
     !!selected &&
@@ -1026,15 +1020,12 @@ export default function App() {
                   draft={draft}
                   images={images}
                   notice={notice}
-                  agentLabel={agentLabel}
                   agents={agentCatalog?.agents ?? null}
                   agentID={selected?.settings.agentID ?? ""}
                   settingsDisabled={settingsDisabled}
                   usage={sessionUsage}
-                  compressingImages={compressingImages}
                   running={!!currentRun}
                   stopping={stoppingCurrent}
-                  busySending={busySending}
                   canSend={!!canSend}
                   stopDisabled={!synchronized || stoppingCurrent}
                   modelDisabled={settingsDisabled}

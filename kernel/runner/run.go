@@ -38,14 +38,11 @@ type liveRun struct {
 	settings      *settings.SessionSettings // 准备完成前为空。
 	afterEntrySeq uint64
 
-	// 输入准入、检查点与收尾等待。
-	cancel            context.CancelFunc
-	steeringState     steeringState
-	steers            []session.Message
-	inputErr          error
-	inputPublications sync.WaitGroup
-	outputAfterSeq    uint64 // 下一条模型输出的位置；仅在检查点消费输入后前移。
-	pendingAfterSeq   uint64 // 最近接收但尚未被检查点消费的输入。
+	// 输入准入与检查点。外部输入只有到检查点才进入账本。
+	cancel         context.CancelFunc
+	steeringState  steeringState
+	pendingInputs  []pendingInput
+	outputAfterSeq uint64 // 下一条模型输出的位置；仅在检查点提交输入后前移。
 	// 当前代次的通道在有待处理 Steer 时关闭广播；Checkpoint 消费后才换代次。
 	inputSignal chan struct{}
 
@@ -59,6 +56,12 @@ type liveRun struct {
 	drafts    map[string]*runDraft
 	toolCalls map[string]toolCallLoc
 	persisted map[string]struct{}
+}
+
+// 数据。一条等待安全检查点提交的外部输入；result 只用于等待确认的用户 Steer。
+type pendingInput struct {
+	message session.Message
+	result  chan error
 }
 
 // 数据。尚未落账的一条生成中消息。
@@ -322,12 +325,8 @@ func (r *Runner) executePrepared(runCtx context.Context, sessionID, runID string
 	runStartedAttempted := false
 	runRecorded := false
 	defer func() {
-		// 不再接收协作输入后，等待已落账输入的事件发布结束，保留迟到的发布错误。
-		current.closeSteering()
-		current.inputPublications.Wait()
-		current.mu.Lock()
-		err = errors.Join(err, current.inputErr)
-		current.mu.Unlock()
+		// Loop 已结束，拒绝尚未到达安全检查点的输入并解除等待。
+		current.finishInputs()
 		if !runRecorded {
 			return
 		}
@@ -405,7 +404,7 @@ func (r *Runner) executePrepared(runCtx context.Context, sessionID, runID string
 		return err
 	}
 	// 启动通知投递的协作输入进入初始历史，所有 Loop 的首次请求都能看到。
-	initial, err := r.checkpoint(current, loops.CheckpointContinue)
+	initial, err := r.checkpoint(sess, sessionID, current, loops.CheckpointContinue)
 	if err != nil {
 		return err
 	}
@@ -431,7 +430,7 @@ func (r *Runner) executePrepared(runCtx context.Context, sessionID, runID string
 			return r.emit(eventCtx, sessionID, runID, sess, current, event)
 		},
 		Checkpoint: func(_ context.Context, phase loops.CheckpointPhase) ([]session.Message, error) {
-			return r.checkpoint(current, phase)
+			return r.checkpoint(sess, sessionID, current, phase)
 		},
 	}
 	return loop.Run(runCtx, invocation)
@@ -488,7 +487,7 @@ func (r *Runner) begin(sessionID string, current *liveRun) error {
 }
 
 func (r *Runner) release(sessionID string, current *liveRun) {
-	current.closeSteering()
+	current.finishInputs()
 	current.mu.Lock()
 	seq := current.updateSeq
 	current.mu.Unlock()
@@ -503,14 +502,6 @@ func (r *Runner) release(sessionID string, current *liveRun) {
 func (r *Runner) publish(ctx context.Context, event RunEvent) error {
 	// 同步监听允许重入 Runner；不能持运行锁或发送锁调用它们。
 	return events.Publish(ctx, r.events, event)
-}
-
-func (r *Runner) checkpoint(current *liveRun, phase loops.CheckpointPhase) ([]session.Message, error) {
-	messages, err := current.takeSteers(phase)
-	if err != nil {
-		return nil, err
-	}
-	return messages, nil
 }
 
 func (r *Runner) close() {

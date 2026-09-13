@@ -65,25 +65,30 @@ func New(sessions *session.Store, settingsStore settings.SessionSettingsStore, a
 // Send 闲时启动、忙时插话；已接受的运行由 Runner 管理生命周期。
 func (p *Product) Send(ctx context.Context, input RunInput) (string, error) {
 	p.sendMu.Lock()
-	defer p.sendMu.Unlock()
 	err := ctx.Err()
 	if err != nil {
+		p.sendMu.Unlock()
 		return "", err
 	}
 	_, err = p.Session(input.SessionID)
 	if err != nil {
+		p.sendMu.Unlock()
 		return "", err
 	}
 	err = checkMessage(input.Message)
 	if err != nil {
+		p.sendMu.Unlock()
 		return "", fmt.Errorf("%w: %w", ErrInvalidMessage, err)
 	}
 	if _, running := p.runner.State(input.SessionID); running || input.ExpectedRunID != "" {
-		err = p.steer(input.SessionID, input.ExpectedRunID, input.Message)
+		// Runner 负责身份与输入准入；等待检查点时不能占住其他会话的发送锁。
+		p.sendMu.Unlock()
+		err = p.steer(ctx, input.SessionID, input.ExpectedRunID, input.Message)
 		return "steered", err
 	}
 	// 接受之后由 Runner 的 Stop / Close 管生命周期，不继承连接取消。
 	err = p.start(context.Background(), input)
+	p.sendMu.Unlock()
 	if err != nil {
 		return "", err
 	}
@@ -266,10 +271,10 @@ func (s *Product) start(ctx context.Context, input RunInput) error {
 
 // Steer 将一条输入交给当前 Run；不修改下一轮设置。
 func (s *Product) Steer(sessionID string, message session.UserMessage) error {
-	return s.steer(sessionID, "", message)
+	return s.steer(context.Background(), sessionID, "", message)
 }
 
-func (s *Product) steer(sessionID, expectedRunID string, message session.UserMessage) error {
+func (s *Product) steer(ctx context.Context, sessionID, expectedRunID string, message session.UserMessage) error {
 	if s.subagents.IsChildSession(sessionID) {
 		return fmt.Errorf("%w: session %q", os.ErrNotExist, sessionID)
 	}
@@ -290,9 +295,9 @@ func (s *Product) steer(sessionID, expectedRunID string, message session.UserMes
 		return fmt.Errorf("%w: %w", ErrInvalidRunSettings, err)
 	}
 	if expectedRunID != "" {
-		err = s.runner.SteerRun(sessionID, expectedRunID, message)
+		err = s.runner.SteerRunContext(ctx, sessionID, expectedRunID, message)
 	} else {
-		err = s.runner.Steer(sessionID, message)
+		err = s.runner.SteerContext(ctx, sessionID, message)
 	}
 	if errors.Is(err, runner.ErrRunChanged) {
 		return fmt.Errorf("%w: %w", ErrRunChanged, err)

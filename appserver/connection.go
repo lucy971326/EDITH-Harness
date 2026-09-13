@@ -86,7 +86,7 @@ func (c *Connection) disconnect() {
 	c.cancel()
 }
 
-// Handle 让协议库继续读取断线；请求本身仍按到达顺序处理。
+// Handle 让协议库继续读取断线；业务请求按到达顺序处理，Stop 可独立越过等待中的请求。
 func (c *Connection) Handle(ctx context.Context, rpc *jsonrpc2.Conn, request *jsonrpc2.Request) {
 	c.mu.Lock()
 	if c.disconnected {
@@ -98,6 +98,11 @@ func (c *Connection) Handle(ctx context.Context, rpc *jsonrpc2.Conn, request *js
 
 	go func() {
 		defer c.requests.Done()
+		// Stop 是独立控制信号；不能排在一个正等待 Checkpoint 的 Steer 请求后面。
+		if request.Method == stopMethod {
+			c.handleRequest(ctx, rpc, request)
+			return
+		}
 		c.handling.Lock()
 		defer c.handling.Unlock()
 		c.handleRequest(ctx, rpc, request)
@@ -120,7 +125,10 @@ func (c *Connection) handleRequest(ctx context.Context, rpc *jsonrpc2.Conn, requ
 		}
 	}
 
-	c.releaseBufferedNotifications()
+	// Stop 可与订阅请求并行，不能替订阅请求提前释放其缓冲通知。
+	if request.Method != stopMethod {
+		c.releaseBufferedNotifications()
+	}
 }
 
 func (c *Connection) call(ctx context.Context, request *jsonrpc2.Request) (any, error) {

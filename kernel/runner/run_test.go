@@ -561,10 +561,9 @@ func TestRunKeepsInitialAnchorAfterSteer(t *testing.T) {
 		runDone <- fixture.runner.Run(context.Background(), "session-1", textInput("question"))
 	}()
 	<-checkpointed
-	err = fixture.runner.Steer("session-1", textInput("steer"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	steerDone := make(chan error, 1)
+	go func() { steerDone <- fixture.runner.Steer("session-1", textInput("steer")) }()
+	waitPendingInputCount(t, fixture.runner, "session-1", 1)
 	close(continueRun)
 	select {
 	case err = <-runDone:
@@ -573,6 +572,9 @@ func TestRunKeepsInitialAnchorAfterSteer(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("run did not finish")
+	}
+	if err = <-steerDone; !errors.Is(err, ErrRunChanged) {
+		t.Fatalf("unconsumed Steer error = %v", err)
 	}
 	if afterEntrySeq != 1 {
 		t.Fatalf("run anchor after steer = %d, want 1", afterEntrySeq)
@@ -1069,7 +1071,8 @@ func TestSteerInputSignalStaysVisibleUntilCheckpointConsumesSteer(t *testing.T) 
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-finishRun:
-			return nil
+			_, err := invocation.Checkpoint(ctx, loops.CheckpointFinal)
+			return err
 		}
 	}})
 	handle, err := fixture.runner.Start(context.Background(), "session-1", textInput("question"))
@@ -1082,14 +1085,12 @@ func TestSteerInputSignalStaysVisibleUntilCheckpointConsumesSteer(t *testing.T) 
 	case <-time.After(time.Second):
 		t.Fatal("loop did not expose input signal")
 	}
-	err = fixture.runner.Steer("session-1", textInput("steer"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = fixture.runner.Steer("session-1", textInput("second steer"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	first := make(chan error, 1)
+	go func() { first <- fixture.runner.Steer("session-1", textInput("steer")) }()
+	waitPendingInputCount(t, fixture.runner, "session-1", 1)
+	second := make(chan error, 1)
+	go func() { second <- fixture.runner.Steer("session-1", textInput("second steer")) }()
+	waitPendingInputCount(t, fixture.runner, "session-1", 2)
 	for observation := 0; observation < 2; observation++ {
 		select {
 		case <-signal:
@@ -1106,6 +1107,12 @@ func TestSteerInputSignalStaysVisibleUntilCheckpointConsumesSteer(t *testing.T) 
 	case <-time.After(time.Second):
 		t.Fatal("checkpoint did not consume Steer")
 	}
+	if err = <-first; err != nil {
+		t.Fatal(err)
+	}
+	if err = <-second; err != nil {
+		t.Fatal(err)
+	}
 	var secondSignal <-chan struct{}
 	select {
 	case secondSignal = <-secondSignalReady:
@@ -1117,16 +1124,18 @@ func TestSteerInputSignalStaysVisibleUntilCheckpointConsumesSteer(t *testing.T) 
 		t.Fatal("checkpoint left a pending input signal")
 	default:
 	}
-	err = fixture.runner.Steer("session-1", textInput("after checkpoint"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	third := make(chan error, 1)
+	go func() { third <- fixture.runner.Steer("session-1", textInput("after checkpoint")) }()
+	waitPendingInputCount(t, fixture.runner, "session-1", 1)
 	select {
 	case <-secondSignal:
 	case <-time.After(time.Second):
 		t.Fatal("next Steer did not wake the next signal generation")
 	}
 	close(finishRun)
+	if err = <-third; err != nil {
+		t.Fatal(err)
+	}
 	result := handle.Wait()
 	if result.Status != RunSucceeded || result.Err != nil {
 		t.Fatalf("result = %#v", result)
@@ -1145,12 +1154,13 @@ func TestRunInitialHistoryPrecedesAcceptedSteer(t *testing.T) {
 		checkpointMessages <- messages
 		return nil
 	}})
-	var steerErr error
+	steerDone := make(chan error, 1)
 	_, err := events.Subscribe(fixture.events, func(_ context.Context, event RunEvent) error {
 		if event.Kind != RunStarted {
 			return nil
 		}
-		steerErr = fixture.runner.Steer("session-1", textInput("steer after start"))
+		go func() { steerDone <- fixture.runner.Steer("session-1", textInput("steer after start")) }()
+		waitPendingInputCount(t, fixture.runner, "session-1", 1)
 		return nil
 	})
 	if err != nil {
@@ -1164,7 +1174,7 @@ func TestRunInitialHistoryPrecedesAcceptedSteer(t *testing.T) {
 	if result.Status != RunSucceeded || result.Err != nil {
 		t.Fatalf("result = %#v", result)
 	}
-	if steerErr != nil {
+	if steerErr := <-steerDone; steerErr != nil {
 		t.Fatalf("RunStarted subscriber Steer error = %v", steerErr)
 	}
 	select {

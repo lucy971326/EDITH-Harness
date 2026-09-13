@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type RefObject,
 } from "react";
 import { Button } from "@/components/ui/button";
@@ -90,15 +91,12 @@ export function Composer({
   draft,
   images,
   notice,
-  agentLabel,
   agents,
   agentID,
   settingsDisabled,
   usage,
-  compressingImages,
   running,
   stopping,
-  busySending,
   canSend,
   stopDisabled,
   modelDisabled,
@@ -126,7 +124,6 @@ export function Composer({
   draft: string;
   images: Attachment[];
   notice: string;
-  agentLabel: string;
   agents: AgentView[] | null;
   agentID: string;
   settingsDisabled: boolean;
@@ -135,10 +132,8 @@ export function Composer({
     cacheReadTokens: number;
     contextWindow: number;
   };
-  compressingImages: boolean;
   running: boolean;
   stopping: boolean;
-  busySending: boolean;
   canSend: boolean;
   stopDisabled: boolean;
   modelDisabled: boolean;
@@ -193,6 +188,15 @@ export function Composer({
   }, [commandBusy, commands, running, skills, suggestionsDisabled, trigger]);
   const showSuggestions =
     suggestions.length > 0 && triggerKey !== dismissedTrigger;
+  const usedTokens = usage
+    ? usage.inputTokens + usage.cacheReadTokens
+    : 0;
+  const usagePercent = usage?.contextWindow
+    ? Math.min(100, (usedTokens / usage.contextWindow) * 100)
+    : 0;
+  const usageLabel = usage
+    ? `${Math.round(usagePercent * 10) / 10}%`
+    : "暂无";
 
   useEffect(() => {
     setActiveSuggestion(0);
@@ -371,18 +375,19 @@ export function Composer({
                 <TooltipTrigger asChild>
                   <span
                     className="usage"
-                    aria-label="最近一次模型调用的上下文用量"
+                    aria-label={`上下文已使用 ${usageLabel}`}
                   >
-                    {usage
-                      ? `${usage.inputTokens + usage.cacheReadTokens}/${usage.contextWindow}`
-                      : "—"}
+                    <span
+                      className="usage-ring"
+                      style={
+                        {
+                          "--usage-percent": `${usagePercent}%`,
+                        } as CSSProperties
+                      }
+                    />
                   </span>
                 </TooltipTrigger>
-                <TooltipContent>
-                  最近一次模型调用：输入与缓存{" "}
-                  {usage ? usage.inputTokens + usage.cacheReadTokens : "暂无"}{" "}
-                  tokens
-                </TooltipContent>
+                <TooltipContent>上下文已使用 {usageLabel}</TooltipContent>
               </Tooltip>
               <ModelMenu
                 models={models}
@@ -428,22 +433,6 @@ export function Composer({
               </Tooltip>
             </div>
           </div>
-        </div>
-        <div className="composer-caption">
-          <span>
-            {stopping
-              ? "停止中，等待后台收尾…"
-              : compressingImages
-                ? "正在压缩图片…"
-                : busySending
-                  ? "等待后台确认…"
-                  : running
-                    ? "Enter 调整当前任务 · 不排队"
-                    : "Enter 发送 · Shift + Enter 换行"}
-          </span>
-          <span>
-            {modelError || (models?.length === 0 ? "尚未配置模型" : agentLabel)}
-          </span>
         </div>
       </div>
     </div>

@@ -140,7 +140,7 @@ body    本条事实：role、runID、blocks；协作消息另带 messageID、so
         未完成助手消息带 incomplete；生成开始时的账本锚点为 afterSeq
 ```
 
-Run 的起点与单条输出的位置分开：已开始的输出不会因 Steer 移位；检查点消费新输入后，新输出的 `afterSeq` 才前移。
+Run 的起点与单条输出的位置分开：已开始的输出不会因 Steer 移位；检查点将待提交输入按到达顺序落账并消费后，新输出的 `afterSeq` 才前移。一次模型步骤包含助手输出及该批全部工具结果，外部输入不能插进两者中间。
 
 ```text
 messages.jsonl
@@ -154,7 +154,9 @@ messages.jsonl
 
 `blocks` 只记录实际发生的对话内容：`text`、`image`、`reasoning`、`tool-call`、`tool-result`、`summary`。图片保存 Client 压缩后的 MIME 与 Base64，不另存原始大图。页面长什么样、哪些内容展开，不是账本事实。`summary` 是压缩落账的助手块；`History()` 把它收成普通文本再发给模型。未完成消息保留半截正文与思考，并附「未完成」说明；不把思考改成普通正文，不携带悬空工具调用。工具结果按 `ToolCall.ID` 回填，工具结果消息有自己的 Entry.ID。
 
-协作消息在账本使用 `role=collaboration`，`runID` 是接收它的父 Run，`sourceSessionID/sourceRunID` 是孩子的来源。启动前失败没有真实子 Run，来源 RunID 留空，不捏造身份。发给模型时转换成带来源说明的普通输入，不提升为系统指令。通知重试按父账本中实际存在的 `messageID` 去重，不靠内存中的“已发送”判断。
+协作消息在账本使用 `role=collaboration`，`runID` 是接收它的父 Run，`sourceSessionID/sourceRunID` 是孩子的来源。启动前失败没有真实子 Run，来源 RunID 留空，不捏造身份。发给模型时转换成带来源说明的普通输入，不提升为系统指令。通知进入活 Run 后先留在 Runner 的待提交输入中，只有检查点落账后才算投递；重试按父账本中实际存在的 `messageID` 去重，不靠内存中的“已发送”判断。
+
+待提交输入只是当前活 Run 的内存状态，不是第二份事实来源。Steer 在检查点落账并发布后才确认成功；若 Run 先结束或被停止，则拒绝尚未落账的 Steer。Stop 只通过 Context 取消运行，不是业务输入，也不写入对话账本。
 
 ## 修改前四问
 

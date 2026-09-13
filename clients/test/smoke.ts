@@ -55,15 +55,19 @@ try {
   assert(live, 'Disconnect cancelled the run');
   assert.equal(live.status, 'running');
   assert(live.drafts?.some(draft => draft.entryID === draftID && draft.blocks.some(block => block.text === 'waiting')), 'snapshot lost in-progress text');
-  const steered = await client.call('harness/session/send', { ...params, text: 'steer while busy' });
-  assert.equal(steered.mode, 'steered');
+  const pendingSteer = client.call('harness/session/send', { ...params, text: 'steer while busy', expectedRunID: runID }).then(
+    () => undefined,
+    (error: unknown) => error,
+  );
   await client.call('harness/session/stop', params);
+  const steerError = await pendingSteer;
+  assert(steerError instanceof RPCFailure && steerError.code === -32009);
   const ended = await client.untilEnded(subscription.subscriptionID);
   assert.equal(ended.runID, runID);
   assert.equal(ended.status, 'cancelled');
   const stopped = await client.call('harness/session/snapshot', params);
   assert.equal(stopped.runs.at(-1)?.status, 'cancelled');
-  assert(stopped.entries.some(entry => entry.message.blocks.some(block => block.text === 'steer while busy')));
+  assert(!stopped.entries.some(entry => entry.message.blocks.some(block => block.text === 'steer while busy')));
   assert(stopped.entries.some(entry => entry.message.incomplete && entry.message.blocks.some(block => block.text === 'waiting')));
   console.log('PASS: create / query / send / completion / reconnect / steer / stop');
 } finally {

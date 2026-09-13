@@ -13,9 +13,14 @@ import (
 // ErrRunChanged 表示预期运行已结束、关闭插话或被另一轮替代。
 var ErrRunChanged = errors.New("runner: expected run is no longer accepting input")
 
-// Steer 先把一条用户输入落账，再交给当前 Run 的下一个检查点。
+// Steer 等待一条用户输入在当前 Run 的下一个安全检查点落账。
 func (r *Runner) Steer(sessionID string, input session.UserMessage) error {
-	return r.steer(sessionID, "", input)
+	return r.steer(context.Background(), sessionID, "", input)
+}
+
+// SteerContext 只让调用方放弃等待响应；已经准入的输入仍由当前 Run 在检查点决定结果。
+func (r *Runner) SteerContext(ctx context.Context, sessionID string, input session.UserMessage) error {
+	return r.steer(ctx, sessionID, "", input)
 }
 
 // SteerRun 只向预期的那轮插话；身份检查与准入、落账不可分割。
@@ -23,10 +28,22 @@ func (r *Runner) SteerRun(sessionID, expectedRunID string, input session.UserMes
 	if expectedRunID == "" {
 		return ErrRunChanged
 	}
-	return r.steer(sessionID, expectedRunID, input)
+	return r.steer(context.Background(), sessionID, expectedRunID, input)
 }
 
-func (r *Runner) steer(sessionID, expectedRunID string, input session.UserMessage) error {
+// SteerRunContext 是带预期 Run 身份的 SteerContext。
+func (r *Runner) SteerRunContext(ctx context.Context, sessionID, expectedRunID string, input session.UserMessage) error {
+	if expectedRunID == "" {
+		return ErrRunChanged
+	}
+	return r.steer(ctx, sessionID, expectedRunID, input)
+}
+
+func (r *Runner) steer(ctx context.Context, sessionID, expectedRunID string, input session.UserMessage) error {
+	err := ctx.Err()
+	if err != nil {
+		return err
+	}
 	current, err := r.current(sessionID)
 	if err != nil {
 		if expectedRunID != "" {
@@ -35,12 +52,13 @@ func (r *Runner) steer(sessionID, expectedRunID string, input session.UserMessag
 		return err
 	}
 
-	sess, err := r.sessions.Get(sessionID)
+	_, err = r.sessions.Get(sessionID)
 	if err != nil {
 		return err
 	}
 
-	// 准入、落账和交给检查点是一件事；最终检查点不能从中间穿过。
+	// 准入和交给检查点不可分割；消息尚未完成工具批次时不能提前落账。
+	result := make(chan error, 1)
 	current.handoff.Lock()
 	current.mu.Lock()
 	if current.steeringState != steeringOpen || (expectedRunID != "" && current.runID != expectedRunID) {
@@ -53,44 +71,16 @@ func (r *Runner) steer(sessionID, expectedRunID string, input session.UserMessag
 	}
 	runID := current.runID
 	message := messageFromInput(runID, input)
-	durable, err := sess.Append(message)
-	if err != nil {
-		current.mu.Unlock()
-		current.handoff.Unlock()
-		return err
-	}
-
-	current.steers = append(current.steers, message)
-	current.pendingAfterSeq = durable.Seq
+	current.pendingInputs = append(current.pendingInputs, pendingInput{message: message, result: result})
 	current.signalInputLocked()
-	current.persisted[durable.ID] = struct{}{}
-	current.updateSeq++
-	seq := current.updateSeq
-	afterEntrySeq := current.afterEntrySeq
-	current.inputPublications.Add(1)
 	current.mu.Unlock()
 	current.handoff.Unlock()
-	defer current.inputPublications.Done()
-
-	err = r.publish(context.Background(), RunEvent{
-		SessionID:     sessionID,
-		RunID:         runID,
-		Kind:          Message,
-		EntryID:       durable.ID,
-		AfterEntrySeq: afterEntrySeq,
-		Entry:         &durable,
-		UpdateSeq:     seq,
-		SeqEpoch:      r.epoch,
-	})
-	if err != nil {
-		current.mu.Lock()
-		// 保留 Steer 的既有语义：发布失败取消本轮，原错误返回给调用方。
-		current.inputErr = errors.Join(current.inputErr, context.Canceled)
-		current.mu.Unlock()
-		current.stop()
+	select {
+	case err = <-result:
 		return err
+	case <-ctx.Done():
+		return ctx.Err()
 	}
-	return nil
 }
 
 // Stop 取消一本 Session 当前尚未结束的 Run。
@@ -149,22 +139,93 @@ func (r *Runner) RunSettings(sessionID, runID string) (settings.SessionSettings,
 	return *current.settings, nil
 }
 
-func (r *liveRun) takeSteers(phase loops.CheckpointPhase) ([]session.Message, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+func (r *Runner) checkpoint(sess *session.Session, sessionID string, current *liveRun, phase loops.CheckpointPhase) ([]session.Message, error) {
 	if phase != loops.CheckpointContinue && phase != loops.CheckpointFinal {
 		return nil, fmt.Errorf("runner: invalid checkpoint phase %d", phase)
 	}
-	steers := r.steers
-	r.steers = nil
-	if len(steers) > 0 {
-		r.inputSignal = make(chan struct{})
-		r.outputAfterSeq = r.pendingAfterSeq
+
+	type committedInput struct {
+		pending pendingInput
+		entry   session.Entry
+		seq     uint64
+		after   uint64
 	}
-	if phase == loops.CheckpointFinal && len(steers) == 0 {
-		r.steeringState = steeringClosed
+
+	// Checkpoint 与输入准入共用 handoff，最终边界不能从正在接收的输入中间穿过。
+	current.handoff.Lock()
+	current.mu.Lock()
+	pending := current.pendingInputs
+	current.pendingInputs = nil
+	if len(pending) > 0 {
+		current.inputSignal = make(chan struct{})
+	} else if phase == loops.CheckpointFinal {
+		current.steeringState = steeringClosed
 	}
-	return steers, nil
+	current.mu.Unlock()
+	if len(pending) == 0 {
+		current.handoff.Unlock()
+		return nil, nil
+	}
+
+	committed := make([]committedInput, 0, len(pending))
+	var appendErr error
+	for _, input := range pending {
+		entry, err := sess.Append(input.message)
+		if err != nil {
+			appendErr = err
+			break
+		}
+		current.mu.Lock()
+		current.persisted[entry.ID] = struct{}{}
+		current.outputAfterSeq = entry.Seq
+		current.updateSeq++
+		seq := current.updateSeq
+		after := current.afterEntrySeq
+		current.mu.Unlock()
+		committed = append(committed, committedInput{pending: input, entry: entry, seq: seq, after: after})
+	}
+	current.handoff.Unlock()
+
+	messages := make([]session.Message, 0, len(committed))
+	var firstErr error
+	for _, item := range committed {
+		entry := item.entry
+		err := r.publish(context.Background(), RunEvent{
+			SessionID:     sessionID,
+			RunID:         current.runID,
+			Kind:          Message,
+			EntryID:       entry.ID,
+			AfterEntrySeq: item.after,
+			Entry:         &entry,
+			UpdateSeq:     item.seq,
+			SeqEpoch:      r.epoch,
+		})
+		item.pending.complete(err)
+		if err != nil && firstErr == nil {
+			firstErr = err
+		}
+		messages = append(messages, item.pending.message)
+	}
+
+	if appendErr != nil {
+		if firstErr == nil {
+			firstErr = appendErr
+		}
+		for _, input := range pending[len(committed):] {
+			input.complete(appendErr)
+		}
+	}
+	if firstErr != nil {
+		current.stop()
+		return nil, firstErr
+	}
+	return messages, nil
+}
+
+func (p pendingInput) complete(err error) {
+	if p.result != nil {
+		p.result <- err
+	}
 }
 
 func (r *liveRun) openSteering(ctx context.Context) bool {
@@ -242,19 +303,26 @@ func (r *liveRun) signalInputLocked() {
 }
 
 func (r *liveRun) stop() {
-	r.closeSteering()
+	r.finishInputs()
 }
 
 func (r *liveRun) shutdown() {
-	r.closeSteering()
+	r.finishInputs()
 }
 
-func (r *liveRun) closeSteering() {
+func (r *liveRun) finishInputs() {
+	r.handoff.Lock()
 	r.mu.Lock()
 	r.steeringState = steeringClosed
+	pending := r.pendingInputs
+	r.pendingInputs = nil
 	cancel := r.cancel
 	if cancel != nil {
 		cancel()
 	}
 	r.mu.Unlock()
+	r.handoff.Unlock()
+	for _, input := range pending {
+		input.complete(ErrRunChanged)
+	}
 }

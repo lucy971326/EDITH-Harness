@@ -60,7 +60,7 @@ func collaborationEntries(t *testing.T, f subagentsFixture, parent string) []ses
 	return entries
 }
 
-func TestCompletedChildrenAutomaticallyNotifyOnce(t *testing.T) {
+func TestCompletedChildrenEnterParentAtCheckpointOnce(t *testing.T) {
 	f := newSubagentsFixture(t)
 	defer f.host.Close()
 	_, parent := notificationParent(t, f)
@@ -78,6 +78,17 @@ func TestCompletedChildrenAutomaticallyNotifyOnce(t *testing.T) {
 	}
 	f.loop.release()
 	f.loop.release()
+	response, err := f.subagents.Wait(context.Background(), parent.SessionID, WaitInput{TaskIDs: []string{first.TaskID, second.TaskID}, Timeout: time.Second})
+	if err != nil || response.Reason != "completed" || len(response.Notifications) != 2 {
+		t.Fatalf("wait: %+v, %v", response, err)
+	}
+	if entries := collaborationEntries(t, f, parent.SessionID); len(entries) != 0 {
+		t.Fatalf("notification entered ledger before checkpoint: %+v", entries)
+	}
+	messages, err := parent.Checkpoint(context.Background(), loops.CheckpointContinue)
+	if err != nil || len(messages) != 2 {
+		t.Fatalf("checkpoint: %+v, %v", messages, err)
+	}
 	for i := 0; i < 2; i++ {
 		select {
 		case message := <-arrived:
@@ -88,17 +99,13 @@ func TestCompletedChildrenAutomaticallyNotifyOnce(t *testing.T) {
 			t.Fatal("automatic notification missing")
 		}
 	}
-	response, err := f.subagents.Wait(context.Background(), parent.SessionID, WaitInput{TaskIDs: []string{first.TaskID, second.TaskID}, Timeout: time.Second})
-	if err != nil || response.Reason != "completed" || len(response.Notifications) != 2 {
-		t.Fatalf("wait: %+v, %v", response, err)
-	}
 	entries := collaborationEntries(t, f, parent.SessionID)
 	if len(entries) != 2 {
-		t.Fatalf("wait duplicated body: %+v", entries)
+		t.Fatalf("checkpoint duplicated body: %+v", entries)
 	}
-	messages, err := parent.Checkpoint(context.Background(), loops.CheckpointContinue)
-	if err != nil || len(messages) != 2 {
-		t.Fatalf("checkpoint: %+v, %v", messages, err)
+	err = f.subagents.deliver(parent.SessionID)
+	if err != nil {
+		t.Fatal(err)
 	}
 	var seen []string
 	for _, item := range response.Notifications {
@@ -229,6 +236,14 @@ func TestNotificationAcknowledgmentFailureRetriesWithoutDuplicate(t *testing.T) 
 	}
 	f.loop.release()
 	_, err = f.subagents.Wait(context.Background(), parent.SessionID, WaitInput{TaskIDs: []string{child.TaskID}, Timeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages, err := parent.Checkpoint(context.Background(), loops.CheckpointContinue)
+	if err != nil || len(messages) != 1 {
+		t.Fatalf("checkpoint: %+v, %v", messages, err)
+	}
+	err = f.subagents.deliver(parent.SessionID)
 	if err == nil {
 		t.Fatal("acknowledgment save failure hidden")
 	}
@@ -271,18 +286,21 @@ func TestWaitUserInputAndCancellationDoNotStopChildren(t *testing.T) {
 		failed <- err
 	}()
 	awaitSignal(t, ctx.entered)
-	err := f.runner.Steer(parent.SessionID, session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "new request"}}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	steerDone := make(chan error, 1)
+	go func() {
+		steerDone <- f.runner.Steer(parent.SessionID, session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "new request"}}})
+	}()
 	response := <-done
-	err = <-failed
+	err := <-failed
 	if err != nil || response.Reason != "input" {
 		t.Fatalf("steer did not wake wait: %+v, %v", response, err)
 	}
 	messages, err := parent.Checkpoint(context.Background(), loops.CheckpointContinue)
 	if err != nil || len(messages) != 1 || messages[0].Blocks[0].Text != "new request" {
 		t.Fatalf("wait consumed steer: %+v, %v", messages, err)
+	}
+	if err = <-steerDone; err != nil {
+		t.Fatal(err)
 	}
 	cancelCtx, cancel := context.WithCancel(context.Background())
 	cancel()

@@ -70,9 +70,7 @@ export function Sidebar({
       />
       <aside className="sidebar">
         <div className="brand-row">
-          <span className="brand">
-            Harness<span className="brand-period">.</span>
-          </span>
+          <span className="brand">Harness</span>
           <Button
             variant="ghost"
             size="icon"

@@ -113,15 +113,20 @@ func (s *Subagents) Send(ctx context.Context, parentSessionID, parentRunID, task
 				if childStopped {
 					return SendResult{}, ErrTaskStopped
 				}
-				// 孩子正在运行中：通过 Steer 追加
-				err := s.runner.Steer(coord.task.ChildSessionID, input)
+				// Steer 会等到孩子的安全检查点；等待期间不能占住任务锁或阻塞停止与收尾。
+				childSessionID := coord.task.ChildSessionID
+				childRunID := coord.activeHandle.RunID()
+				turn := coord.task.Turn
+				coord.mu.Unlock()
+				err := s.runner.SteerRun(childSessionID, childRunID, input)
+				coord.mu.Lock()
 				if err != nil {
-					// Steer 落账或事件发布失败可能已经接收，不能盲重发，明确返回错误
+					// Steer 可能已经落账，报错时不能盲目重发。
 					return SendResult{}, fmt.Errorf("subagents: steer child run: %w", err)
 				}
 				return SendResult{
-					Turn:    coord.task.Turn,
-					RunID:   coord.activeHandle.RunID(),
+					Turn:    turn,
+					RunID:   childRunID,
 					Steered: true,
 				}, nil
 			}

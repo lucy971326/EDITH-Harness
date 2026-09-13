@@ -70,7 +70,7 @@ type Invocation struct {
 	LLMConfig    llm.RunConfig
 	ToolNames    []string
 	Workspace    string
-	// Steer 到达时唤醒等待者；调用时取得当前代次，消息仍由 Checkpoint 消费。
+	// 外部输入到达时唤醒等待者；调用时取得当前代次，消息由 Checkpoint 落账并消费。
 	InputSignal func() <-chan struct{}
 	Emit        func(context.Context, Event) error
 	Checkpoint  func(context.Context, CheckpointPhase) ([]session.Message, error)
