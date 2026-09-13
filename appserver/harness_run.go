@@ -6,13 +6,17 @@ import (
 	"net/http"
 	"sync"
 
+	"harness/appserver/internal/clientconn"
 	"harness/kernel/events"
 	"harness/kernel/runner"
 	"harness/kernel/session"
 	"harness/products/harness"
 )
 
-const maxImageBytes = 2 << 20
+const (
+	maxImageBytes       = 2 << 20
+	runEventBufferLimit = 128
+)
 
 var imageMIMEs = map[string]bool{
 	"image/jpeg": true,
@@ -64,35 +68,41 @@ func (s *Server) handleStop(_ context.Context, input SessionIDParams) (StopResul
 }
 
 func (s *Server) handleSubscribe(ctx context.Context, input SessionIDParams) (SubscribeResult, error) {
-	connection, err := connectionFrom(ctx)
+	request, err := clientconn.FromContext(ctx)
 	if err != nil {
 		return SubscribeResult{}, err
 	}
-	subscription, err := connection.subscribe()
+	subscription, err := request.Subscribe()
 	if err != nil {
 		return SubscribeResult{}, err
 	}
 	listener := &runListener{sessionID: input.SessionID, subscription: subscription, pending: make(map[uint64]runner.RunEvent)}
 	unlisten, err := events.Subscribe(s.events, listener.receive)
 	if err != nil {
-		subscription.close()
+		subscription.Close()
 		return SubscribeResult{}, err
 	}
-	subscription.setCleanup(unlisten)
+	subscription.SetCleanup(unlisten)
 	// 监听已生效，读快照期间的事件先缓冲；响应入队之后连接才发送它们。
 	// 快照已含当时的账本、草稿和运行状态；Client 用 updateSeq / Entry.ID 丢掉重叠。
 	snapshot, err := s.harnessProduct.Snapshot(input.SessionID)
 	if err != nil {
-		subscription.close()
+		subscription.Close()
 		return SubscribeResult{}, methodError(err)
 	}
 	listener.start(snapshot)
-	return SubscribeResult{SubscriptionID: subscription.id, Snapshot: snapshot}, nil
+	return SubscribeResult{SubscriptionID: subscription.ID(), Snapshot: snapshot}, nil
+}
+
+type runSubscription interface {
+	Done() <-chan struct{}
+	Notify(string, any)
+	Disconnect()
 }
 
 type runListener struct {
 	sessionID    string
-	subscription *subscription
+	subscription runSubscription
 
 	// 内核同步回调可以重入；这里只整理本订阅的发送顺序，不反压 Runner。
 	mu      sync.Mutex
@@ -108,11 +118,13 @@ func (l *runListener) receive(_ context.Context, event runner.RunEvent) error {
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.subscription.connection.ctx.Err() != nil {
+	select {
+	case <-l.subscription.Done():
 		return nil
+	default:
 	}
 	if l.ready && event.SeqEpoch != l.epoch {
-		l.subscription.connection.disconnect()
+		l.subscription.Disconnect()
 		return nil
 	}
 	if event.UpdateSeq <= l.through {
@@ -122,8 +134,8 @@ func (l *runListener) receive(_ context.Context, event runner.RunEvent) error {
 	if l.ready {
 		l.flush()
 	}
-	if len(l.pending) > queueLimit {
-		l.subscription.connection.disconnect()
+	if len(l.pending) > runEventBufferLimit {
+		l.subscription.Disconnect()
 	}
 	return nil
 }
@@ -136,7 +148,7 @@ func (l *runListener) start(snapshot harness.Snapshot) {
 	l.through = snapshot.UpdateSeq
 	for seq, event := range l.pending {
 		if event.SeqEpoch != l.epoch {
-			l.subscription.connection.disconnect()
+			l.subscription.Disconnect()
 			return
 		}
 		if seq <= l.through {
@@ -155,6 +167,6 @@ func (l *runListener) flush() {
 		}
 		delete(l.pending, event.UpdateSeq)
 		l.through = event.UpdateSeq
-		l.subscription.notify("harness/run/event", event)
+		l.subscription.Notify("harness/run/event", event)
 	}
 }

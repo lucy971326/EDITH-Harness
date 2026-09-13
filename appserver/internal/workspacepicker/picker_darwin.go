@@ -1,6 +1,6 @@
 //go:build darwin
 
-package appserver
+package workspacepicker
 
 import (
 	"context"
@@ -10,19 +10,19 @@ import (
 	"strings"
 )
 
-func chooseWorkspace(ctx context.Context) (string, error) {
+func Pick(ctx context.Context) (string, error) {
 	command := exec.CommandContext(ctx, "osascript", "-e", `POSIX path of (choose folder with prompt "选择工作区目录")`)
 	body, err := command.Output()
 	if err != nil {
 		var exitError *exec.ExitError
 		if errors.As(err, &exitError) && strings.Contains(string(exitError.Stderr), "User canceled") {
-			return "", errWorkspaceCanceled
+			return "", ErrCanceled
 		}
 		return "", fmt.Errorf("run osascript: %w", err)
 	}
 	path := strings.TrimSpace(string(body))
 	if path == "" {
-		return "", errWorkspaceCanceled
+		return "", ErrCanceled
 	}
 	return path, nil
 }

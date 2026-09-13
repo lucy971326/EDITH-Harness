@@ -48,15 +48,15 @@ func (s *Server) BindHarness(product *harness.Product, registry *events.Registry
 	if err != nil {
 		return err
 	}
-	err = Register(s, updateSettingsMethod, s.handleUpdateSettings)
+	err = registerSession(s, updateSettingsMethod, func(input UpdateSettingsParams) string { return input.SessionID }, s.handleUpdateSettings)
 	if err != nil {
 		return err
 	}
-	err = Register(s, forkMethod, s.handleFork)
+	err = registerSession(s, forkMethod, func(input ForkParams) string { return input.SessionID }, s.handleFork)
 	if err != nil {
 		return err
 	}
-	err = Register(s, sendMethod, s.handleSend)
+	err = registerSession(s, sendMethod, func(input SendParams) string { return input.SessionID }, s.handleSend)
 	if err != nil {
 		return err
 	}

@@ -33,6 +33,11 @@ const sample = "test/call"
 
 const validInput = `{"name":"ok","mode":"read","items":[{"value":"x"}],"at":"2026-09-07T10:00:00Z"}`
 
+type sessionCallInput struct {
+	SessionID string `json:"sessionID" jsonschema:"minLength=1"`
+	Name      string `json:"name"`
+}
+
 func TestContractRegistration(t *testing.T) {
 	s := New()
 	handler := func(context.Context, contractInput) (contractOutput, error) { return contractOutput{Value: "ok"}, nil }
@@ -52,12 +57,12 @@ func TestContractRegistration(t *testing.T) {
 	if err == nil {
 		t.Fatal("empty name accepted")
 	}
-	_, _, err = compileMethod[string, contractOutput]("scalar")
+	err = Register(s, "scalar", func(context.Context, string) (contractOutput, error) { return contractOutput{}, nil })
 	if err == nil {
 		t.Fatal("non-object contract accepted")
 	}
 	// 无效正则是一个编译期契约错误，不应等到调用时暴露。
-	_, _, err = compileMethod[invalidPattern, contractOutput]("invalid")
+	err = Register(s, "invalid", func(context.Context, invalidPattern) (contractOutput, error) { return contractOutput{}, nil })
 	if err == nil {
 		t.Fatal("invalid schema accepted")
 	}
@@ -158,6 +163,67 @@ func TestConcurrentCalls(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+func TestSessionWritesAreOrderedButControlCallIsDirect(t *testing.T) {
+	server := New()
+	firstStarted := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	secondStarted := make(chan struct{})
+	controlCalled := make(chan struct{})
+	err := registerSession(server, "session/write", func(input sessionCallInput) string { return input.SessionID }, func(_ context.Context, input sessionCallInput) (struct{}, error) {
+		if input.Name == "first" {
+			close(firstStarted)
+			<-releaseFirst
+		} else {
+			close(secondStarted)
+		}
+		return struct{}{}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = Register(server, "session/control", func(context.Context, sessionCallInput) (struct{}, error) {
+		close(controlCalled)
+		return struct{}{}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	firstDone := make(chan error, 1)
+	go func() {
+		_, callErr := server.Call(context.Background(), "session/write", json.RawMessage(`{"sessionID":"a","name":"first"}`))
+		firstDone <- callErr
+	}()
+	<-firstStarted
+	secondDone := make(chan error, 1)
+	go func() {
+		_, callErr := server.Call(context.Background(), "session/write", json.RawMessage(`{"sessionID":"a","name":"second"}`))
+		secondDone <- callErr
+	}()
+
+	_, err = server.Call(context.Background(), "session/control", json.RawMessage(`{"sessionID":"a","name":"stop"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-controlCalled:
+	case <-time.After(time.Second):
+		t.Fatal("control call waited behind the session queue")
+	}
+	select {
+	case <-secondStarted:
+		t.Fatal("same-session write overtook the first")
+	default:
+	}
+	close(releaseFirst)
+	if err = <-firstDone; err != nil {
+		t.Fatal(err)
+	}
+	if err = <-secondDone; err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestCloseRejectsNewCallsAndWaitsForAcceptedCall(t *testing.T) {

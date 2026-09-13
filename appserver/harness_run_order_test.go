@@ -9,12 +9,23 @@ import (
 	"harness/products/harness"
 )
 
+type testRunSubscription struct {
+	ctx           context.Context
+	cancel        context.CancelFunc
+	notifications chan runner.RunEvent
+}
+
+func (s *testRunSubscription) Done() <-chan struct{} { return s.ctx.Done() }
+func (s *testRunSubscription) Disconnect()           { s.cancel() }
+func (s *testRunSubscription) Notify(_ string, event any) {
+	s.notifications <- event.(runner.RunEvent)
+}
+
 func newOrderTestListener(t *testing.T) *runListener {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	connection := &connection{ctx: ctx, cancel: cancel, notifications: make(chan notification, queueLimit)}
-	subscription := &subscription{connection: connection, active: true}
+	subscription := &testRunSubscription{ctx: ctx, cancel: cancel, notifications: make(chan runner.RunEvent, runEventBufferLimit)}
 	return &runListener{sessionID: "s", subscription: subscription, pending: make(map[uint64]runner.RunEvent)}
 }
 
@@ -42,8 +53,7 @@ func TestRunListenerOrdersReentrantEvents(t *testing.T) {
 	}
 	for _, seq := range []uint64{4, 5} {
 		select {
-		case item := <-listener.subscription.connection.notifications:
-			event := item.params.(subscriptionEvent).Event.(runner.RunEvent)
+		case event := <-(listener.subscription.(*testRunSubscription)).notifications:
 			if event.UpdateSeq != seq {
 				t.Fatalf("seq=%d, want %d", event.UpdateSeq, seq)
 			}
@@ -60,7 +70,7 @@ func TestRunListenerSnapshotBoundaryAndDuplicate(t *testing.T) {
 	}
 	listener.start(harness.Snapshot{SeqEpoch: "epoch", UpdateSeq: 5})
 	listener.receive(context.Background(), runner.RunEvent{SessionID: "s", SeqEpoch: "epoch", UpdateSeq: 6})
-	if len(listener.subscription.connection.notifications) != 1 || listener.through != 6 || len(listener.pending) != 0 {
+	if len(listener.subscription.(*testRunSubscription).notifications) != 1 || listener.through != 6 || len(listener.pending) != 0 {
 		t.Fatalf("boundary/duplicate mismatch: %+v", listener)
 	}
 }
@@ -72,11 +82,11 @@ func TestRunListenerBoundedGapAndEpoch(t *testing.T) {
 		if epochChanged {
 			listener.receive(context.Background(), runner.RunEvent{SessionID: "s", SeqEpoch: "other", UpdateSeq: 1})
 		} else {
-			for seq := uint64(2); seq <= queueLimit+2; seq++ {
+			for seq := uint64(2); seq <= runEventBufferLimit+2; seq++ {
 				listener.receive(context.Background(), runner.RunEvent{SessionID: "s", SeqEpoch: "epoch", UpdateSeq: seq})
 			}
 		}
-		if listener.subscription.connection.ctx.Err() == nil {
+		if listener.subscription.(*testRunSubscription).ctx.Err() == nil {
 			t.Fatal("invalid stream did not disconnect")
 		}
 	}

@@ -1,6 +1,6 @@
 //go:build windows
 
-package appserver
+package workspacepicker
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 func TestWindowsPickerAlreadyCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := chooseWorkspace(ctx)
+	_, err := Pick(ctx)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected cancellation before opening, got %v", err)
 	}
@@ -30,7 +30,7 @@ func TestWindowsPickerNativeCancellation(t *testing.T) {
 			defer cancel()
 			done := make(chan error, 1)
 			go func() {
-				_, err := chooseWorkspace(ctx)
+				_, err := Pick(ctx)
 				done <- err
 			}()
 			select {

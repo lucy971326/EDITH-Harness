@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+
+	"harness/appserver/internal/workspacepicker"
 )
 
 const selectWorkspaceMethod = "workspace/select"
@@ -24,8 +26,8 @@ func (s *Server) registerWorkspaceSelect() error {
 }
 
 func (s *Server) handleSelectWorkspace(ctx context.Context, _ SelectWorkspaceParams) (SelectWorkspaceResult, error) {
-	workspace, err := selectWorkspace(ctx)
-	if errors.Is(err, errWorkspaceCanceled) {
+	workspace, err := s.workspacePicker(ctx)
+	if errors.Is(err, workspacepicker.ErrCanceled) {
 		return SelectWorkspaceResult{Canceled: true}, nil
 	}
 	if err != nil {

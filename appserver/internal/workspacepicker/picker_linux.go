@@ -1,6 +1,6 @@
 //go:build linux
 
-package appserver
+package workspacepicker
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-func chooseWorkspace(ctx context.Context) (string, error) {
+func Pick(ctx context.Context) (string, error) {
 	for _, picker := range []struct {
 		name string
 		args []string
@@ -27,13 +27,13 @@ func chooseWorkspace(ctx context.Context) (string, error) {
 		if err != nil {
 			var exitError *exec.ExitError
 			if errors.As(err, &exitError) && exitError.ExitCode() == 1 {
-				return "", errWorkspaceCanceled
+				return "", ErrCanceled
 			}
 			return "", fmt.Errorf("run %s: %w", picker.name, err)
 		}
 		path := strings.TrimSpace(string(body))
 		if path == "" {
-			return "", errWorkspaceCanceled
+			return "", ErrCanceled
 		}
 		return path, nil
 	}

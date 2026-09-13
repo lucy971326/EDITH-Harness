@@ -32,6 +32,7 @@ appserver.Server
 ## 后台边界
 
 - appserver 是 Host 外的接入层，只管理静态页面、协议、连接、订阅与清理，不拥有业务状态。
+- appserver 的类型化方法、单 Client 连接和系统目录选择已分成三个内部职责；同一 Session 的写请求排队，不同 Session 并行，Stop 直接执行。
 - HarnessProduct 负责创建、发送、Steer、停止、快照、分叉和命令准入。
 - Runner 负责运行、草稿、事件、取消与收尾；模型输出及整批工具结果组成不可插入的步骤，Steer 与协作回报只在随后检查点按序落账。连接断开不停止已接受的 Run。
 - Stop 是独立的 Context 取消；它不进账本，并可取消仍在等待检查点的 Steer。
@@ -88,6 +89,6 @@ Vite 构建产物位于 `clients/web/dist/`，由 Go embed 进入二进制但不
 
 ## 本次验证
 
-- `make build` 与 `make test` 通过：全量 Go test/vet、相关 race、契约检查、真实网络验收和 50 项前端测试均通过。
-- 正式 `make run` 从 `8888` 加载嵌入页面；浏览器确认同源 RPC 已连接、真实会话可打开且 Markdown 正常渲染。
+- appserver 职责整理后，`make agent-check` 与 `make test` 通过：全量 Go test/vet、相关 race、契约检查、真实网络验收和 50 项前端测试均通过。
+- Windows 与 Linux 的原生目录选择包交叉编译通过。
 - 未调用付费模型、修改用户会话或执行用户工具。

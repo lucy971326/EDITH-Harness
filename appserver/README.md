@@ -1,38 +1,43 @@
 # appserver
 
-> Harness 的网络门卫：接请求、做校验、转交业务、发回结果。
+> Harness 的网络前台：验明请求，交给真正负责业务的人，再把结果送回去。
 
 ```text
-Browser / Client
-       ↓ WebSocket + JSON-RPC
-   appserver
-       ├─ Harness 请求 → products/harness
-       └─ 公共请求    → Agent / Model / Skill / Command
+Client → WebSocket → clientconn → rpc.Registry → 具名 Handler
+                                                ├→ HarnessProduct
+                                                └→ 公共内核服务
 ```
 
-## 从哪里读
+## 三块基础设施
 
 ```text
-server.go         Server 依赖、方法表与调用分发
-listener.go       HTTP 监听的启动和关闭
-lifecycle.go      工作准入、关闭广播与收尾等待
-websocket.go      页面/RPC 分流、WebSocket 握手与消息流适配
-connection.go     单个 Client 的协议状态、通知与订阅
-harness.go        Harness 方法登记与处理
-harness_run.go    Run 的订阅和事件转发
-harness_types.go  Harness 网络参数与结果
+internal/rpc/              方法登记、Schema 校验、Session 写请求排队
+internal/clientconn/       一个 Client 的初始化、通知、订阅、断线清理
+internal/workspacepicker/  macOS / Linux / Windows 原生目录选择
+```
+
+它们不拥有 Session、Run、设置或账本。
+
+## 根目录怎么读
+
+```text
+server.go         唯一 Server 与方法调用入口
+listener.go       HTTP 服务启动、关闭
+lifecycle.go      整个 Server 的准入与收尾
+websocket.go      静态页面 /rpc 分流与 WebSocket 适配
+harness*.go       Harness 产品接口
 agents.go 等      公共服务接口
+workspace.go      目录选择的网络接口
 ```
+
+## 并发只记三句话
 
 ```text
-listener → websocket → connection → Server.Call → 具体处理方法
-              │
-              └─ lifecycle 统一保证关闭安全
+同一 Session 写请求：排队
+不同 Session：        并行
+Stop：                直接执行
 ```
 
-## 边界
-
-- 做：协议、Schema 校验、Origin 安全、连接和订阅清理。
-- 不做：聊天业务、账本存储、运行决策。
-- `websocket.go` 不直接操作锁；并发规则集中在 `lifecycle.go`。
-- 断开连接不会停止已接受的 Run。
+- Connection 断开只清自己的网络资源，不停止已接受的 Run。
+- 每个订阅只在自己的响应写出后开放通知。
+- 慢 Client 直接断开，不能反压 Runner。

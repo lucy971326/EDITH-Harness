@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sync"
 
+	internalrpc "harness/appserver/internal/rpc"
+	"harness/appserver/internal/workspacepicker"
 	"harness/kernel/agents"
 	"harness/kernel/commands"
 	"harness/kernel/events"
@@ -17,16 +19,16 @@ import (
 // 活对象。应用唯一的接入服务，拥有方法表、页面监听和当前连接。
 type Server struct {
 	// 产品入口与公共能力；业务状态由产品和内核管理。
-	harnessProduct *harness.Product
-	events         *events.Registry
-	models         *llm.Client
-	agents         *agents.Service
-	skills         skills.Skills
-	commands       commands.Commands
+	harnessProduct  *harness.Product
+	events          *events.Registry
+	models          *llm.Client
+	agents          *agents.Service
+	skills          skills.Skills
+	commands        commands.Commands
+	workspacePicker workspacepicker.Picker
 
-	// 对外方法。
-	methodsMu sync.RWMutex
-	methods   map[string]registeredMethod
+	// 对外方法及同一 Session 的写请求顺序。
+	methods *internalrpc.Registry
 
 	// 服务生命周期。
 	lifecycle serverLifecycle
@@ -37,14 +39,12 @@ type Server struct {
 	listener serverListener
 }
 
-// 契约。登记表中的处理函数，已绑定运行时校验与类型转换。
-type registeredMethod func(context.Context, json.RawMessage) (json.RawMessage, error)
-
 // New 创建空服务；不启动监听、模型或后台任务。
 func New() *Server {
 	return &Server{
-		methods:   make(map[string]registeredMethod),
-		lifecycle: newServerLifecycle(),
+		methods:         internalrpc.NewRegistry(),
+		workspacePicker: workspacepicker.Pick,
+		lifecycle:       newServerLifecycle(),
 	}
 }
 
@@ -53,47 +53,41 @@ func Register[Input, Output any](server *Server, name string, handler func(conte
 	if server == nil || handler == nil {
 		return fmt.Errorf("appserver: nil server or handler")
 	}
-	inputSchema, outputSchema, err := compileMethod[Input, Output](name)
-	if err != nil {
-		return err
-	}
-	method := boundMethod[Input, Output]{
-		handler:      handler,
-		inputSchema:  inputSchema,
-		outputSchema: outputSchema,
-	}
-
 	if !server.lifecycle.begin() {
 		return fmt.Errorf("appserver: registration is closed")
 	}
 	defer server.lifecycle.end()
+	return internalrpc.Register(server.methods, name, handler)
+}
 
-	server.methodsMu.Lock()
-	defer server.methodsMu.Unlock()
-	if _, exists := server.methods[name]; exists {
-		return fmt.Errorf("appserver: duplicate method %q", name)
+// registerSession 只用于确实需要按 Session 排序的写方法。
+func registerSession[Input, Output any](server *Server, name string, sessionKey func(Input) string, handler func(context.Context, Input) (Output, error)) error {
+	if server == nil || handler == nil || sessionKey == nil {
+		return fmt.Errorf("appserver: nil server, handler or session key")
 	}
-	server.methods[name] = method.Call
-	return nil
+	if !server.lifecycle.begin() {
+		return fmt.Errorf("appserver: registration is closed")
+	}
+	defer server.lifecycle.end()
+	return internalrpc.RegisterSession(server.methods, name, sessionKey, handler)
 }
 
 // Call 校验并分发一次进程内请求，不自动重试。
 func (s *Server) Call(ctx context.Context, name string, params json.RawMessage) (json.RawMessage, error) {
+	return s.prepareCall(ctx, name, params)()
+}
+
+// prepareCall 在网络接收协程中完成校验与排队；返回的函数等待业务结果。
+func (s *Server) prepareCall(ctx context.Context, name string, params json.RawMessage) internalrpc.PreparedCall {
 	if !s.lifecycle.begin() {
-		return nil, &Error{CodeConflict, "server is not accepting calls", nil}
-	}
-	defer s.lifecycle.end()
-
-	s.methodsMu.RLock()
-	handler, exists := s.methods[name]
-	s.methodsMu.RUnlock()
-	if !exists {
-		return nil, &Error{CodeUnknownMethod, "unknown method", nil}
+		return func() (json.RawMessage, error) {
+			return nil, &Error{Code: CodeConflict, Message: "server is not accepting calls"}
+		}
 	}
 
-	err := ctx.Err()
-	if err != nil {
-		return nil, &Error{CodeInternal, "request cancelled", err}
+	call := s.methods.Prepare(ctx, name, params)
+	return func() (json.RawMessage, error) {
+		defer s.lifecycle.end()
+		return call()
 	}
-	return handler(ctx, params)
 }

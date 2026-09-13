@@ -44,7 +44,7 @@ func (s *Server) BindCommands(service commands.Commands) error {
 	if err := Register(s, commandListMethod, s.handleCommandList); err != nil {
 		return err
 	}
-	return Register(s, commandCallMethod, s.handleCommandCall)
+	return registerSession(s, commandCallMethod, func(input CommandCallParams) string { return input.SessionID }, s.handleCommandCall)
 }
 
 func (s *Server) handleCommandList(_ context.Context, _ CommandListParams) (CommandListResult, error) {

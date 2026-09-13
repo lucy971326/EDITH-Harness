@@ -1,6 +1,6 @@
 //go:build windows
 
-package appserver
+package workspacepicker
 
 import (
 	"context"
@@ -63,7 +63,7 @@ type comObject struct {
 	vtable *[32]uintptr
 }
 
-func chooseWorkspace(ctx context.Context) (string, error) {
+func Pick(ctx context.Context) (string, error) {
 	err := ctx.Err()
 	if err != nil {
 		return "", err
@@ -118,7 +118,7 @@ func chooseWorkspace(ctx context.Context) (string, error) {
 		return "", err
 	}
 	if uint32(hr) == hresultCanceled {
-		return "", errWorkspaceCanceled
+		return "", ErrCanceled
 	}
 	if uint32(hr) != 0 {
 		return "", fmt.Errorf("IFileOpenDialog.Show: 0x%x", uint32(hr))

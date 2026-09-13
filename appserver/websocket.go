@@ -9,6 +9,8 @@ import (
 	"net/netip"
 	"time"
 
+	"harness/appserver/internal/clientconn"
+
 	"github.com/coder/websocket"
 )
 
@@ -53,8 +55,8 @@ func (s *Server) serveRPC(w http.ResponseWriter, request *http.Request) {
 	}
 	socket.SetReadLimit(maxRPCMessageBytes)
 	stream := &websocketObjectStream{ctx: request.Context(), socket: socket}
-	connection := newConnection(s.lifecycle.context(), stream, s)
-	connection.run()
+	connection := clientconn.New(s.lifecycle.context(), stream, s.prepareCall)
+	connection.Run()
 }
 
 // websocketObjectStream 只把 coder/websocket 消息交给 JSON-RPC 库。

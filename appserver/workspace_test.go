@@ -9,10 +9,11 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"harness/appserver/internal/workspacepicker"
 )
 
 func TestSelectWorkspaceSuccessCancelAndFailure(t *testing.T) {
-	t.Cleanup(func() { selectWorkspace = chooseWorkspace })
 	server := New()
 	t.Cleanup(func() { _ = server.Close() })
 	err := server.registerWorkspaceSelect()
@@ -21,25 +22,25 @@ func TestSelectWorkspaceSuccessCancelAndFailure(t *testing.T) {
 	}
 
 	workspace := t.TempDir()
-	selectWorkspace = func(context.Context) (string, error) { return workspace, nil }
+	server.workspacePicker = func(context.Context) (string, error) { return workspace, nil }
 	raw, err := server.Call(context.Background(), selectWorkspaceMethod, json.RawMessage(`{}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertSelectResult(t, raw, false, filepath.Clean(workspace))
 
-	selectWorkspace = func(context.Context) (string, error) { return "", errWorkspaceCanceled }
+	server.workspacePicker = func(context.Context) (string, error) { return "", workspacepicker.ErrCanceled }
 	raw, err = server.Call(context.Background(), selectWorkspaceMethod, json.RawMessage(`{}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertSelectResult(t, raw, true, "")
 
-	selectWorkspace = func(context.Context) (string, error) { return "", errors.New("picker unavailable") }
+	server.workspacePicker = func(context.Context) (string, error) { return "", errors.New("picker unavailable") }
 	_, err = server.Call(context.Background(), selectWorkspaceMethod, json.RawMessage(`{}`))
 	assertCode(t, err, CodeInternal)
 
-	selectWorkspace = func(context.Context) (string, error) { return "relative", nil }
+	server.workspacePicker = func(context.Context) (string, error) { return "relative", nil }
 	_, err = server.Call(context.Background(), selectWorkspaceMethod, json.RawMessage(`{}`))
 	assertCode(t, err, CodeInternal)
 
@@ -50,7 +51,6 @@ func TestSelectWorkspaceSuccessCancelAndFailure(t *testing.T) {
 }
 
 func TestSelectWorkspaceDoesNotCreateASession(t *testing.T) {
-	t.Cleanup(func() { selectWorkspace = chooseWorkspace })
 	server := New()
 	t.Cleanup(func() { _ = server.Close() })
 	err := server.registerWorkspaceSelect()
@@ -61,7 +61,7 @@ func TestSelectWorkspaceDoesNotCreateASession(t *testing.T) {
 		t.Fatal("workspace select must not require a product")
 	}
 	workspace := t.TempDir()
-	selectWorkspace = func(context.Context) (string, error) { return workspace, nil }
+	server.workspacePicker = func(context.Context) (string, error) { return workspace, nil }
 	raw, err := server.Call(context.Background(), selectWorkspaceMethod, json.RawMessage(`{}`))
 	if err != nil {
 		t.Fatal(err)
@@ -70,14 +70,13 @@ func TestSelectWorkspaceDoesNotCreateASession(t *testing.T) {
 }
 
 func TestSelectWorkspaceCancelDoesNotSurfaceAsRPCError(t *testing.T) {
-	t.Cleanup(func() { selectWorkspace = chooseWorkspace })
 	server := New()
 	t.Cleanup(func() { _ = server.Close() })
 	err := server.registerWorkspaceSelect()
 	if err != nil {
 		t.Fatal(err)
 	}
-	selectWorkspace = func(context.Context) (string, error) { return "", nil }
+	server.workspacePicker = func(context.Context) (string, error) { return "", nil }
 	raw, err := server.Call(context.Background(), selectWorkspaceMethod, json.RawMessage(`{}`))
 	if err != nil {
 		t.Fatal(err)
@@ -86,7 +85,6 @@ func TestSelectWorkspaceCancelDoesNotSurfaceAsRPCError(t *testing.T) {
 }
 
 func TestSelectWorkspaceConcurrentCalls(t *testing.T) {
-	t.Cleanup(func() { selectWorkspace = chooseWorkspace })
 	server := New()
 	t.Cleanup(func() { _ = server.Close() })
 	err := server.registerWorkspaceSelect()
@@ -95,7 +93,7 @@ func TestSelectWorkspaceConcurrentCalls(t *testing.T) {
 	}
 	workspace := t.TempDir()
 	var calls atomic.Int32
-	selectWorkspace = func(context.Context) (string, error) {
+	server.workspacePicker = func(context.Context) (string, error) {
 		calls.Add(1)
 		return workspace, nil
 	}
@@ -119,14 +117,13 @@ func TestSelectWorkspaceConcurrentCalls(t *testing.T) {
 }
 
 func TestSelectWorkspaceOverWebSocket(t *testing.T) {
-	t.Cleanup(func() { selectWorkspace = chooseWorkspace })
 	server := New()
 	err := server.registerWorkspaceSelect()
 	if err != nil {
 		t.Fatal(err)
 	}
 	workspace := t.TempDir()
-	selectWorkspace = func(context.Context) (string, error) { return workspace, nil }
+	server.workspacePicker = func(context.Context) (string, error) { return workspace, nil }
 	_, url := startTestSocket(t, server)
 	ws := dialTestSocket(t, url)
 	initializeSocket(t, ws)
@@ -136,7 +133,7 @@ func TestSelectWorkspaceOverWebSocket(t *testing.T) {
 	}
 	assertSelectResult(t, response.Result, false, filepath.Clean(workspace))
 
-	selectWorkspace = func(context.Context) (string, error) { return "", errWorkspaceCanceled }
+	server.workspacePicker = func(context.Context) (string, error) { return "", workspacepicker.ErrCanceled }
 	response = socketRequest(t, ws, `{"jsonrpc":"2.0","id":"cancel","method":"workspace/select","params":{}}`)
 	if response.Error != nil {
 		t.Fatal(response.Error)
@@ -145,7 +142,6 @@ func TestSelectWorkspaceOverWebSocket(t *testing.T) {
 }
 
 func TestSelectWorkspaceReturnsCanceledContext(t *testing.T) {
-	t.Cleanup(func() { selectWorkspace = chooseWorkspace })
 	server := New()
 	t.Cleanup(func() { _ = server.Close() })
 	err := server.registerWorkspaceSelect()
@@ -154,7 +150,7 @@ func TestSelectWorkspaceReturnsCanceledContext(t *testing.T) {
 	}
 	started := make(chan struct{})
 	ctx, cancel := context.WithCancel(context.Background())
-	selectWorkspace = func(ctx context.Context) (string, error) {
+	server.workspacePicker = func(ctx context.Context) (string, error) {
 		close(started)
 		<-ctx.Done()
 		return "", ctx.Err()
