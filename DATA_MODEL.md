@@ -8,10 +8,15 @@
 
 运行数据根目录固定为当前用户的 `~/.harness`，不写入项目目录。
 
+`persist` 是这棵目录的唯一底层读写入口：它提供按模块隔离的子目录视图、同步追加与原子替换。数据结构、校验、保存时机和恢复规则仍由数据主人负责。存储介质固定为本机文件，不配置 SQLite。
+
 ```text
 ~/.harness/
 ├─ config.yaml
 │  全局 LLM 配置
+│
+├─ mcp.json
+│  用户级 MCP Server 配置；项目级配置仍放在项目目录
 │
 ├─ agents/
 │  ├─ default.json
@@ -25,8 +30,8 @@
 │  Harness 内置 Skill；与用户可编辑内容分开
 │
 ├─ subagents/tasks/<task-id>.json
-│  委派关系、逐轮状态与结果位置、待投递通知；版本化 JSON 原子替换
-│  通知的 delivered 只在 Runner 确认父账本已有该消息 ID 后保存；失败保留待重试
+│  只保存 TaskID、父 Session、子 Session 和委派说明；v1 JSON 原子替换
+│  轮次、状态、结果和通知全部从子 Session 账本与 runs.json 派生
 │
 └─ sessions/<session-id>/
    ├─ messages.jsonl
@@ -71,10 +76,11 @@ Runner 运行结果
    重启把未收尾的 running 标为 interrupted，不自动续跑
 
 Subagents
-└─ 父子 Session 关系、稳定任务 ID、每轮 RunID 与结果 EntryID、错误和通知
+└─ 父子 Session 关系、稳定任务 ID 和委派说明
    子会话仍使用普通账本及 SessionSettings，但不进入普通聊天列表或空会话复用
-   重启只恢复记录，将未完成轮次标记中断，不自动启动
-   List 返回 TaskView 查询投影：按结果 EntryID 从子账本读取最终正文，不把正文重复存入任务 JSON
+   轮次、状态、错误和结果由子会话 messages.jsonl / runs.json 提供；Task 不重复保存
+   重启只恢复关系；Runner 将未完成轮次标记中断，不自动启动
+   List 返回 TaskView 查询投影；通知 ID 由 TaskID + 轮次稳定派生
    停止代次、被停止的父 RunID 与孩子停止标记仅在服务内存，拦截停止前的在途派生操作
    不另建协作级 Context；实际执行取消沿用 Runner，关闭仍由服务自身生命周期负责
 
@@ -127,6 +133,8 @@ Skill 正文
   保留在各自 Skill 目录的 SKILL.md 和相对资源中
   Prepare 只把摘要与 SKILL.md 绝对路径写入本轮提示词；模型按需使用已启用的普通 Tool 读取正文
 ```
+
+项目内 `.harness/`、`.mcp.json` 和工作区文件属于项目内容，由 Skill / MCP / machine 按其作用域读取，不属于用户数据根目录的持久化服务。
 
 ## 对话账本
 

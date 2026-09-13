@@ -95,7 +95,7 @@ func run() (result error) {
 	if err != nil {
 		return err
 	}
-	err = h.Install(mcptool.New(filepath.Join(dataDir, "mcp.json")))
+	err = h.Install(mcptool.New())
 	if err != nil {
 		return err
 	}
@@ -135,7 +135,7 @@ func run() (result error) {
 	if err != nil {
 		return err
 	}
-	err = h.Install(subagents.NewPlugin(dataDir))
+	err = h.Install(subagents.NewPlugin())
 	if err != nil {
 		return err
 	}

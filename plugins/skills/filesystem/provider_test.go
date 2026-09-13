@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"harness/kernel/machine"
+	"harness/kernel/persist"
 	kernskills "harness/kernel/skills"
 )
 
@@ -23,7 +24,7 @@ func TestProviderListsProjectAndUserRootsByPriority(t *testing.T) {
 	writeSkill(t, filepath.Join(workspace, ".harness", "skills", "shared"), "shared", "workspace harness")
 	writeSkill(t, filepath.Join(workspace, ".harness", "skills", "project-only"), "project-only", "project only")
 
-	provider := newProvider(testMachine{home: home})
+	provider := newTestProvider(t, filepath.Join(home, ".harness"), testMachine{home: home})
 	got, err := provider.List(workspace)
 	if err != nil {
 		t.Fatal(err)
@@ -54,7 +55,8 @@ func TestProviderListsProjectAndUserRootsByPriority(t *testing.T) {
 }
 
 func TestProviderIgnoresMissingRootsAndNonDirectories(t *testing.T) {
-	provider := newProvider(testMachine{home: t.TempDir()})
+	home := t.TempDir()
+	provider := newTestProvider(t, filepath.Join(home, ".harness"), testMachine{home: home})
 	got, err := provider.List("")
 	if err != nil {
 		t.Fatal(err)
@@ -80,7 +82,8 @@ func TestProviderRejectsBadCandidates(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			home := t.TempDir()
 			writeRawSkill(t, filepath.Join(home, ".harness", "skills", "good", "SKILL.md"), tt.body)
-			_, err := newProvider(testMachine{home: home}).List("")
+			provider := newTestProvider(t, filepath.Join(home, ".harness"), testMachine{home: home})
+			_, err := provider.List("")
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("List() error = %v, want %q", err, tt.want)
 			}
@@ -93,7 +96,8 @@ func TestProviderRejectsBadCandidates(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got, err := newProvider(testMachine{home: home}).List("")
+		provider := newTestProvider(t, filepath.Join(home, ".harness"), testMachine{home: home})
+		got, err := provider.List("")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -106,7 +110,8 @@ func TestProviderRejectsBadCandidates(t *testing.T) {
 func TestProviderAllowsUnknownFrontmatter(t *testing.T) {
 	home := t.TempDir()
 	writeRawSkill(t, filepath.Join(home, ".harness", "skills", "good", "SKILL.md"), "---\nname: good\ndescription: valid\nmetadata:\n  author: test\ncustom: [one, two]\n---\n# Instructions\n")
-	got, err := newProvider(testMachine{home: home}).List("")
+	provider := newTestProvider(t, filepath.Join(home, ".harness"), testMachine{home: home})
+	got, err := provider.List("")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,13 +136,23 @@ func TestProviderUsesCurrentMachinePaths(t *testing.T) {
 			skillFile: []byte("---\nname: remote-skill\ndescription: Remote Skill.\n---\nInstructions.\n"),
 		},
 	}
-	got, err := newProvider(m).List(workspace)
+	provider := newTestProvider(t, t.TempDir(), m)
+	got, err := provider.List(workspace)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(got) != 1 || got[0].Location != skillFile || got[0].Scope != kernskills.ScopeWorkspace {
 		t.Fatalf("List() = %#v", got)
 	}
+}
+
+func newTestProvider(t *testing.T, dataDir string, m machine.Machine) *Provider {
+	t.Helper()
+	files, err := persist.NewFiles(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return newProvider(m, files)
 }
 
 func writeSkill(t *testing.T, dir, name, description string) {

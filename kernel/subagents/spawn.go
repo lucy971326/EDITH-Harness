@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"harness/kernel/llm"
 	"harness/kernel/session"
@@ -112,36 +111,17 @@ func (s *Subagents) Spawn(ctx context.Context, input SpawnInput) (SpawnResult, e
 		return SpawnResult{}, err
 	}
 
-	now := time.Now().UTC()
-	task := Task{
+	record := TaskRecord{
 		Version:         currentTaskVersion,
 		ID:              taskID,
 		ParentSessionID: input.ParentSessionID,
-		ParentRunID:     input.ParentRunID,
 		ChildSessionID:  childSessionID,
-		AgentID:         chosenAgentID,
-		Model:           chosenModel,
-		ReasoningEffort: chosenEffort,
-		Workspace:       workspace,
 		Description:     input.Description,
-		Status:          StatusPending,
-		Turn:            1,
-		Turns: []TurnRecord{
-			{
-				Turn:      1,
-				Status:    StatusPending,
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
-		},
-		CreatedAt: now,
-		UpdatedAt: now,
 	}
 
 	coord := &taskCoord{
-		admission:    permit,
-		task:         task,
-		finalizingCh: make(chan struct{}),
+		admission: permit,
+		record:    record,
 	}
 	coord.mu.Lock()
 	defer coord.mu.Unlock()
@@ -156,16 +136,18 @@ func (s *Subagents) Spawn(ctx context.Context, input SpawnInput) (SpawnResult, e
 	s.coords[taskID] = coord
 	s.mu.Unlock()
 
-	// 关系先落盘，之后才能创建会话。coord.mu 覆盖整个创建过程，
-	// 因而 List / Send / 完成回调不会观察或覆盖半成品。
-	err = s.store.saveTask(coord.task)
+	// 关系先落盘，之后才能创建会话。coord.mu 使 List / Send 看不到半成品。
+	err = s.store.saveTask(coord.record)
 	if err != nil {
-		return SpawnResult{}, s.failTurn(coord, fmt.Errorf("%w: save initial task: %w", ErrPersistFailed, err))
+		s.mu.Lock()
+		s.forgetTaskLocked(record)
+		s.mu.Unlock()
+		return SpawnResult{}, fmt.Errorf("%w: save task relation: %w", ErrPersistFailed, err)
 	}
 
 	_, err = s.sessions.Create(childSessionID)
 	if err != nil {
-		return SpawnResult{}, s.failTurn(coord, fmt.Errorf("create child session: %w", err))
+		return SpawnResult{}, fmt.Errorf("create child session: %w", err)
 	}
 	err = s.settings.Put(childSessionID, settings.SessionSettings{
 		AgentID:         chosenAgentID,
@@ -174,7 +156,7 @@ func (s *Subagents) Spawn(ctx context.Context, input SpawnInput) (SpawnResult, e
 		Workspace:       workspace,
 	})
 	if err != nil {
-		return SpawnResult{}, s.failTurn(coord, fmt.Errorf("save child settings: %w", err))
+		return SpawnResult{}, fmt.Errorf("save child settings: %w", err)
 	}
 
 	runID, err := s.startTurn(coord, session.UserMessage{
@@ -184,4 +166,22 @@ func (s *Subagents) Spawn(ctx context.Context, input SpawnInput) (SpawnResult, e
 		return SpawnResult{}, err
 	}
 	return SpawnResult{TaskID: taskID, ChildSessionID: childSessionID, RunID: runID}, nil
+}
+
+func (s *Subagents) forgetTaskLocked(record TaskRecord) {
+	delete(s.childSessions, record.ChildSessionID)
+	delete(s.coords, record.ID)
+	ids := s.parentTasks[record.ParentSessionID]
+	for index, id := range ids {
+		if id != record.ID {
+			continue
+		}
+		ids = append(ids[:index], ids[index+1:]...)
+		break
+	}
+	if len(ids) == 0 {
+		delete(s.parentTasks, record.ParentSessionID)
+		return
+	}
+	s.parentTasks[record.ParentSessionID] = ids
 }

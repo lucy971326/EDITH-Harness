@@ -63,7 +63,7 @@ func (s *Subagents) childStartError(coord *taskCoord) error {
 }
 
 // onRunStarted 是最后一道启动检查，覆盖业务预检通过后、Runner 登记前发生的停止。
-// 不读取 coord.task，不等待它的磁盘锁，也不主动启动任何 Run。
+// 不读取子 Session 投影，不等待 coord.mu，也不主动启动任何 Run。
 func (s *Subagents) onRunStarted(event runner.RunEvent) error {
 	s.mu.Lock()
 	if taskID, child := s.childSessions[event.SessionID]; child {

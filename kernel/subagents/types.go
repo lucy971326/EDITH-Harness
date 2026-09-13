@@ -36,20 +36,17 @@ const (
 	StatusInterrupted TaskStatus = "interrupted"
 )
 
-// 数据。单轮运行记录。
+// 数据。从子 Session 运行记录派生的单轮状态。
 type TurnRecord struct {
 	Turn          int        `json:"turn"`
 	RunID         string     `json:"runID,omitempty"`
 	Status        TaskStatus `json:"status"`
 	ResultEntryID string     `json:"resultEntryID,omitempty"`
 	Error         string     `json:"error,omitempty"`
-	CreatedAt     time.Time  `json:"createdAt"`
-	UpdatedAt     time.Time  `json:"updatedAt"`
 }
 
-// 数据。协作通知与投递确认；消息正文从子账本读取。
+// 数据。从子 Run 派生的协作通知；是否投递以父账本为准。
 type Notification struct {
-	Delivered      bool       `json:"delivered,omitempty"`
 	NotificationID string     `json:"notificationID"`
 	TaskID         string     `json:"taskID"`
 	ChildSessionID string     `json:"childSessionID"`
@@ -58,36 +55,37 @@ type Notification struct {
 	Status         TaskStatus `json:"status"`
 	ResultEntryID  string     `json:"resultEntryID,omitempty"`
 	Error          string     `json:"error,omitempty"`
-	CreatedAt      time.Time  `json:"createdAt"`
 }
 
-// 数据。持久化任务记录。业务事实独立保存在 ~/.harness/subagents/tasks/<id>.json。
-type Task struct {
-	Version         int            `json:"version"`
-	ID              string         `json:"id"`
-	ParentSessionID string         `json:"parentSessionID"`
-	ParentRunID     string         `json:"parentRunID,omitempty"`
-	ChildSessionID  string         `json:"childSessionID"`
-	AgentID         string         `json:"agentID"`
-	Model           string         `json:"model"`
-	ReasoningEffort string         `json:"reasoningEffort"`
-	Workspace       string         `json:"workspace"`
-	Description     string         `json:"description"`
-	Status          TaskStatus     `json:"status"`
-	Turn            int            `json:"turn"`
-	CurrentRunID    string         `json:"currentRunID,omitempty"`
-	ResultEntryID   string         `json:"resultEntryID,omitempty"`
-	Error           string         `json:"error,omitempty"`
-	Turns           []TurnRecord   `json:"turns,omitempty"`
-	Notifications   []Notification `json:"notifications,omitempty"`
-	CreatedAt       time.Time      `json:"createdAt"`
-	UpdatedAt       time.Time      `json:"updatedAt"`
+// 数据。持久化的父子 Session 关系；不复制设置、运行和账本事实。
+type TaskRecord struct {
+	Version         int    `json:"version"`
+	ID              string `json:"id"`
+	ParentSessionID string `json:"parentSessionID"`
+	ChildSessionID  string `json:"childSessionID"`
+	Description     string `json:"description"`
 }
 
-// 数据。查询投影：任务记录加按账本位置读取的最终正文，不写入任务存储。
+// 数据。关系、子 Session 设置、运行与账本的只读查询投影。
 type TaskView struct {
-	Task
-	Results []TurnResult `json:"results"`
+	ID              string `json:"id"`
+	ParentSessionID string `json:"parentSessionID"`
+	ChildSessionID  string `json:"childSessionID"`
+	Description     string `json:"description"`
+
+	AgentID         string `json:"agentID,omitempty"`
+	Model           string `json:"model,omitempty"`
+	ReasoningEffort string `json:"reasoningEffort,omitempty"`
+	Workspace       string `json:"workspace,omitempty"`
+
+	Status        TaskStatus     `json:"status"`
+	Turn          int            `json:"turn"`
+	CurrentRunID  string         `json:"currentRunID,omitempty"`
+	ResultEntryID string         `json:"resultEntryID,omitempty"`
+	Error         string         `json:"error,omitempty"`
+	Turns         []TurnRecord   `json:"turns"`
+	Results       []TurnResult   `json:"results"`
+	Notifications []Notification `json:"notifications"`
 }
 
 // 数据。一轮已保存结果的正文查询，不包含中途推理或工具消息。

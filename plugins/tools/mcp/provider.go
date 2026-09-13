@@ -54,11 +54,7 @@ type Provider struct {
 	wg         sync.WaitGroup
 }
 
-func newProvider(ctx context.Context, userConfigPath string, launchDir string) (*Provider, error) {
-	config, _, err := readConfig(userConfigPath)
-	if err != nil {
-		return nil, err
-	}
+func newProvider(ctx context.Context, config configFile, launchDir string) (*Provider, error) {
 	specs, err := normalizeServers(config, launchDir)
 	if err != nil {
 		return nil, err

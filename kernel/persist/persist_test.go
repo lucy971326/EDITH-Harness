@@ -50,6 +50,34 @@ func TestInstall_twoKeysSameStore(t *testing.T) {
 	if !ok || ja != jp {
 		t.Fatal("want the same store on the agentStore key")
 	}
+	files, err := host.Resolve[*Files](h, "persist")
+	if err != nil || files != jp.files {
+		t.Fatal("want the shared file service")
+	}
+}
+
+func TestFilesScopeAppendAndRejectTraversal(t *testing.T) {
+	files, err := NewFiles(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	module, err := files.Scope("module")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := module.Write("state.jsonl", []byte("one\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := module.Append("state.jsonl", []byte("two\n")); err != nil {
+		t.Fatal(err)
+	}
+	data, err := module.Read("state.jsonl")
+	if err != nil || string(data) != "one\ntwo\n" {
+		t.Fatalf("Read() = %q, %v", data, err)
+	}
+	if _, err := files.Scope(".."); err == nil {
+		t.Fatal("Scope accepted traversal")
+	}
 }
 
 func TestAgentStore_roundTripListAndDelete(t *testing.T) {
@@ -271,11 +299,11 @@ func TestListRejectsMetaWhoseIDDoesNotMatchFilename(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := []byte(`{"id":"other","title":"新对话","createdAt":"2026-09-02T00:00:00Z"}`)
-	err = s.ensureSessionDir("expected")
+	files, err := s.files.Scope("sessions", "expected")
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = os.WriteFile(s.metaFile("expected"), body, 0o644)
+	err = files.Write("meta.json", body)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +336,15 @@ func TestSessionSettings_putFor(t *testing.T) {
 	if got != in {
 		t.Fatalf("got %+v", got)
 	}
-	if _, err := os.Stat(s.sessionSettingsFile("chat1")); err != nil {
+	files, err := s.sessionFiles("chat1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path, err := files.Path("settings.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("session settings file: %v", err)
 	}
 }
@@ -345,7 +381,7 @@ func TestSessionSettings_doesNotReadOldSetupFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = os.WriteFile(filepath.Join(s.dir, "chat1.setup.json"), []byte(`{"model":"old"}`), 0o644)
+	err = s.files.Write("chat1.setup.json", []byte(`{"model":"old"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -374,12 +410,12 @@ func TestBadID(t *testing.T) {
 		}
 	}
 
-	entries, err := os.ReadDir(s.dir)
+	entries, err := s.files.List()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(entries) != 0 {
-		t.Fatalf("wrote files for bad ids: %v", names(entries))
+		t.Fatalf("wrote files for bad ids: %v", entries)
 	}
 }
 

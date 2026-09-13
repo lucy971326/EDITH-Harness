@@ -151,10 +151,12 @@ func TestSnapshotDuringPersistHasNoDuplicateOrGap(t *testing.T) {
 	}}
 	fixture := newRunnerFixture(t, loop)
 	stop := make(chan struct{})
+	started := make(chan struct{})
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		first := true
 		for {
 			select {
 			case <-stop:
@@ -168,8 +170,13 @@ func TestSnapshotDuringPersistHasNoDuplicateOrGap(t *testing.T) {
 			mu.Lock()
 			snapshots = append(snapshots, view)
 			mu.Unlock()
+			if first {
+				close(started)
+				first = false
+			}
 		}
 	}()
+	<-started
 	err := fixture.runner.Run(context.Background(), "session-1", textInput("q"))
 	if err != nil {
 		t.Fatal(err)

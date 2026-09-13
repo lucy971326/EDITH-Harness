@@ -1,23 +1,18 @@
 package llm
 
 import (
-	"os"
 	"reflect"
 	"testing"
 
 	"github.com/zendev-sh/goai/provider"
 
 	"harness/kernel/host"
+	"harness/kernel/persist"
 	"harness/kernel/session"
 )
 
 func TestLoadConfig(t *testing.T) {
-	path := t.TempDir() + "/config.yaml"
-	if err := os.WriteFile(path, []byte("providers:\n  deepseek:\n    apiKey: secret\n    baseURL: https://example.com\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	config, err := readConfig(path)
+	config, err := parseConfig([]byte("providers:\n  deepseek:\n    apiKey: secret\n    baseURL: https://example.com\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,16 +23,19 @@ func TestLoadConfig(t *testing.T) {
 }
 
 func TestPluginStart(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	if err := os.Mkdir(home+"/.harness", 0o755); err != nil {
+	dataDir := t.TempDir()
+	files, err := persist.NewFiles(dataDir)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(home+"/.harness/config.yaml", []byte("providers:\n  deepseek:\n    apiKey: test-key\n"), 0o600); err != nil {
+	if err := files.Write("config.yaml", []byte("providers:\n  deepseek:\n    apiKey: test-key\n")); err != nil {
 		t.Fatal(err)
 	}
 
 	h := host.NewHost()
+	if err := h.Install(&persist.Plugin{Dir: dataDir}); err != nil {
+		t.Fatal(err)
+	}
 	plugin := &Plugin{}
 	if err := h.Install(plugin); err != nil {
 		t.Fatal(err)

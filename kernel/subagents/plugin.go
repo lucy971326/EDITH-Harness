@@ -2,12 +2,12 @@ package subagents
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"harness/kernel/agents"
 	"harness/kernel/events"
 	"harness/kernel/host"
 	"harness/kernel/llm"
+	"harness/kernel/persist"
 	"harness/kernel/runner"
 	"harness/kernel/session"
 	"harness/kernel/session/settings"
@@ -15,13 +15,12 @@ import (
 
 // 活对象。将 Subagents 服务挂到 Host 的 subagents 键。
 type Plugin struct {
-	dir       string
 	subagents *Subagents
 }
 
-// NewPlugin 创建 Subagents 插件，接收数据根目录（通常为 ~/.harness）。
-func NewPlugin(dir string) *Plugin {
-	return &Plugin{dir: dir}
+// NewPlugin 创建 Subagents 插件。
+func NewPlugin() *Plugin {
+	return &Plugin{}
 }
 
 func (p *Plugin) Name() string { return "subagents" }
@@ -48,12 +47,19 @@ func (p *Plugin) Start(h *host.Host) error {
 		return err
 	}
 
-	subagentsDir := filepath.Join(p.dir, "subagents")
+	files, err := host.Resolve[*persist.Files](h, "persist")
+	if err != nil {
+		return err
+	}
+	subagentFiles, err := files.Scope("subagents")
+	if err != nil {
+		return err
+	}
 	eventRegistry, err := host.Resolve[*events.Registry](h, "events")
 	if err != nil {
 		return err
 	}
-	s, err := NewSubagents(sessions, settingsStore, agentService, modelClient, runService, eventRegistry, subagentsDir)
+	s, err := NewSubagents(sessions, settingsStore, agentService, modelClient, runService, eventRegistry, subagentFiles)
 	if err != nil {
 		return fmt.Errorf("subagents plugin: new subagents: %w", err)
 	}

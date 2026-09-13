@@ -13,7 +13,7 @@ var (
 	_ config.Store                  = (*jsonl)(nil)
 )
 
-// 活对象。把同一份 jsonl 挂成三把键：账本、会话设置和 Agent 设置。
+// 活对象。提供固定文件存储，并挂出账本、会话设置和 Agent 设置契约。
 type Plugin struct {
 	Dir string
 }
@@ -21,10 +21,15 @@ type Plugin struct {
 func (p *Plugin) Name() string { return "persist" }
 
 func (p *Plugin) Start(h *host.Host) error {
-	s, err := openJSONL(p.Dir)
+	files, err := NewFiles(p.Dir)
 	if err != nil {
 		return err
 	}
+	err = h.RegisterService("persist", files)
+	if err != nil {
+		return err
+	}
+	s := newJSONL(files)
 	err = h.RegisterService("sessionPersistence", s)
 	if err != nil {
 		return err

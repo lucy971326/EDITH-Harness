@@ -3,31 +3,30 @@ package builtin
 import (
 	"fmt"
 
-	"harness/kernel/machine"
+	"harness/kernel/persist"
 	kernskills "harness/kernel/skills"
 )
-
-const skillCreatorLocation = ".harness/system/skills/skill-creator/SKILL.md"
 
 // 活对象。把内置 Skill 物化到当前用户目录的 Provider。
 type Provider struct {
 	location string
 }
 
-func newProvider(m machine.Machine, content []byte) (*Provider, error) {
-	if m == nil {
-		return nil, fmt.Errorf("skills-builtin: nil machine")
+func newProvider(files *persist.Files, content []byte) (*Provider, error) {
+	if files == nil {
+		return nil, fmt.Errorf("skills-builtin: nil persist")
 	}
-	home, err := m.HomeDir()
+	skillFiles, err := files.Scope("system", "skills", "skill-creator")
 	if err != nil {
-		return nil, fmt.Errorf("skills-builtin: home directory: %w", err)
+		return nil, err
 	}
-	if home == "" {
-		return nil, fmt.Errorf("skills-builtin: home directory is empty")
-	}
-	location := m.ResolvePath(home, skillCreatorLocation)
-	if err := m.WriteFile(location, content); err != nil {
+	err = skillFiles.Write("SKILL.md", content)
+	if err != nil {
 		return nil, fmt.Errorf("skills-builtin: materialize skill-creator: %w", err)
+	}
+	location, err := skillFiles.Path("SKILL.md")
+	if err != nil {
+		return nil, err
 	}
 	return &Provider{location: location}, nil
 }

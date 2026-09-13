@@ -62,12 +62,20 @@ func readConfig(path string) (configFile, bool, error) {
 	if err != nil {
 		return configFile{}, false, fmt.Errorf("read %s: %w", path, err)
 	}
+	config, err := parseConfig(data, path)
+	if err != nil {
+		return configFile{}, false, err
+	}
+	return config, true, nil
+}
+
+func parseConfig(data []byte, source string) (configFile, error) {
 	var config configFile
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
-	err = decoder.Decode(&config)
+	err := decoder.Decode(&config)
 	if err != nil {
-		return configFile{}, false, fmt.Errorf("parse %s: %w", path, err)
+		return configFile{}, fmt.Errorf("parse %s: %w", source, err)
 	}
 	var trailing any
 	err = decoder.Decode(&trailing)
@@ -75,12 +83,12 @@ func readConfig(path string) (configFile, bool, error) {
 		if err == nil {
 			err = fmt.Errorf("multiple JSON values")
 		}
-		return configFile{}, false, fmt.Errorf("parse %s: %w", path, err)
+		return configFile{}, fmt.Errorf("parse %s: %w", source, err)
 	}
 	if config.MCPServers == nil {
 		config.MCPServers = make(map[string]serverConfig)
 	}
-	return config, true, nil
+	return config, nil
 }
 
 func normalizeServers(config configFile, baseDir string) ([]serverSpec, error) {

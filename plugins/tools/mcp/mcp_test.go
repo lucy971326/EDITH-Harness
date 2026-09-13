@@ -43,7 +43,7 @@ func TestProvider_retriesFailedWorkspaceAndKeepsSuccessfulSnapshot(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := newProvider(t.Context(), filepath.Join(t.TempDir(), "missing.json"), workspace)
+	p, err := newProvider(t.Context(), configFile{}, workspace)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,11 @@ func TestProvider_userToolsJoinPrepareWithoutSelection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider, err := newProvider(context.Background(), userConfig, t.TempDir())
+	userSettings, _, err := readConfig(userConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := newProvider(context.Background(), userSettings, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +187,7 @@ func TestProvider_projectToolsAreAutomaticAndCallable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider, err := newProvider(context.Background(), filepath.Join(t.TempDir(), "missing.json"), workspace)
+	provider, err := newProvider(context.Background(), configFile{}, workspace)
 	if err != nil {
 		t.Fatal(err)
 	}

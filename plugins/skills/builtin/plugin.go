@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"harness/kernel/host"
-	"harness/kernel/machine"
+	"harness/kernel/persist"
 	kernskills "harness/kernel/skills"
 )
 
@@ -28,11 +28,11 @@ func (p *Plugin) Start(h *host.Host) error {
 	if err != nil {
 		return fmt.Errorf("skills-builtin: resolve skills: %w", err)
 	}
-	machineService, err := host.Resolve[machine.Machine](h, "machine")
+	files, err := host.Resolve[*persist.Files](h, "persist")
 	if err != nil {
-		return fmt.Errorf("skills-builtin: resolve machine: %w", err)
+		return fmt.Errorf("skills-builtin: resolve persist: %w", err)
 	}
-	p.provider, err = newProvider(machineService, skillCreator)
+	p.provider, err = newProvider(files, skillCreator)
 	if err != nil {
 		return err
 	}

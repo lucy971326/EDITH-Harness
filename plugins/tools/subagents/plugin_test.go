@@ -108,7 +108,7 @@ func newFixture(t *testing.T) fixture {
 	for _, plugin := range []host.Plugin{
 		&persist.Plugin{Dir: dataDir}, &session.Plugin{}, &llm.Plugin{},
 		tools.NewPlugin(), events.NewPlugin(), loops.NewPlugin(), skills.NewPlugin(),
-		agents.NewPlugin(), runner.NewPlugin(), delegation.NewPlugin(dataDir), New(),
+		agents.NewPlugin(), runner.NewPlugin(), delegation.NewPlugin(), New(),
 	} {
 		err = h.Install(plugin)
 		if err != nil {
@@ -442,31 +442,5 @@ func TestSendPublicationFailureDoesNotRepeatInput(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("input appended %d times", count)
-	}
-}
-
-func TestListKeepsRecordsWhenPersistenceFails(t *testing.T) {
-	f := newFixture(t)
-	child := decode[delegation.SpawnResult](t, f.call(t, "subagent_spawn", `{"description":"child"}`))
-	f.nextRun(t)
-	// HOME 由 fixture 指向测试临时目录，不触及用户数据。
-	path := filepath.Join(os.Getenv("HOME"), ".harness", "subagents", "tasks", child.TaskID+".json.tmp")
-	err := os.Mkdir(path, 0o700)
-	if err != nil {
-		t.Fatal(err)
-	}
-	f.loop.release <- struct{}{}
-	if !f.call(t, "subagent_wait", `{"taskIDs":["`+child.TaskID+`"]}`).IsError {
-		t.Fatal("wait hid persistence failure")
-	}
-	result := f.call(t, "subagent_list", "{}")
-	var value listResult
-	err = json.Unmarshal([]byte(result.Content), &value)
-	if err != nil || !result.IsError || value.Error == "" || len(value.Tasks) != 1 || value.Tasks[0].ID != child.TaskID {
-		t.Fatalf("list hid record or error: %+v, %v", result, err)
-	}
-	err = f.host.Close()
-	if err == nil {
-		t.Fatal("close hid persistence failure")
 	}
 }

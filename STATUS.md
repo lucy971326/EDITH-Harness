@@ -26,6 +26,7 @@ appserver.Server
 - 呈现：Snapshot 与事件共用一份投影；工作过程按账本结构同级展示说明、思考、工具和子任务回报，工具详情局部展开；支持 Markdown 清洗、最终回答及失败／停止状态。
 - 设置：模型与思考、SessionSettings、Agent 增删改及删除保护。
 - 操作：上下文用量、回答分叉、Skill 候选、命令候选与 compact。
+- 子任务：父子 Session 平级存储；Task v1 只保存关系，轮次、结果与通知从子会话和父账本投影。
 - 辅助工作区：平级外壳、开关、调宽及标签管理；文件、浏览器、终端内容尚未接入。
 
 ## 后台边界
@@ -64,11 +65,12 @@ Vite 构建产物位于 `clients/web/dist/`，由 Go embed 进入二进制但不
 ├─ skills/<skill>/SKILL.md
 ├─ system/skills/<skill>/SKILL.md
 ├─ sessions/<session-id>/{meta.json,messages.jsonl,settings.json,runs.json}
-├─ subagents/tasks/<task-id>.json
+├─ subagents/tasks/<task-id>.json   # 仅父子关系与委派说明；状态和结果来自子会话
 └─ mcp.json
 ```
 
 本机模型 Provider 仍在 `~/.harness/config.yaml` 配置。machine-local 直接操作本机文件和进程，没有沙箱与路径限制。
+`~/.harness` 固定使用本机文件存储；Session、Runner、Agent、LLM、MCP 用户配置、Skill 用户目录与内置 Skill、Subagents 共用 `persist` 的可靠文件读写，不提供 SQLite 切换。
 
 ## 后续范围
 

@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// Wait 等待任一指定任务的新完成通知；不消费协作正文，也不启动或停止 Run。
+// Wait 等待任一指定任务的新终态 Run；不消费协作正文，也不启停 Run。
 func (s *Subagents) Wait(ctx context.Context, parentSessionID string, input WaitInput) (WaitResponse, error) {
 	err := ctx.Err()
 	if err != nil {
@@ -16,6 +16,7 @@ func (s *Subagents) Wait(ctx context.Context, parentSessionID string, input Wait
 	if parentSessionID == "" || len(input.TaskIDs) == 0 || input.Timeout < 0 || input.Timeout > 600*time.Second {
 		return WaitResponse{}, fmt.Errorf("subagents: parent, task IDs and timeout between 0 and 600 seconds required")
 	}
+
 	s.mu.RLock()
 	if s.closed {
 		s.mu.RUnlock()
@@ -26,13 +27,15 @@ func (s *Subagents) Wait(ctx context.Context, parentSessionID string, input Wait
 	coords := make([]*taskCoord, 0, len(input.TaskIDs))
 	seenTasks := make(map[string]bool)
 	for _, id := range input.TaskIDs {
-		if !seenTasks[id] {
-			coords = append(coords, s.coords[id])
-			seenTasks[id] = true
+		if seenTasks[id] {
+			continue
 		}
+		coords = append(coords, s.coords[id])
+		seenTasks[id] = true
 	}
 	s.mu.RUnlock()
 	defer s.inFlight.Done()
+
 	seen := make(map[string]bool)
 	for _, id := range input.SeenNotificationIDs {
 		seen[id] = true
@@ -41,6 +44,8 @@ func (s *Subagents) Wait(ctx context.Context, parentSessionID string, input Wait
 	defer timer.Stop()
 	wakeReason := ""
 	targetTurns := make(map[*taskCoord]int)
+	targetSet := make(map[*taskCoord]bool)
+
 	for {
 		changed := s.changeSignal()
 		response := WaitResponse{Tasks: []WaitResult{}, Notifications: []WaitResult{}}
@@ -49,25 +54,30 @@ func (s *Subagents) Wait(ctx context.Context, parentSessionID string, input Wait
 				return WaitResponse{}, ErrTaskNotFound
 			}
 			coord.mu.Lock()
-			if coord.task.ParentSessionID != parentSessionID {
-				coord.mu.Unlock()
+			record := coord.record
+			deliveryErr := coord.deliveryErr
+			coord.mu.Unlock()
+			if record.ParentSessionID != parentSessionID {
 				return WaitResponse{}, ErrOwnershipMismatch
 			}
-			if targetTurns[coord] == 0 {
-				targetTurns[coord] = coord.task.Turn
+
+			projection, projectErr := s.projectTask(record)
+			if !targetSet[coord] {
+				targetTurns[coord] = projection.view.Turn
+				targetSet[coord] = true
 			}
-			res, pErr := makeWaitResult(coord.task, coord.task.Turn, coord.persistErr)
-			response.Tasks = append(response.Tasks, res)
-			for _, n := range coord.task.Notifications {
-				if n.Turn >= targetTurns[coord] && !seen[n.NotificationID] {
-					response.Notifications = append(response.Notifications, WaitResult{TaskID: n.TaskID, Status: n.Status, Turn: n.Turn, RunID: n.RunID, NotificationID: n.NotificationID, Error: n.Error})
+			response.Tasks = append(response.Tasks, makeWaitResult(projection.view))
+			for _, notification := range projection.notifications {
+				if notification.Turn < targetTurns[coord] || seen[notification.NotificationID] {
+					continue
 				}
+				response.Notifications = append(response.Notifications, waitResultFromNotification(notification))
 			}
-			coord.mu.Unlock()
-			if pErr != nil {
-				return response, fmt.Errorf("%w: %v", ErrPersistFailed, pErr)
+			if projectErr != nil || deliveryErr != nil {
+				return response, errors.Join(projectErr, deliveryErr)
 			}
 		}
+
 		if ctx.Err() != nil {
 			return response, ctx.Err()
 		}
@@ -107,20 +117,7 @@ func (s *Subagents) Wait(ctx context.Context, parentSessionID string, input Wait
 	}
 }
 
-func makeWaitResult(task Task, targetTurn int, persistErr error) (WaitResult, error) {
-	for i := len(task.Turns) - 1; i >= 0; i-- {
-		if task.Turns[i].Turn == targetTurn {
-			rec := task.Turns[i]
-			return WaitResult{
-				TaskID:        task.ID,
-				Status:        rec.Status,
-				Turn:          rec.Turn,
-				RunID:         rec.RunID,
-				ResultEntryID: rec.ResultEntryID,
-				Error:         rec.Error,
-			}, persistErr
-		}
-	}
+func makeWaitResult(task TaskView) WaitResult {
 	return WaitResult{
 		TaskID:        task.ID,
 		Status:        task.Status,
@@ -128,10 +125,22 @@ func makeWaitResult(task Task, targetTurn int, persistErr error) (WaitResult, er
 		RunID:         task.CurrentRunID,
 		ResultEntryID: task.ResultEntryID,
 		Error:         task.Error,
-	}, persistErr
+	}
 }
 
-// List 列出属于指定父会话的任务记录。严格统一锁序，不在持 s.mu 时等待 coord.mu。
+func waitResultFromNotification(notification Notification) WaitResult {
+	return WaitResult{
+		NotificationID: notification.NotificationID,
+		TaskID:         notification.TaskID,
+		Status:         notification.Status,
+		Turn:           notification.Turn,
+		RunID:          notification.RunID,
+		ResultEntryID:  notification.ResultEntryID,
+		Error:          notification.Error,
+	}
+}
+
+// List 列出属于指定父会话的关系，并从子 Session 即时投影状态与结果。
 func (s *Subagents) List(parentSessionID, taskID string) ([]TaskView, error) {
 	if parentSessionID == "" {
 		return nil, fmt.Errorf("subagents: empty parent session id")
@@ -143,13 +152,12 @@ func (s *Subagents) List(parentSessionID, taskID string) ([]TaskView, error) {
 		return nil, ErrClosed
 	}
 	s.inFlight.Add(1)
-	defer s.inFlight.Done()
-
 	var targetCoords []*taskCoord
 	if taskID != "" {
 		coord := s.coords[taskID]
 		if coord == nil {
 			s.mu.RUnlock()
+			s.inFlight.Done()
 			return nil, ErrTaskNotFound
 		}
 		targetCoords = []*taskCoord{coord}
@@ -163,35 +171,40 @@ func (s *Subagents) List(parentSessionID, taskID string) ([]TaskView, error) {
 		}
 	}
 	s.mu.RUnlock()
+	defer s.inFlight.Done()
 
 	out := make([]TaskView, 0, len(targetCoords))
-	var persistErrs []error
+	var queryErrs []error
 	for _, coord := range targetCoords {
 		coord.mu.Lock()
-		if coord.task.ParentSessionID != parentSessionID {
-			coord.mu.Unlock()
+		record := coord.record
+		deliveryErr := coord.deliveryErr
+		coord.mu.Unlock()
+		if record.ParentSessionID != parentSessionID {
 			if taskID != "" {
 				return nil, ErrTaskNotFound
 			}
 			continue
 		}
-		task := deepCopyTask(coord.task)
-		if coord.persistErr != nil {
-			persistErrs = append(persistErrs, fmt.Errorf("task %s persist error: %w", coord.task.ID, coord.persistErr))
+		projection, err := s.projectTask(record)
+		out = append(out, projection.view)
+		if err == nil {
+			setup, settingsErr := s.settings.For(record.ChildSessionID)
+			if settingsErr != nil {
+				err = fmt.Errorf("%w: %v", ErrTaskNotUsable, settingsErr)
+			} else {
+				out[len(out)-1].AgentID = setup.AgentID
+				out[len(out)-1].Model = setup.Model
+				out[len(out)-1].ReasoningEffort = setup.ReasoningEffort
+				out[len(out)-1].Workspace = setup.Workspace
+			}
 		}
-		if coord.deliveryErr != nil {
-			persistErrs = append(persistErrs, coord.deliveryErr)
-		}
-		coord.mu.Unlock()
-		results, err := s.readResults(task)
-		out = append(out, TaskView{Task: task, Results: results})
-		if err != nil {
-			persistErrs = append(persistErrs, err)
+		if err != nil || deliveryErr != nil {
+			queryErrs = append(queryErrs, errors.Join(err, deliveryErr))
 		}
 	}
-
-	if len(persistErrs) > 0 {
-		return out, errors.Join(persistErrs...)
+	if len(queryErrs) > 0 {
+		return out, errors.Join(queryErrs...)
 	}
 	return out, nil
 }

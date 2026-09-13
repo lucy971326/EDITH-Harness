@@ -6,6 +6,7 @@ import (
 
 	"harness/kernel/host"
 	"harness/kernel/machine"
+	"harness/kernel/persist"
 	kernskills "harness/kernel/skills"
 )
 
@@ -28,7 +29,11 @@ func (p *Plugin) Start(h *host.Host) error {
 	if err != nil {
 		return fmt.Errorf("skills-filesystem: resolve machine: %w", err)
 	}
-	p.provider = newProvider(machineService)
+	files, err := host.Resolve[*persist.Files](h, "persist")
+	if err != nil {
+		return fmt.Errorf("skills-filesystem: resolve persist: %w", err)
+	}
+	p.provider = newProvider(machineService, files)
 	if err := registry.Register(p.provider); err != nil {
 		p.provider = nil
 		return err

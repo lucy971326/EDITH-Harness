@@ -4,12 +4,11 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"harness/kernel/session"
 )
 
-// Send 向指定孩子追加要求：空闲时开启新轮次并先存意图，忙时 Steer 且报错时不盲目重发。
+// Send 向指定孩子追加要求：忙时 Steer，空闲时在同一子 Session 开启新 Run。
 func (s *Subagents) Send(ctx context.Context, parentSessionID, parentRunID, taskID string, input session.UserMessage) (SendResult, error) {
 	err := ctx.Err()
 	if err != nil {
@@ -42,10 +41,10 @@ func (s *Subagents) Send(ctx context.Context, parentSessionID, parentRunID, task
 	}
 	s.mu.RUnlock()
 	defer s.inFlight.Done()
-
 	if coord == nil {
 		return SendResult{}, ErrTaskNotFound
 	}
+
 	permit, err := s.admit(parentSessionID, parentRunID)
 	if err != nil {
 		return SendResult{}, err
@@ -53,106 +52,56 @@ func (s *Subagents) Send(ctx context.Context, parentSessionID, parentRunID, task
 
 	coord.mu.Lock()
 	defer coord.mu.Unlock()
+	if coord.record.ParentSessionID != parentSessionID {
+		return SendResult{}, ErrOwnershipMismatch
+	}
+	s.mu.RLock()
+	err = s.admissionErrorLocked(permit)
+	childStopped := coord.stopRequested
+	crossedChildStop := coord.stopGeneration != stopGeneration
+	s.mu.RUnlock()
+	if err != nil {
+		return SendResult{}, err
+	}
+	if crossedChildStop {
+		return SendResult{}, ErrTaskStopped
+	}
 
-	for {
-		if s.ctx.Err() != nil {
-			return SendResult{}, ErrClosed
-		}
-		if coord.task.ParentSessionID != parentSessionID {
-			return SendResult{}, ErrOwnershipMismatch
-		}
-		s.mu.RLock()
-		err = s.admissionErrorLocked(permit)
-		childStopped := coord.stopRequested
-		crossedChildStop := coord.stopGeneration != stopGeneration
-		s.mu.RUnlock()
-		if err != nil {
-			return SendResult{}, err
-		}
-		if crossedChildStop {
+	if live, active := s.runner.State(coord.record.ChildSessionID); active {
+		if childStopped {
 			return SendResult{}, ErrTaskStopped
 		}
-
-		// 检查是否有活跃的 handle
-		if coord.activeHandle != nil {
-			select {
-			case <-coord.activeHandle.Done():
-				// 旧 handle 已经结束运行，但后台 onRunFinished 可能仍在进行保存/收尾！
-				finCh := coord.finalizingCh
-				if finCh != nil {
-					select {
-					case <-finCh:
-						// 旧轮次已完成收尾
-						coord.activeHandle = nil
-					default:
-						// 旧轮次尚未完成收尾：释放锁等待收尾，绝不能锁内等待导致死锁！
-						coord.mu.Unlock()
-						select {
-						case <-finCh:
-						case <-s.ctx.Done():
-							coord.mu.Lock()
-							return SendResult{}, ErrClosed
-						case <-ctx.Done():
-							coord.mu.Lock()
-							return SendResult{}, ctx.Err()
-						}
-						coord.mu.Lock()
-						// 重新检查关闭状态
-						s.mu.RLock()
-						closed := s.closed
-						s.mu.RUnlock()
-						if closed {
-							return SendResult{}, ErrClosed
-						}
-						continue
-					}
-				} else {
-					coord.activeHandle = nil
-				}
-			default:
-				if childStopped {
-					return SendResult{}, ErrTaskStopped
-				}
-				// Steer 会等到孩子的安全检查点；等待期间不能占住任务锁或阻塞停止与收尾。
-				childSessionID := coord.task.ChildSessionID
-				childRunID := coord.activeHandle.RunID()
-				turn := coord.task.Turn
-				coord.mu.Unlock()
-				err := s.runner.SteerRun(childSessionID, childRunID, input)
-				coord.mu.Lock()
-				if err != nil {
-					// Steer 可能已经落账，报错时不能盲目重发。
-					return SendResult{}, fmt.Errorf("subagents: steer child run: %w", err)
-				}
-				return SendResult{
-					Turn:    turn,
-					RunID:   childRunID,
-					Steered: true,
-				}, nil
-			}
+		projection, projectErr := s.projectTask(coord.record)
+		if projectErr != nil {
+			return SendResult{}, projectErr
 		}
-		break
+		turn := projection.view.Turn
+		childSessionID := coord.record.ChildSessionID
+		coord.mu.Unlock()
+		err = s.runner.SteerRun(childSessionID, live.RunID, input)
+		coord.mu.Lock()
+		if err != nil {
+			// Steer 可能已落账，错误时不盲目重发。
+			return SendResult{}, fmt.Errorf("subagents: steer child run: %w", err)
+		}
+		return SendResult{Turn: turn, RunID: live.RunID, Steered: true}, nil
 	}
 
-	// 检查资源完整性：创建失败导致资源不全时明确报错
-	if coord.task.ChildSessionID == "" {
-		return SendResult{}, ErrTaskNotUsable
-	}
-	_, err = s.sessions.Get(coord.task.ChildSessionID)
+	// 子 Session 和设置是启动新 Run 的真实资源。
+	_, err = s.sessions.Get(coord.record.ChildSessionID)
 	if err != nil {
 		return SendResult{}, fmt.Errorf("%w: %v", ErrTaskNotUsable, err)
 	}
-	_, err = s.settings.For(coord.task.ChildSessionID)
+	_, err = s.settings.For(coord.record.ChildSessionID)
 	if err != nil {
 		return SendResult{}, fmt.Errorf("%w: %v", ErrTaskNotUsable, err)
 	}
-
-	// 若此前持久化失败，阻止盲目开启新轮
-	if coord.persistErr != nil {
-		return SendResult{}, fmt.Errorf("subagents: task %q in unpersisted error state: %w", taskID, coord.persistErr)
+	childView, err := s.runner.SessionView(coord.record.ChildSessionID)
+	if err != nil {
+		return SendResult{}, err
 	}
+	newTurn := len(childView.Runs) + 1
 
-	// 孩子当前处于空闲状态（正常完成 / 运行失败 / 取消 / 重启中断）：开启新轮次
 	s.mu.Lock()
 	err = s.admissionErrorLocked(permit)
 	if err == nil && coord.stopGeneration != stopGeneration {
@@ -166,34 +115,7 @@ func (s *Subagents) Send(ctx context.Context, parentSessionID, parentRunID, task
 	if err != nil {
 		return SendResult{}, err
 	}
-	newTurn := coord.task.Turn + 1
 
-	// 新轮次先保存 starting/pending 意图（保证重启知道未完成）
-	coord.task.Turn = newTurn
-	coord.task.Status = StatusPending
-	coord.task.CurrentRunID = ""
-	coord.task.ResultEntryID = ""
-	coord.task.Error = ""
-	now := time.Now().UTC()
-	coord.task.UpdatedAt = now
-
-	turnRec := TurnRecord{
-		Turn:      newTurn,
-		Status:    StatusPending,
-		CreatedAt: now,
-		UpdatedAt: now,
-	}
-	coord.task.Turns = append(coord.task.Turns, turnRec)
-
-	taskToSave := deepCopyTask(coord.task)
-	defer s.signalChange()
-	coord.finalizingCh = make(chan struct{})
-	coord.persistErr = nil
-
-	err = s.store.saveTask(taskToSave)
-	if err != nil {
-		return SendResult{}, s.failTurn(coord, fmt.Errorf("%w: save pending turn: %w", ErrPersistFailed, err))
-	}
 	runID, err := s.startTurn(coord, input)
 	if err != nil {
 		return SendResult{}, err

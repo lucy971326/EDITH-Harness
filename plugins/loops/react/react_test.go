@@ -547,7 +547,7 @@ func TestReactCancellingOneOfMultipleToolCallsPersistsEveryResult(t *testing.T) 
 		}
 	})
 	for _, plugin := range []host.Plugin{
-		&persist.Plugin{Dir: t.TempDir()},
+		&persist.Plugin{Dir: home + "/.harness"},
 		&session.Plugin{},
 		&llm.Plugin{},
 		tools.NewPlugin(),
@@ -767,7 +767,7 @@ func installReact(t *testing.T, baseURL string) (loops.Loop, tools.Tools) {
 			t.Error(err)
 		}
 	})
-	for _, plugin := range []host.Plugin{&llm.Plugin{}, tools.NewPlugin(), loops.NewPlugin(), New()} {
+	for _, plugin := range []host.Plugin{&persist.Plugin{Dir: home + "/.harness"}, &llm.Plugin{}, tools.NewPlugin(), loops.NewPlugin(), New()} {
 		if err := h.Install(plugin); err != nil {
 			t.Fatal(err)
 		}

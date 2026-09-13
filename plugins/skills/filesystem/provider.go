@@ -13,6 +13,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"harness/kernel/machine"
+	"harness/kernel/persist"
 	kernskills "harness/kernel/skills"
 )
 
@@ -21,11 +22,12 @@ var skillNamePattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 // 活对象。使用 machine 扫描本机 Skill 根目录的 Provider。
 type Provider struct {
 	machine machine.Machine
+	files   *persist.Files
 }
 
 // newProvider 造一个文件系统 Skill Provider。
-func newProvider(m machine.Machine) *Provider {
-	return &Provider{machine: m}
+func newProvider(m machine.Machine, files *persist.Files) *Provider {
+	return &Provider{machine: m, files: files}
 }
 
 // Name 返回此 Provider 的稳定名称。
@@ -33,8 +35,8 @@ func (p *Provider) Name() string { return "filesystem" }
 
 // List 按项目优先、同层 .harness 优先的顺序发现 Skill。
 func (p *Provider) List(workspace string) ([]kernskills.Skill, error) {
-	if p == nil || p.machine == nil {
-		return nil, fmt.Errorf("skills-filesystem: nil machine")
+	if p == nil || p.machine == nil || p.files == nil {
+		return nil, fmt.Errorf("skills-filesystem: missing dependency")
 	}
 	home, err := p.machine.HomeDir()
 	if err != nil {
@@ -51,14 +53,18 @@ func (p *Provider) List(workspace string) ([]kernskills.Skill, error) {
 			root{path: p.machine.ResolvePath(workspace, ".agents/skills"), scope: kernskills.ScopeWorkspace},
 		)
 	}
+	userSkills, err := p.files.Scope("skills")
+	if err != nil {
+		return nil, err
+	}
 	roots = append(roots,
-		root{path: p.machine.ResolvePath(home, ".harness/skills"), scope: kernskills.ScopeUser},
+		root{files: userSkills, scope: kernskills.ScopeUser},
 		root{path: p.machine.ResolvePath(home, ".agents/skills"), scope: kernskills.ScopeUser},
 	)
 
 	found := make(map[string]kernskills.Skill)
 	for _, candidateRoot := range roots {
-		entries, err := p.machine.ReadDir(candidateRoot.path)
+		entries, err := p.readRoot(candidateRoot)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				continue
@@ -72,10 +78,9 @@ func (p *Provider) List(workspace string) ([]kernskills.Skill, error) {
 			if !entry.IsDir {
 				continue
 			}
-			skillDir := p.machine.ResolvePath(candidateRoot.path, entry.Name)
-			skill, ok, err := p.readSkill(skillDir, entry.Name, candidateRoot.scope)
+			skill, ok, err := p.readSkill(candidateRoot, entry.Name)
 			if err != nil {
-				return nil, fmt.Errorf("skills-filesystem: %q: %w", skillDir, err)
+				return nil, fmt.Errorf("skills-filesystem: skill %q: %w", entry.Name, err)
 			}
 			if !ok {
 				continue
@@ -100,12 +105,58 @@ func (p *Provider) List(workspace string) ([]kernskills.Skill, error) {
 // 数据。一个待扫描的 Skill 根及其作用域。
 type root struct {
 	path  string
+	files *persist.Files
 	scope kernskills.Scope
 }
 
-func (p *Provider) readSkill(skillDir, directoryName string, scope kernskills.Scope) (kernskills.Skill, bool, error) {
-	path := p.machine.ResolvePath(skillDir, "SKILL.md")
-	data, err := p.machine.ReadFile(path)
+type rootEntry struct {
+	Name  string
+	IsDir bool
+}
+
+func (p *Provider) readRoot(candidate root) ([]rootEntry, error) {
+	if candidate.files != nil {
+		entries, err := candidate.files.List()
+		if err != nil {
+			return nil, err
+		}
+		out := make([]rootEntry, 0, len(entries))
+		for _, entry := range entries {
+			out = append(out, rootEntry{Name: entry.Name, IsDir: entry.IsDir})
+		}
+		return out, nil
+	}
+
+	entries, err := p.machine.ReadDir(candidate.path)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]rootEntry, 0, len(entries))
+	for _, entry := range entries {
+		out = append(out, rootEntry{Name: entry.Name, IsDir: entry.IsDir})
+	}
+	return out, nil
+}
+
+func (p *Provider) readSkill(candidate root, directoryName string) (kernskills.Skill, bool, error) {
+	var path string
+	var data []byte
+	var err error
+	if candidate.files != nil {
+		skillFiles, scopeErr := candidate.files.Scope(directoryName)
+		if scopeErr != nil {
+			return kernskills.Skill{}, false, scopeErr
+		}
+		data, err = skillFiles.Read("SKILL.md")
+		path, scopeErr = skillFiles.Path("SKILL.md")
+		if scopeErr != nil {
+			return kernskills.Skill{}, false, scopeErr
+		}
+	} else {
+		skillDir := p.machine.ResolvePath(candidate.path, directoryName)
+		path = p.machine.ResolvePath(skillDir, "SKILL.md")
+		data, err = p.machine.ReadFile(path)
+	}
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return kernskills.Skill{}, false, nil
@@ -130,7 +181,7 @@ func (p *Provider) readSkill(skillDir, directoryName string, scope kernskills.Sc
 		Name:        name,
 		Description: description,
 		Location:    path,
-		Scope:       scope,
+		Scope:       candidate.scope,
 	}, true, nil
 }
 

@@ -3,17 +3,17 @@ package persist
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 )
 
 // 活对象。jsonl 账本和 SessionSettings 的实现。
 type jsonl struct {
-	dir string
-	mu  sync.Mutex
+	files *Files
+	mu    sync.Mutex
 }
 
 func checkID(id string) error {
@@ -27,30 +27,19 @@ func checkID(id string) error {
 }
 
 func openJSONL(dir string) (*jsonl, error) {
-	if dir == "" {
-		return nil, fmt.Errorf("persist: empty dir")
-	}
-	err := os.MkdirAll(dir, 0o755)
+	files, err := NewFiles(dir)
 	if err != nil {
 		return nil, err
 	}
-	return &jsonl{dir: dir}, nil
+	return newJSONL(files), nil
 }
 
-func (s *jsonl) treeFile(id string) string {
-	return filepath.Join(s.sessionDir(id), "messages.jsonl")
+func newJSONL(files *Files) *jsonl {
+	return &jsonl{files: files}
 }
 
-func (s *jsonl) metaFile(id string) string {
-	return filepath.Join(s.sessionDir(id), "meta.json")
-}
-
-func (s *jsonl) sessionDir(id string) string {
-	return filepath.Join(s.dir, "sessions", id)
-}
-
-func (s *jsonl) ensureSessionDir(id string) error {
-	return os.MkdirAll(s.sessionDir(id), 0o755)
+func (s *jsonl) sessionFiles(id string) (*Files, error) {
+	return s.files.Scope("sessions", id)
 }
 
 func (s *jsonl) Load(id string) (*Tree, error) {
@@ -62,7 +51,11 @@ func (s *jsonl) Load(id string) (*Tree, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	b, err := os.ReadFile(s.treeFile(id))
+	files, err := s.sessionFiles(id)
+	if err != nil {
+		return nil, err
+	}
+	b, err := files.Read("messages.jsonl")
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +87,7 @@ func (s *jsonl) Save(id string, tree *Tree) error {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	err = s.ensureSessionDir(id)
+	files, err := s.sessionFiles(id)
 	if err != nil {
 		return err
 	}
@@ -109,17 +102,7 @@ func (s *jsonl) Save(id string, tree *Tree) error {
 		buf.WriteByte('\n')
 	}
 
-	path := s.treeFile(id)
-	tmp := path + ".tmp"
-	err = os.WriteFile(tmp, buf.Bytes(), 0o644)
-	if err != nil {
-		return err
-	}
-	err = os.Rename(tmp, path)
-	if err != nil {
-		return err
-	}
-	return nil
+	return files.Write("messages.jsonl", buf.Bytes())
 }
 
 func (s *jsonl) LoadMeta(id string) (Meta, error) {
@@ -131,7 +114,11 @@ func (s *jsonl) LoadMeta(id string) (Meta, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	body, err := os.ReadFile(s.metaFile(id))
+	files, err := s.sessionFiles(id)
+	if err != nil {
+		return Meta{}, err
+	}
+	body, err := files.Read("meta.json")
 	if err != nil {
 		return Meta{}, err
 	}
@@ -164,18 +151,11 @@ func (s *jsonl) SaveMeta(meta Meta) error {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	err = s.ensureSessionDir(meta.ID)
+	files, err := s.sessionFiles(meta.ID)
 	if err != nil {
 		return err
 	}
-
-	path := s.metaFile(meta.ID)
-	tmp := path + ".tmp"
-	err = os.WriteFile(tmp, body, 0o644)
-	if err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return files.Write("meta.json", body)
 }
 
 func (s *jsonl) DeleteMeta(id string) error {
@@ -187,23 +167,39 @@ func (s *jsonl) DeleteMeta(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return os.Remove(s.metaFile(id))
+	files, err := s.sessionFiles(id)
+	if err != nil {
+		return err
+	}
+	return files.Remove("meta.json")
 }
 
 func (s *jsonl) List() ([]Meta, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	matches, err := filepath.Glob(filepath.Join(s.dir, "sessions", "*", "meta.json"))
+	sessions, err := s.files.Scope("sessions")
 	if err != nil {
 		return nil, err
 	}
-
-	out := make([]Meta, 0, len(matches))
-	for _, path := range matches {
-		name := filepath.Base(path)
-		expectedID := filepath.Base(filepath.Dir(path))
-		body, err := os.ReadFile(path)
+	entries, err := sessions.List()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Meta, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir {
+			continue
+		}
+		expectedID := entry.Name
+		files, err := sessions.Scope(expectedID)
+		if err != nil {
+			return nil, err
+		}
+		body, err := files.Read("meta.json")
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -217,7 +213,7 @@ func (s *jsonl) List() ([]Meta, error) {
 			return nil, err
 		}
 		if meta.ID != expectedID {
-			return nil, fmt.Errorf("persist: session meta %q has id %q", name, meta.ID)
+			return nil, fmt.Errorf("persist: session meta %q has id %q", expectedID, meta.ID)
 		}
 		out = append(out, meta)
 	}
@@ -235,7 +231,7 @@ func (s *jsonl) Add(id string, node Node) error {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	err = s.ensureSessionDir(id)
+	files, err := s.sessionFiles(id)
 	if err != nil {
 		return err
 	}
@@ -245,25 +241,7 @@ func (s *jsonl) Add(id string, node Node) error {
 		return err
 	}
 
-	f, err := os.OpenFile(s.treeFile(id), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	_, err = f.Write(append(line, '\n'))
-	if err != nil {
-		return err
-	}
-	err = f.Sync()
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (s *jsonl) runRecordsFile(id string) string {
-	return filepath.Join(s.sessionDir(id), "runs.json")
+	return files.Append("messages.jsonl", append(line, '\n'))
 }
 
 func (s *jsonl) LoadRunRecords(id string) ([]byte, error) {
@@ -275,7 +253,11 @@ func (s *jsonl) LoadRunRecords(id string) ([]byte, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	body, err := os.ReadFile(s.runRecordsFile(id))
+	files, err := s.sessionFiles(id)
+	if err != nil {
+		return nil, err
+	}
+	body, err := files.Read("runs.json")
 	if err != nil {
 		return nil, err
 	}
@@ -293,17 +275,9 @@ func (s *jsonl) SaveRunRecords(id string, body []byte) error {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	err = s.ensureSessionDir(id)
+	files, err := s.sessionFiles(id)
 	if err != nil {
 		return err
 	}
-
-	path := s.runRecordsFile(id)
-	tmp := path + ".tmp"
-	err = os.WriteFile(tmp, body, 0o644)
-	if err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return os.Rename(tmp, path)
+	return files.Write("runs.json", body)
 }

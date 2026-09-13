@@ -3,16 +3,15 @@ package subagents
 import (
 	"context"
 	"errors"
-	"os"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"harness/kernel/agents"
 	"harness/kernel/events"
 	"harness/kernel/loops"
+	"harness/kernel/persist"
 	"harness/kernel/runner"
 	"harness/kernel/session"
 	"harness/kernel/session/settings"
@@ -78,9 +77,17 @@ func TestCompletedChildrenEnterParentAtCheckpointOnce(t *testing.T) {
 	}
 	f.loop.release()
 	f.loop.release()
-	response, err := f.subagents.Wait(context.Background(), parent.SessionID, WaitInput{TaskIDs: []string{first.TaskID, second.TaskID}, Timeout: time.Second})
-	if err != nil || response.Reason != "completed" || len(response.Notifications) != 2 {
-		t.Fatalf("wait: %+v, %v", response, err)
+	var notifications []WaitResult
+	for len(notifications) < 2 {
+		seen := make([]string, 0, len(notifications))
+		for _, item := range notifications {
+			seen = append(seen, item.NotificationID)
+		}
+		response, err := f.subagents.Wait(context.Background(), parent.SessionID, WaitInput{TaskIDs: []string{first.TaskID, second.TaskID}, SeenNotificationIDs: seen, Timeout: time.Second})
+		if err != nil || response.Reason != "completed" || len(response.Notifications) == 0 {
+			t.Fatalf("wait: %+v, %v", response, err)
+		}
+		notifications = append(notifications, response.Notifications...)
 	}
 	if entries := collaborationEntries(t, f, parent.SessionID); len(entries) != 0 {
 		t.Fatalf("notification entered ledger before checkpoint: %+v", entries)
@@ -108,10 +115,10 @@ func TestCompletedChildrenEnterParentAtCheckpointOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	var seen []string
-	for _, item := range response.Notifications {
+	for _, item := range notifications {
 		seen = append(seen, item.NotificationID)
 	}
-	response, err = f.subagents.Wait(context.Background(), parent.SessionID, WaitInput{TaskIDs: []string{first.TaskID, second.TaskID}, SeenNotificationIDs: seen, Timeout: 10 * time.Millisecond, InputSignal: parent.InputSignal()})
+	response, err := f.subagents.Wait(context.Background(), parent.SessionID, WaitInput{TaskIDs: []string{first.TaskID, second.TaskID}, SeenNotificationIDs: seen, Timeout: 10 * time.Millisecond, InputSignal: parent.InputSignal()})
 	if err != nil || response.Reason != "timeout" || len(response.Notifications) != 0 {
 		t.Fatalf("seen completion woke wait: %+v, %v", response, err)
 	}
@@ -145,16 +152,16 @@ func TestFinalCheckpointRetainsNotificationUntilUserStarts(t *testing.T) {
 	if _, active := f.runner.State(parent.SessionID); active {
 		t.Fatal("notification automatically started idle parent")
 	}
-	task, err := f.subagents.store.loadTask(child.TaskID)
-	if err != nil || task.Notifications[0].Delivered {
-		t.Fatalf("pending notification lost: %+v, %v", task, err)
-	}
 	// 模拟服务重启：只恢复记录，直到用户明确启动父会话才接收。
 	err = f.subagents.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
-	recovered, err := NewSubagents(f.sessions, f.settings, f.subagents.agents, f.subagents.models, f.runner, f.events, filepath.Dir(f.subagents.store.dir))
+	files, err := persist.NewFiles(filepath.Dir(f.subagents.store.dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	recovered, err := NewSubagents(f.sessions, f.settings, f.subagents.agents, f.subagents.models, f.runner, f.events, files)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,92 +190,6 @@ func TestFinalCheckpointRetainsNotificationUntilUserStarts(t *testing.T) {
 	f.loop.releaseParent()
 	if next.Wait().Err != nil {
 		t.Fatal("next parent run failed")
-	}
-}
-
-func TestNotificationIdentityMustMatchStoredTurn(t *testing.T) {
-	f := newSubagentsFixture(t)
-	defer f.host.Close()
-	_, parent := notificationParent(t, f)
-	child := notificationChild(t, f, parent)
-	f.loop.release()
-	_, err := f.subagents.Wait(context.Background(), parent.SessionID, WaitInput{TaskIDs: []string{child.TaskID}, Timeout: time.Second})
-	if err != nil {
-		t.Fatal(err)
-	}
-	task, err := f.subagents.store.loadTask(child.TaskID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, mutate := range []func(*Task){
-		func(task *Task) { task.Notifications[0].NotificationID = "other" },
-		func(task *Task) { task.Notifications[0].ChildSessionID = "other" },
-		func(task *Task) { task.Notifications[0].RunID = "other" },
-		func(task *Task) { task.Notifications[0].Turn = 2 },
-		func(task *Task) { task.Notifications[0].Status = StatusRunning },
-		func(task *Task) { task.Notifications = append(task.Notifications, task.Notifications[0]) },
-	} {
-		broken := deepCopyTask(task)
-		mutate(&broken)
-		err = validateTask(broken, task.ID)
-		if !errors.Is(err, ErrInvalidTaskData) {
-			t.Fatalf("invalid notification accepted: %+v, %v", broken.Notifications, err)
-		}
-	}
-}
-
-func TestNotificationAcknowledgmentFailureRetriesWithoutDuplicate(t *testing.T) {
-	f := newSubagentsFixture(t)
-	defer f.host.Close()
-	_, parent := notificationParent(t, f)
-	child := notificationChild(t, f, parent)
-	blockedPath := filepath.Join(f.subagents.store.dir, child.TaskID+".json.tmp")
-	var publications atomic.Int32
-	_, err := events.Subscribe(f.events, func(_ context.Context, event runner.RunEvent) error {
-		if event.Entry == nil || event.Entry.Message.Role != session.RoleCollaboration {
-			return nil
-		}
-		publications.Add(1)
-		return os.Mkdir(blockedPath, 0700)
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	f.loop.release()
-	_, err = f.subagents.Wait(context.Background(), parent.SessionID, WaitInput{TaskIDs: []string{child.TaskID}, Timeout: time.Second})
-	if err != nil {
-		t.Fatal(err)
-	}
-	messages, err := parent.Checkpoint(context.Background(), loops.CheckpointContinue)
-	if err != nil || len(messages) != 1 {
-		t.Fatalf("checkpoint: %+v, %v", messages, err)
-	}
-	err = f.subagents.deliver(parent.SessionID)
-	if err == nil {
-		t.Fatal("acknowledgment save failure hidden")
-	}
-	tasks, listErr := f.subagents.List(parent.SessionID, child.TaskID)
-	if listErr == nil || tasks[0].Notifications[0].Delivered {
-		t.Fatalf("failed ack reported confirmed: %+v, %v", tasks, listErr)
-	}
-	err = os.Remove(blockedPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = f.subagents.deliver(parent.SessionID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if publications.Load() != 1 || len(collaborationEntries(t, f, parent.SessionID)) != 1 {
-		t.Fatal("retry injected duplicate input")
-	}
-	task, err := f.subagents.store.loadTask(child.TaskID)
-	if err != nil || !task.Notifications[0].Delivered {
-		t.Fatalf("retry not confirmed: %+v, %v", task, err)
-	}
-	_, err = f.subagents.List(parent.SessionID, child.TaskID)
-	if err != nil {
-		t.Fatal("resolved delivery error remained", err)
 	}
 }
 

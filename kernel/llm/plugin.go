@@ -1,6 +1,9 @@
 package llm
 
-import "harness/kernel/host"
+import (
+	"harness/kernel/host"
+	"harness/kernel/persist"
+)
 
 // 活对象。启动时读取本机配置，构造并挂上 LLM Client。
 type Plugin struct {
@@ -10,7 +13,11 @@ type Plugin struct {
 func (p *Plugin) Name() string { return "llm" }
 
 func (p *Plugin) Start(h *host.Host) error {
-	config, err := loadConfig()
+	files, err := host.Resolve[*persist.Files](h, "persist")
+	if err != nil {
+		return err
+	}
+	config, err := loadConfig(files)
 	if err != nil {
 		return err
 	}

@@ -3,34 +3,40 @@ package persist
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
+	"strings"
 
 	"harness/kernel/agents/config"
 )
 
-func (s *jsonl) agentFile(id string) string {
-	return filepath.Join(s.dir, "agents", id+".json")
+func (s *jsonl) agentFiles() (*Files, error) {
+	return s.files.Scope("agents")
 }
 
 func (s *jsonl) ListAgents() ([]config.Agent, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	paths, err := filepath.Glob(filepath.Join(s.dir, "agents", "*.json"))
+	files, err := s.agentFiles()
 	if err != nil {
 		return nil, err
 	}
-	out := make([]config.Agent, 0, len(paths))
-	for _, path := range paths {
-		b, err := os.ReadFile(path)
+	entries, err := files.List()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]config.Agent, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir || !strings.HasSuffix(entry.Name, ".json") {
+			continue
+		}
+		b, err := files.Read(entry.Name)
 		if err != nil {
 			return nil, err
 		}
 		var agent config.Agent
 		if err := json.Unmarshal(b, &agent); err != nil {
-			return nil, fmt.Errorf("persist: agent %q: %w", filepath.Base(path), err)
+			return nil, fmt.Errorf("persist: agent %q: %w", entry.Name, err)
 		}
 		out = append(out, agent)
 	}
@@ -48,7 +54,11 @@ func (s *jsonl) ForAgent(id string) (config.Agent, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	b, err := os.ReadFile(s.agentFile(id))
+	files, err := s.agentFiles()
+	if err != nil {
+		return config.Agent{}, err
+	}
+	b, err := files.Read(id + ".json")
 	if err != nil {
 		return config.Agent{}, err
 	}
@@ -71,19 +81,11 @@ func (s *jsonl) PutAgent(agent config.Agent) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	path := s.agentFile(agent.ID)
-	err = os.MkdirAll(filepath.Dir(path), 0o755)
+	files, err := s.agentFiles()
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		return err
-	}
-	return nil
+	return files.Write(agent.ID+".json", b)
 }
 
 func (s *jsonl) DeleteAgent(id string) error {
@@ -93,5 +95,9 @@ func (s *jsonl) DeleteAgent(id string) error {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return os.Remove(s.agentFile(id))
+	files, err := s.agentFiles()
+	if err != nil {
+		return err
+	}
+	return files.Remove(id + ".json")
 }

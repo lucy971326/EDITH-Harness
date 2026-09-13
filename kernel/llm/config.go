@@ -2,10 +2,9 @@ package llm
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 
 	"gopkg.in/yaml.v3"
+	"harness/kernel/persist"
 )
 
 // 数据。本机部署配置。API key 只放本地 YAML，不进 models.json。
@@ -19,20 +18,15 @@ type providerConfig struct {
 	BaseURL string `yaml:"baseURL"`
 }
 
-func loadConfig() (config, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return config{}, fmt.Errorf("llm: find home: %w", err)
-	}
-	return readConfig(filepath.Join(home, ".harness", "config.yaml"))
-}
-
-func readConfig(path string) (config, error) {
-	body, err := os.ReadFile(path)
+func loadConfig(files *persist.Files) (config, error) {
+	body, err := files.Read("config.yaml")
 	if err != nil {
 		return config{}, fmt.Errorf("llm: read config: %w", err)
 	}
+	return parseConfig(body)
+}
 
+func parseConfig(body []byte) (config, error) {
 	var out config
 	if err := yaml.Unmarshal(body, &out); err != nil {
 		return config{}, fmt.Errorf("llm: parse config: %w", err)

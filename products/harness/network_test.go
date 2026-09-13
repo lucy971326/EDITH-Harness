@@ -140,7 +140,7 @@ func newNetworkHost(t *testing.T, data string) (*host.Host, *appserver.Server, *
 	server := appserver.New()
 	t.Cleanup(func() { _ = h.Close() })
 	t.Cleanup(func() { _ = server.Close() })
-	plugins := []host.Plugin{&persist.Plugin{Dir: data}, &session.Plugin{}, &llm.Plugin{}, machinelocal.New(), events.NewPlugin(), tools.NewPlugin(), loops.NewPlugin(), react.New(), skills.NewPlugin(), skillsbuiltin.New(), skillsfilesystem.New(), agents.NewPlugin(), commands.NewPlugin(), runner.NewPlugin(), compactcmd.New(), subagents.NewPlugin(data), harness.NewPlugin()}
+	plugins := []host.Plugin{&persist.Plugin{Dir: data}, &session.Plugin{}, &llm.Plugin{}, machinelocal.New(), events.NewPlugin(), tools.NewPlugin(), loops.NewPlugin(), react.New(), skills.NewPlugin(), skillsbuiltin.New(), skillsfilesystem.New(), agents.NewPlugin(), commands.NewPlugin(), runner.NewPlugin(), compactcmd.New(), subagents.NewPlugin(), harness.NewPlugin()}
 	for _, plugin := range plugins {
 		err := h.Install(plugin)
 		if err != nil {
