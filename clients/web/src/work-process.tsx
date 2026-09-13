@@ -11,6 +11,7 @@ import {
   LoaderCircle,
   Copy,
   Brain,
+  Bot,
   GitBranch,
 } from "./icons";
 import { MessageMarkdown } from "./message-markdown";
@@ -76,17 +77,34 @@ function Detail({
   item: ProcessItem;
   onInspect: () => void;
 }) {
+  const collaboration = item.kind === "collaboration";
+  const className = collaboration
+    ? "process-collaboration"
+    : item.kind === "reasoning"
+      ? "process-reasoning"
+      : undefined;
+  const Icon = collaboration
+    ? Bot
+    : item.kind === "reasoning"
+      ? Brain
+      : FileText;
   return (
     <Collapsible
+      className={className}
       onOpenChange={(open) => {
         if (open) onInspect();
       }}
     >
-      <CollapsibleTrigger className="tool-summary tool-row">
-        {item.kind === "reasoning" ? <Brain /> : <FileText />}
-        <span>
-          {item.title}
-          {item.status && ` · ${item.status}`}
+      <CollapsibleTrigger className="tool-summary process-summary">
+        <Icon />
+        <span className="process-detail-label">
+          <span>
+            {item.title}
+            {item.status && ` · ${item.status}`}
+          </span>
+          {collaboration && (
+            <span className="process-detail-preview">{item.text}</span>
+          )}
         </span>
         <ChevronRight />
       </CollapsibleTrigger>
@@ -102,6 +120,19 @@ function Detail({
     </Collapsible>
   );
 }
+
+const toolActions: Record<string, string> = {
+  subagent_options: "查看子任务能力",
+  subagent_spawn: "派出子任务",
+  subagent_send: "追加子任务指令",
+  subagent_list: "查看子任务",
+  subagent_wait: "等待子任务",
+  subagent_stop: "停止子任务",
+  bash: "运行命令",
+  read: "读取文件",
+  write: "写入文件",
+  edit: "编辑文件",
+};
 
 export function WorkProcess({
   turn,
@@ -148,7 +179,8 @@ export function WorkProcess({
         turn.items.map((item) =>
           item.kind === "detail" ||
           item.kind === "tool" ||
-          item.kind === "reasoning" ? (
+          item.kind === "reasoning" ||
+          item.kind === "collaboration" ? (
             <Detail key={item.id} item={item} onInspect={onInspect} />
           ) : (
             <div key={item.id} className="progress-text">
@@ -171,8 +203,35 @@ export function WorkProcess({
             <CollapsibleContent className="process-body">
               {processGroups(turn.items).map((group) =>
                 Array.isArray(group) ? (
-                  group.every((item) => item.kind === "reasoning") ? (
-                    <div key={group[0].id}>
+                  <Collapsible key={group[0].id} className="tool-group">
+                    <CollapsibleTrigger className="tool-summary process-summary">
+                      {group.every((item) =>
+                        item.title.startsWith("subagent_"),
+                      ) ? (
+                        <Bot />
+                      ) : (
+                        <FileText />
+                      )}
+                      <span>
+                        {[
+                          ...new Set(
+                            group.map(
+                              (item) => toolActions[item.title] ?? item.title,
+                            ),
+                          ),
+                        ].join("、")}{" "}
+                        ·{" "}
+                        {group.length === 1
+                          ? group[0].status
+                          : group.length + " 项"}
+                      </span>
+                      <ChevronRight />
+                    </CollapsibleTrigger>
+                    <CollapsibleContent
+                      className="tool-list"
+                      tabIndex={0}
+                      aria-label="工具列表"
+                    >
                       {group.map((item) => (
                         <Detail
                           key={item.id}
@@ -180,42 +239,11 @@ export function WorkProcess({
                           onInspect={onInspect}
                         />
                       ))}
-                    </div>
-                  ) : (
-                    <Collapsible key={group[0].id} className="tool-group">
-                      <CollapsibleTrigger className="tool-summary">
-                        <FileText />
-                        <span>
-                          工具：
-                          {[
-                            ...new Set(
-                              group
-                                .filter((item) => item.kind === "tool")
-                                .map((item) => item.title),
-                            ),
-                          ].join("、")}{" "}
-                          ·{" "}
-                          {group.filter((item) => item.kind === "tool").length}{" "}
-                          项
-                        </span>
-                        <ChevronRight />
-                      </CollapsibleTrigger>
-                      <CollapsibleContent
-                        className="tool-list"
-                        tabIndex={0}
-                        aria-label="工具列表"
-                      >
-                        {group.map((item) => (
-                          <Detail
-                            key={item.id}
-                            item={item}
-                            onInspect={onInspect}
-                          />
-                        ))}
-                      </CollapsibleContent>
-                    </Collapsible>
-                  )
-                ) : group.kind === "detail" ? (
+                    </CollapsibleContent>
+                  </Collapsible>
+                ) : group.kind === "detail" ||
+                  group.kind === "reasoning" ||
+                  group.kind === "collaboration" ? (
                   <Detail key={group.id} item={group} onInspect={onInspect} />
                 ) : group.kind === "image" && group.media ? (
                   <div

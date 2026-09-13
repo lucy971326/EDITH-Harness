@@ -4,7 +4,14 @@ import { chatMessages, type ChatMessage } from "./chat.ts";
 // 只读展示结构；身份和内容来自 Snapshot，不另存聊天账本。
 export interface ProcessItem {
   id: string;
-  kind: "text" | "steer" | "tool" | "detail" | "reasoning" | "image";
+  kind:
+    | "text"
+    | "steer"
+    | "tool"
+    | "detail"
+    | "reasoning"
+    | "collaboration"
+    | "image";
   title: string;
   text: string;
   status?: string;
@@ -127,6 +134,8 @@ export function chatTurns(snapshot: Snapshot): ChatTurn[] {
                 ? "image"
                 : block.kind === "reasoning"
                   ? "reasoning"
+                  : role === "collaboration"
+                    ? "collaboration"
                   : detail
                     ? "detail"
                     : role === "user"
@@ -169,13 +178,13 @@ export function chatTurns(snapshot: Snapshot): ChatTurn[] {
   });
 }
 
-// 思考不会切断连续工具组；进展、插话和其他明确记录原位展示。
+// 只合并真正连续的工具调用；其他条目保持账本里的同级顺序。
 export function processGroups(
   items: ProcessItem[],
 ): (ProcessItem | ProcessItem[])[] {
   const groups: (ProcessItem | ProcessItem[])[] = [];
   for (const item of items) {
-    if (item.kind === "tool" || item.kind === "reasoning") {
+    if (item.kind === "tool") {
       const last = groups.at(-1);
       if (Array.isArray(last)) last.push(item);
       else groups.push([item]);

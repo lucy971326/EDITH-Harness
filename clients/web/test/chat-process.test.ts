@@ -138,7 +138,7 @@ test("tool result fills its call exactly once, all four statuses derive from sna
   assert.equal(chatTurns(s)[0].items[0].status, "异常");
 });
 
-test("reasoning does not split tool group; progress does", () => {
+test("only consecutive tools share a group", () => {
   const s = snapshot(
     [
       user,
@@ -158,8 +158,10 @@ test("reasoning does not split tool group; progress does", () => {
     "running",
   );
   const groups = processGroups(chatTurns(s)[0].items);
-  assert.equal(groups.length, 3);
-  assert.ok(Array.isArray(groups[0]) && groups[0].length === 3);
+  assert.equal(groups.length, 5);
+  assert.ok(Array.isArray(groups[0]) && groups[0].length === 1);
+  assert.equal(Array.isArray(groups[1]) ? undefined : groups[1].kind, "reasoning");
+  assert.ok(Array.isArray(groups[2]) && groups[2].length === 1);
 });
 
 test("draft, durable entry and fresh snapshot share the same presentation", () => {
@@ -214,6 +216,7 @@ test("collaboration, compact and orphan results remain visible as detail records
   ]);
   const turn = chatTurns(s)[0];
   assert.equal(turn.answer, undefined);
+  assert.equal(turn.items[0].kind, "collaboration");
   assert.deepEqual(
     turn.items.map((item) => item.text),
     ["孩子回报", "摘要", "孤立"],
