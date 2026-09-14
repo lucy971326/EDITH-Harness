@@ -229,6 +229,10 @@ func (r *Registry) Call(ctx context.Context, call Call) (Result, error) {
 		result, err = provider.Call(ctx, call)
 	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
+		// 已经落盘的文件变化必须交还给 Loop；它会在下一检查点结束取消中的 Run。
+		if result.FileDelta != nil {
+			return result, nil
+		}
 		return Result{}, ctxErr
 	}
 	if err != nil {

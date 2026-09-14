@@ -40,14 +40,27 @@ import {
   type EditorFile,
   type ProjectEditorState,
 } from "./editor/files";
-import { FileText, PanelRight } from "./icons";
+import { FileText, GitCompareArrows, PanelRight } from "./icons";
 import type { FileLocation } from "./editor/links";
+import type { RunState } from "../../contracts/run.ts";
 
 const CodeEditor = lazy(() =>
   import("./editor/code-editor").then((module) => ({
     default: module.CodeEditor,
   })),
 );
+
+const ReviewView = lazy(() =>
+  import("./review/review-view").then((module) => ({
+    default: module.ReviewView,
+  })),
+);
+
+export interface ReviewOpenRequest {
+  requestID: number;
+  sessionID: string;
+  runID: string;
+}
 
 interface WatchTarget {
   path: string;
@@ -71,13 +84,21 @@ function storedTreeWidth(): number {
 
 export function WorkspaceTabs({
   workspace,
+  sessionID,
+  runs,
+  runActive,
   client,
   openRequest,
+  reviewRequest,
   onHide,
 }: {
   workspace: string | null;
+  sessionID: string | null;
+  runs: RunState[];
+  runActive: boolean;
   client: RPCClient | null;
   openRequest?: FileLocation & { requestID: number; workspace: string };
+  reviewRequest?: ReviewOpenRequest;
   onHide: () => void;
 }) {
   const projects = useRef(new Map<string, ProjectEditorState>());
@@ -85,15 +106,23 @@ export function WorkspaceTabs({
   const watchPaths = useRef(new Map<string, string>());
   const saveTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const saving = useRef(new Set<string>());
+  const handledReviewRequestID = useRef(0);
   const [, setRevision] = useState(0);
   const [treeRevision, setTreeRevision] = useState(0);
   const [treeOpen, setTreeOpen] = useState(true);
   const [treeWidth, setTreeWidth] = useState(storedTreeWidth);
   const [closingPath, setClosingPath] = useState("");
   const [location, setLocation] = useState<FileLocation>();
+  const [reviewRunIDs, setReviewRunIDs] = useState<string[]>([]);
+  const [activeTabID, setActiveTabID] = useState("");
 
   const project = workspace ? projects.current.get(workspace) : undefined;
   const activeFile = project?.files.get(project.activePath);
+  const reviewTabID = (runID: string) => `review:${sessionID}:${runID}`;
+  const activeReviewRunID = reviewRunIDs.find(
+    (runID) => reviewTabID(runID) === activeTabID,
+  );
+  const activeReview = runs.find((run) => run.runID === activeReviewRunID)?.diff;
 
   function currentProject(): ProjectEditorState | null {
     if (!workspace) return null;
@@ -231,11 +260,29 @@ export function WorkspaceTabs({
     void openFile(openRequest.path, openRequest);
   }, [openRequest?.requestID, workspace, client]);
 
+  useEffect(() => {
+    setReviewRunIDs([]);
+    setActiveTabID(currentProject()?.activePath ?? "");
+  }, [sessionID, workspace]);
+
+  useEffect(() => {
+    if (!reviewRequest || reviewRequest.sessionID !== sessionID) return;
+    if (reviewRequest.requestID === handledReviewRequestID.current) return;
+    const run = runs.find((item) => item.runID === reviewRequest.runID);
+    if (!run?.diff) return;
+    handledReviewRequestID.current = reviewRequest.requestID;
+    setReviewRunIDs((current) =>
+      current.includes(run.runID) ? current : [...current, run.runID],
+    );
+    setActiveTabID(reviewTabID(run.runID));
+  }, [reviewRequest?.requestID, sessionID, runs]);
+
   async function openFile(path: string, target?: FileLocation) {
     const state = currentProject();
     if (!state || !client?.connected) return;
     if (state.files.has(path)) {
       state.activePath = path;
+      setActiveTabID(path);
       setLocation(target);
       render();
       return;
@@ -250,6 +297,7 @@ export function WorkspaceTabs({
     });
     state.order.push(path);
     state.activePath = path;
+    setActiveTabID(path);
     setLocation(target);
     render();
     try {
@@ -348,6 +396,11 @@ export function WorkspaceTabs({
     if (state.activePath === path)
       state.activePath =
         state.order[Math.min(index, state.order.length - 1)] ?? "";
+    if (activeTabID === path)
+      setActiveTabID(
+        state.activePath ||
+          (reviewRunIDs[0] ? reviewTabID(reviewRunIDs[0]) : ""),
+      );
     const timer = saveTimers.current.get(path);
     if (timer) clearTimeout(timer);
     saveTimers.current.delete(path);
@@ -374,8 +427,8 @@ export function WorkspaceTabs({
     });
   }
 
-  const tabs: AuxiliaryTab[] =
-    project?.order.map((path) => {
+  const tabs: AuxiliaryTab[] = [
+    ...(project?.order.map((path) => {
       const file = project.files.get(path)!;
       return {
         id: path,
@@ -385,7 +438,14 @@ export function WorkspaceTabs({
         dirty:
           file.content !== file.savedContent || file.status === "conflict",
       };
-    }) ?? [];
+    }) ?? []),
+    ...reviewRunIDs.map((runID) => ({
+      id: reviewTabID(runID),
+      kind: "review",
+      title: "审查更改",
+      contextPath: runID,
+    })),
+  ];
 
   const views: AuxiliaryView[] = [
     {
@@ -511,21 +571,64 @@ export function WorkspaceTabs({
         </div>
       ),
     },
+    {
+      kind: "review",
+      label: "审查",
+      icon: GitCompareArrows,
+      onCreate: () => {
+        const latest = [...runs].reverse().find((run) => run.diff)?.runID;
+        if (!latest) return;
+        setReviewRunIDs((current) =>
+          current.includes(latest) ? current : [...current, latest],
+        );
+        setActiveTabID(reviewTabID(latest));
+      },
+      render: () =>
+        sessionID && activeReview ? (
+          <Suspense fallback={<div className="editor-loading">正在加载审查…</div>}>
+            <ReviewView
+              key={`${sessionID}:${activeReview.runID}`}
+              sessionID={sessionID}
+              workspace={workspace}
+              initialSummary={activeReview}
+              client={client}
+              runActive={runActive}
+            />
+          </Suspense>
+        ) : (
+          <EmptyEditor title="没有可审查的更改" detail="Agent 的文件修改会显示在这里。" />
+        ),
+    },
   ];
 
   return (
     <div className="workspace-tabs">
       <AuxiliaryPanel
         tabs={tabs}
-        activeTabID={project?.activePath ?? ""}
+        activeTabID={activeTabID || project?.activePath || ""}
         views={views}
         onActivateTab={(tab) => {
-          if (!project || tab.kind !== "file") return;
-          project.activePath = tab.id;
-          setLocation(undefined);
-          render();
+          setActiveTabID(tab.id);
+          if (project && tab.kind === "file") {
+            project.activePath = tab.id;
+            setLocation(undefined);
+            render();
+          }
         }}
-        onCloseTab={(tab) => requestClose(tab.id)}
+        onCloseTab={(tab) => {
+          if (tab.kind === "file") {
+            requestClose(tab.id);
+            return;
+          }
+          const index = tabs.findIndex((item) => item.id === tab.id);
+          setReviewRunIDs((current) =>
+            current.filter((runID) => reviewTabID(runID) !== tab.id),
+          );
+          if (activeTabID === tab.id)
+            setActiveTabID(
+              tabs[index - 1]?.id ?? tabs[index + 1]?.id ?? "",
+            );
+        }}
         onHide={onHide}
       />
 

@@ -6,6 +6,7 @@ import (
 
 	"harness/kernel/llm"
 	"harness/kernel/session"
+	"harness/kernel/tools"
 )
 
 // 数据。一种可选运行范式的说明。
@@ -16,13 +17,14 @@ type Definition struct {
 
 // 数据。Loop 产出的一条本轮事件。
 type Event struct {
-	Kind     EventKind
-	EntryID  string
-	BlockSeq uint64
-	Text     string
-	Message  *session.Message
-	Tool     *ToolEvent
-	Usage    *Usage
+	Kind      EventKind
+	EntryID   string
+	BlockSeq  uint64
+	Text      string
+	Message   *session.Message
+	Tool      *ToolEvent
+	FileDelta *tools.AppliedFileDelta
+	Usage     *Usage
 }
 
 // 数据。与工具调用有关的事件内容。

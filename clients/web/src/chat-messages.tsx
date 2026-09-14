@@ -21,6 +21,7 @@ export function ChatMessages({
   onFork,
   workspace,
   onOpenFile,
+  onOpenDiff,
   children,
 }: {
   snapshot: Snapshot | null;
@@ -31,6 +32,7 @@ export function ChatMessages({
   onFork?: (runID: string, boundaryEntryID: string) => void;
   workspace?: string | null;
   onOpenFile?: (location: FileLocation) => void;
+  onOpenDiff?: (runID: string) => void;
   children?: ReactNode;
 }) {
   const scroll = useRef<HTMLDivElement>(null);
@@ -104,6 +106,7 @@ export function ChatMessages({
               onFork={onFork}
               workspace={workspace}
               onOpenFile={onOpenFile}
+              onOpenDiff={onOpenDiff}
               onInspect={() => {
                 follow.current = false;
                 userScroll.current = false;

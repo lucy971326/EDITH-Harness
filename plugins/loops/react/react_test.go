@@ -26,6 +26,7 @@ import (
 	"harness/kernel/session/settings"
 	"harness/kernel/skills"
 	"harness/kernel/tools"
+	machinelocal "harness/plugins/machine/local"
 )
 
 // 数据。测试工具的模型参数。
@@ -64,9 +65,16 @@ func TestReactRunsToolRoundTrip(t *testing.T) {
 
 	loop, toolRegistry := installReact(t, server.URL)
 	var gotWorkspace string
+	oldContent := "before\n"
+	newContent := "after\n"
 	err := toolRegistry.Register(tools.New("echo", "Echo a value.", func(_ context.Context, call tools.Call, args echoArgs) (tools.Result, error) {
 		gotWorkspace = call.Workspace
-		return tools.Result{Content: args.Value}, nil
+		return tools.Result{Content: args.Value, FileDelta: &tools.AppliedFileDelta{
+			Exact: true,
+			Changes: []tools.AppliedFileChange{{
+				Path: "/workspace/file.txt", Operation: tools.FileOperationUpdate, OldContent: &oldContent, NewContent: &newContent,
+			}},
+		}}, nil
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -104,6 +112,16 @@ func TestReactRunsToolRoundTrip(t *testing.T) {
 	wantCheckpoints := []loops.CheckpointPhase{loops.CheckpointContinue, loops.CheckpointFinal}
 	if !reflect.DeepEqual(checkpoints, wantCheckpoints) {
 		t.Fatalf("checkpoints = %v, want %v", checkpoints, wantCheckpoints)
+	}
+	var finished *loops.Event
+	for index := range events {
+		if events[index].Kind == loops.EventToolFinished {
+			finished = &events[index]
+			break
+		}
+	}
+	if finished == nil || finished.FileDelta == nil || len(finished.FileDelta.Changes) != 1 {
+		t.Fatalf("finished file delta = %#v", finished)
 	}
 
 	wantKinds := []loops.EventKind{
@@ -551,6 +569,7 @@ func TestReactCancellingOneOfMultipleToolCallsPersistsEveryResult(t *testing.T) 
 		&session.Plugin{},
 		&llm.Plugin{},
 		tools.NewPlugin(),
+		machinelocal.New(),
 		events.NewPlugin(),
 		loops.NewPlugin(),
 		New(),

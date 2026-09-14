@@ -255,6 +255,24 @@ export class RPCClient {
     return this.call("harness/session/stop", { sessionID });
   }
 
+  readRunDiff(sessionID: string, runID: string, path: string) {
+    return this.call("harness/run/diff/read", { sessionID, runID, path });
+  }
+
+  revertRunDiff(
+    sessionID: string,
+    runID: string,
+    path: string,
+    expectedRevision: number,
+  ) {
+    return this.call("harness/run/diff/revertFile", {
+      sessionID,
+      runID,
+      path,
+      expectedRevision,
+    });
+  }
+
   async subscribe(
     sessionID: string,
     accept: (result: SubscribeResult) => void,

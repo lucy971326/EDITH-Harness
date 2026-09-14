@@ -33,4 +33,8 @@ export {
   BookOpen,
   WifiOff,
   RefreshCw,
+  GitCompareArrows,
+  Undo2,
+  Columns2,
+  Rows3,
 } from "lucide-react";

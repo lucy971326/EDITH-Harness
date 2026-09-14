@@ -13,6 +13,7 @@ import {
   Brain,
   Bot,
   GitBranch,
+  GitCompareArrows,
 } from "./icons";
 import { MessageMarkdown } from "./message-markdown";
 import {
@@ -144,6 +145,7 @@ export function WorkProcess({
   stopping = false,
   workspace,
   onOpenFile,
+  onOpenDiff,
 }: {
   turn: ChatTurn;
   onInspect: () => void;
@@ -153,6 +155,7 @@ export function WorkProcess({
   stopping?: boolean;
   workspace?: string | null;
   onOpenFile?: (location: FileLocation) => void;
+  onOpenDiff?: (runID: string) => void;
 }) {
   const status = turn.run?.status;
   const [open, setOpen] = useState(status !== "success");
@@ -316,6 +319,26 @@ export function WorkProcess({
             )}
           </div>
         </div>
+      )}
+      {turn.run?.diff && turn.run.diff.files.length > 0 && (
+        <button
+          className="run-diff-card"
+          onClick={() => onOpenDiff?.(turn.run!.runID)}
+        >
+          <GitCompareArrows />
+          <span>
+            <strong>已修改 {turn.run.diff.files.length} 个文件</strong>
+            <small>
+              <i className="diff-additions">
+                +{turn.run.diff.files.reduce((sum, file) => sum + file.additions, 0)}
+              </i>{" "}
+              <i className="diff-deletions">
+                -{turn.run.diff.files.reduce((sum, file) => sum + file.deletions, 0)}
+              </i>
+            </small>
+          </span>
+          <span className="run-diff-action">审查</span>
+        </button>
       )}
       {status === "success" && turn.items.length === 0 && turn.answer && (
         <span className="metadata">已完成</span>

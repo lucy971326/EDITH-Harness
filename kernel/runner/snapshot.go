@@ -19,6 +19,10 @@ func (r *Runner) SessionView(sessionID string) (SessionView, error) {
 	if err != nil {
 		return SessionView{}, err
 	}
+	records, err = r.reconcileDiffsLocked(sessionID, records)
+	if err != nil {
+		return SessionView{}, err
+	}
 
 	records, err = r.interruptStaleRecords(sessionID, records, current)
 	if err != nil {
@@ -48,7 +52,7 @@ func (r *Runner) SessionView(sessionID string) (SessionView, error) {
 	runs := make([]RunState, 0, len(records)+1)
 	seen := make(map[string]int, len(records)+1)
 	for _, rec := range records {
-		state := RunState{RunID: rec.RunID, AfterEntrySeq: rec.AfterEntrySeq, Status: rec.Status, Error: rec.Error, Usage: cloneUsage(rec.Usage)}
+		state := RunState{RunID: rec.RunID, AfterEntrySeq: rec.AfterEntrySeq, Status: rec.Status, Error: rec.Error, Usage: cloneUsage(rec.Usage), Diff: cloneDiffSummary(rec.Diff)}
 		seen[rec.RunID] = len(runs)
 		runs = append(runs, state)
 	}
@@ -63,6 +67,9 @@ func (r *Runner) SessionView(sessionID string) (SessionView, error) {
 			}
 			if liveState.Usage == nil {
 				liveState.Usage = cloneUsage(runs[index].Usage)
+			}
+			if liveState.Diff == nil {
+				liveState.Diff = cloneDiffSummary(runs[index].Diff)
 			}
 			runs[index] = liveState
 		} else {
@@ -106,6 +113,7 @@ func (r *liveRun) snapshotLocked() RunState {
 		Error:         errText,
 		Drafts:        drafts,
 		Usage:         cloneUsage(r.usage),
+		Diff:          cloneDiffSummary(r.diffSummary),
 	}
 }
 

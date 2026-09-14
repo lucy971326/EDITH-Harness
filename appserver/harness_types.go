@@ -3,9 +3,31 @@ package appserver
 import (
 	"time"
 
+	"harness/kernel/runner"
 	"harness/kernel/session/settings"
 	"harness/products/harness"
 )
+
+// 数据。读取一个 Run Diff 文件的接口输入。
+type ReadRunDiffParams struct {
+	SessionID string `json:"sessionID" jsonschema:"minLength=1"`
+	RunID     string `json:"runID" jsonschema:"minLength=1"`
+	Path      string `json:"path" jsonschema:"minLength=1"`
+}
+
+// 数据。按版本安全撤销一个 Run Diff 文件的接口输入。
+type RevertRunDiffParams struct {
+	SessionID        string `json:"sessionID" jsonschema:"minLength=1"`
+	RunID            string `json:"runID" jsonschema:"minLength=1"`
+	Path             string `json:"path" jsonschema:"minLength=1"`
+	ExpectedRevision uint64 `json:"expectedRevision" jsonschema:"minimum=1"`
+}
+
+// 数据。读取接口直接返回 Runner 的单文件事实。
+type ReadRunDiffResult = runner.RunDiffFile
+
+// 数据。撤销接口返回新的耐久 Diff 摘要；文件为空表示已全部撤销。
+type RevertRunDiffResult = runner.RunDiffSummary
 
 // 对外会话接口：创建（结果使用共享的 SessionResult）
 

@@ -6,6 +6,7 @@ import (
 	"harness/kernel/host"
 	"harness/kernel/llm"
 	"harness/kernel/loops"
+	"harness/kernel/machine"
 	"harness/kernel/persist"
 	"harness/kernel/session"
 	"harness/kernel/session/settings"
@@ -57,7 +58,15 @@ func (p *Plugin) Start(h *host.Host) error {
 	if err != nil {
 		return err
 	}
-	p.runner, err = NewRunner(sessions, settingsStore, agentService, loopRegistry, eventRegistry, llmClient, toolRegistry, persistence)
+	files, err := host.Resolve[*persist.Files](h, "persist")
+	if err != nil {
+		return err
+	}
+	filesystem, err := host.Resolve[machine.FileSystem](h, "machine")
+	if err != nil {
+		return err
+	}
+	p.runner, err = NewRunner(sessions, settingsStore, agentService, loopRegistry, eventRegistry, llmClient, toolRegistry, persistence, files, filesystem)
 	if err != nil {
 		return err
 	}

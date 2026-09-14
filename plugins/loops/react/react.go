@@ -279,10 +279,11 @@ func (l *reactLoop) execute(
 		return session.Message{}, err
 	}
 	err = invocation.Emit(finishCtx, loops.Event{
-		Kind:     loops.EventToolFinished,
-		EntryID:  assistantID,
-		BlockSeq: blockSeq,
-		Tool:     &loops.ToolEvent{ID: call.ID, Name: call.Name, IsError: result.IsError},
+		Kind:      loops.EventToolFinished,
+		EntryID:   assistantID,
+		BlockSeq:  blockSeq,
+		Tool:      &loops.ToolEvent{ID: call.ID, Name: call.Name, IsError: result.IsError},
+		FileDelta: result.FileDelta,
 	})
 	if err != nil {
 		return session.Message{}, err

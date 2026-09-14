@@ -12,6 +12,7 @@ import (
 	"harness/kernel/events"
 	"harness/kernel/llm"
 	"harness/kernel/loops"
+	"harness/kernel/machine"
 	"harness/kernel/persist"
 	"harness/kernel/session"
 	"harness/kernel/session/settings"
@@ -47,15 +48,17 @@ type liveRun struct {
 	inputSignal chan struct{}
 
 	// 可恢复投影；结束状态置位后，仍占用 live 到完整收尾。
-	updateSeq uint64
-	ended     bool
-	compact   bool
-	endStatus RunStatus
-	endError  string
-	usage     *Usage
-	drafts    map[string]*runDraft
-	toolCalls map[string]toolCallLoc
-	persisted map[string]struct{}
+	updateSeq   uint64
+	ended       bool
+	compact     bool
+	endStatus   RunStatus
+	endError    string
+	usage       *Usage
+	drafts      map[string]*runDraft
+	toolCalls   map[string]toolCallLoc
+	persisted   map[string]struct{}
+	diff        *turnDiffTracker
+	diffSummary *RunDiffSummary
 }
 
 // 数据。一条等待安全检查点提交的外部输入；result 只用于等待确认的用户 Steer。
@@ -87,20 +90,23 @@ type runPreparation struct {
 
 // 活对象。挂在 Host 上、管理尚未结束 Run 的对话运行器。
 type Runner struct {
-	sessions *session.Store
-	settings settings.SessionSettingsStore
-	agents   *agents.Service
-	loops    loops.Loops
-	events   *events.Registry
-	llm      *llm.Client
-	tools    tools.Tools
-	persist  persist.Persistence
-	epoch    string
+	sessions   *session.Store
+	settings   settings.SessionSettingsStore
+	agents     *agents.Service
+	loops      loops.Loops
+	events     *events.Registry
+	llm        *llm.Client
+	tools      tools.Tools
+	persist    persist.Persistence
+	diffFiles  *persist.Files
+	filesystem machine.FileSystem
+	epoch      string
 
 	mu           sync.Mutex
 	recordsMu    sync.Mutex // runs.json 的整次读改写；快照同样遵守。
 	live         map[string]*liveRun
 	clocks       map[string]uint64 // 本进程内每场会话的更新序号，结束后仍保留。
+	reconciled   map[string]bool
 	closeStarted bool
 	wg           sync.WaitGroup
 }
@@ -154,6 +160,8 @@ func NewRunner(
 	llmClient *llm.Client,
 	toolRegistry tools.Tools,
 	persistence persist.Persistence,
+	diffFiles *persist.Files,
+	filesystem machine.FileSystem,
 ) (*Runner, error) {
 	if sessions == nil {
 		return nil, fmt.Errorf("runner: nil sessions")
@@ -179,22 +187,31 @@ func NewRunner(
 	if persistence == nil {
 		return nil, fmt.Errorf("runner: nil persistence")
 	}
+	if diffFiles == nil {
+		return nil, fmt.Errorf("runner: nil diff files")
+	}
+	if filesystem == nil {
+		return nil, fmt.Errorf("runner: nil filesystem")
+	}
 	epoch, err := newRunID()
 	if err != nil {
 		return nil, err
 	}
 	return &Runner{
-		sessions: sessions,
-		settings: settingsStore,
-		agents:   agentService,
-		loops:    loopRegistry,
-		events:   eventRegistry,
-		llm:      llmClient,
-		tools:    toolRegistry,
-		persist:  persistence,
-		epoch:    epoch,
-		live:     make(map[string]*liveRun),
-		clocks:   make(map[string]uint64),
+		sessions:   sessions,
+		settings:   settingsStore,
+		agents:     agentService,
+		loops:      loopRegistry,
+		events:     eventRegistry,
+		llm:        llmClient,
+		tools:      toolRegistry,
+		persist:    persistence,
+		diffFiles:  diffFiles,
+		filesystem: filesystem,
+		epoch:      epoch,
+		live:       make(map[string]*liveRun),
+		clocks:     make(map[string]uint64),
+		reconciled: make(map[string]bool),
 	}, nil
 }
 
@@ -271,6 +288,7 @@ func (r *Runner) openLive(ctx context.Context, sessionID string) (string, *liveR
 		drafts:        make(map[string]*runDraft),
 		toolCalls:     make(map[string]toolCallLoc),
 		persisted:     make(map[string]struct{}),
+		diff:          newTurnDiffTracker(),
 	}
 	err = r.begin(sessionID, current)
 	if err != nil {

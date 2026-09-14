@@ -243,7 +243,11 @@ func newRunnerFixtureWithLLM(t *testing.T, loop loops.Loop, client *llm.Client) 
 		t.Fatal(err)
 	}
 	eventRegistry := events.NewRegistry()
-	r, err := NewRunner(sessions, settingsStore, agentService, loopRegistry, eventRegistry, client, toolRegistry, persistence)
+	diffFiles, err := persist.NewFiles(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := NewRunner(sessions, settingsStore, agentService, loopRegistry, eventRegistry, client, toolRegistry, persistence, diffFiles, localTestMachine(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -324,6 +328,8 @@ func TestRunPublishesAndPersistsLatestUsage(t *testing.T) {
 		fixture.runner.llm,
 		fixture.tools,
 		fixture.persistence,
+		fixture.runner.diffFiles,
+		fixture.runner.filesystem,
 	)
 	if err != nil {
 		t.Fatal(err)

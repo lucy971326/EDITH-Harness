@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"fmt"
+	"reflect"
 
 	"harness/kernel/loops"
 	"harness/kernel/session"
@@ -29,7 +30,21 @@ func (r *Runner) emit(ctx context.Context, sessionID, runID string, sess *sessio
 			}
 		}
 		runEvent.AfterEntrySeq = current.afterSeq()
-		return r.publish(ctx, r.liveEvent(current, runEvent))
+		if err = r.publish(ctx, r.liveEvent(current, runEvent)); err != nil {
+			return err
+		}
+		if event.Kind != loops.EventToolFinished || event.FileDelta == nil {
+			return nil
+		}
+		current.mu.Lock()
+		before, beforeExact := current.diff.Snapshot()
+		current.diff.Apply(*event.FileDelta)
+		after, afterExact := current.diff.Snapshot()
+		current.mu.Unlock()
+		if beforeExact == afterExact && reflect.DeepEqual(before, after) {
+			return nil
+		}
+		return r.persistLiveDiff(sessionID, runID, current, after, afterExact)
 	case loops.EventUsage:
 		runEvent, err := mapEvent(sessionID, runID, event)
 		if err != nil {

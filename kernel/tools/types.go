@@ -27,10 +27,34 @@ type Call struct {
 	InputSignal <-chan struct{}
 }
 
-// 数据。工具调用后交还给模型的文本结果。
+// 数据。一次文件操作的种类。
+type FileOperation string
+
+const (
+	FileOperationAdd    FileOperation = "add"
+	FileOperationUpdate FileOperation = "update"
+	FileOperationDelete FileOperation = "delete"
+)
+
+// 数据。一个文件已经实际提交的旧内容与新内容；nil 表示文件不存在。
+type AppliedFileChange struct {
+	Path       string
+	Operation  FileOperation
+	OldContent *string
+	NewContent *string
+}
+
+// 数据。一次工具调用已经实际提交的文件变化。
+type AppliedFileDelta struct {
+	Changes []AppliedFileChange
+	Exact   bool
+}
+
+// 数据。工具调用后交还给模型的文本结果；FileDelta 只供运行时追踪。
 type Result struct {
-	Content string
-	IsError bool
+	Content   string
+	IsError   bool
+	FileDelta *AppliedFileDelta
 }
 
 // 数据。一个动态 Tool 来源为当前工作区准备的稳定快照。

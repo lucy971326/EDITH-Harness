@@ -333,6 +333,9 @@ func assemblePrompt(systemPrompt string, selected []skills.Skill, instructions [
 		}
 		parts = append(parts, strings.Join(lines, "\n"))
 	}
+	if slices.Contains(allowedTools, "apply_patch") {
+		parts = append(parts, "## File Changes\nUse apply_patch for every deliberate file creation, edit, or deletion so Harness can track and safely revert the change. Use exec_command for inspection, execution, and verification; do not use shell redirection or file-mutating commands to edit files.")
+	}
 	parts = append(parts, "## Workspace\n"+workspace)
 	return strings.Join(parts, "\n\n")
 }

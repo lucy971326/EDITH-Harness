@@ -39,6 +39,29 @@ export interface RunState {
   error?: string;
   drafts?: RunDraft[];
   usage?: { inputTokens: number; cacheReadTokens: number; contextWindow: number };
+  diff?: RunDiffSummary;
+}
+
+export interface FileDiffSummary {
+  path: string;
+  operation: 'add' | 'update' | 'delete';
+  additions: number;
+  deletions: number;
+}
+
+export interface RunDiffSummary {
+  runID: string;
+  revision: number;
+  files: FileDiffSummary[];
+}
+
+export interface RunDiffFile {
+  runID: string;
+  revision: number;
+  path: string;
+  operation: 'add' | 'update' | 'delete';
+  oldContent: string | null;
+  newContent: string | null;
 }
 
 export interface Snapshot {
@@ -51,7 +74,7 @@ export interface Snapshot {
 export interface RunEvent {
   sessionID: string;
   runID: string;
-  kind: 'run-started' | 'message-started' | 'text-delta' | 'reasoning-delta' | 'tool-started' | 'tool-finished' | 'message' | 'usage' | 'run-ended';
+  kind: 'run-started' | 'message-started' | 'text-delta' | 'reasoning-delta' | 'tool-started' | 'tool-finished' | 'message' | 'usage' | 'run-ended' | 'run-diff-updated';
   entryID?: string;
   afterEntrySeq?: number;
   blockSeq?: number;
@@ -61,6 +84,7 @@ export interface RunEvent {
   usage?: { inputTokens: number; cacheReadTokens: number; contextWindow: number };
   status?: 'running' | 'success' | 'cancelled' | 'failed' | 'interrupted';
   error?: string;
+  diff?: RunDiffSummary | null;
   updateSeq: number;
   seqEpoch: string;
 }

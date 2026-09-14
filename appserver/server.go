@@ -13,6 +13,7 @@ import (
 	"harness/kernel/events"
 	"harness/kernel/llm"
 	"harness/kernel/machine"
+	"harness/kernel/runner"
 	"harness/kernel/skills"
 	"harness/products/harness"
 )
@@ -21,6 +22,7 @@ import (
 type Server struct {
 	// 产品入口与公共能力；业务状态由产品和内核管理。
 	harnessProduct  *harness.Product
+	runner          *runner.Runner
 	events          *events.Registry
 	models          *llm.Client
 	agents          *agents.Service

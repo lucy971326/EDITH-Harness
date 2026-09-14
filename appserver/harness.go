@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"harness/kernel/events"
+	"harness/kernel/runner"
 	"harness/kernel/session/settings"
 	"harness/products/harness"
 )
@@ -20,17 +21,20 @@ const (
 	snapshotMethod       = "harness/session/snapshot"
 	subscribeMethod      = "harness/session/subscribe"
 	stopMethod           = "harness/session/stop"
+	readRunDiffMethod    = "harness/run/diff/read"
+	revertRunDiffMethod  = "harness/run/diff/revertFile"
 )
 
 // BindHarness 在监听前接入产品与事件来源，登记 Harness 的对外方法。
-func (s *Server) BindHarness(product *harness.Product, registry *events.Registry) error {
-	if product == nil || registry == nil {
-		return fmt.Errorf("appserver: nil harness product or events")
+func (s *Server) BindHarness(product *harness.Product, runService *runner.Runner, registry *events.Registry) error {
+	if product == nil || runService == nil || registry == nil {
+		return fmt.Errorf("appserver: nil harness product, runner or events")
 	}
 	if s.harnessProduct != nil {
 		return fmt.Errorf("appserver: harness already bound")
 	}
 	s.harnessProduct = product
+	s.runner = runService
 	s.events = registry
 	err := s.registerWorkspaceSelect()
 	if err != nil {
@@ -69,7 +73,15 @@ func (s *Server) BindHarness(product *harness.Product, registry *events.Registry
 	if err != nil {
 		return err
 	}
-	return Register(s, stopMethod, s.handleStop)
+	err = Register(s, stopMethod, s.handleStop)
+	if err != nil {
+		return err
+	}
+	err = Register(s, readRunDiffMethod, s.handleReadRunDiff)
+	if err != nil {
+		return err
+	}
+	return registerSession(s, revertRunDiffMethod, func(input RevertRunDiffParams) string { return input.SessionID }, s.handleRevertRunDiff)
 }
 
 func (s *Server) handleCreate(_ context.Context, input CreateParams) (SessionResult, error) {
@@ -131,6 +143,12 @@ func methodError(err error) error {
 	}
 	if errors.Is(err, harness.ErrRunChanged) {
 		return &Error{Code: CodeConflict, Message: "expected run has ended or changed", Cause: err}
+	}
+	if errors.Is(err, runner.ErrRunDiffNotFound) {
+		return &Error{Code: CodeNotFound, Message: "run diff file not found", Cause: err}
+	}
+	if errors.Is(err, runner.ErrRunDiffConflict) || errors.Is(err, runner.ErrRunDiffActive) {
+		return &Error{Code: CodeConflict, Message: "run diff has changed or cannot be reverted now", Cause: err}
 	}
 	if errors.Is(err, harness.ErrInvalidMessage) {
 		return &Error{Code: CodeInvalidParams, Message: "message is empty", Cause: err}

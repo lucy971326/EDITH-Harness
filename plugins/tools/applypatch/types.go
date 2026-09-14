@@ -1,15 +1,9 @@
 package applypatch
 
-type operation string
-
-const (
-	operationAdd    operation = "add"
-	operationUpdate operation = "update"
-	operationDelete operation = "delete"
-)
+import "harness/kernel/tools"
 
 type hunk struct {
-	Operation operation
+	Operation tools.FileOperation
 	Path      string
 	Contents  string
 	Chunks    []updateFileChunk
@@ -29,24 +23,10 @@ func (chunk *updateFileChunk) pushContextLine(line string) {
 	chunk.NewLines = append(chunk.NewLines, line)
 }
 
-// 数据。一次 apply_patch 已经实际提交的文件变化。
-type AppliedDelta struct {
-	Changes []AppliedChange
-	Exact   bool
-}
-
-// 数据。一个文件已经实际提交的旧内容与新内容。
-type AppliedChange struct {
-	Path       string
-	Operation  string
-	OldContent *string
-	NewContent *string
-}
-
 type preparedChange struct {
 	path         string
 	displayPath  string
-	operation    operation
+	operation    tools.FileOperation
 	expectedHash string
 	oldContent   *string
 	newContent   *string

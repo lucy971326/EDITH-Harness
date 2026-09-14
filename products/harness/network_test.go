@@ -155,7 +155,11 @@ func newNetworkHost(t *testing.T, data string) (*host.Host, *appserver.Server, *
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = server.BindHarness(product, registry)
+	runService, err := host.Resolve[*runner.Runner](h, "runner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = server.BindHarness(product, runService, registry)
 	if err != nil {
 		t.Fatal(err)
 	}

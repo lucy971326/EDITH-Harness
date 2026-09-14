@@ -174,3 +174,79 @@ test("durable user images render from the same snapshot as text", () => {
   assert.match(html, /src="data:image\/webp;base64,YWJj"/);
   assert.match(html, /看图/);
 });
+
+test("a Run diff is summarized inside its chat turn", () => {
+  const snapshot: Snapshot = {
+    seqEpoch: "e",
+    updateSeq: 4,
+    entries: [],
+    runs: [
+      {
+        runID: "run-diff",
+        status: "running",
+        afterEntrySeq: 0,
+        diff: {
+          runID: "run-diff",
+          revision: 1,
+          files: [
+            { path: "a.go", operation: "update", additions: 4, deletions: 2 },
+            { path: "b.go", operation: "add", additions: 3, deletions: 0 },
+          ],
+        },
+      },
+    ],
+  };
+  const html = renderToStaticMarkup(
+    createElement(ChatMessages, { sessionID: "s", snapshot }),
+  );
+  assert.match(html, /已修改 2 个文件/);
+  assert.match(html, /\+7/);
+  assert.match(html, /-2/);
+  assert.match(html, /审查/);
+});
+
+test("a completed Run renders its diff after the final answer", () => {
+  const snapshot: Snapshot = {
+    seqEpoch: "e",
+    updateSeq: 4,
+    entries: [
+      {
+        id: "user",
+        seq: 1,
+        message: {
+          runID: "run-diff",
+          role: "user",
+          blocks: [{ kind: "text", text: "修改文件" }],
+        },
+      },
+      {
+        id: "answer",
+        seq: 2,
+        message: {
+          runID: "run-diff",
+          role: "assistant",
+          afterSeq: 1,
+          blocks: [{ kind: "text", text: "修改完成" }],
+        },
+      },
+    ],
+    runs: [
+      {
+        runID: "run-diff",
+        status: "success",
+        afterEntrySeq: 1,
+        diff: {
+          runID: "run-diff",
+          revision: 1,
+          files: [
+            { path: "a.go", operation: "update", additions: 1, deletions: 0 },
+          ],
+        },
+      },
+    ],
+  };
+  const html = renderToStaticMarkup(
+    createElement(ChatMessages, { sessionID: "s", snapshot }),
+  );
+  assert.ok(html.indexOf("修改完成") < html.indexOf("已修改 1 个文件"));
+});

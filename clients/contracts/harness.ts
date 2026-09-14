@@ -1,6 +1,6 @@
 // 手工维护，与 products/harness/types.go 和 appserver/harness_types.go 同步修改。
 // TS 只约束调用方写法；必填、长度和时间格式仍由服务端校验。
-import type { Snapshot } from './run.js';
+import type { RunDiffFile, RunDiffSummary, Snapshot } from './run.js';
 
 // 创建：结果使用共享的 SessionResult。
 export interface CreateParams {
@@ -65,6 +65,9 @@ export interface SendParams {
 
 export interface SubscribeResult { subscriptionID: string; snapshot: Snapshot }
 
+export interface ReadRunDiffParams { sessionID: string; runID: string; path: string }
+export interface RevertRunDiffParams { sessionID: string; runID: string; path: string; expectedRevision: number }
+
 export interface Methods {
   'harness/session/create': { params: CreateParams; result: SessionResult };
   'harness/session/list': { params: ListParams; result: ListResult };
@@ -75,4 +78,6 @@ export interface Methods {
   'harness/session/snapshot': { params: SessionIDParams; result: Snapshot };
   'harness/session/subscribe': { params: SessionIDParams; result: SubscribeResult };
   'harness/session/stop': { params: SessionIDParams; result: Record<string, never> };
+  'harness/run/diff/read': { params: ReadRunDiffParams; result: RunDiffFile };
+  'harness/run/diff/revertFile': { params: RevertRunDiffParams; result: RunDiffSummary };
 }

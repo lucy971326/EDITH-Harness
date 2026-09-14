@@ -22,6 +22,7 @@ import (
 	"harness/kernel/session/settings"
 	"harness/kernel/skills"
 	"harness/kernel/tools"
+	"harness/plugins/machine/local"
 )
 
 // 数据。测试脚手架。
@@ -60,6 +61,7 @@ func newSubagentsFixture(t *testing.T) subagentsFixture {
 		&persist.Plugin{Dir: dataDir},
 		&session.Plugin{},
 		&llm.Plugin{},
+		machinelocal.New(),
 		events.NewPlugin(),
 		loops.NewPlugin(),
 		skills.NewPlugin(),

@@ -40,6 +40,7 @@ import { type ModelSelection } from "./model-menu";
 import { compressImage } from "./image-compression";
 import { workspaceName } from "./state/projects";
 import type { FileLocation } from "./editor/links";
+import type { ReviewOpenRequest } from "./workspace-tabs";
 import type { SendParams, SessionView } from "../../contracts/harness.ts";
 import type {
   AgentListResult,
@@ -161,6 +162,8 @@ export default function App() {
     (FileLocation & { requestID: number; workspace: string }) | undefined
   >();
   const fileOpenRequestID = useRef(0);
+  const [reviewOpenRequest, setReviewOpenRequest] = useState<ReviewOpenRequest>();
+  const reviewOpenRequestID = useRef(0);
   const composer = useRef<ComposerHandle>(null);
   const objectUrls = useRef<string[]>([]);
   const drafts = useRef(new Map<string, Draft>());
@@ -1029,6 +1032,16 @@ export default function App() {
                       requestID: ++fileOpenRequestID.current,
                     });
                   }}
+                  onOpenDiff={(runID) => {
+                    if (!selectedID) return;
+                    setPanel(true);
+                    setSettings(false);
+                    setReviewOpenRequest({
+                      sessionID: selectedID,
+                      runID,
+                      requestID: ++reviewOpenRequestID.current,
+                    });
+                  }}
                   onFork={(runID, boundaryEntryID) =>
                     void forkAnswer(runID, boundaryEntryID)
                   }
@@ -1148,8 +1161,12 @@ export default function App() {
             />
             <WorkspaceTabs
               workspace={selected?.settings.workspace ?? null}
+              sessionID={selectedID}
+              runs={snapshot?.runs ?? []}
+              runActive={!!currentRun}
               client={connected ? clientRef.current : null}
               openRequest={fileOpenRequest}
+              reviewRequest={reviewOpenRequest}
               onHide={() => setPanel(false)}
             />
           </aside>

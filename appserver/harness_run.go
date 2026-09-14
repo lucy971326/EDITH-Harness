@@ -67,6 +67,22 @@ func (s *Server) handleStop(_ context.Context, input SessionIDParams) (StopResul
 	return StopResult{}, methodError(s.harnessProduct.Stop(input.SessionID))
 }
 
+func (s *Server) handleReadRunDiff(_ context.Context, input ReadRunDiffParams) (ReadRunDiffResult, error) {
+	if _, err := s.harnessProduct.Session(input.SessionID); err != nil {
+		return ReadRunDiffResult{}, methodError(err)
+	}
+	result, err := s.runner.ReadRunDiffFile(input.SessionID, input.RunID, input.Path)
+	return result, methodError(err)
+}
+
+func (s *Server) handleRevertRunDiff(_ context.Context, input RevertRunDiffParams) (RevertRunDiffResult, error) {
+	if _, err := s.harnessProduct.Session(input.SessionID); err != nil {
+		return RevertRunDiffResult{}, methodError(err)
+	}
+	result, err := s.runner.RevertRunDiffFile(input.SessionID, input.RunID, input.Path, input.ExpectedRevision)
+	return result, methodError(err)
+}
+
 func (s *Server) handleSubscribe(ctx context.Context, input SessionIDParams) (SubscribeResult, error) {
 	request, err := clientconn.FromContext(ctx)
 	if err != nil {

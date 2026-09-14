@@ -24,6 +24,7 @@ import (
 	"harness/kernel/skills"
 	"harness/kernel/subagents"
 	"harness/kernel/tools"
+	machinelocal "harness/plugins/machine/local"
 )
 
 func TestProductRunsWithoutWebAndForksCompletedSegment(t *testing.T) {
@@ -211,7 +212,7 @@ func newTestFixture(t *testing.T) testFixture {
 	t.Cleanup(func() { _ = os.Setenv("HOME", previousHome) })
 
 	h := host.NewHost()
-	plugins := []host.Plugin{&persist.Plugin{Dir: filepath.Join(home, ".harness")}, &session.Plugin{}, &llm.Plugin{}, events.NewPlugin(), loops.NewPlugin(), skills.NewPlugin(), tools.NewPlugin(), agents.NewPlugin(), commands.NewPlugin(), runner.NewPlugin(), subagents.NewPlugin(), harness.NewPlugin()}
+	plugins := []host.Plugin{&persist.Plugin{Dir: filepath.Join(home, ".harness")}, &session.Plugin{}, &llm.Plugin{}, machinelocal.New(), events.NewPlugin(), loops.NewPlugin(), skills.NewPlugin(), tools.NewPlugin(), agents.NewPlugin(), commands.NewPlugin(), runner.NewPlugin(), subagents.NewPlugin(), harness.NewPlugin()}
 	for _, plugin := range plugins {
 		err = h.Install(plugin)
 		if err != nil {

@@ -10,11 +10,13 @@ import (
 	"testing"
 
 	"harness/kernel/machine"
+	"harness/kernel/tools"
 )
 
 type memoryMachine struct {
 	files         map[string][]byte
 	failWritePath string
+	afterWrite    func()
 }
 
 func (m *memoryMachine) HomeDir() (string, error) { return "/home/test", nil }
@@ -52,6 +54,9 @@ func (m *memoryMachine) WriteFile(path string, data []byte) error {
 		return errors.New("write failed")
 	}
 	m.files[path] = append([]byte(nil), data...)
+	if m.afterWrite != nil {
+		m.afterWrite()
+	}
 	return nil
 }
 func (m *memoryMachine) WriteFileIfUnchanged(path string, data []byte, expectedHash string) (string, error) {
@@ -218,6 +223,67 @@ func TestApplyPatchReportsCommittedPrefix(t *testing.T) {
 	}
 	if string(m.files["/work/first.txt"]) != "first\n" {
 		t.Fatalf("first.txt = %q", m.files["/work/first.txt"])
+	}
+}
+
+func TestApplyPatchToolReturnsAppliedFileDelta(t *testing.T) {
+	m := &memoryMachine{files: map[string][]byte{"/work/text.txt": []byte("before\n")}}
+	registry := tools.NewRegistry()
+	if err := registry.Register(newTool(m)); err != nil {
+		t.Fatal(err)
+	}
+	result, err := registry.Call(t.Context(), tools.Call{
+		Name:      "apply_patch",
+		Workspace: "/work",
+		Allow:     []string{"apply_patch"},
+		Arguments: []byte(`{"patch":"*** Begin Patch\n*** Update File: text.txt\n@@\n-before\n+after\n*** End Patch"}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.FileDelta == nil || !result.FileDelta.Exact || len(result.FileDelta.Changes) != 1 {
+		t.Fatalf("file delta = %#v", result.FileDelta)
+	}
+	change := result.FileDelta.Changes[0]
+	if change.Path != "/work/text.txt" || change.Operation != tools.FileOperationUpdate || *change.OldContent != "before\n" || *change.NewContent != "after\n" {
+		t.Fatalf("change = %#v", change)
+	}
+}
+
+func TestApplyPatchToolReturnsCommittedDeltaWhenCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	m := &memoryMachine{files: make(map[string][]byte), afterWrite: cancel}
+	registry := tools.NewRegistry()
+	if err := registry.Register(newTool(m)); err != nil {
+		t.Fatal(err)
+	}
+	result, err := registry.Call(ctx, tools.Call{
+		Name:      "apply_patch",
+		Workspace: "/work",
+		Allow:     []string{"apply_patch"},
+		Arguments: []byte(`{"patch":"*** Begin Patch\n*** Add File: first.txt\n+first\n*** Add File: second.txt\n+second\n*** End Patch"}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsError || result.FileDelta == nil || !result.FileDelta.Exact || len(result.FileDelta.Changes) != 1 {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestApplyPatchRejectsInvalidUTF8BeforeWriting(t *testing.T) {
+	m := &memoryMachine{files: map[string][]byte{
+		"/work/bad.txt":  {0xff},
+		"/work/good.txt": []byte("before\n"),
+	}}
+	patch := "*** Begin Patch\n*** Update File: good.txt\n@@\n-before\n+after\n*** Delete File: bad.txt\n*** End Patch"
+
+	delta, _, err := applyPatch(context.Background(), m, "/work", patch)
+	if err == nil || !strings.Contains(err.Error(), "not valid UTF-8") {
+		t.Fatalf("delta = %#v, error = %v", delta, err)
+	}
+	if got := string(m.files["/work/good.txt"]); got != "before\n" {
+		t.Fatalf("good.txt was written before UTF-8 validation: %q", got)
 	}
 }
 

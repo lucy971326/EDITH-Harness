@@ -7,6 +7,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"unicode/utf8"
 
 	"harness/kernel/machine"
 	"harness/kernel/tools"
@@ -18,10 +19,20 @@ type Args struct {
 }
 
 func newTool(files machine.FileSystem) tools.Tool {
-	description := "Apply a Codex-format patch to add, update, or delete files. Begin with '*** Begin Patch' and end with '*** End Patch'. Use '*** Add File:', '*** Update File:', or '*** Delete File:' headers; update lines start with space, '+', or '-'. File moves are unsupported."
+	description := "Create, edit, or delete files with a Codex-format patch. Always use this tool for deliberate file changes so Harness can track and safely revert them; do not edit files through exec_command. Begin with '*** Begin Patch' and end with '*** End Patch'. Use '*** Add File:', '*** Update File:', or '*** Delete File:' headers; update lines start with space, '+', or '-'. File moves are unsupported."
 	return tools.New("apply_patch", description, func(ctx context.Context, call tools.Call, args Args) (tools.Result, error) {
 		delta, summary, err := applyPatch(ctx, files, call.Workspace, args.Patch)
 		if ctxErr := ctx.Err(); ctxErr != nil {
+			if len(delta.Changes) > 0 || !delta.Exact {
+				content := ctxErr.Error()
+				if err != nil {
+					content = err.Error()
+				}
+				if len(delta.Changes) > 0 {
+					content = formatPartialFailure(delta, errors.New(content))
+				}
+				return tools.Result{Content: content, IsError: true, FileDelta: &delta}, nil
+			}
 			return tools.Result{}, ctxErr
 		}
 		if err != nil {
@@ -29,20 +40,23 @@ func newTool(files machine.FileSystem) tools.Tool {
 			if len(delta.Changes) > 0 {
 				content = formatPartialFailure(delta, err)
 			}
-			return tools.Result{Content: content, IsError: true}, nil
+			return tools.Result{Content: content, IsError: true, FileDelta: &delta}, nil
 		}
-		return tools.Result{Content: summary}, nil
+		return tools.Result{Content: summary, FileDelta: &delta}, nil
 	})
 }
 
-func applyPatch(ctx context.Context, files machine.FileSystem, workspace, patch string) (AppliedDelta, string, error) {
+func applyPatch(ctx context.Context, files machine.FileSystem, workspace, patch string) (tools.AppliedFileDelta, string, error) {
+	if !utf8.ValidString(patch) {
+		return tools.AppliedFileDelta{Exact: true}, "", fmt.Errorf("invalid patch: content is not valid UTF-8")
+	}
 	hunks, err := parsePatch(patch)
 	if err != nil {
-		return AppliedDelta{Exact: true}, "", err
+		return tools.AppliedFileDelta{Exact: true}, "", err
 	}
 	changes, err := prepareChanges(files, workspace, hunks)
 	if err != nil {
-		return AppliedDelta{Exact: true}, "", err
+		return tools.AppliedFileDelta{Exact: true}, "", err
 	}
 	delta, err := commitChanges(ctx, files, changes)
 	if err != nil {
@@ -67,31 +81,45 @@ func prepareChanges(files machine.FileSystem, workspace string, hunks []hunk) ([
 
 		change := preparedChange{path: path, displayPath: patchHunk.Path, operation: patchHunk.Operation}
 		switch patchHunk.Operation {
-		case operationAdd:
+		case tools.FileOperationAdd:
 			current, readErr := files.ReadFileVersion(path, 0)
 			if readErr == nil {
+				if !utf8.Valid(current.Data) {
+					return nil, fmt.Errorf("failed to add %s: existing file is not valid UTF-8", path)
+				}
 				oldContent := string(current.Data)
 				change.oldContent = &oldContent
 				change.expectedHash = current.Hash
+				// Add File 覆盖已有文件时，记录真实发生的 update。
+				change.operation = tools.FileOperationUpdate
 			} else if !errors.Is(readErr, os.ErrNotExist) {
 				return nil, fmt.Errorf("failed to inspect file to add %s: %w", path, readErr)
 			}
 			newContent := patchHunk.Contents
+			if !utf8.ValidString(newContent) {
+				return nil, fmt.Errorf("failed to add %s: new content is not valid UTF-8", path)
+			}
 			change.newContent = &newContent
 
-		case operationDelete:
+		case tools.FileOperationDelete:
 			current, readErr := files.ReadFileVersion(path, 0)
 			if readErr != nil {
 				return nil, fmt.Errorf("failed to read %s: %w", path, readErr)
+			}
+			if !utf8.Valid(current.Data) {
+				return nil, fmt.Errorf("failed to delete %s: file is not valid UTF-8", path)
 			}
 			oldContent := string(current.Data)
 			change.expectedHash = current.Hash
 			change.oldContent = &oldContent
 
-		case operationUpdate:
+		case tools.FileOperationUpdate:
 			current, readErr := files.ReadFileVersion(path, 0)
 			if readErr != nil {
 				return nil, fmt.Errorf("failed to read file to update %s: %w", path, readErr)
+			}
+			if !utf8.Valid(current.Data) {
+				return nil, fmt.Errorf("failed to update %s: file is not valid UTF-8", path)
 			}
 			oldContent := string(current.Data)
 			newContent, updateErr := deriveNewContents(path, oldContent, patchHunk.Chunks)
@@ -107,21 +135,21 @@ func prepareChanges(files machine.FileSystem, workspace string, hunks []hunk) ([
 	return changes, nil
 }
 
-func commitChanges(ctx context.Context, files machine.FileSystem, changes []preparedChange) (AppliedDelta, error) {
-	delta := AppliedDelta{Exact: true}
+func commitChanges(ctx context.Context, files machine.FileSystem, changes []preparedChange) (tools.AppliedFileDelta, error) {
+	delta := tools.AppliedFileDelta{Exact: true}
 	for _, change := range changes {
 		if err := ctx.Err(); err != nil {
 			return delta, err
 		}
 
 		switch change.operation {
-		case operationAdd, operationUpdate:
+		case tools.FileOperationAdd, tools.FileOperationUpdate:
 			_, err := files.WriteFileIfUnchanged(change.path, []byte(*change.newContent), change.expectedHash)
 			if err != nil {
 				delta.Exact = false
 				return delta, fmt.Errorf("failed to write file %s: %w", change.path, err)
 			}
-		case operationDelete:
+		case tools.FileOperationDelete:
 			err := files.RemoveFileIfUnchanged(change.path, change.expectedHash)
 			if err != nil {
 				current, readErr := files.ReadFile(change.path)
@@ -132,9 +160,9 @@ func commitChanges(ctx context.Context, files machine.FileSystem, changes []prep
 			}
 		}
 
-		delta.Changes = append(delta.Changes, AppliedChange{
+		delta.Changes = append(delta.Changes, tools.AppliedFileChange{
 			Path:       change.path,
-			Operation:  string(change.operation),
+			Operation:  change.operation,
 			OldContent: copyString(change.oldContent),
 			NewContent: copyString(change.newContent),
 		})
@@ -154,10 +182,10 @@ func formatSuccess(changes []preparedChange) string {
 	lines := []string{"Success. Updated the following files:"}
 	for _, change := range changes {
 		marker := "M"
-		if change.operation == operationAdd {
+		if change.operation == tools.FileOperationAdd {
 			marker = "A"
 		}
-		if change.operation == operationDelete {
+		if change.operation == tools.FileOperationDelete {
 			marker = "D"
 		}
 		lines = append(lines, marker+" "+change.displayPath)
@@ -165,14 +193,14 @@ func formatSuccess(changes []preparedChange) string {
 	return strings.Join(lines, "\n")
 }
 
-func formatPartialFailure(delta AppliedDelta, err error) string {
+func formatPartialFailure(delta tools.AppliedFileDelta, err error) string {
 	lines := []string{err.Error(), "", "Applied before failure:"}
 	for _, change := range delta.Changes {
 		marker := "M"
-		if change.Operation == string(operationAdd) {
+		if change.Operation == tools.FileOperationAdd {
 			marker = "A"
 		}
-		if change.Operation == string(operationDelete) {
+		if change.Operation == tools.FileOperationDelete {
 			marker = "D"
 		}
 		lines = append(lines, marker+" "+change.Path)

@@ -9,11 +9,12 @@ import (
 
 // 数据。磁盘上的一轮运行结果；不重复保存消息正文。
 type runRecord struct {
-	RunID         string    `json:"runID"`
-	Status        RunStatus `json:"status"`
-	AfterEntrySeq uint64    `json:"afterEntrySeq"`
-	Error         string    `json:"error,omitempty"`
-	Usage         *Usage    `json:"usage,omitempty"`
+	RunID         string          `json:"runID"`
+	Status        RunStatus       `json:"status"`
+	AfterEntrySeq uint64          `json:"afterEntrySeq"`
+	Error         string          `json:"error,omitempty"`
+	Usage         *Usage          `json:"usage,omitempty"`
+	Diff          *RunDiffSummary `json:"diff,omitempty"`
 }
 
 func (r *Runner) loadRecords(sessionID string) ([]runRecord, error) {
@@ -62,6 +63,9 @@ func (r *Runner) upsertRecord(sessionID string, rec runRecord) error {
 		if existing.RunID != rec.RunID {
 			continue
 		}
+		if rec.Diff == nil {
+			rec.Diff = cloneDiffSummary(existing.Diff)
+		}
 		records[i] = rec
 		replaced = true
 		break
@@ -108,6 +112,10 @@ func (r *Runner) CopyRecordsForFork(sourceID, destID string, seqMap map[uint64]u
 	if err != nil {
 		return err
 	}
+	records, err = r.reconcileDiffsLocked(sourceID, records)
+	if err != nil {
+		return err
+	}
 	copied := make([]runRecord, 0, len(records))
 	for _, rec := range records {
 		after, ok := seqMap[rec.AfterEntrySeq]
@@ -120,9 +128,22 @@ func (r *Runner) CopyRecordsForFork(sourceID, destID string, seqMap map[uint64]u
 			rec.Error = "interrupted by restart"
 		}
 		copied = append(copied, rec)
+		if rec.Diff != nil {
+			body, readErr := r.readDiffBody(sourceID, rec.RunID)
+			if readErr != nil {
+				return readErr
+			}
+			if writeErr := r.writeDiffBody(destID, body); writeErr != nil {
+				return writeErr
+			}
+		}
 	}
 	if len(copied) == 0 {
 		return nil
 	}
-	return r.saveRecords(destID, copied)
+	if err = r.saveRecords(destID, copied); err != nil {
+		return err
+	}
+	r.reconciled[destID] = true
+	return nil
 }

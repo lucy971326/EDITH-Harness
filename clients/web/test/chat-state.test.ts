@@ -133,6 +133,23 @@ test("usage event updates the same snapshot used after reconnect", () => {
   });
 });
 
+test("run diff updates replace the Run projection without mutating older snapshots", () => {
+  const state = update(empty(), { kind: "run-started", afterEntrySeq: 0 });
+  const next = update(state, {
+    kind: "run-diff-updated",
+    diff: {
+      runID: "run",
+      revision: 2,
+      files: [
+        { path: "main.go", operation: "update", additions: 3, deletions: 1 },
+      ],
+    },
+  });
+  assert.equal(state.runs[0].diff, undefined);
+  assert.equal(next.runs[0].diff?.revision, 2);
+  assert.equal(next.runs[0].diff?.files[0].path, "main.go");
+});
+
 test("late delta cannot turn a durable entry into a draft", () => {
   let state = update(empty(), {
     entry: entry("answer", 1, "assistant", "done"),

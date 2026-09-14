@@ -3,6 +3,8 @@ package applypatch
 import (
 	"fmt"
 	"strings"
+
+	"harness/kernel/tools"
 )
 
 const (
@@ -50,14 +52,14 @@ func parsePatch(patch string) ([]hunk, error) {
 			if !added {
 				return nil, invalidHunk(lineIndex+1, "add file hunk is empty")
 			}
-			hunks = append(hunks, hunk{Operation: operationAdd, Path: path, Contents: contents.String()})
+			hunks = append(hunks, hunk{Operation: tools.FileOperationAdd, Path: path, Contents: contents.String()})
 
 		case strings.HasPrefix(line, deleteFileMarker):
 			path := strings.TrimSpace(strings.TrimPrefix(line, deleteFileMarker))
 			if path == "" {
 				return nil, invalidHunk(lineIndex+1, "delete file path is empty")
 			}
-			hunks = append(hunks, hunk{Operation: operationDelete, Path: path})
+			hunks = append(hunks, hunk{Operation: tools.FileOperationDelete, Path: path})
 			lineIndex++
 			if lineIndex < len(lines)-1 && !isHunkHeader(lines[lineIndex]) {
 				return nil, invalidHunk(lineIndex+1, "delete file hunk cannot contain body lines")
@@ -73,7 +75,7 @@ func parsePatch(patch string) ([]hunk, error) {
 			if err != nil {
 				return nil, err
 			}
-			hunks = append(hunks, hunk{Operation: operationUpdate, Path: path, Chunks: chunks})
+			hunks = append(hunks, hunk{Operation: tools.FileOperationUpdate, Path: path, Chunks: chunks})
 			lineIndex = next
 
 		default:

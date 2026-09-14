@@ -84,6 +84,27 @@ func TestService_defaultAgentKeepsInitialToolsAndAddsNewSkills(t *testing.T) {
 	}
 }
 
+func TestService_prepareDirectsFileChangesThroughApplyPatch(t *testing.T) {
+	service, loopsRegistry, toolsRegistry, _ := testService(t)
+	registerLoop(t, loopsRegistry, "react")
+	registerTool(t, toolsRegistry, "exec_command")
+	registerTool(t, toolsRegistry, "apply_patch")
+
+	agent, err := service.Save(Agent{ID: "coding", Name: "Coding", Kind: "react", Tools: []string{"exec_command", "apply_patch"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := service.Prepare(context.Background(), agent.ID, "/work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"## File Changes", "Use apply_patch for every deliberate file creation, edit, or deletion", "do not use shell redirection or file-mutating commands"} {
+		if !strings.Contains(prepared.SystemPrompt, want) {
+			t.Fatalf("SystemPrompt = %q, missing %q", prepared.SystemPrompt, want)
+		}
+	}
+}
+
 func TestService_rejectsInvalidConfigurationAndAllowsDefaultChanges(t *testing.T) {
 	service, loopsRegistry, toolsRegistry, _ := testService(t)
 	registerLoop(t, loopsRegistry, "react")

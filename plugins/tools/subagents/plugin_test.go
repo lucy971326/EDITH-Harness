@@ -22,6 +22,7 @@ import (
 	"harness/kernel/skills"
 	delegation "harness/kernel/subagents"
 	"harness/kernel/tools"
+	machinelocal "harness/plugins/machine/local"
 )
 
 // 活对象。使用真实 Runner 的受控测试 Loop，不请求外部模型。
@@ -107,6 +108,7 @@ func newFixture(t *testing.T) fixture {
 	loop := &controlledLoop{started: make(chan loops.Invocation, 10), release: make(chan struct{}, 10)}
 	for _, plugin := range []host.Plugin{
 		&persist.Plugin{Dir: dataDir}, &session.Plugin{}, &llm.Plugin{},
+		machinelocal.New(),
 		tools.NewPlugin(), events.NewPlugin(), loops.NewPlugin(), skills.NewPlugin(),
 		agents.NewPlugin(), runner.NewPlugin(), delegation.NewPlugin(), New(),
 	} {

@@ -150,7 +150,11 @@ func run() (result error) {
 	if err != nil {
 		return err
 	}
-	err = server.BindHarness(product, registry)
+	runService, err := host.Resolve[*runner.Runner](h, "runner")
+	if err != nil {
+		return err
+	}
+	err = server.BindHarness(product, runService, registry)
 	if err != nil {
 		return err
 	}

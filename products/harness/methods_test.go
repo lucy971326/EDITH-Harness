@@ -460,7 +460,7 @@ func newRPCServer(t *testing.T, fixture testFixture) *appserver.Server {
 	t.Helper()
 	server := appserver.New()
 	t.Cleanup(func() { _ = server.Close() })
-	err := server.BindHarness(fixture.service, fixture.events)
+	err := server.BindHarness(fixture.service, fixture.runner, fixture.events)
 	if err != nil {
 		t.Fatal(err)
 	}

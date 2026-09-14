@@ -1,7 +1,10 @@
 // Package runner 定义一轮对话运行外壳。
 package runner
 
-import "harness/kernel/session"
+import (
+	"harness/kernel/session"
+	"harness/kernel/tools"
+)
 
 // 数据。一条 Runner 对外事件的种类。表面不依赖 Loop 的内部事件。
 type RunEventKind string
@@ -16,6 +19,7 @@ const (
 	Message        RunEventKind = "message"
 	ContextUsage   RunEventKind = "usage"
 	RunEnded       RunEventKind = "run-ended"
+	RunDiffUpdated RunEventKind = "run-diff-updated"
 )
 
 // 数据。一轮 Run 的结束状态。
@@ -45,12 +49,38 @@ type RunDraft struct {
 
 // 数据。一场 Run 的可恢复运行事实，含状态、未落账草稿与最后一次模型用量。
 type RunState struct {
-	RunID         string     `json:"runID"`
-	AfterEntrySeq uint64     `json:"afterEntrySeq"`
-	Status        RunStatus  `json:"status"`
-	Error         string     `json:"error,omitempty"`
-	Drafts        []RunDraft `json:"drafts,omitempty"`
-	Usage         *Usage     `json:"usage,omitempty"`
+	RunID         string          `json:"runID"`
+	AfterEntrySeq uint64          `json:"afterEntrySeq"`
+	Status        RunStatus       `json:"status"`
+	Error         string          `json:"error,omitempty"`
+	Drafts        []RunDraft      `json:"drafts,omitempty"`
+	Usage         *Usage          `json:"usage,omitempty"`
+	Diff          *RunDiffSummary `json:"diff,omitempty"`
+}
+
+// 数据。一轮文件变化的轻量投影；完整正文按文件读取。
+type RunDiffSummary struct {
+	RunID    string            `json:"runID"`
+	Revision uint64            `json:"revision"`
+	Files    []FileDiffSummary `json:"files"`
+}
+
+// 数据。一个变化文件的路径、操作与行数统计。
+type FileDiffSummary struct {
+	Path      string              `json:"path"`
+	Operation tools.FileOperation `json:"operation"`
+	Additions int                 `json:"additions"`
+	Deletions int                 `json:"deletions"`
+}
+
+// 数据。供审查器读取的一个文件完整旧、新内容。
+type RunDiffFile struct {
+	RunID      string              `json:"runID"`
+	Revision   uint64              `json:"revision"`
+	Path       string              `json:"path"`
+	Operation  tools.FileOperation `json:"operation"`
+	OldContent *string             `json:"oldContent"`
+	NewContent *string             `json:"newContent"`
 }
 
 // 数据。一本会话的账本、运行状态和可比较的更新边界。
@@ -77,18 +107,19 @@ type Usage struct {
 
 // 数据。Runner 发布给界面的一条本轮事件。
 type RunEvent struct {
-	SessionID     string         `json:"sessionID"`
-	RunID         string         `json:"runID"`
-	Kind          RunEventKind   `json:"kind"`
-	EntryID       string         `json:"entryID,omitempty"`
-	AfterEntrySeq uint64         `json:"afterEntrySeq,omitempty"`
-	BlockSeq      uint64         `json:"blockSeq,omitempty"`
-	Text          string         `json:"text,omitempty"`
-	Entry         *session.Entry `json:"entry,omitempty"`
-	Tool          *ToolEvent     `json:"tool,omitempty"`
-	Usage         *Usage         `json:"usage,omitempty"`
-	Status        RunStatus      `json:"status,omitempty"`
-	Error         string         `json:"error,omitempty"`
-	UpdateSeq     uint64         `json:"updateSeq"`
-	SeqEpoch      string         `json:"seqEpoch"`
+	SessionID     string          `json:"sessionID"`
+	RunID         string          `json:"runID"`
+	Kind          RunEventKind    `json:"kind"`
+	EntryID       string          `json:"entryID,omitempty"`
+	AfterEntrySeq uint64          `json:"afterEntrySeq,omitempty"`
+	BlockSeq      uint64          `json:"blockSeq,omitempty"`
+	Text          string          `json:"text,omitempty"`
+	Entry         *session.Entry  `json:"entry,omitempty"`
+	Tool          *ToolEvent      `json:"tool,omitempty"`
+	Usage         *Usage          `json:"usage,omitempty"`
+	Status        RunStatus       `json:"status,omitempty"`
+	Error         string          `json:"error,omitempty"`
+	Diff          *RunDiffSummary `json:"diff"`
+	UpdateSeq     uint64          `json:"updateSeq"`
+	SeqEpoch      string          `json:"seqEpoch"`
 }

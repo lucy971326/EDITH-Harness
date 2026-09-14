@@ -40,8 +40,10 @@
    │  会话元数据
    ├─ settings.json
    │  此会话的运行设置
-   └─ runs.json
-      各轮运行身份、状态、锚点、错误与最后一次模型用量；不重复保存消息正文
+   ├─ runs.json
+   │  各轮运行身份、状态、锚点、错误、最后一次模型用量与 Diff 摘要；不重复保存消息正文
+   └─ diffs/<run-id>.json.gz
+      此 Run 的完整文件前后内容；UTF-8 JSON 经 gzip 压缩，同一 Run 只保留最新 revision
 ```
 
 旧项目内 `.harness-data/`、用户目录根下旧平铺会话文件、`~/.harness/*.agent.json` 和 `~/.harness/system-skills/` 都不再读取。Agent 配置迁移时必须同时去掉文件名中的 `.agent`，不能只移动目录。
@@ -72,6 +74,7 @@ Skill 发现
 
 Runner 运行结果
 └─ 每轮 RunID、状态、账本锚点、错误和最后一次模型用量；与对话正文分开
+   `apply_patch` 的本轮净变化也归 Runner：摘要在 runs.json，完整前后内容在 diffs/<run-id>.json.gz
    生成中草稿只在 liveRun 内存，不写硬盘
    重启把未收尾的 running 标为 interrupted，不自动续跑
 
@@ -86,7 +89,7 @@ Subagents
 
 Client 状态
 └─ 当前设备上的临时界面状态与后台投影
-   面板开关与宽度、折叠展开状态、主题偏好
+   面板开关与宽度、折叠展开状态、主题偏好、审查标签与当前文件选择
 
 app-server 瞬时状态
 └─ 连接、JSON-RPC 请求响应配对、订阅和待回答请求
@@ -118,6 +121,7 @@ Client 状态
   不是账本，也不是插件存储
   生成中的正文／思考草稿只在 liveRun 内存；完整消息先落账，再移除同 Entry.ID 草稿
   运行结果（身份、状态、锚点、错误、最后一次模型用量）由 Runner 写入 runs.json，不伪造结束消息
+  Run Diff 不写 messages.jsonl；正文文件是恢复依据，runs.json 只保存聊天和列表需要的摘要
 
 连接与请求
   JSON-RPC 请求 ID 只匹配一次响应；连接、订阅和待发送队列都在内存
