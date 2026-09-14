@@ -41,6 +41,7 @@ import {
   type ProjectEditorState,
 } from "./editor/files";
 import { FileText, GitCompareArrows, PanelRight } from "./icons";
+import { Terminal } from "./icons";
 import type { FileLocation } from "./editor/links";
 import type { RunState } from "../../contracts/run.ts";
 
@@ -56,6 +57,12 @@ const ReviewView = lazy(() =>
   })),
 );
 
+const TerminalView = lazy(() =>
+  import("./terminal/terminal-view").then((module) => ({
+    default: module.TerminalView,
+  })),
+);
+
 export interface ReviewOpenRequest {
   requestID: number;
   sessionID: string;
@@ -66,6 +73,12 @@ interface WatchTarget {
   path: string;
   kind: "file" | "directory";
   subscriptionID: string;
+}
+
+interface TerminalTab {
+  processID: string;
+  title: string;
+  workspace: string;
 }
 
 function storedTreeWidth(): number {
@@ -107,6 +120,7 @@ export function WorkspaceTabs({
   const saveTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const saving = useRef(new Set<string>());
   const handledReviewRequestID = useRef(0);
+  const terminalSequence = useRef(0);
   const [, setRevision] = useState(0);
   const [treeRevision, setTreeRevision] = useState(0);
   const [treeOpen, setTreeOpen] = useState(true);
@@ -114,6 +128,7 @@ export function WorkspaceTabs({
   const [closingPath, setClosingPath] = useState("");
   const [location, setLocation] = useState<FileLocation>();
   const [reviewRunIDs, setReviewRunIDs] = useState<string[]>([]);
+  const [terminals, setTerminals] = useState<TerminalTab[]>([]);
   const [activeTabID, setActiveTabID] = useState("");
 
   const project = workspace ? projects.current.get(workspace) : undefined;
@@ -123,6 +138,18 @@ export function WorkspaceTabs({
     (runID) => reviewTabID(runID) === activeTabID,
   );
   const activeReview = runs.find((run) => run.runID === activeReviewRunID)?.diff;
+
+  function createTerminal() {
+    if (!workspace || !client?.connected) return;
+    const count = ++terminalSequence.current;
+    const terminal = {
+      processID: crypto.randomUUID(),
+      title: count === 1 ? "bash" : `bash ${count}`,
+      workspace,
+    };
+    setTerminals((current) => [...current, terminal]);
+    setActiveTabID(terminal.processID);
+  }
 
   function currentProject(): ProjectEditorState | null {
     if (!workspace) return null;
@@ -264,6 +291,10 @@ export function WorkspaceTabs({
     setReviewRunIDs([]);
     setActiveTabID(currentProject()?.activePath ?? "");
   }, [sessionID, workspace]);
+
+  useEffect(() => {
+    if (!client) setTerminals([]);
+  }, [client]);
 
   useEffect(() => {
     if (!reviewRequest || reviewRequest.sessionID !== sessionID) return;
@@ -445,6 +476,12 @@ export function WorkspaceTabs({
       title: "审查更改",
       contextPath: runID,
     })),
+    ...terminals.map((terminal) => ({
+      id: terminal.processID,
+      kind: "terminal",
+      title: terminal.title,
+      contextPath: terminal.workspace,
+    })),
   ];
 
   const views: AuxiliaryView[] = [
@@ -599,6 +636,28 @@ export function WorkspaceTabs({
           <EmptyEditor title="没有可审查的更改" detail="Agent 的文件修改会显示在这里。" />
         ),
     },
+    {
+      kind: "terminal",
+      label: "终端",
+      icon: Terminal,
+      keepMounted: true,
+      onCreate: createTerminal,
+      render: (tab) => {
+        const terminal = terminals.find((item) => item.processID === tab?.id);
+        return terminal && client ? (
+          <Suspense
+            fallback={<div className="editor-loading">正在加载终端…</div>}
+          >
+            <TerminalView
+              processID={terminal.processID}
+              workspace={terminal.workspace}
+              active={activeTabID === terminal.processID}
+              client={client}
+            />
+          </Suspense>
+        ) : null;
+      },
+    },
   ];
 
   return (
@@ -618,6 +677,19 @@ export function WorkspaceTabs({
         onCloseTab={(tab) => {
           if (tab.kind === "file") {
             requestClose(tab.id);
+            return;
+          }
+          if (tab.kind === "terminal") {
+            const index = tabs.findIndex((item) => item.id === tab.id);
+            if (client?.connected)
+              void client.terminateTerminal(tab.id).catch(() => {});
+            setTerminals((current) =>
+              current.filter((item) => item.processID !== tab.id),
+            );
+            if (activeTabID === tab.id)
+              setActiveTabID(
+                tabs[index - 1]?.id ?? tabs[index + 1]?.id ?? "",
+              );
             return;
           }
           const index = tabs.findIndex((item) => item.id === tab.id);

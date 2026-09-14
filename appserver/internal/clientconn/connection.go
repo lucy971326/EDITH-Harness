@@ -4,6 +4,7 @@ package clientconn
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"sync/atomic"
@@ -31,6 +32,7 @@ type Caller func(context.Context, string, json.RawMessage) internalrpc.PreparedC
 
 // 活对象。Connection 保存一个 Client 的协议状态和瞬时资源。
 type Connection struct {
+	id     string
 	caller Caller
 	rpc    *jsonrpc2.Conn
 	ctx    context.Context
@@ -50,6 +52,7 @@ type Connection struct {
 func New(parent context.Context, stream jsonrpc2.ObjectStream, caller Caller) *Connection {
 	ctx, cancel := context.WithCancel(parent)
 	connection := &Connection{
+		id:                rand.Text(),
 		caller:            caller,
 		ctx:               ctx,
 		cancel:            cancel,
@@ -180,6 +183,10 @@ func (c *Connection) sendNotifications() {
 		case <-c.ctx.Done():
 			return
 		case item := <-c.notifications:
+			if item.sent != nil {
+				close(item.sent)
+				continue
+			}
 			err := c.rpc.Notify(c.ctx, item.method, item.params)
 			if err != nil {
 				c.disconnect()
@@ -189,14 +196,16 @@ func (c *Connection) sendNotifications() {
 	}
 }
 
-func (c *Connection) enqueueNotification(item notification) {
+func (c *Connection) enqueueNotification(item notification) bool {
 	select {
 	case <-c.ctx.Done():
-		return
+		return false
 	case c.notifications <- item:
+		return true
 	default:
 		// 慢 Client 直接断线，不能阻塞 Runner 或静默丢失完成事件。
 		c.disconnect()
+		return false
 	}
 }
 

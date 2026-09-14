@@ -1,6 +1,7 @@
 package clientconn
 
 import (
+	"context"
 	"crypto/rand"
 	"sync"
 
@@ -15,6 +16,7 @@ const (
 type notification struct {
 	method string
 	params any
+	sent   chan struct{}
 }
 
 type subscriptionEvent struct {
@@ -163,6 +165,33 @@ func (s *Subscription) close(remove bool) {
 type RequestContext struct {
 	connection    *Connection
 	subscriptions []*Subscription
+}
+
+// ConnectionID 返回只在本进程内使用的 Client 连接身份。
+func (r *RequestContext) ConnectionID() string { return r.connection.id }
+
+// Done 在 Client 断开或 Server 关闭时关闭。
+func (r *RequestContext) Done() <-chan struct{} { return r.connection.ctx.Done() }
+
+// Notify 非阻塞地发送不属于订阅的连接级通知。
+func (r *RequestContext) Notify(method string, params any) bool {
+	return r.connection.enqueueNotification(notification{method: method, params: params})
+}
+
+// FlushNotifications 等待此前已排队的连接级通知写入网络。
+func (r *RequestContext) FlushNotifications(ctx context.Context) error {
+	sent := make(chan struct{})
+	if !r.connection.enqueueNotification(notification{sent: sent}) {
+		return context.Canceled
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-r.connection.ctx.Done():
+		return context.Canceled
+	case <-sent:
+		return nil
+	}
 }
 
 // Subscribe 创建一条先缓冲事件的订阅。

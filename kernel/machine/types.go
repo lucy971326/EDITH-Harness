@@ -79,6 +79,29 @@ type ProcessOutput struct {
 	OmittedBytes int64
 }
 
+// 数据。启动一条由富 Client 直接管理的 PTY 进程。
+type TerminalRequest struct {
+	Dir  string
+	Argv []string
+	Rows int
+	Cols int
+}
+
+// 契约。一条由调用方拥有生命周期的 PTY 进程。
+type TerminalProcess interface {
+	Output() <-chan []byte
+	Write(data []byte) error
+	CloseInput() error
+	Resize(rows int, cols int) error
+	Terminate() error
+	Wait(ctx context.Context) (int, error)
+}
+
+// 契约。同一份 machine 服务提供的低层 PTY 能力。
+type TerminalSystem interface {
+	StartTerminal(request TerminalRequest) (TerminalProcess, error)
+}
+
 // 契约。同一份 machine 服务提供的长期进程能力。
 type ProcessSystem interface {
 	// 进程启动与后续交互

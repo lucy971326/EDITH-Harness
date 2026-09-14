@@ -20,8 +20,9 @@ export interface AuxiliaryView {
   kind: string;
   label: string;
   icon: ComponentType<{ className?: string }>;
-  render: () => ReactNode;
+  render: (tab?: AuxiliaryTab) => ReactNode;
   onCreate: () => void;
+  keepMounted?: boolean;
 }
 
 export function AuxiliaryPanel({
@@ -121,7 +122,24 @@ export function AuxiliaryPanel({
         </Button>
       </header>
 
-      <div className="auxiliary-view">{activeView?.render()}</div>
+      <div className="auxiliary-view">
+        {activeView && !activeView.keepMounted && activeView.render(activeTab)}
+        {views
+          .filter((view) => view.keepMounted)
+          .flatMap((view) =>
+            tabs
+              .filter((tab) => tab.kind === view.kind)
+              .map((tab) => (
+                <div
+                  className="auxiliary-view-instance"
+                  hidden={tab.id !== activeTabID}
+                  key={tab.id}
+                >
+                  {view.render(tab)}
+                </div>
+              )),
+          )}
+      </div>
     </div>
   );
 }

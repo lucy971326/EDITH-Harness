@@ -29,6 +29,7 @@ type Server struct {
 	skills          skills.Skills
 	commands        commands.Commands
 	filesystem      machine.FileSystem
+	commandExec     *commandExecManager
 	workspacePicker workspacepicker.Picker
 
 	// 对外方法及同一 Session 的写请求顺序。

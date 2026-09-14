@@ -67,6 +67,14 @@ export interface FileMetadata {
 export interface FileChangedEvent { changedPaths: string[] }
 export interface FileChangedNotification { subscriptionID: string; event: FileChangedEvent }
 
+export interface CommandExecTerminalSize { rows: number; cols: number }
+export interface CommandExecOutputDeltaNotification {
+  processId: string;
+  stream: 'stdout';
+  deltaBase64: string;
+  capReached: boolean;
+}
+
 export interface ServerMethods {
   initialize: { params: { protocolVersion: number }; result: InitializeResult };
   'server/unsubscribe': { params: { subscriptionID: string }; result: Record<string, never> };
@@ -83,4 +91,20 @@ export interface ServerMethods {
   'fs/readDirectory': { params: { path: string }; result: { entries: FileEntry[] } };
   'fs/getMetadata': { params: { path: string }; result: FileMetadata };
   'fs/watch': { params: { path: string }; result: { subscriptionID: string } };
+  'command/exec': {
+    params: { processId: string; cwd: string; size: CommandExecTerminalSize };
+    result: { exitCode: number };
+  };
+  'command/exec/write': {
+    params: { processId: string; deltaBase64?: string; closeStdin?: boolean };
+    result: Record<string, never>;
+  };
+  'command/exec/resize': {
+    params: { processId: string; size: CommandExecTerminalSize };
+    result: Record<string, never>;
+  };
+  'command/exec/terminate': {
+    params: { processId: string };
+    result: Record<string, never>;
+  };
 }

@@ -6,6 +6,7 @@ import type {
 import type { ServerMethods } from "../../../contracts/appserver.ts";
 import type {
   AgentSaveParams,
+  CommandExecOutputDeltaNotification,
   FileChangedNotification,
 } from "../../../contracts/appserver.ts";
 import type { RunNotification } from "../../../contracts/run.ts";
@@ -66,6 +67,10 @@ export interface CallOptions<Result = unknown> {
 export class RPCClient {
   onRun: ((notification: RunNotification) => void) | null = null;
   onFileChanged: ((notification: FileChangedNotification) => void) | null = null;
+  private commandOutputListeners = new Map<
+    string,
+    Set<(notification: CommandExecOutputDeltaNotification) => void>
+  >();
   private readonly url: string;
   private readonly onStatus: StatusListener;
   private readonly openSocket: SocketFactory;
@@ -243,6 +248,49 @@ export class RPCClient {
     });
   }
 
+  execTerminal(processId: string, cwd: string, rows: number, cols: number) {
+    return this.call(
+      "command/exec",
+      { processId, cwd, size: { rows, cols } },
+      { timeoutMs: null },
+    );
+  }
+
+  writeTerminal(processId: string, deltaBase64?: string, closeStdin = false) {
+    return this.call("command/exec/write", {
+      processId,
+      ...(deltaBase64 === undefined ? {} : { deltaBase64 }),
+      ...(closeStdin ? { closeStdin } : {}),
+    });
+  }
+
+  resizeTerminal(processId: string, rows: number, cols: number) {
+    return this.call("command/exec/resize", {
+      processId,
+      size: { rows, cols },
+    });
+  }
+
+  terminateTerminal(processId: string) {
+    return this.call("command/exec/terminate", { processId });
+  }
+
+  onCommandOutput(
+    processId: string,
+    listener: (notification: CommandExecOutputDeltaNotification) => void,
+  ): () => void {
+    let listeners = this.commandOutputListeners.get(processId);
+    if (!listeners) {
+      listeners = new Set();
+      this.commandOutputListeners.set(processId, listeners);
+    }
+    listeners.add(listener);
+    return () => {
+      listeners?.delete(listener);
+      if (listeners?.size === 0) this.commandOutputListeners.delete(processId);
+    };
+  }
+
   updateSettings(params: Methods["harness/session/settings/update"]["params"]) {
     return this.call("harness/session/settings/update", params);
   }
@@ -330,6 +378,19 @@ export class RPCClient {
           Array.isArray(envelope.params?.event?.changedPaths)
         ) {
           this.onFileChanged?.(envelope.params as FileChangedNotification);
+        } else if (
+          envelope.method === "command/exec/outputDelta" &&
+          typeof envelope.params?.processId === "string" &&
+          envelope.params?.stream === "stdout" &&
+          typeof envelope.params?.deltaBase64 === "string"
+        ) {
+          const notification =
+            envelope.params as CommandExecOutputDeltaNotification;
+          for (const listener of this.commandOutputListeners.get(
+            notification.processId,
+          ) ?? []) {
+            listener(notification);
+          }
         }
         return;
       }
@@ -370,6 +431,7 @@ export class RPCClient {
   private fail(error: unknown): void {
     const detail = error instanceof Error ? error.message : "连接失败";
     this.initialized = false;
+    this.commandOutputListeners.clear();
     this.rejectAll(error instanceof Error ? error : new Error(detail));
     const socket = this.socket;
     this.socket = null;

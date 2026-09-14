@@ -20,6 +20,7 @@ type local struct {
 	mu        sync.Mutex
 	watches   map[*localWatch]struct{}
 	processes map[int64]*localProcess
+	terminals map[*localProcess]struct{}
 	closed    bool
 }
 
@@ -32,6 +33,7 @@ func newLocal() (*local, error) {
 		bash:      bash,
 		watches:   make(map[*localWatch]struct{}),
 		processes: make(map[int64]*localProcess),
+		terminals: make(map[*localProcess]struct{}),
 	}, nil
 }
 
@@ -61,8 +63,11 @@ func (m *local) close() error {
 	for watch := range m.watches {
 		watches = append(watches, watch)
 	}
-	processes := make([]*localProcess, 0, len(m.processes))
+	processes := make([]*localProcess, 0, len(m.processes)+len(m.terminals))
 	for _, process := range m.processes {
+		processes = append(processes, process)
+	}
+	for process := range m.terminals {
 		processes = append(processes, process)
 	}
 	m.mu.Unlock()

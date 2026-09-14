@@ -166,6 +166,14 @@ func run() (result error) {
 	if err != nil {
 		return err
 	}
+	terminalService, ok := machineService.(machine.TerminalSystem)
+	if !ok {
+		return fmt.Errorf("machine service does not provide terminal support")
+	}
+	err = server.BindCommandExec(terminalService)
+	if err != nil {
+		return err
+	}
 	models, err := host.Resolve[*llm.Client](h, "llm")
 	if err != nil {
 		return err

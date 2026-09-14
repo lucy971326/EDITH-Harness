@@ -39,9 +39,41 @@ type localProcess struct {
 	interactionMu sync.Mutex
 	done          chan struct{}
 	readerDone    chan struct{}
+	outputEvents  chan []byte
 
 	terminateMu     sync.Mutex
 	terminationSent bool
+}
+
+func (m *local) StartTerminal(request machine.TerminalRequest) (machine.TerminalProcess, error) {
+	if request.Dir == "" || len(request.Argv) == 0 || request.Rows <= 0 || request.Cols <= 0 {
+		return nil, fmt.Errorf("machine-local: terminal directory, argv and positive size required")
+	}
+
+	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		return nil, fmt.Errorf("machine-local: machine is closed")
+	}
+	process, err := m.startProcess(machine.ProcessRequest{
+		Dir:  request.Dir,
+		Argv: request.Argv,
+		TTY:  true,
+	}, request.Cols, request.Rows, true)
+	if err != nil {
+		m.mu.Unlock()
+		return nil, err
+	}
+	m.terminals[process] = struct{}{}
+	m.mu.Unlock()
+
+	go func() {
+		<-process.done
+		m.mu.Lock()
+		delete(m.terminals, process)
+		m.mu.Unlock()
+	}()
+	return process, nil
 }
 
 func (m *local) Exec(ctx context.Context, request machine.ProcessRequest) (machine.ProcessOutput, error) {
@@ -66,7 +98,7 @@ func (m *local) Exec(ctx context.Context, request machine.ProcessRequest) (machi
 		m.mu.Unlock()
 		return machine.ProcessOutput{}, err
 	}
-	process, err := m.startProcess(request)
+	process, err := m.startProcess(request, 80, 24, false)
 	if err != nil {
 		m.mu.Unlock()
 		return machine.ProcessOutput{}, err
@@ -136,13 +168,16 @@ func (m *local) Interact(ctx context.Context, interaction machine.ProcessInterac
 	return output, nil
 }
 
-func (m *local) startProcess(request machine.ProcessRequest) (*localProcess, error) {
+func (m *local) startProcess(request machine.ProcessRequest, cols int, rows int, streamOutput bool) (*localProcess, error) {
 	program := request.Argv[0]
 	if program == "bash" {
 		program = m.bash
 	}
 	cmd := exec.Command(program, request.Argv[1:]...)
 	cmd.Dir = request.Dir
+	if streamOutput {
+		cmd.Env = append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor")
+	}
 
 	platform, err := newPlatformProcess()
 	if err != nil {
@@ -157,10 +192,13 @@ func (m *local) startProcess(request machine.ProcessRequest) (*localProcess, err
 		done:       make(chan struct{}),
 		readerDone: make(chan struct{}),
 	}
+	if streamOutput {
+		process.outputEvents = make(chan []byte, 32)
+	}
 
 	var output io.ReadCloser
 	if request.TTY {
-		terminal, ptyErr := xpty.NewPty(80, 24)
+		terminal, ptyErr := xpty.NewPty(cols, rows)
 		if ptyErr != nil {
 			_ = platform.close()
 			return nil, fmt.Errorf("machine-local: create terminal: %w", ptyErr)
@@ -205,18 +243,76 @@ func (p *localProcess) readOutput(reader io.ReadCloser, closeWhenDone bool) {
 		defer reader.Close()
 	}
 	defer close(p.readerDone)
+	if p.outputEvents != nil {
+		defer close(p.outputEvents)
+	}
 	buffer := make([]byte, 32*1024)
 	for {
 		count, err := reader.Read(buffer)
 		if count > 0 {
-			p.mu.Lock()
-			p.output.append(buffer[:count])
-			p.mu.Unlock()
+			if p.outputEvents != nil {
+				chunk := append([]byte(nil), buffer[:count]...)
+				p.outputEvents <- chunk
+			} else {
+				p.mu.Lock()
+				p.output.append(buffer[:count])
+				p.mu.Unlock()
+			}
 		}
 		if err != nil {
 			return
 		}
 	}
+}
+
+func (p *localProcess) Output() <-chan []byte { return p.outputEvents }
+
+func (p *localProcess) Write(data []byte) error {
+	p.interactionMu.Lock()
+	defer p.interactionMu.Unlock()
+	if p.hasExited() {
+		return fmt.Errorf("machine-local: terminal process has exited")
+	}
+	_, err := p.pty.Write(data)
+	if err != nil {
+		return fmt.Errorf("machine-local: write terminal: %w", err)
+	}
+	return nil
+}
+
+func (p *localProcess) CloseInput() error {
+	// PTY 没有独立的写端；EOT 是交互式终端中的标准 EOF 输入。
+	return p.Write([]byte{4})
+}
+
+func (p *localProcess) Resize(rows int, cols int) error {
+	if rows <= 0 || cols <= 0 {
+		return fmt.Errorf("machine-local: positive terminal size required")
+	}
+	p.interactionMu.Lock()
+	defer p.interactionMu.Unlock()
+	if p.hasExited() {
+		return fmt.Errorf("machine-local: terminal process has exited")
+	}
+	err := p.pty.Resize(cols, rows)
+	if err != nil {
+		return fmt.Errorf("machine-local: resize terminal: %w", err)
+	}
+	return nil
+}
+
+func (p *localProcess) Terminate() error { return p.terminate() }
+
+func (p *localProcess) Wait(ctx context.Context) (int, error) {
+	select {
+	case <-ctx.Done():
+		return -1, ctx.Err()
+	case <-p.done:
+	}
+	p.mu.Lock()
+	exitCode := p.exitCode
+	p.mu.Unlock()
+	return exitCode, nil
 }
 
 func (p *localProcess) waitForExit() {

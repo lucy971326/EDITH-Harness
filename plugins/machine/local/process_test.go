@@ -72,6 +72,34 @@ func TestProcessTTYAcceptsInput(t *testing.T) {
 	}
 }
 
+func TestTerminalHandleStreamsInputAndResizes(t *testing.T) {
+	m := newTestLocal(t)
+	process, err := m.StartTerminal(machine.TerminalRequest{
+		Dir:  t.TempDir(),
+		Argv: []string{"bash", "-lic", `read value; printf 'got:%s\n' "$value"`},
+		Rows: 20,
+		Cols: 60,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = process.Resize(30, 90); err != nil {
+		t.Fatal(err)
+	}
+	if err = process.Write([]byte("hello\n")); err != nil {
+		t.Fatal(err)
+	}
+
+	var output []byte
+	for chunk := range process.Output() {
+		output = append(output, chunk...)
+	}
+	exitCode, err := process.Wait(t.Context())
+	if err != nil || exitCode != 0 || !strings.Contains(string(output), "got:hello") {
+		t.Fatalf("exit=%d error=%v output=%q", exitCode, err, output)
+	}
+}
+
 func TestProcessOwnerIsPrivate(t *testing.T) {
 	dir := t.TempDir()
 	m := newTestLocal(t)

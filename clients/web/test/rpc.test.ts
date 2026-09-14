@@ -178,6 +178,32 @@ test("file change notifications are dispatched to the editor listener", async ()
   client.close();
 });
 
+test("terminal output is dispatched only to its process listener", async () => {
+  const socket = new FakeSocket();
+  const client = new RPCClient("ws://example/rpc", () => {}, factory(socket));
+  await client.connect();
+  const received: string[] = [];
+  client.onCommandOutput("terminal-1", (notification) => {
+    received.push(notification.deltaBase64);
+  });
+  socket.dispatchEvent(
+    new MessageEvent("message", {
+      data: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "command/exec/outputDelta",
+        params: {
+          processId: "terminal-1",
+          stream: "stdout",
+          deltaBase64: "b2s=",
+          capReached: false,
+        },
+      }),
+    }),
+  );
+  assert.deepEqual(received, ["b2s="]);
+  client.close();
+});
+
 test("malformed error still finishes a request that has no timeout", async () => {
   const socket = new FakeSocket();
   const client = new RPCClient("ws://example/rpc", () => {}, factory(socket));
