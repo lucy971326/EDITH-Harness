@@ -1,7 +1,6 @@
 package filesystem
 
 import (
-	"context"
 	"errors"
 	"os"
 	pathpkg "path"
@@ -203,10 +202,6 @@ func (testMachine) ResolvePath(workspace, path string) string {
 	return filepath.Join(workspace, path)
 }
 
-func (testMachine) Run(_ context.Context, _ string, _ []string) ([]byte, []byte, error) {
-	return nil, nil, errors.New("not implemented")
-}
-
 type memoryMachine struct {
 	home        string
 	directories map[string][]machine.DirEntry
@@ -238,8 +233,4 @@ func (memoryMachine) ResolvePath(base, target string) string {
 		return pathpkg.Clean(target)
 	}
 	return pathpkg.Join(base, target)
-}
-
-func (memoryMachine) Run(context.Context, string, []string) ([]byte, []byte, error) {
-	return nil, nil, errors.New("not implemented")
 }

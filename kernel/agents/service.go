@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 
@@ -54,6 +55,9 @@ func NewService(store AgentStore, settingsStore settings.SessionSettingsStore, l
 		return nil, fmt.Errorf("agents: nil skills")
 	}
 	service := &Service{store: store, settings: settingsStore, loops: loopRegistry, tools: toolRegistry, skills: skillRegistry}
+	if err := service.migrateLegacyTools(); err != nil {
+		return nil, err
+	}
 	if err := service.ensureDefault(); err != nil {
 		return nil, err
 	}
@@ -247,6 +251,62 @@ func (s *Service) ensureDefault() error {
 	})
 }
 
+func (s *Service) migrateLegacyTools() error {
+	known := make(map[string]struct{})
+	for _, definition := range s.tools.List() {
+		known[definition.Name] = struct{}{}
+	}
+	agents, err := s.store.ListAgents()
+	if err != nil {
+		return fmt.Errorf("agents: list for tool migration: %w", err)
+	}
+	for _, agent := range agents {
+		migrated := migrateToolNames(agent.Tools, known)
+		if slices.Equal(agent.Tools, migrated) {
+			continue
+		}
+		agent.Tools = migrated
+		err = s.store.PutAgent(agent)
+		if err != nil {
+			return fmt.Errorf("agents: migrate tools for %q: %w", agent.ID, err)
+		}
+	}
+	return nil
+}
+
+func migrateToolNames(names []string, known map[string]struct{}) []string {
+	migrated := make([]string, 0, len(names))
+	seen := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		replacements := []string{name}
+		switch name {
+		case "read":
+			replacements = availableReplacement(known, name, "exec_command")
+		case "bash":
+			replacements = availableReplacement(known, name, "exec_command", "write_stdin")
+		case "write", "edit":
+			replacements = availableReplacement(known, name, "apply_patch")
+		}
+		for _, replacement := range replacements {
+			if _, duplicate := seen[replacement]; duplicate {
+				continue
+			}
+			seen[replacement] = struct{}{}
+			migrated = append(migrated, replacement)
+		}
+	}
+	return migrated
+}
+
+func availableReplacement(known map[string]struct{}, original string, replacements ...string) []string {
+	for _, replacement := range replacements {
+		if _, ok := known[replacement]; !ok {
+			return []string{original}
+		}
+	}
+	return replacements
+}
+
 func assemblePrompt(systemPrompt string, selected []skills.Skill, instructions []tools.Instruction, workspace string, allowedTools []string) string {
 	parts := make([]string, 0, 4)
 	if text := strings.TrimSpace(systemPrompt); text != "" {
@@ -278,22 +338,12 @@ func assemblePrompt(systemPrompt string, selected []skills.Skill, instructions [
 }
 
 func skillReadInstruction(allowed []string) string {
-	hasRead := false
-	hasBash := false
 	for _, name := range allowed {
-		hasRead = hasRead || name == "read"
-		hasBash = hasBash || name == "bash"
+		if name == "exec_command" {
+			return "Read the complete SKILL.md with the existing exec_command tool before using the Skill."
+		}
 	}
-	switch {
-	case hasRead && hasBash:
-		return "Read the complete SKILL.md with the existing read or bash tool before using the Skill."
-	case hasRead:
-		return "Read the complete SKILL.md with the existing read tool before using the Skill."
-	case hasBash:
-		return "Read the complete SKILL.md with the existing bash tool before using the Skill."
-	default:
-		return ""
-	}
+	return ""
 }
 
 func copyAgent(agent Agent) Agent {

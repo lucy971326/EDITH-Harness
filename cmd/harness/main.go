@@ -31,13 +31,10 @@ import (
 	machinelocal "harness/plugins/machine/local"
 	skillsbuiltin "harness/plugins/skills/builtin"
 	skillsfilesystem "harness/plugins/skills/filesystem"
-	bashtool "harness/plugins/tools/bash"
-	edittool "harness/plugins/tools/edit"
+	applypatchtool "harness/plugins/tools/applypatch"
 	exectool "harness/plugins/tools/exec"
 	mcptool "harness/plugins/tools/mcp"
-	readtool "harness/plugins/tools/read"
 	subagenttools "harness/plugins/tools/subagents"
-	writetool "harness/plugins/tools/write"
 	harnessproduct "harness/products/harness"
 )
 
@@ -81,19 +78,7 @@ func run() (result error) {
 	if err != nil {
 		return err
 	}
-	err = h.Install(readtool.New())
-	if err != nil {
-		return err
-	}
-	err = h.Install(writetool.New())
-	if err != nil {
-		return err
-	}
-	err = h.Install(edittool.New())
-	if err != nil {
-		return err
-	}
-	err = h.Install(bashtool.New())
+	err = h.Install(applypatchtool.New())
 	if err != nil {
 		return err
 	}

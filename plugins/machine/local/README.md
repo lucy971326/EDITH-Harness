@@ -8,6 +8,6 @@
 
 【填充插槽】不填。
 
-【谁在用】`read`、`write`、`edit`、`bash` Tool 与 appserver 文件 RPC 调用它完成真实操作。
+【谁在用】`apply_patch`、`exec_command`、`write_stdin` Tool 与 appserver 文件 RPC 调用它完成真实操作。
 
 【不做】不决定哪些 Tool 可用，也不限制本机文件访问范围。

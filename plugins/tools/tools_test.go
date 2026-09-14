@@ -6,27 +6,18 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
 	"harness/kernel/host"
 	"harness/kernel/machine"
 	kerneltools "harness/kernel/tools"
-	"harness/plugins/tools/bash"
-	"harness/plugins/tools/edit"
-	"harness/plugins/tools/read"
-	"harness/plugins/tools/write"
+	"harness/plugins/tools/applypatch"
 )
 
-// 活对象。工具插件测试使用的内存机器。
 type fakeMachine struct {
-	files    map[string][]byte
-	onRead   func()
-	runDir   string
-	runArgv  []string
-	stdout   []byte
-	stderr   []byte
-	runError error
+	files map[string][]byte
 }
 
 func (m *fakeMachine) HomeDir() (string, error) { return "/home/test", nil }
@@ -45,12 +36,9 @@ func (m *fakeMachine) ResolvePath(workspace, path string) string {
 func (m *fakeMachine) ReadFile(path string) ([]byte, error) {
 	data, ok := m.files[path]
 	if !ok {
-		return nil, errors.New("file not found")
+		return nil, os.ErrNotExist
 	}
-	if m.onRead != nil {
-		m.onRead()
-	}
-	return data, nil
+	return append([]byte(nil), data...), nil
 }
 
 func (m *fakeMachine) ReadFileVersion(path string, _ int64) (machine.FileContent, error) {
@@ -59,11 +47,15 @@ func (m *fakeMachine) ReadFileVersion(path string, _ int64) (machine.FileContent
 		return machine.FileContent{}, err
 	}
 	sum := sha256.Sum256(data)
-	return machine.FileContent{Data: append([]byte(nil), data...), Hash: hex.EncodeToString(sum[:])}, nil
+	return machine.FileContent{Data: data, Hash: hex.EncodeToString(sum[:])}, nil
 }
 
 func (m *fakeMachine) Metadata(string) (machine.FileMetadata, error) {
 	return machine.FileMetadata{}, errors.New("not implemented")
+}
+
+func (m *fakeMachine) Watch(string) (machine.FileWatch, error) {
+	return nil, errors.New("not implemented")
 }
 
 func (m *fakeMachine) WriteFile(path string, data []byte) error {
@@ -72,128 +64,51 @@ func (m *fakeMachine) WriteFile(path string, data []byte) error {
 }
 
 func (m *fakeMachine) WriteFileIfUnchanged(path string, data []byte, expectedHash string) (string, error) {
-	current, err := m.ReadFileVersion(path, 0)
+	current, exists := m.files[path]
+	if expectedHash == machine.AbsentFileHash {
+		if exists {
+			return "", machine.ErrFileConflict
+		}
+	} else {
+		sum := sha256.Sum256(current)
+		if !exists || hex.EncodeToString(sum[:]) != expectedHash {
+			return "", machine.ErrFileConflict
+		}
+	}
+	err := m.WriteFile(path, data)
 	if err != nil {
-		return "", err
-	}
-	if current.Hash != expectedHash {
-		return "", machine.ErrFileConflict
-	}
-	if err := m.WriteFile(path, data); err != nil {
 		return "", err
 	}
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:]), nil
 }
 
-func (m *fakeMachine) Watch(string) (machine.FileWatch, error) {
-	return nil, errors.New("not implemented")
+func (m *fakeMachine) RemoveFileIfUnchanged(path string, expectedHash string) error {
+	current, exists := m.files[path]
+	sum := sha256.Sum256(current)
+	if !exists || hex.EncodeToString(sum[:]) != expectedHash {
+		return machine.ErrFileConflict
+	}
+	delete(m.files, path)
+	return nil
 }
 
-func (m *fakeMachine) Run(_ context.Context, dir string, argv []string) ([]byte, []byte, error) {
-	m.runDir = dir
-	m.runArgv = append([]string(nil), argv...)
-	return m.stdout, m.stderr, m.runError
-}
-
-func TestCoreTools(t *testing.T) {
+func TestApplyPatchToolRegistrationAndCall(t *testing.T) {
 	m := &fakeMachine{files: map[string][]byte{
-		"/work/read.txt": []byte("hello"),
-		"/work/edit.txt": []byte("before\nafter"),
-		"/work/many.txt": []byte("same same"),
+		"/work/update.txt": []byte("before\n"),
+		"/work/delete.txt": []byte("remove\n"),
 	}}
-	registry := installTools(t, m)
-	allow := []string{"read", "write", "edit", "bash"}
-
-	result := call(t, registry, allow, "read", `{"path":"read.txt"}`)
-	if result.Content != "hello" || result.IsError {
-		t.Fatalf("read result = %#v", result)
-	}
-
-	result = call(t, registry, allow, "write", `{"path":"nested/write.txt","content":"written"}`)
-	if result.IsError || string(m.files["/work/nested/write.txt"]) != "written" {
-		t.Fatalf("write result = %#v, files = %#v", result, m.files)
-	}
-
-	result = call(t, registry, allow, "edit", `{"path":"edit.txt","oldText":"before","newText":"after"}`)
-	if result.IsError || string(m.files["/work/edit.txt"]) != "after\nafter" {
-		t.Fatalf("edit result = %#v, content = %q", result, m.files["/work/edit.txt"])
-	}
-
-	result = call(t, registry, allow, "edit", `{"path":"many.txt","oldText":"same","newText":"new"}`)
-	if !result.IsError || string(m.files["/work/many.txt"]) != "same same" {
-		t.Fatalf("multiple edit result = %#v, content = %q", result, m.files["/work/many.txt"])
-	}
-
-	m.stdout = []byte("out")
-	m.stderr = []byte("err")
-	m.runError = errors.New("exit status 1")
-	result = call(t, registry, allow, "bash", `{"command":"false"}`)
-	if !result.IsError || !strings.Contains(result.Content, "stdout:\nout") || !strings.Contains(result.Content, "stderr:\nerr") {
-		t.Fatalf("bash result = %#v", result)
-	}
-	if m.runDir != "/work" || strings.Join(m.runArgv, " ") != "bash -c false" {
-		t.Fatalf("bash run = dir %q argv %#v", m.runDir, m.runArgv)
-	}
-}
-
-func TestEdit_doesNotWriteAfterCancellation(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	m := &fakeMachine{files: map[string][]byte{
-		"/work/edit.txt": []byte("before"),
-	}}
-	m.onRead = cancel
-	registry := installTools(t, m)
-
-	_, err := registry.Call(ctx, kerneltools.Call{
-		Name:      "edit",
-		Arguments: json.RawMessage(`{"path":"edit.txt","oldText":"before","newText":"after"}`),
-		Workspace: "/work",
-		Allow:     []string{"edit"},
-	})
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("error = %v, want context canceled", err)
-	}
-	if string(m.files["/work/edit.txt"]) != "before" {
-		t.Fatalf("file changed after cancellation: %q", m.files["/work/edit.txt"])
-	}
-}
-
-func TestEdit_doesNotOverwriteConcurrentChange(t *testing.T) {
-	m := &fakeMachine{files: map[string][]byte{
-		"/work/edit.txt": []byte("before"),
-	}}
-	m.onRead = func() {
-		m.files["/work/edit.txt"] = []byte("changed elsewhere")
-		m.onRead = nil
-	}
-	registry := installTools(t, m)
-
-	result := call(t, registry, []string{"edit"}, "edit", `{"path":"edit.txt","oldText":"before","newText":"after"}`)
-	if !result.IsError {
-		t.Fatalf("edit result = %#v, want conflict", result)
-	}
-	if string(m.files["/work/edit.txt"]) != "changed elsewhere" {
-		t.Fatalf("concurrent content was overwritten: %q", m.files["/work/edit.txt"])
-	}
-}
-
-func installTools(t *testing.T, m machine.FileSystem) kerneltools.Tools {
-	t.Helper()
 	h := host.NewHost()
-	err := h.RegisterService("machine", m)
-	if err != nil {
+	if err := h.RegisterService("machine", m); err != nil {
 		t.Fatal(err)
 	}
-	for _, plugin := range []host.Plugin{kerneltools.NewPlugin(), read.New(), write.New(), edit.New(), bash.New()} {
-		err = h.Install(plugin)
-		if err != nil {
+	for _, plugin := range []host.Plugin{kerneltools.NewPlugin(), applypatch.New()} {
+		if err := h.Install(plugin); err != nil {
 			t.Fatal(err)
 		}
 	}
 	t.Cleanup(func() {
-		err := h.Close()
-		if err != nil {
+		if err := h.Close(); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -201,19 +116,41 @@ func installTools(t *testing.T, m machine.FileSystem) kerneltools.Tools {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return registry
-}
 
-func call(t *testing.T, registry kerneltools.Tools, allow []string, name string, arguments string) kerneltools.Result {
-	t.Helper()
+	patch := `*** Begin Patch
+*** Add File: nested/add.txt
++added
+*** Update File: update.txt
+@@
+-before
++after
+*** Delete File: delete.txt
+*** End Patch`
 	result, err := registry.Call(context.Background(), kerneltools.Call{
-		Name:      name,
-		Arguments: json.RawMessage(arguments),
+		Name:      "apply_patch",
+		Arguments: json.RawMessage(`{"patch":` + mustJSON(t, patch) + `}`),
 		Workspace: "/work",
-		Allow:     allow,
+		Allow:     []string{"apply_patch"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return result
+	if result.IsError || !strings.Contains(result.Content, "A nested/add.txt") || !strings.Contains(result.Content, "M update.txt") || !strings.Contains(result.Content, "D delete.txt") {
+		t.Fatalf("result = %#v", result)
+	}
+	if string(m.files["/work/nested/add.txt"]) != "added\n" || string(m.files["/work/update.txt"]) != "after\n" {
+		t.Fatalf("files = %#v", m.files)
+	}
+	if _, exists := m.files["/work/delete.txt"]; exists {
+		t.Fatal("delete.txt still exists")
+	}
+}
+
+func mustJSON(t *testing.T, value string) string {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
 }

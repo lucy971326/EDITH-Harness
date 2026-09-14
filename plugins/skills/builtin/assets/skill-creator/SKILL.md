@@ -20,5 +20,5 @@ description: 创建或修改 Harness Skill，并把它放到正确的用户级�
 
 1. 判断这是新建还是修改，并确认 Skill 的作用域。
 2. 检查目标目录和现有 `SKILL.md`。
-3. 使用 Harness 的 `write` 或 `edit` 工具写入内容。
-4. 用 `read` 重新检查文件，确认 frontmatter、目录名和说明正确。
+3. 使用 Harness 的 `apply_patch` 工具写入内容。
+4. 用 `exec_command` 重新检查文件，确认 frontmatter、目录名和说明正确。

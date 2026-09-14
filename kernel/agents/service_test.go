@@ -19,14 +19,14 @@ import (
 func TestService_saveChoicesAndPrepare(t *testing.T) {
 	service, loopsRegistry, toolsRegistry, skillsRegistry := testService(t)
 	registerLoop(t, loopsRegistry, "react")
-	registerTool(t, toolsRegistry, "bash")
+	registerTool(t, toolsRegistry, "exec_command")
 	registerSkill(t, skillsRegistry, "git", "Commit only tested changes.")
 
 	agent, err := service.Save(Agent{
 		Name:         "Coding",
 		Kind:         "react",
 		SystemPrompt: "Work carefully.",
-		Tools:        []string{"bash"},
+		Tools:        []string{"exec_command"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -42,10 +42,10 @@ func TestService_saveChoicesAndPrepare(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if prepared.Kind != "react" || !slices.Equal(prepared.Tools, []string{"bash"}) {
+	if prepared.Kind != "react" || !slices.Equal(prepared.Tools, []string{"exec_command"}) {
 		t.Fatalf("PreparedAgent = %#v", prepared)
 	}
-	wantPrompt := "Work carefully.\n\n## Available Skills\n- git: Commit only tested changes.\n  Location: /skills/git/SKILL.md\n\nRead the complete SKILL.md with the existing bash tool before using the Skill.\nResolve relative resources from each Skill directory.\nUser instructions take priority over Skill instructions.\n\n## Workspace\n/work"
+	wantPrompt := "Work carefully.\n\n## Available Skills\n- git: Commit only tested changes.\n  Location: /skills/git/SKILL.md\n\nRead the complete SKILL.md with the existing exec_command tool before using the Skill.\nResolve relative resources from each Skill directory.\nUser instructions take priority over Skill instructions.\n\n## Workspace\n/work"
 	if prepared.SystemPrompt != wantPrompt {
 		t.Fatalf("SystemPrompt = %q, want %q", prepared.SystemPrompt, wantPrompt)
 	}
@@ -113,7 +113,7 @@ func TestService_rejectsInvalidConfigurationAndAllowsDefaultChanges(t *testing.T
 func TestService_prepareIncludesAllScopedSkillsWithoutSelecting(t *testing.T) {
 	service, loopsRegistry, toolsRegistry, skillsRegistry := testService(t)
 	registerLoop(t, loopsRegistry, "react")
-	registerTool(t, toolsRegistry, "read")
+	registerTool(t, toolsRegistry, "exec_command")
 	err := skillsRegistry.Register(testSkillListProvider{skills: func(workspace string) []skills.Skill {
 		out := []skills.Skill{
 			{Name: "system-skill", Description: "System skill.", Location: "/system/skills/system-skill/SKILL.md", Scope: skills.ScopeSystem},
@@ -128,10 +128,10 @@ func TestService_prepareIncludesAllScopedSkillsWithoutSelecting(t *testing.T) {
 		t.Fatal(err)
 	}
 	choices := service.Choices()
-	if len(choices.Tools) != 1 || choices.Tools[0].Name != "read" {
+	if len(choices.Tools) != 1 || choices.Tools[0].Name != "exec_command" {
 		t.Fatalf("Choices() = %#v", choices)
 	}
-	agent, err := service.Save(Agent{ID: "coding", Name: "Coding", Kind: "react", Tools: []string{"read"}})
+	agent, err := service.Save(Agent{ID: "coding", Name: "Coding", Kind: "react", Tools: []string{"exec_command"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +146,7 @@ func TestService_prepareIncludesAllScopedSkillsWithoutSelecting(t *testing.T) {
 		"Location: /system/skills/system-skill/SKILL.md",
 		"- project-skill: Project skill.",
 		"Location: /work/.harness/skills/project-skill/SKILL.md",
-		"existing read tool",
+		"existing exec_command tool",
 		"Resolve relative resources from each Skill directory.",
 		"User instructions take priority over Skill instructions.",
 	} {
@@ -227,6 +227,38 @@ func TestService_availableSkillsPropagatesDiscoveryError(t *testing.T) {
 	_, err = service.AvailableSkills("/work")
 	if err == nil || !strings.Contains(err.Error(), "broken skill root") {
 		t.Fatalf("AvailableSkills() error = %v", err)
+	}
+}
+
+func TestService_migratesLegacyToolsOnce(t *testing.T) {
+	store := newMemoryStore()
+	store.agents["legacy"] = Agent{
+		ID: "legacy", Name: "Legacy", Kind: "react",
+		Tools: []string{"other", "read", "bash", "write", "edit", "exec_command"},
+	}
+	loopsRegistry := loops.NewRegistry()
+	toolsRegistry := tools.NewRegistry()
+	for _, name := range []string{"other", "exec_command", "write_stdin", "apply_patch"} {
+		registerTool(t, toolsRegistry, name)
+	}
+	skillsRegistry := skills.NewRegistry()
+	_, err := NewService(store, noAgentUse{}, loopsRegistry, toolsRegistry, skillsRegistry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := store.agents["legacy"]
+	want := []string{"other", "exec_command", "write_stdin", "apply_patch"}
+	if !slices.Equal(got.Tools, want) {
+		t.Fatalf("migrated tools = %#v, want %#v", got.Tools, want)
+	}
+
+	putsAfterMigration := store.putCount
+	_, err = NewService(store, noAgentUse{}, loopsRegistry, toolsRegistry, skillsRegistry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store.putCount != putsAfterMigration {
+		t.Fatalf("second startup wrote agents: puts %d -> %d", putsAfterMigration, store.putCount)
 	}
 }
 
@@ -357,7 +389,8 @@ func (l agentTestLoop) Definition() loops.Definition { return l.definition }
 func (agentTestLoop) Run(context.Context, loops.Invocation) error { return nil }
 
 type memoryStore struct {
-	agents map[string]Agent
+	agents   map[string]Agent
+	putCount int
 }
 
 type noAgentUse struct{}
@@ -404,6 +437,7 @@ func (s *memoryStore) ForAgent(id string) (Agent, error) {
 
 func (s *memoryStore) PutAgent(agent Agent) error {
 	s.agents[agent.ID] = copyAgent(agent)
+	s.putCount++
 	return nil
 }
 

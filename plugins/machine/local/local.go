@@ -1,8 +1,6 @@
 package machinelocal
 
 import (
-	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -90,31 +88,6 @@ func (m *local) close() error {
 		}
 	}
 	return errors.Join(closeErrs...)
-}
-
-func (m *local) Run(ctx context.Context, dir string, argv []string) ([]byte, []byte, error) {
-	if len(argv) == 0 {
-		return nil, nil, fmt.Errorf("machine-local: empty argv")
-	}
-
-	program := argv[0]
-	if program == "bash" {
-		program = m.bash
-	}
-
-	cmd := exec.CommandContext(ctx, program, argv[1:]...)
-	cmd.Dir = dir
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	err := cmd.Run()
-	if err != nil {
-		return stdout.Bytes(), stderr.Bytes(), fmt.Errorf("machine-local: run %q: %w", argv[0], err)
-	}
-	return stdout.Bytes(), stderr.Bytes(), nil
 }
 
 func findBash() (string, error) {

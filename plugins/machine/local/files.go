@@ -3,6 +3,7 @@ package machinelocal
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -202,6 +203,28 @@ func (m *local) WriteFileIfUnchanged(path string, data []byte, expectedHash stri
 	unlock := m.fileLocks.lock(path)
 	defer unlock()
 
+	if expectedHash == machine.AbsentFileHash {
+		dir := filepath.Dir(path)
+		err := os.MkdirAll(dir, 0o755)
+		if err != nil {
+			return "", fmt.Errorf("machine-local: create parent for %q: %w", path, err)
+		}
+		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+		if errors.Is(err, os.ErrExist) {
+			return "", fmt.Errorf("machine-local: write %q: %w", path, machine.ErrFileConflict)
+		}
+		if err != nil {
+			return "", fmt.Errorf("machine-local: create %q: %w", path, err)
+		}
+		_, writeErr := file.Write(data)
+		closeErr := file.Close()
+		if writeErr != nil || closeErr != nil {
+			_ = os.Remove(path)
+			return "", fmt.Errorf("machine-local: write new file %q: %w", path, errors.Join(writeErr, closeErr))
+		}
+		return fileHash(data), nil
+	}
+
 	current, err := readFileVersion(path, 0)
 	if err != nil {
 		return "", err
@@ -214,4 +237,22 @@ func (m *local) WriteFileIfUnchanged(path string, data []byte, expectedHash stri
 		return "", fmt.Errorf("machine-local: write %q: %w", path, err)
 	}
 	return fileHash(data), nil
+}
+
+func (m *local) RemoveFileIfUnchanged(path string, expectedHash string) error {
+	unlock := m.fileLocks.lock(path)
+	defer unlock()
+
+	current, err := readFileVersion(path, 0)
+	if err != nil {
+		return err
+	}
+	if !strings.EqualFold(current.Hash, expectedHash) {
+		return fmt.Errorf("machine-local: remove %q: %w", path, machine.ErrFileConflict)
+	}
+	err = os.Remove(path)
+	if err != nil {
+		return fmt.Errorf("machine-local: remove %q: %w", path, err)
+	}
+	return nil
 }

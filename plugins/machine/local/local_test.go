@@ -1,8 +1,6 @@
 package machinelocal
 
 import (
-	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -82,57 +80,6 @@ func TestLocal_resolvePath(t *testing.T) {
 	absolute := filepath.Join(t.TempDir(), "note.txt")
 	if got := m.ResolvePath("/work", absolute); got != filepath.Clean(absolute) {
 		t.Fatalf("ResolvePath(absolute) = %q", got)
-	}
-}
-
-func TestLocal_run(t *testing.T) {
-	m := newTestLocal(t)
-	dir := t.TempDir()
-
-	stdout, stderr, err := m.Run(context.Background(), dir, []string{"bash", "-c", "test -d . && printf out && printf err >&2"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(stdout) != "out" {
-		t.Errorf("stdout = %q, want out", stdout)
-	}
-	if string(stderr) != "err" {
-		t.Errorf("stderr = %q, want err", stderr)
-	}
-}
-
-func TestLocal_runFailureKeepsOutput(t *testing.T) {
-	m := newTestLocal(t)
-
-	stdout, stderr, err := m.Run(context.Background(), t.TempDir(), []string{"bash", "-c", "printf out && printf err >&2 && exit 7"})
-	if err == nil {
-		t.Fatal("Run() error = nil, want non-nil")
-	}
-	if string(stdout) != "out" {
-		t.Errorf("stdout = %q, want out", stdout)
-	}
-	if string(stderr) != "err" {
-		t.Errorf("stderr = %q, want err", stderr)
-	}
-}
-
-func TestLocal_runRejectsEmptyArgv(t *testing.T) {
-	m := newTestLocal(t)
-
-	_, _, err := m.Run(context.Background(), t.TempDir(), nil)
-	if err == nil {
-		t.Fatal("Run() error = nil, want non-nil")
-	}
-}
-
-func TestLocal_runHonorsCanceledContext(t *testing.T) {
-	m := newTestLocal(t)
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	_, _, err := m.Run(ctx, t.TempDir(), []string{"bash", "-c", "sleep 1"})
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("Run() error = %v, want context.Canceled", err)
 	}
 }
 

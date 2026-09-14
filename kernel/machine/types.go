@@ -7,6 +7,9 @@ import (
 	"time"
 )
 
+// AbsentFileHash 表示调用方读取时文件不存在；SHA-256 不会产生空字符串。
+const AbsentFileHash = ""
+
 var (
 	// ErrFileConflict 表示文件内容已不是调用方读取到的版本。
 	ErrFileConflict = errors.New("machine: file changed")
@@ -93,16 +96,16 @@ type Machine interface {
 	ReadDir(path string) ([]DirEntry, error)
 	WriteFile(path string, data []byte) error
 
-	// 路径与进程
+	// 路径
 	ResolvePath(workspace string, path string) string
-	Run(ctx context.Context, dir string, argv []string) (stdout, stderr []byte, err error)
 }
 
-// 契约。同一份 machine 服务向文件编辑器提供的版本读取、保存、元数据与监听能力。
+// 契约。同一份 machine 服务提供的版本化文件操作、元数据与监听能力。
 type FileSystem interface {
 	Machine
 	ReadFileVersion(path string, maxBytes int64) (FileContent, error)
 	Metadata(path string) (FileMetadata, error)
 	WriteFileIfUnchanged(path string, data []byte, expectedHash string) (string, error)
+	RemoveFileIfUnchanged(path string, expectedHash string) error
 	Watch(path string) (FileWatch, error)
 }

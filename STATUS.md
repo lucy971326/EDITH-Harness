@@ -31,7 +31,7 @@ appserver.Server
 - 编辑器视图：自己的第二行工具栏管理路径、保存状态和文件树折叠；右侧文件树与左侧 Monaco 支持多文件标签、UTF-8 高亮编辑、700ms 自动保存、`Ctrl+S`、未保存关闭确认及按项目保留本页草稿。
 - 文件同步：打开文件和展开目录通过 `fs/watch` 监听；干净文件自动重载，外部冲突保留本地草稿并提供重载／覆盖，删除或保存失败不丢缓冲区。聊天中的本地文件链接可打开编辑器并定位行列。
 - 界面菜单：普通页面统一使用受控右键菜单，Monaco 使用自身 Command 菜单；浏览器、终端与 Diff 尚未接入。
-- 长期命令：新增 `exec_command` / `write_stdin`，统一使用 Bash；支持普通管道与 PTY、增量输出、持续输入、轮询和 `Ctrl+C`。旧 `bash` Tool 暂时保留，已有 Agent 不自动勾选新 Tool。
+- 核心 Tool：`exec_command` / `write_stdin` 统一使用 Bash，支持普通管道与 PTY、增量输出、持续输入、轮询和 `Ctrl+C`；`apply_patch` 支持 Codex 格式的多文件新增、修改和删除。旧 `read/write/edit/bash` 已移除，已有 Agent 启动时幂等迁移到新 Tool。
 
 ## 后台边界
 
@@ -44,7 +44,7 @@ appserver.Server
 - 每个 Session 同时只有一个活 Run；运行状态与最近用量保存在 `runs.json`，未完成运行在重启后标记 interrupted，不自动续跑。
 - Client 只保存服务端投影和草稿、主题、折叠等临时界面状态，不成为业务事实来源。
 - appserver 已显式接入同一份 machine 文件能力，提供读取、受版本保护的保存、目录、元数据与监听 RPC；监听复用统一订阅和断线清理。
-- machine-local 持有长期进程的唯一内存状态，按 Harness Session 隔离；进程 ID 已交付后可跨 Turn 存活，关闭时终止进程树并等待读取与回收完成。Agent Tool 只转换参数和呈现结果。
+- machine-local 持有文件与长期进程的平台能力；长期进程按 Harness Session 隔离，进程 ID 已交付后可跨 Turn 存活，关闭时终止进程树并等待读取与回收完成。`apply_patch` 写入前完整计算所有目标，匹配失败或文件并发变化时不覆盖，I/O 中途失败准确返回已提交前缀。Agent Tool 只转换参数和呈现结果。
 
 ## 构建与启动
 
@@ -94,10 +94,11 @@ Windows 启动继续要求 Git Bash；长期 PTY 使用 `charmbracelet/x/xpty`�
 - Windows 原生目录选择器仍需在交互式 Windows 桌面验收。
 - 前端主包与延迟加载的 Monaco 包超过 Vite 默认 500KB 提示；编辑器及 Worker 均为本地资源并按需加载，当前不影响启动和离线运行。
 - Windows 管理员环境下 `TestSpawnInitialPersistFailureConsistency` 不能用目录只读位制造写入失败，导致 `make agent-check` 的既有 subagents 测试失败。
+- `TestProcessOutputIsIncremental` 的 80ms 首次等待在 Windows 负载较高时可能早于 Git Bash 首包输出结束；同次 race 检查通过，属于阶段 A 既有时序测试不稳定。
 
 ## 本次验证
 
 - TypeScript 编译、生产构建、TS 契约检查及 56 项前端测试通过。
-- `exec_command` / `write_stdin` 的短命令、增量输出、PTY 输入、会话隔离、取消清理、关闭回收、输出上限及工具登记测试通过；machine-local race 通过。
-- `make agent-check` 只因上述既有 Windows 管理员目录权限测试失败；阶段 A 涉及的包均通过。
+- `apply_patch` 的整包预校验、多文件三类操作、多片段、EOF、Unicode 与标记文本上下文、CRLF 保留、并发修改保护、部分提交和 Tool 登记测试通过；machine 条件新增、条件删除、目录拒绝与 Agent 幂等迁移测试通过。
+- `make agent-check` 的编译、前端、契约、Go 包及相关 race 通过；最终失败仅来自上述 Windows 管理员环境下的既有 subagents 权限测试。阶段 A 的增量输出时序测试本次通过。
 - 未调用付费模型或修改用户会话。
