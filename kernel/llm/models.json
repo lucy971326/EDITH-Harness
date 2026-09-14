@@ -2,9 +2,9 @@
   "models": {
     "deepseek/deepseek-v4-flash": {
       "provider": "deepseek",
-      "id": "deepseek-v4-flash",
+      "id": "deepseek-flash",
       "contextWindow": 1000000,
-      "vision": false,
+      "vision": true,
       "reasoning": {
         "off": {
           "thinking": { "type": "disabled" }

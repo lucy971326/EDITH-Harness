@@ -78,11 +78,13 @@ func TestLoadModels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range []string{"deepseek/deepseek-v4-flash", "deepseek/deepseek-v4-pro"} {
-		definition := got[id]
-		if definition.ContextWindow != 1000000 || definition.Vision {
-			t.Fatalf("%s = %#v", id, definition)
-		}
+	flash := got["deepseek/deepseek-v4-flash"]
+	if flash.Provider != "deepseek" || flash.ID != "deepseek-flash" || flash.ContextWindow != 1000000 || !flash.Vision {
+		t.Fatalf("flash = %#v", flash)
+	}
+	pro := got["deepseek/deepseek-v4-pro"]
+	if pro.Provider != "deepseek" || pro.ID != "deepseek-v4-pro" || pro.ContextWindow != 1000000 || pro.Vision {
+		t.Fatalf("pro = %#v", pro)
 	}
 	gemini := got["google/gemini-3.5-flash-lite"]
 	if gemini.Provider != "google" || gemini.ID != "gemini-3.5-flash-lite" || gemini.ContextWindow != 1048576 || !gemini.Vision {
