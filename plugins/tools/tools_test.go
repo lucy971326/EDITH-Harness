@@ -2,6 +2,8 @@ package tools_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -51,9 +53,41 @@ func (m *fakeMachine) ReadFile(path string) ([]byte, error) {
 	return data, nil
 }
 
+func (m *fakeMachine) ReadFileVersion(path string, _ int64) (machine.FileContent, error) {
+	data, err := m.ReadFile(path)
+	if err != nil {
+		return machine.FileContent{}, err
+	}
+	sum := sha256.Sum256(data)
+	return machine.FileContent{Data: append([]byte(nil), data...), Hash: hex.EncodeToString(sum[:])}, nil
+}
+
+func (m *fakeMachine) Metadata(string) (machine.FileMetadata, error) {
+	return machine.FileMetadata{}, errors.New("not implemented")
+}
+
 func (m *fakeMachine) WriteFile(path string, data []byte) error {
 	m.files[path] = append([]byte(nil), data...)
 	return nil
+}
+
+func (m *fakeMachine) WriteFileIfUnchanged(path string, data []byte, expectedHash string) (string, error) {
+	current, err := m.ReadFileVersion(path, 0)
+	if err != nil {
+		return "", err
+	}
+	if current.Hash != expectedHash {
+		return "", machine.ErrFileConflict
+	}
+	if err := m.WriteFile(path, data); err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+func (m *fakeMachine) Watch(string) (machine.FileWatch, error) {
+	return nil, errors.New("not implemented")
 }
 
 func (m *fakeMachine) Run(_ context.Context, dir string, argv []string) ([]byte, []byte, error) {
@@ -125,7 +159,26 @@ func TestEdit_doesNotWriteAfterCancellation(t *testing.T) {
 	}
 }
 
-func installTools(t *testing.T, m machine.Machine) kerneltools.Tools {
+func TestEdit_doesNotOverwriteConcurrentChange(t *testing.T) {
+	m := &fakeMachine{files: map[string][]byte{
+		"/work/edit.txt": []byte("before"),
+	}}
+	m.onRead = func() {
+		m.files["/work/edit.txt"] = []byte("changed elsewhere")
+		m.onRead = nil
+	}
+	registry := installTools(t, m)
+
+	result := call(t, registry, []string{"edit"}, "edit", `{"path":"edit.txt","oldText":"before","newText":"after"}`)
+	if !result.IsError {
+		t.Fatalf("edit result = %#v, want conflict", result)
+	}
+	if string(m.files["/work/edit.txt"]) != "changed elsewhere" {
+		t.Fatalf("concurrent content was overwritten: %q", m.files["/work/edit.txt"])
+	}
+}
+
+func installTools(t *testing.T, m machine.FileSystem) kerneltools.Tools {
 	t.Helper()
 	h := host.NewHost()
 	err := h.RegisterService("machine", m)

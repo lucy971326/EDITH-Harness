@@ -20,6 +20,7 @@ app-server → Product / 公共服务 → kernel
 - Client 共用 `clients/contracts/` 中手写的 TypeScript 契约；接口修改时同步 Go 与 TS，不自动生成。
 - UI 不直接拼 JSON-RPC 封套，不知道 Go Host、Runner 或 Product 的具体实现。
 - Wails 首版承载同一套前端并连接同一 WebSocket，不另写一套 IPC 业务层。
+- 文件面板通过 `fs/readFile / writeFile / readDirectory / getMetadata / watch` 调用后台；变化由 `fs/changed` 通知，取消监听复用 `server/unsubscribe`。
 
 ## 2. 状态边界
 

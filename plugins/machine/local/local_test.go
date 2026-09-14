@@ -69,7 +69,7 @@ func TestLocal_homeDirAndReadDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 1 || entries[0].Name != "note.txt" || entries[0].IsDir {
+	if len(entries) != 1 || entries[0].Name != "note.txt" || entries[0].IsDir || !entries[0].IsFile {
 		t.Fatalf("ReadDir() = %#v", entries)
 	}
 }
@@ -79,7 +79,8 @@ func TestLocal_resolvePath(t *testing.T) {
 	if got := m.ResolvePath("/work", "nested/note.txt"); got != filepath.Join("/work", "nested", "note.txt") {
 		t.Fatalf("ResolvePath(relative) = %q", got)
 	}
-	if got := m.ResolvePath("/work", "/tmp/note.txt"); got != filepath.Join("/tmp", "note.txt") {
+	absolute := filepath.Join(t.TempDir(), "note.txt")
+	if got := m.ResolvePath("/work", absolute); got != filepath.Clean(absolute) {
 		t.Fatalf("ResolvePath(absolute) = %q", got)
 	}
 }
@@ -141,5 +142,10 @@ func newTestLocal(t *testing.T) *local {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		if err := m.close(); err != nil {
+			t.Error(err)
+		}
+	})
 	return m
 }

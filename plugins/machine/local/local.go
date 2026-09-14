@@ -8,13 +8,18 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-
-	"harness/kernel/machine"
+	"sync"
 )
 
 // 活对象。挂在 Host 的 machine 键上的本机机器。
 type local struct {
 	bash string
+
+	fileLocks pathLockSet
+
+	watchMu sync.Mutex
+	watches map[*localWatch]struct{}
+	closed  bool
 }
 
 func newLocal() (*local, error) {
@@ -22,7 +27,7 @@ func newLocal() (*local, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &local{bash: bash}, nil
+	return &local{bash: bash, watches: make(map[*localWatch]struct{})}, nil
 }
 
 func (m *local) HomeDir() (string, error) {
@@ -33,45 +38,30 @@ func (m *local) HomeDir() (string, error) {
 	return home, nil
 }
 
-func (m *local) ReadFile(path string) ([]byte, error) {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("machine-local: read %q: %w", path, err)
-	}
-	return b, nil
-}
-
-func (m *local) ReadDir(path string) ([]machine.DirEntry, error) {
-	entries, err := os.ReadDir(path)
-	if err != nil {
-		return nil, fmt.Errorf("machine-local: read directory %q: %w", path, err)
-	}
-	out := make([]machine.DirEntry, 0, len(entries))
-	for _, entry := range entries {
-		out = append(out, machine.DirEntry{Name: entry.Name(), IsDir: entry.IsDir()})
-	}
-	return out, nil
-}
-
-func (m *local) WriteFile(path string, data []byte) error {
-	dir := filepath.Dir(path)
-	err := os.MkdirAll(dir, 0o755)
-	if err != nil {
-		return fmt.Errorf("machine-local: create parent for %q: %w", path, err)
-	}
-
-	err = os.WriteFile(path, data, 0o644)
-	if err != nil {
-		return fmt.Errorf("machine-local: write %q: %w", path, err)
-	}
-	return nil
-}
-
 func (m *local) ResolvePath(workspace string, path string) string {
 	if filepath.IsAbs(path) {
 		return filepath.Clean(path)
 	}
 	return filepath.Clean(filepath.Join(workspace, path))
+}
+
+func (m *local) close() error {
+	m.watchMu.Lock()
+	m.closed = true
+	watches := make([]*localWatch, 0, len(m.watches))
+	for watch := range m.watches {
+		watches = append(watches, watch)
+	}
+	m.watchMu.Unlock()
+
+	var closeErr error
+	for _, watch := range watches {
+		err := watch.Close()
+		if err != nil {
+			closeErr = fmt.Errorf("machine-local: close watcher: %w", err)
+		}
+	}
+	return closeErr
 }
 
 func (m *local) Run(ctx context.Context, dir string, argv []string) ([]byte, []byte, error) {

@@ -12,6 +12,7 @@ import (
 	"harness/kernel/commands"
 	"harness/kernel/events"
 	"harness/kernel/llm"
+	"harness/kernel/machine"
 	"harness/kernel/skills"
 	"harness/products/harness"
 )
@@ -25,6 +26,7 @@ type Server struct {
 	agents          *agents.Service
 	skills          skills.Skills
 	commands        commands.Commands
+	filesystem      machine.FileSystem
 	workspacePicker workspacepicker.Picker
 
 	// 对外方法及同一 Session 的写请求顺序。

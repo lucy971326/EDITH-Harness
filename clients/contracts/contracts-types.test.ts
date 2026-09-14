@@ -60,3 +60,15 @@ const modelConfig: ModelList['params'] = { apiKey: 'secret' };
 // @ts-expect-error 模型数组不能是 null。
 const nullModels: ModelList['result'] = { models: null };
 void [guardedSteer, numberedRun, modelList, modelConfig, nullModels];
+
+type ReadFile = ServerMethods['fs/readFile'];
+type WriteFile = ServerMethods['fs/writeFile'];
+type ReadDirectory = ServerMethods['fs/readDirectory'];
+const readFile: ReadFile['params'] = { path: '/work/note.txt' };
+const writeFile: WriteFile['params'] = { path: '/work/note.txt', dataBase64: 'bm90ZQ==', expectedHash: 'hash' };
+const directory: ReadDirectory['result'] = { entries: [{ fileName: 'note.txt', isDirectory: false, isFile: true }] };
+// @ts-expect-error 保存必须携带读取时取得的版本。
+const unsafeWrite: WriteFile['params'] = { path: '/work/note.txt', dataBase64: 'bm90ZQ==' };
+// @ts-expect-error 文件内容在线路上使用 Base64 字符串。
+const byteArray: ReadFile['result'] = { dataBase64: [1, 2], hash: 'hash' };
+void [readFile, writeFile, directory, unsafeWrite, byteArray];

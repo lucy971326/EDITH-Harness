@@ -3,7 +3,7 @@
 > Client 眼中的 JSON-RPC 契约。
 
 ```text
-appserver.ts  初始化、模型、Agent、Skill、命令等公共接口
+appserver.ts  初始化、模型、Agent、Skill、命令与文件等公共接口
 harness.ts    Harness 会话与产品操作
 run.ts        Snapshot、Run、Entry 和实时事件
 ```

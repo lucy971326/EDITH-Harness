@@ -19,6 +19,7 @@ import (
 	"harness/kernel/host"
 	"harness/kernel/llm"
 	"harness/kernel/loops"
+	"harness/kernel/machine"
 	"harness/kernel/persist"
 	"harness/kernel/runner"
 	"harness/kernel/session"
@@ -160,6 +161,14 @@ func run() (result error) {
 		return err
 	}
 	err = server.BindHarness(product, registry)
+	if err != nil {
+		return err
+	}
+	machineService, err := host.Resolve[machine.FileSystem](h, "machine")
+	if err != nil {
+		return err
+	}
+	err = server.BindFilesystem(machineService)
 	if err != nil {
 		return err
 	}

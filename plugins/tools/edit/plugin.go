@@ -18,7 +18,7 @@ func New() *Plugin {
 func (p *Plugin) Name() string { return "edit" }
 
 func (p *Plugin) Start(h *host.Host) error {
-	m, err := host.Resolve[machine.Machine](h, "machine")
+	m, err := host.Resolve[machine.FileSystem](h, "machine")
 	if err != nil {
 		return err
 	}

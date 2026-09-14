@@ -26,6 +26,7 @@ func (p *Plugin) Start(h *host.Host) error {
 	p.local = local
 	err = h.RegisterService("machine", local)
 	if err != nil {
+		_ = local.close()
 		p.local = nil
 		return err
 	}
@@ -33,6 +34,10 @@ func (p *Plugin) Start(h *host.Host) error {
 }
 
 func (p *Plugin) Close() error {
+	if p.local == nil {
+		return nil
+	}
+	err := p.local.close()
 	p.local = nil
-	return nil
+	return err
 }

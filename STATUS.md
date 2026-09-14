@@ -1,6 +1,6 @@
 # 项目状态
 
-更新日期：2026-09-13
+更新日期：2026-09-14
 
 ## 当前形状
 
@@ -27,7 +27,7 @@ appserver.Server
 - 设置：模型与思考、SessionSettings、Agent 增删改及删除保护。
 - 操作：上下文用量、回答分叉、Skill 候选、命令候选与 compact。
 - 子任务：父子 Session 平级存储；Task v1 只保存关系，轮次、结果与通知从子会话和父账本投影。
-- 辅助工作区：平级外壳、开关、调宽及标签管理；文件、浏览器、终端内容尚未接入。
+- 辅助工作区：平级外壳、开关、调宽及标签管理；文件 RPC 后端已完成，编辑器界面、浏览器与终端尚未接入。
 
 ## 后台边界
 
@@ -39,6 +39,7 @@ appserver.Server
 - 耐久消息先落账再发布；增量只进入运行投影。生成、草稿和最终 Entry 共用同一个 Entry.ID。
 - 每个 Session 同时只有一个活 Run；运行状态与最近用量保存在 `runs.json`，未完成运行在重启后标记 interrupted，不自动续跑。
 - Client 只保存服务端投影和草稿、主题、折叠等临时界面状态，不成为业务事实来源。
+- appserver 已显式接入同一份 machine 文件能力，提供读取、受版本保护的保存、目录、元数据与监听 RPC；监听复用统一订阅和断线清理。
 
 ## 构建与启动
 
@@ -70,7 +71,7 @@ Vite 构建产物位于 `clients/web/dist/`，由 Go embed 进入二进制但不
 └─ mcp.json
 ```
 
-本机模型 Provider 仍在 `~/.harness/config.yaml` 配置。machine-local 直接操作本机文件和进程，没有沙箱与路径限制。
+本机模型 Provider 仍在 `~/.harness/config.yaml` 配置。machine-local 直接操作本机文件和进程，没有沙箱与路径限制；编辑器 RPC 单文件限制 2 MiB，保存使用 SHA-256 版本避免覆盖已变化内容。
 `~/.harness` 固定使用本机文件存储；Session、Runner、Agent、LLM、MCP 用户配置、Skill 用户目录与内置 Skill、Subagents 共用 `persist` 的可靠文件读写，不提供 SQLite 切换。
 
 ## 后续范围
@@ -78,7 +79,7 @@ Vite 构建产物位于 `clients/web/dist/`，由 Go embed 进入二进制但不
 - Wails 包装正式 React 页面与唯一后台的启动／退出。
 - 服务端反向请求与待回答恢复。
 - 有副作用操作的业务 ID 防重及完整多 Client 协调。
-- 辅助工作区中的真实文件、浏览器和终端。
+- 辅助工作区中的 Monaco 文件界面、浏览器和终端。
 
 这些能力尚未实施，不应提前增加兼容层或通用框架。
 
@@ -86,9 +87,10 @@ Vite 构建产物位于 `clients/web/dist/`，由 Go embed 进入二进制但不
 
 - Windows 原生目录选择器仍需在交互式 Windows 桌面验收。
 - 前端主包超过 Vite 默认 500KB 提示；当前不影响构建和运行，尚未为了消除提示引入代码分割。
+- Windows 管理员环境下 `TestSpawnInitialPersistFailureConsistency` 不能用目录只读位制造写入失败，导致 `make agent-check` 的既有 subagents 测试失败。
 
 ## 本次验证
 
-- appserver 职责整理后，`make agent-check` 与 `make test` 通过：全量 Go test/vet、相关 race、契约检查、真实网络验收和 50 项前端测试均通过。
-- Windows 与 Linux 的原生目录选择包交叉编译通过。
-- 未调用付费模型、修改用户会话或执行用户工具。
+- 文件后端相关 Go 测试、race、TS 契约检查和 WebSocket 监听验收通过；50 项前端测试通过。
+- `make agent-check` 只因上述既有 Windows 目录权限测试失败；本次涉及的包均通过。
+- 未调用付费模型或修改用户会话。

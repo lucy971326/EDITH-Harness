@@ -3,12 +3,50 @@ package machine
 
 import (
 	"context"
+	"errors"
+)
+
+var (
+	// ErrFileConflict 表示文件内容已不是调用方读取到的版本。
+	ErrFileConflict = errors.New("machine: file changed")
+	// ErrFileTooLarge 表示文件超过调用方允许读取的大小。
+	ErrFileTooLarge = errors.New("machine: file too large")
+	// ErrNotRegularFile 表示路径不是可读写的普通文件。
+	ErrNotRegularFile = errors.New("machine: not a regular file")
 )
 
 // 数据。当前机器目录中的一个直接子项。
 type DirEntry struct {
-	Name  string
-	IsDir bool
+	Name   string
+	IsDir  bool
+	IsFile bool
+}
+
+// 数据。一份文件内容及其 SHA-256 版本。
+type FileContent struct {
+	Data []byte
+	Hash string
+}
+
+// 数据。文件或目录的类型与时间信息；系统无法提供的创建时间为 0。
+type FileMetadata struct {
+	IsDir        bool
+	IsFile       bool
+	IsSymlink    bool
+	CreatedAtMS  int64
+	ModifiedAtMS int64
+}
+
+// 数据。一次文件监听变化；Error 非空表示监听已无法继续可靠工作。
+type FileWatchEvent struct {
+	ChangedPaths []string
+	Error        error
+}
+
+// 活对象。一条文件或目录监听；Close 幂等停止并释放底层资源。
+type FileWatch interface {
+	Events() <-chan FileWatchEvent
+	Close() error
 }
 
 // 契约。文件和进程所在机器提供的操作。
@@ -24,4 +62,13 @@ type Machine interface {
 	// 路径与进程
 	ResolvePath(workspace string, path string) string
 	Run(ctx context.Context, dir string, argv []string) (stdout, stderr []byte, err error)
+}
+
+// 契约。同一份 machine 服务向文件编辑器提供的版本读取、保存、元数据与监听能力。
+type FileSystem interface {
+	Machine
+	ReadFileVersion(path string, maxBytes int64) (FileContent, error)
+	Metadata(path string) (FileMetadata, error)
+	WriteFileIfUnchanged(path string, data []byte, expectedHash string) (string, error)
+	Watch(path string) (FileWatch, error)
 }

@@ -1,0 +1,217 @@
+package machinelocal
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"sync"
+
+	"harness/kernel/machine"
+)
+
+type pathLock struct {
+	mu   sync.Mutex
+	refs int
+}
+
+type pathLockSet struct {
+	mu    sync.Mutex
+	items map[string]*pathLock
+}
+
+func (s *pathLockSet) lock(path string) func() {
+	key := canonicalPath(path)
+
+	s.mu.Lock()
+	if s.items == nil {
+		s.items = make(map[string]*pathLock)
+	}
+	item := s.items[key]
+	if item == nil {
+		item = &pathLock{}
+		s.items[key] = item
+	}
+	item.refs++
+	s.mu.Unlock()
+
+	item.mu.Lock()
+	return func() {
+		item.mu.Unlock()
+		s.mu.Lock()
+		item.refs--
+		if item.refs == 0 {
+			delete(s.items, key)
+		}
+		s.mu.Unlock()
+	}
+}
+
+func canonicalPath(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		abs = filepath.Clean(path)
+	}
+	abs = filepath.Clean(abs)
+
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err == nil {
+		abs = filepath.Clean(resolved)
+	} else {
+		// 文件还不存在时，先解析最近的现存父目录，再接回剩余路径。
+		parent := abs
+		var remaining []string
+		for {
+			_, statErr := os.Lstat(parent)
+			if statErr == nil {
+				resolvedParent, resolveErr := filepath.EvalSymlinks(parent)
+				if resolveErr == nil {
+					for i := len(remaining) - 1; i >= 0; i-- {
+						resolvedParent = filepath.Join(resolvedParent, remaining[i])
+					}
+					abs = filepath.Clean(resolvedParent)
+				}
+				break
+			}
+			next := filepath.Dir(parent)
+			if next == parent {
+				break
+			}
+			remaining = append(remaining, filepath.Base(parent))
+			parent = next
+		}
+	}
+	if runtime.GOOS == "windows" {
+		return strings.ToLower(abs)
+	}
+	return abs
+}
+
+func fileHash(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+func (m *local) ReadFile(path string) ([]byte, error) {
+	content, err := m.ReadFileVersion(path, 0)
+	if err != nil {
+		return nil, err
+	}
+	return content.Data, nil
+}
+
+func (m *local) ReadFileVersion(path string, maxBytes int64) (machine.FileContent, error) {
+	unlock := m.fileLocks.lock(path)
+	defer unlock()
+	return readFileVersion(path, maxBytes)
+}
+
+func readFileVersion(path string, maxBytes int64) (machine.FileContent, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return machine.FileContent{}, fmt.Errorf("machine-local: read %q: %w", path, err)
+	}
+	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil {
+		return machine.FileContent{}, fmt.Errorf("machine-local: inspect %q: %w", path, err)
+	}
+	if !info.Mode().IsRegular() {
+		return machine.FileContent{}, fmt.Errorf("machine-local: read %q: %w", path, machine.ErrNotRegularFile)
+	}
+	if maxBytes > 0 && info.Size() > maxBytes {
+		return machine.FileContent{}, fmt.Errorf("machine-local: read %q: %w", path, machine.ErrFileTooLarge)
+	}
+
+	reader := io.Reader(file)
+	if maxBytes > 0 {
+		reader = io.LimitReader(file, maxBytes+1)
+	}
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return machine.FileContent{}, fmt.Errorf("machine-local: read %q: %w", path, err)
+	}
+	if maxBytes > 0 && int64(len(data)) > maxBytes {
+		return machine.FileContent{}, fmt.Errorf("machine-local: read %q: %w", path, machine.ErrFileTooLarge)
+	}
+	return machine.FileContent{Data: data, Hash: fileHash(data)}, nil
+}
+
+func (m *local) ReadDir(path string) ([]machine.DirEntry, error) {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return nil, fmt.Errorf("machine-local: read directory %q: %w", path, err)
+	}
+	out := make([]machine.DirEntry, 0, len(entries))
+	for _, entry := range entries {
+		out = append(out, machine.DirEntry{
+			Name:   entry.Name(),
+			IsDir:  entry.IsDir(),
+			IsFile: entry.Type().IsRegular(),
+		})
+	}
+	return out, nil
+}
+
+func (m *local) Metadata(path string) (machine.FileMetadata, error) {
+	unlock := m.fileLocks.lock(path)
+	defer unlock()
+
+	linkInfo, err := os.Lstat(path)
+	if err != nil {
+		return machine.FileMetadata{}, fmt.Errorf("machine-local: inspect %q: %w", path, err)
+	}
+	info := linkInfo
+	isSymlink := linkInfo.Mode()&os.ModeSymlink != 0
+	if isSymlink {
+		info, err = os.Stat(path)
+		if err != nil {
+			return machine.FileMetadata{}, fmt.Errorf("machine-local: inspect symlink %q: %w", path, err)
+		}
+	}
+	return machine.FileMetadata{
+		IsDir:        info.IsDir(),
+		IsFile:       info.Mode().IsRegular(),
+		IsSymlink:    isSymlink,
+		ModifiedAtMS: info.ModTime().UnixMilli(),
+	}, nil
+}
+
+func (m *local) WriteFile(path string, data []byte) error {
+	unlock := m.fileLocks.lock(path)
+	defer unlock()
+
+	dir := filepath.Dir(path)
+	err := os.MkdirAll(dir, 0o755)
+	if err != nil {
+		return fmt.Errorf("machine-local: create parent for %q: %w", path, err)
+	}
+	err = os.WriteFile(path, data, 0o644)
+	if err != nil {
+		return fmt.Errorf("machine-local: write %q: %w", path, err)
+	}
+	return nil
+}
+
+func (m *local) WriteFileIfUnchanged(path string, data []byte, expectedHash string) (string, error) {
+	unlock := m.fileLocks.lock(path)
+	defer unlock()
+
+	current, err := readFileVersion(path, 0)
+	if err != nil {
+		return "", err
+	}
+	if !strings.EqualFold(current.Hash, expectedHash) {
+		return "", fmt.Errorf("machine-local: write %q: %w", path, machine.ErrFileConflict)
+	}
+	err = os.WriteFile(path, data, 0o644)
+	if err != nil {
+		return "", fmt.Errorf("machine-local: write %q: %w", path, err)
+	}
+	return fileHash(data), nil
+}

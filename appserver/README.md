@@ -27,6 +27,7 @@ lifecycle.go      整个 Server 的准入与收尾
 websocket.go      静态页面 /rpc 分流与 WebSocket 适配
 harness*.go       Harness 产品接口
 agents.go 等      公共服务接口
+filesystem.go     文件读取、版本保存、目录、元数据与监听接口
 workspace.go      目录选择的网络接口
 ```
 

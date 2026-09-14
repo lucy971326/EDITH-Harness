@@ -16,18 +16,18 @@ type Args struct {
 	NewText string `json:"newText" jsonschema:"description=Replacement text."`
 }
 
-func newTool(m machine.Machine) tools.Tool {
+func newTool(m machine.FileSystem) tools.Tool {
 	return tools.New("edit", "Replace one exact, uniquely matched text block in a file.", func(ctx context.Context, call tools.Call, args Args) (tools.Result, error) {
 		if err := ctx.Err(); err != nil {
 			return tools.Result{}, err
 		}
 		path := m.ResolvePath(call.Workspace, args.Path)
-		data, err := m.ReadFile(path)
+		file, err := m.ReadFileVersion(path, 0)
 		if err != nil {
 			return tools.Result{}, err
 		}
 
-		content := string(data)
+		content := string(file.Data)
 		count := strings.Count(content, args.OldText)
 		if count == 0 {
 			return tools.Result{}, fmt.Errorf("edit %q: oldText was not found", args.Path)
@@ -40,7 +40,7 @@ func newTool(m machine.Machine) tools.Tool {
 		if err := ctx.Err(); err != nil {
 			return tools.Result{}, err
 		}
-		err = m.WriteFile(path, []byte(updated))
+		_, err = m.WriteFileIfUnchanged(path, []byte(updated), file.Hash)
 		if err != nil {
 			return tools.Result{}, err
 		}

@@ -50,6 +50,23 @@ export interface CommandView {
   description: string;
 }
 
+export interface FileEntry {
+  fileName: string;
+  isDirectory: boolean;
+  isFile: boolean;
+}
+
+export interface FileMetadata {
+  isDirectory: boolean;
+  isFile: boolean;
+  isSymlink: boolean;
+  createdAtMs: number;
+  modifiedAtMs: number;
+}
+
+export interface FileChangedEvent { changedPaths: string[] }
+export interface FileChangedNotification { subscriptionID: string; event: FileChangedEvent }
+
 export interface ServerMethods {
   initialize: { params: { protocolVersion: number }; result: InitializeResult };
   'server/unsubscribe': { params: { subscriptionID: string }; result: Record<string, never> };
@@ -61,4 +78,9 @@ export interface ServerMethods {
   'skill/list': { params: { sessionID: string }; result: { skills: SkillView[] } };
   'command/list': { params: Record<string, never>; result: { commands: CommandView[] } };
   'command/call': { params: { sessionID: string; name: string }; result: Record<string, never> };
+  'fs/readFile': { params: { path: string }; result: { dataBase64: string; hash: string } };
+  'fs/writeFile': { params: { path: string; dataBase64: string; expectedHash: string }; result: { hash: string } };
+  'fs/readDirectory': { params: { path: string }; result: { entries: FileEntry[] } };
+  'fs/getMetadata': { params: { path: string }; result: FileMetadata };
+  'fs/watch': { params: { path: string }; result: { subscriptionID: string } };
 }
