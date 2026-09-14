@@ -4,7 +4,10 @@ import type {
   SubscribeResult,
 } from "../../../contracts/harness.ts";
 import type { ServerMethods } from "../../../contracts/appserver.ts";
-import type { AgentSaveParams } from "../../../contracts/appserver.ts";
+import type {
+  AgentSaveParams,
+  FileChangedNotification,
+} from "../../../contracts/appserver.ts";
 import type { RunNotification } from "../../../contracts/run.ts";
 
 type Calls = Methods & ServerMethods;
@@ -62,6 +65,7 @@ export interface CallOptions<Result = unknown> {
 // 浏览器 JSON-RPC 连接。请求 ID 只配对响应；有副作用的调用超时或断线后不自动重发。
 export class RPCClient {
   onRun: ((notification: RunNotification) => void) | null = null;
+  onFileChanged: ((notification: FileChangedNotification) => void) | null = null;
   private readonly url: string;
   private readonly onStatus: StatusListener;
   private readonly openSocket: SocketFactory;
@@ -217,6 +221,28 @@ export class RPCClient {
     return this.call("agent/delete", { agentID });
   }
 
+  readFile(path: string) {
+    return this.call("fs/readFile", { path });
+  }
+
+  writeFile(path: string, dataBase64: string, expectedHash: string) {
+    return this.call("fs/writeFile", { path, dataBase64, expectedHash });
+  }
+
+  readDirectory(path: string) {
+    return this.call("fs/readDirectory", { path });
+  }
+
+  getMetadata(path: string) {
+    return this.call("fs/getMetadata", { path });
+  }
+
+  watchFile(path: string, accept: (subscriptionID: string) => void) {
+    return this.call("fs/watch", { path }, {
+      accept: (result) => accept(result.subscriptionID),
+    });
+  }
+
   updateSettings(params: Methods["harness/session/settings/update"]["params"]) {
     return this.call("harness/session/settings/update", params);
   }
@@ -280,6 +306,12 @@ export class RPCClient {
           envelope.params?.event
         ) {
           this.onRun?.(envelope.params as RunNotification);
+        } else if (
+          envelope.method === "fs/changed" &&
+          typeof envelope.params?.subscriptionID === "string" &&
+          Array.isArray(envelope.params?.event?.changedPaths)
+        ) {
+          this.onFileChanged?.(envelope.params as FileChangedNotification);
         }
         return;
       }

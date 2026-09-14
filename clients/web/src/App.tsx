@@ -17,6 +17,8 @@ import {
 import { SettingsPage } from "./settings-page";
 import { WorkspaceTabs } from "./workspace-tabs";
 import { Sidebar } from "./sidebar";
+import { ResizeHandle } from "./components/resize-handle";
+import { AppContextMenu } from "./components/app-context-menu";
 import {
   Composer,
   type Attachment,
@@ -37,6 +39,7 @@ import { ChatMessages } from "./chat-messages";
 import { type ModelSelection } from "./model-menu";
 import { compressImage } from "./image-compression";
 import { workspaceName } from "./state/projects";
+import type { FileLocation } from "./editor/links";
 import type { SendParams, SessionView } from "../../contracts/harness.ts";
 import type {
   AgentListResult,
@@ -103,14 +106,23 @@ export function shouldClearSubmittedDraft(
 export default function App() {
   const [settings, setSettings] = useState(false);
   const [sidebar, setSidebar] = useState(true);
+  const [sidebarWidth, setSidebarWidth] = useState(() =>
+    Math.max(
+      200,
+      Math.min(420, Number(preference("sidebar-width", "246")) || 246),
+    ),
+  );
   const [panel, setPanel] = useState(
     () => preference("panel", "false") === "true",
   );
   const [panelWidth, setPanelWidth] = useState(() =>
     Math.max(
-      300,
-      Math.min(640, Number(preference("panel-width", "380")) || 380),
+      520,
+      Math.min(1200, Number(preference("panel-width", "760")) || 760),
     ),
+  );
+  const [viewportWidth, setViewportWidth] = useState(() =>
+    typeof window === "undefined" ? 1280 : window.innerWidth,
   );
   const [theme, setTheme] = useState(() => preference("theme", "system"));
   const [draft, setDraft] = useState("");
@@ -145,6 +157,10 @@ export default function App() {
   const [creatingWorkspace, setCreatingWorkspace] = useState<string | null>(
     null,
   );
+  const [fileOpenRequest, setFileOpenRequest] = useState<
+    (FileLocation & { requestID: number; workspace: string }) | undefined
+  >();
+  const fileOpenRequestID = useRef(0);
   const composer = useRef<ComposerHandle>(null);
   const objectUrls = useRef<string[]>([]);
   const drafts = useRef(new Map<string, Draft>());
@@ -166,6 +182,13 @@ export default function App() {
   imagesRef.current = images;
 
   const connected = connection === "connected";
+  const sidebarSpace = sidebar ? sidebarWidth : 0;
+  const panelOverlay =
+    viewportWidth <= 1200 || viewportWidth - sidebarSpace < 820;
+  const panelMaxWidth = panelOverlay
+    ? 1200
+    : Math.min(1200, viewportWidth - sidebarSpace - 300);
+  const visiblePanelWidth = Math.min(panelWidth, panelMaxWidth);
   const backendBusy = opening || creatingWorkspace !== null;
   const snapshot =
     chatState.sessionID === selectedID ? chatState.snapshot : null;
@@ -767,6 +790,13 @@ export default function App() {
   }
 
   useEffect(() => {
+    function measureViewport() {
+      setViewportWidth(window.innerWidth);
+    }
+    window.addEventListener("resize", measureViewport);
+    return () => window.removeEventListener("resize", measureViewport);
+  }, []);
+  useEffect(() => {
     const query = matchMedia("(prefers-color-scheme: dark)");
     function applyTheme() {
       document.documentElement.classList.toggle(
@@ -782,7 +812,8 @@ export default function App() {
   useEffect(() => {
     savePreference("panel", String(panel));
     savePreference("panel-width", String(panelWidth));
-  }, [panel, panelWidth]);
+    savePreference("sidebar-width", String(sidebarWidth));
+  }, [panel, panelWidth, sidebarWidth]);
   useEffect(
     () => () => {
       objectUrls.current.forEach((url) => URL.revokeObjectURL(url));
@@ -837,7 +868,13 @@ export default function App() {
     <TooltipProvider>
       <div
         className="app"
-        style={{ "--panel-width": `${panelWidth}px` } as CSSProperties}
+        data-panel-overlay={panelOverlay}
+        style={
+          {
+            "--panel-width": `${visiblePanelWidth}px`,
+            "--sidebar-width": `${sidebarWidth}px`,
+          } as CSSProperties
+        }
       >
         {sidebar && (
           <Sidebar
@@ -857,6 +894,17 @@ export default function App() {
             onCreate={(workspace) => void createInWorkspace(workspace)}
             onOpenSettings={openSettings}
             onReconnect={reconnect}
+          />
+        )}
+        {sidebar && (
+          <ResizeHandle
+            label="调整项目侧栏宽度"
+            value={sidebarWidth}
+            min={200}
+            max={420}
+            growToward="right"
+            className="sidebar-resize-handle"
+            onChange={setSidebarWidth}
           />
         )}
         <main className="main">
@@ -969,6 +1017,18 @@ export default function App() {
                   }
                   forkingEntryID={forkingEntryID || undefined}
                   forkDisabled={!synchronized || !!currentRun}
+                  workspace={selected?.settings.workspace}
+                  onOpenFile={(location) => {
+                    const workspace = selected?.settings.workspace;
+                    if (!workspace) return;
+                    setPanel(true);
+                    setSettings(false);
+                    setFileOpenRequest({
+                      ...location,
+                      workspace,
+                      requestID: ++fileOpenRequestID.current,
+                    });
+                  }}
                   onFork={(runID, boundaryEntryID) =>
                     void forkAnswer(runID, boundaryEntryID)
                   }
@@ -1078,40 +1138,23 @@ export default function App() {
             />
           )}
           <aside className="aux-panel" aria-label="辅助工作区" hidden={!panel}>
-            <div
-              role="separator"
-              aria-label="调整辅助工作区宽度"
-              aria-orientation="vertical"
-              aria-valuemin={300}
-              aria-valuemax={640}
-              aria-valuenow={panelWidth}
-              tabIndex={0}
-              className="resize-handle"
-              onKeyDown={(event) => {
-                if (event.key === "ArrowLeft")
-                  setPanelWidth((width) => Math.min(640, width + 20));
-                if (event.key === "ArrowRight")
-                  setPanelWidth((width) => Math.max(300, width - 20));
-              }}
-              onPointerDown={(event) =>
-                event.currentTarget.setPointerCapture(event.pointerId)
-              }
-              onPointerMove={(event) => {
-                if (event.currentTarget.hasPointerCapture(event.pointerId))
-                  setPanelWidth(
-                    Math.max(
-                      300,
-                      Math.min(640, window.innerWidth - event.clientX),
-                    ),
-                  );
-              }}
-              onPointerUp={(event) =>
-                event.currentTarget.releasePointerCapture(event.pointerId)
-              }
+            <ResizeHandle
+              label="调整辅助工作区宽度"
+              value={visiblePanelWidth}
+              min={520}
+              max={panelMaxWidth}
+              growToward="left"
+              onChange={setPanelWidth}
             />
-            <WorkspaceTabs onHide={() => setPanel(false)} />
+            <WorkspaceTabs
+              workspace={selected?.settings.workspace ?? null}
+              client={connected ? clientRef.current : null}
+              openRequest={fileOpenRequest}
+              onHide={() => setPanel(false)}
+            />
           </aside>
         </>
+        <AppContextMenu />
       </div>
     </TooltipProvider>
   );

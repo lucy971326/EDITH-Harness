@@ -389,15 +389,17 @@ export function Composer({
                 </TooltipTrigger>
                 <TooltipContent>上下文已使用 {usageLabel}</TooltipContent>
               </Tooltip>
-              <ModelMenu
-                models={models}
-                value={modelSelection}
-                disabled={modelDisabled}
-                error={modelError}
-                onRetry={onRetryModels}
-                onChange={onModelChange}
-                requiresVision={images.length > 0}
-              />
+              <div className="composer-model">
+                <ModelMenu
+                  models={models}
+                  value={modelSelection}
+                  disabled={modelDisabled}
+                  error={modelError}
+                  onRetry={onRetryModels}
+                  onChange={onModelChange}
+                  requiresVision={images.length > 0}
+                />
+              </div>
               {running && (
                 <Button
                   variant="outline"

@@ -10,6 +10,7 @@ import { ArrowDown } from "./icons";
 import { chatTurns } from "./state/chat-process";
 import { WorkProcess } from "./work-process";
 import type { Snapshot } from "../../contracts/run.ts";
+import type { FileLocation } from "./editor/links";
 
 export function ChatMessages({
   snapshot,
@@ -18,6 +19,8 @@ export function ChatMessages({
   forkingEntryID,
   forkDisabled = true,
   onFork,
+  workspace,
+  onOpenFile,
   children,
 }: {
   snapshot: Snapshot | null;
@@ -26,6 +29,8 @@ export function ChatMessages({
   forkingEntryID?: string;
   forkDisabled?: boolean;
   onFork?: (runID: string, boundaryEntryID: string) => void;
+  workspace?: string | null;
+  onOpenFile?: (location: FileLocation) => void;
   children?: ReactNode;
 }) {
   const scroll = useRef<HTMLDivElement>(null);
@@ -97,6 +102,8 @@ export function ChatMessages({
               forking={forkingEntryID === turn.prompt?.id}
               forkDisabled={forkDisabled}
               onFork={onFork}
+              workspace={workspace}
+              onOpenFile={onOpenFile}
               onInspect={() => {
                 follow.current = false;
                 userScroll.current = false;

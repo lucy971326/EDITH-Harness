@@ -154,6 +154,30 @@ test("unknown notifications are ignored", async () => {
   client.close();
 });
 
+test("file change notifications are dispatched to the editor listener", async () => {
+  const socket = new FakeSocket();
+  const client = new RPCClient("ws://example/rpc", () => {}, factory(socket));
+  await client.connect();
+  let changedPath = "";
+  client.onFileChanged = (notification) => {
+    changedPath = notification.event.changedPaths[0] ?? "";
+  };
+  socket.dispatchEvent(
+    new MessageEvent("message", {
+      data: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "fs/changed",
+        params: {
+          subscriptionID: "files-1",
+          event: { changedPaths: ["C:\\work\\main.go"] },
+        },
+      }),
+    }),
+  );
+  assert.equal(changedPath, "C:\\work\\main.go");
+  client.close();
+});
+
 test("malformed error still finishes a request that has no timeout", async () => {
   const socket = new FakeSocket();
   const client = new RPCClient("ws://example/rpc", () => {}, factory(socket));

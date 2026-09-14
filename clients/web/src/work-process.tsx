@@ -22,6 +22,7 @@ import {
 } from "./state/chat-process";
 import { runLabel } from "./state/chat";
 import type { Block } from "../../contracts/run.ts";
+import type { FileLocation } from "./editor/links";
 
 function MessageImages({ blocks }: { blocks: Block[] }) {
   const images = blocks.filter(
@@ -141,6 +142,8 @@ export function WorkProcess({
   forkDisabled = false,
   forking = false,
   stopping = false,
+  workspace,
+  onOpenFile,
 }: {
   turn: ChatTurn;
   onInspect: () => void;
@@ -148,6 +151,8 @@ export function WorkProcess({
   forkDisabled?: boolean;
   forking?: boolean;
   stopping?: boolean;
+  workspace?: string | null;
+  onOpenFile?: (location: FileLocation) => void;
 }) {
   const status = turn.run?.status;
   const [open, setOpen] = useState(status !== "success");
@@ -168,7 +173,7 @@ export function WorkProcess({
         <div data-entry-id={turn.prompt.id}>
           <div className="user-message">
             <MessageImages blocks={turn.prompt.message.blocks} />
-            <MessageMarkdown text={promptText} />
+            <MessageMarkdown text={promptText} workspace={workspace} onOpenFile={onOpenFile} />
           </div>
           <div className="user-actions">
             <CopyMessage text={promptText} label="复制用户消息" />
@@ -270,9 +275,9 @@ export function WorkProcess({
                       </span>
                     )}
                     {group.kind === "steer" ? (
-                      <MessageMarkdown text={group.text} />
+                      <MessageMarkdown text={group.text} workspace={workspace} onOpenFile={onOpenFile} />
                     ) : group.kind === "text" ? (
-                      <MessageMarkdown text={group.text} />
+                      <MessageMarkdown text={group.text} workspace={workspace} onOpenFile={onOpenFile} />
                     ) : (
                       group.text
                     )}
@@ -294,7 +299,7 @@ export function WorkProcess({
       {turn.answer && (
         <div data-entry-id={turn.answer.id}>
           <div className="answer">
-            <MessageMarkdown text={turn.answer.text} />
+            <MessageMarkdown text={turn.answer.text} workspace={workspace} onOpenFile={onOpenFile} />
           </div>
           <div className="answer-controls">
             <CopyMessage text={turn.answer.text} label="复制回答" />

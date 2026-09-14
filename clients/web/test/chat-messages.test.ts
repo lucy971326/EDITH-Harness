@@ -5,11 +5,14 @@ import { createElement, type ComponentType } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createServer, type ViteDevServer } from "vite";
 import type { Snapshot } from "../../contracts/run.ts";
+import type { FileLocation } from "../src/editor/links.ts";
 
 let server: ViteDevServer;
 let ChatMessages: ComponentType<{
   snapshot: Snapshot | null;
   sessionID: string | null;
+  workspace?: string | null;
+  onOpenFile?: (location: FileLocation) => void;
 }>;
 
 before(async () => {
@@ -17,6 +20,7 @@ before(async () => {
   server = await createServer({
     root: fileURLToPath(new URL("..", import.meta.url)),
     server: { middlewareMode: true, hmr: false, watch: null },
+    optimizeDeps: { noDiscovery: true },
   });
   ({ ChatMessages } = await server.ssrLoadModule("/src/chat-messages.tsx"));
 });
@@ -122,7 +126,7 @@ test("Markdown supports structure but removes HTML and unsafe links", () => {
           blocks: [
             {
               kind: "text",
-              text: "**粗体**\n\n- 列表\n\n[x](javascript:alert%281%29)\n\n<script>alert(1)</script>\n\n![远程](https://example.com/track.png)",
+              text: "**粗体**\n\n- 列表\n\n[x](javascript:alert%281%29)\n\n[文件](C:/work/main.ts:12)\n\n<script>alert(1)</script>\n\n![远程](https://example.com/track.png)",
             },
           ],
         },
@@ -130,11 +134,18 @@ test("Markdown supports structure but removes HTML and unsafe links", () => {
     ],
   };
   const html = renderToStaticMarkup(
-    createElement(ChatMessages, { sessionID: "s", snapshot }),
+    createElement(ChatMessages, {
+      sessionID: "s",
+      snapshot,
+      workspace: "C:/work",
+      onOpenFile: () => {},
+    }),
   );
   assert.match(html, /<strong>粗体<\/strong>/);
   assert.match(html, /<li>列表<\/li>/);
   assert.doesNotMatch(html, /<script|javascript:|<img/);
+  assert.match(html, /href="C:\/work\/main.ts:12"/);
+  assert.doesNotMatch(html, /href="C:\/work\/main.ts:12" target=/);
 });
 
 test("durable user images render from the same snapshot as text", () => {
