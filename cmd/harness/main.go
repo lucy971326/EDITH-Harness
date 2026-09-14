@@ -33,6 +33,7 @@ import (
 	skillsfilesystem "harness/plugins/skills/filesystem"
 	bashtool "harness/plugins/tools/bash"
 	edittool "harness/plugins/tools/edit"
+	exectool "harness/plugins/tools/exec"
 	mcptool "harness/plugins/tools/mcp"
 	readtool "harness/plugins/tools/read"
 	subagenttools "harness/plugins/tools/subagents"
@@ -93,6 +94,10 @@ func run() (result error) {
 		return err
 	}
 	err = h.Install(bashtool.New())
+	if err != nil {
+		return err
+	}
+	err = h.Install(exectool.New())
 	if err != nil {
 		return err
 	}

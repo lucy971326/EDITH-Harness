@@ -3,12 +3,14 @@ package machinelocal
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sync"
+	"time"
 )
 
 // 活对象。挂在 Host 的 machine 键上的本机机器。
@@ -17,9 +19,10 @@ type local struct {
 
 	fileLocks pathLockSet
 
-	watchMu sync.Mutex
-	watches map[*localWatch]struct{}
-	closed  bool
+	mu        sync.Mutex
+	watches   map[*localWatch]struct{}
+	processes map[int64]*localProcess
+	closed    bool
 }
 
 func newLocal() (*local, error) {
@@ -27,7 +30,11 @@ func newLocal() (*local, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &local{bash: bash, watches: make(map[*localWatch]struct{})}, nil
+	return &local{
+		bash:      bash,
+		watches:   make(map[*localWatch]struct{}),
+		processes: make(map[int64]*localProcess),
+	}, nil
 }
 
 func (m *local) HomeDir() (string, error) {
@@ -46,22 +53,43 @@ func (m *local) ResolvePath(workspace string, path string) string {
 }
 
 func (m *local) close() error {
-	m.watchMu.Lock()
+	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		return nil
+	}
 	m.closed = true
 	watches := make([]*localWatch, 0, len(m.watches))
 	for watch := range m.watches {
 		watches = append(watches, watch)
 	}
-	m.watchMu.Unlock()
+	processes := make([]*localProcess, 0, len(m.processes))
+	for _, process := range m.processes {
+		processes = append(processes, process)
+	}
+	m.mu.Unlock()
 
-	var closeErr error
+	var closeErrs []error
 	for _, watch := range watches {
 		err := watch.Close()
 		if err != nil {
-			closeErr = fmt.Errorf("machine-local: close watcher: %w", err)
+			closeErrs = append(closeErrs, fmt.Errorf("machine-local: close watcher: %w", err))
 		}
 	}
-	return closeErr
+	for _, process := range processes {
+		err := process.terminate()
+		if err != nil {
+			closeErrs = append(closeErrs, err)
+		}
+	}
+	deadline := time.Now().Add(processTerminationTimeout)
+	for _, process := range processes {
+		err := process.waitUntil(deadline)
+		if err != nil {
+			closeErrs = append(closeErrs, err)
+		}
+	}
+	return errors.Join(closeErrs...)
 }
 
 func (m *local) Run(ctx context.Context, dir string, argv []string) ([]byte, []byte, error) {

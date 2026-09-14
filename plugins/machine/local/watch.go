@@ -84,14 +84,14 @@ func (m *local) Watch(path string) (machine.FileWatch, error) {
 		stop:      make(chan struct{}),
 		done:      make(chan struct{}),
 	}
-	m.watchMu.Lock()
+	m.mu.Lock()
 	if m.closed {
-		m.watchMu.Unlock()
+		m.mu.Unlock()
 		_ = watcher.Close()
 		return nil, fmt.Errorf("machine-local: watcher is closed")
 	}
 	m.watches[watch] = struct{}{}
-	m.watchMu.Unlock()
+	m.mu.Unlock()
 
 	go watch.run()
 	return watch, nil
@@ -115,9 +115,9 @@ func (w *localWatch) Close() error {
 func (w *localWatch) run() {
 	defer func() {
 		_ = w.watcher.Close()
-		w.owner.watchMu.Lock()
+		w.owner.mu.Lock()
 		delete(w.owner.watches, w)
-		w.owner.watchMu.Unlock()
+		w.owner.mu.Unlock()
 		close(w.events)
 		close(w.done)
 	}()

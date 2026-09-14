@@ -31,6 +31,7 @@ appserver.Server
 - 编辑器视图：自己的第二行工具栏管理路径、保存状态和文件树折叠；右侧文件树与左侧 Monaco 支持多文件标签、UTF-8 高亮编辑、700ms 自动保存、`Ctrl+S`、未保存关闭确认及按项目保留本页草稿。
 - 文件同步：打开文件和展开目录通过 `fs/watch` 监听；干净文件自动重载，外部冲突保留本地草稿并提供重载／覆盖，删除或保存失败不丢缓冲区。聊天中的本地文件链接可打开编辑器并定位行列。
 - 界面菜单：普通页面统一使用受控右键菜单，Monaco 使用自身 Command 菜单；浏览器、终端与 Diff 尚未接入。
+- 长期命令：新增 `exec_command` / `write_stdin`，统一使用 Bash；支持普通管道与 PTY、增量输出、持续输入、轮询和 `Ctrl+C`。旧 `bash` Tool 暂时保留，已有 Agent 不自动勾选新 Tool。
 
 ## 后台边界
 
@@ -43,6 +44,7 @@ appserver.Server
 - 每个 Session 同时只有一个活 Run；运行状态与最近用量保存在 `runs.json`，未完成运行在重启后标记 interrupted，不自动续跑。
 - Client 只保存服务端投影和草稿、主题、折叠等临时界面状态，不成为业务事实来源。
 - appserver 已显式接入同一份 machine 文件能力，提供读取、受版本保护的保存、目录、元数据与监听 RPC；监听复用统一订阅和断线清理。
+- machine-local 持有长期进程的唯一内存状态，按 Harness Session 隔离；进程 ID 已交付后可跨 Turn 存活，关闭时终止进程树并等待读取与回收完成。Agent Tool 只转换参数和呈现结果。
 
 ## 构建与启动
 
@@ -75,6 +77,7 @@ Vite 构建产物位于 `clients/web/dist/`，由 Go embed 进入二进制但不
 ```
 
 本机模型 Provider 仍在 `~/.harness/config.yaml` 配置。machine-local 直接操作本机文件和进程，没有沙箱与路径限制；编辑器 RPC 单文件限制 2 MiB，保存使用 SHA-256 版本避免覆盖已变化内容。
+Windows 启动继续要求 Git Bash；长期 PTY 使用 `charmbracelet/x/xpty`。长期进程只在当前 Harness 进程内存中存在，重启后旧 `process_id` 失效。
 `~/.harness` 固定使用本机文件存储；Session、Runner、Agent、LLM、MCP 用户配置、Skill 用户目录与内置 Skill、Subagents 共用 `persist` 的可靠文件读写，不提供 SQLite 切换。
 
 ## 后续范围
@@ -95,6 +98,6 @@ Vite 构建产物位于 `clients/web/dist/`，由 Go embed 进入二进制但不
 ## 本次验证
 
 - TypeScript 编译、生产构建、TS 契约检查及 56 项前端测试通过。
-- Windows 实机验证文件树监听、Monaco 本地加载、磁盘自动重载、删除缓冲保护和自定义右键菜单通过；临时验收文件已清理。
-- `make agent-check` 只因上述既有 Windows 目录权限测试失败；本次涉及的包均通过。
+- `exec_command` / `write_stdin` 的短命令、增量输出、PTY 输入、会话隔离、取消清理、关闭回收、输出上限及工具登记测试通过；machine-local race 通过。
+- `make agent-check` 只因上述既有 Windows 管理员目录权限测试失败；阶段 A 涉及的包均通过。
 - 未调用付费模型或修改用户会话。

@@ -4,6 +4,7 @@ package machine
 import (
 	"context"
 	"errors"
+	"time"
 )
 
 var (
@@ -47,6 +48,39 @@ type FileWatchEvent struct {
 type FileWatch interface {
 	Events() <-chan FileWatchEvent
 	Close() error
+}
+
+// 数据。启动一个可继续交互的本机进程。
+type ProcessRequest struct {
+	OwnerID string
+	Dir     string
+	Argv    []string
+	TTY     bool
+	Wait    time.Duration
+}
+
+// 数据。向已有进程写入字节，或只等待并读取新增输出。
+type ProcessInteraction struct {
+	OwnerID   string
+	ProcessID int64
+	Chars     []byte
+	Wait      time.Duration
+}
+
+// 数据。一次进程操作得到的新增输出与当前状态。
+type ProcessOutput struct {
+	ProcessID    int64
+	Output       []byte
+	Exited       bool
+	ExitCode     int
+	OmittedBytes int64
+}
+
+// 契约。同一份 machine 服务提供的长期进程能力。
+type ProcessSystem interface {
+	// 进程启动与后续交互
+	Exec(ctx context.Context, request ProcessRequest) (ProcessOutput, error)
+	Interact(ctx context.Context, interaction ProcessInteraction) (ProcessOutput, error)
 }
 
 // 契约。文件和进程所在机器提供的操作。
