@@ -20,7 +20,7 @@ app-server → Product / 公共服务 → kernel
 - Client 共用 `clients/contracts/` 中手写的 TypeScript 契约；接口修改时同步 Go 与 TS，不自动生成。
 - UI 不直接拼 JSON-RPC 封套，不知道 Go Host、Runner 或 Product 的具体实现。
 - Wails 首版承载同一套前端并连接同一 WebSocket，不另写一套 IPC 业务层。
-- 文件面板通过 `fs/readFile / writeFile / readDirectory / getMetadata / watch` 调用后台；变化由 `fs/changed` 通知，取消监听复用 `server/unsubscribe`。Diff 审查通过 `harness/run/diff/read / revertFile` 按需读取和撤销单文件。
+- 文件面板通过 `fs/readFile / writeFile / readDirectory / getMetadata / watch` 调用后台；变化由 `fs/changed` 通知，取消监听复用 `server/unsubscribe`。Diff 审查通过 `harness/run/diff/read / revertFile` 按需读取和撤销单文件。终端通过 `command/exec / write / resize / terminate` 控制后台 PTY，并接收 `command/exec/outputDelta` 实时输出。
 
 ## 2. 状态边界
 
@@ -33,6 +33,8 @@ Client 临时状态 当前路由、选择、折叠、面板宽度、主题、输
 Client 不写账本，不把本地状态冒充业务事实。刷新可丢失的界面状态可保存在内存或浏览器本地存储；需要跨端一致的事实必须由后台拥有。
 
 辅助工作区是可登记视图的公共容器，只管理混合标签、激活、关闭和新增菜单；文件、Diff、终端、浏览器等视图拥有自己的工具栏、内容和内部状态。编辑器按工作区在本页内保存标签、Monaco Model 和草稿；切换会话时，同一工作区复用编辑状态，不同工作区互不覆盖。Diff 标签属于当前 Session，切换 Session 时清理。面板宽度存本机偏好，文件内容和保存版本始终以后端读取结果为准。
+
+终端标签属于当前 Client 连接：创建时以当前工作区启动独立 Git Bash，切换标签或隐藏辅助区不卸载、不终止；关闭标签调用 terminate，断线后由后台统一清理。xterm.js 只负责显示和输入，终端正文与进程状态不写 Session 或浏览器持久化。
 
 - 已有 UTF-8 普通文件可编辑，沿用后台 2 MiB 上限；不提供新建、删除、重命名或手动刷新。
 - 停止输入 700ms 后自动保存，`Ctrl+S` 立即保存。保存携带读取时的 SHA-256；保存期间继续输入时，只确认已提交快照，剩余修改随后再存。
@@ -68,6 +70,7 @@ clients/web/
      ├─ auxiliary/     辅助工作区公共标签壳与视图登记契约
      ├─ client/        JSON-RPC 连接、手写契约适配、订阅与恢复
      ├─ editor/        文件状态、文件树、Monaco 与本地链接定位
+     ├─ terminal/      xterm.js 终端视图与连接生命周期
    ├─ state/         后台投影 reducer 与只读展示派生
    ├─ components/ui/ shadcn 基础组件
    ├─ lib/           基础组件共用的小工具
