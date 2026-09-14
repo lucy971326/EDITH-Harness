@@ -462,7 +462,7 @@ export function WorkspaceTabs({
             {activeFile && <strong>{statusLabel(activeFile)}</strong>}
             <Button
               variant="ghost"
-              size="icon"
+              size="icon-xs"
               aria-label={treeOpen ? "收起文件树" : "展开文件树"}
               onClick={() => setTreeOpen(!treeOpen)}
             >

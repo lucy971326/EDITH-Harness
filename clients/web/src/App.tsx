@@ -110,7 +110,7 @@ export default function App() {
   const [sidebarWidth, setSidebarWidth] = useState(() =>
     Math.max(
       200,
-      Math.min(420, Number(preference("sidebar-width", "246")) || 246),
+      Math.min(420, Number(preference("sidebar-width", "210")) || 210),
     ),
   );
   const [panel, setPanel] = useState(
@@ -118,8 +118,13 @@ export default function App() {
   );
   const [panelWidth, setPanelWidth] = useState(() =>
     Math.max(
-      520,
-      Math.min(1200, Number(preference("panel-width", "760")) || 760),
+      320,
+      // 新阅读布局不继承旧版宽面板；后续拖动仍保存在本机。
+      Math.min(
+        1200,
+        Number(preference("reading-panel-width", "0")) ||
+          Math.min(480, (typeof window === "undefined" ? 1280 : window.innerWidth) * 0.25),
+      ),
     ),
   );
   const [viewportWidth, setViewportWidth] = useState(() =>
@@ -187,7 +192,7 @@ export default function App() {
   const connected = connection === "connected";
   const sidebarSpace = sidebar ? sidebarWidth : 0;
   const panelOverlay =
-    viewportWidth <= 1200 || viewportWidth - sidebarSpace < 820;
+    viewportWidth <= 950 || viewportWidth - sidebarSpace < 620;
   const panelMaxWidth = panelOverlay
     ? 1200
     : Math.min(1200, viewportWidth - sidebarSpace - 300);
@@ -814,7 +819,7 @@ export default function App() {
   }, [theme]);
   useEffect(() => {
     savePreference("panel", String(panel));
-    savePreference("panel-width", String(panelWidth));
+    savePreference("reading-panel-width", String(panelWidth));
     savePreference("sidebar-width", String(sidebarWidth));
   }, [panel, panelWidth, sidebarWidth]);
   useEffect(
@@ -1154,7 +1159,7 @@ export default function App() {
             <ResizeHandle
               label="调整辅助工作区宽度"
               value={visiblePanelWidth}
-              min={520}
+              min={320}
               max={panelMaxWidth}
               growToward="left"
               onChange={setPanelWidth}

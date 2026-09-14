@@ -146,11 +146,11 @@ export function SettingsPage({
             <div className="appearance-note">
               <div>
                 <span>配色</span>
-                <strong>Stone 暖灰</strong>
+                <strong>中性灰</strong>
               </div>
               <div>
                 <span>字体</span>
-                <strong>系统字体</strong>
+                <strong>Ginto / Noto Sans SC · JetBrains Mono</strong>
               </div>
               <div>
                 <span>图标</span>

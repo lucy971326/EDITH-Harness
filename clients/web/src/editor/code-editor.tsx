@@ -2,7 +2,12 @@ import { useEffect, useRef } from "react";
 import Editor, { type OnMount } from "@monaco-editor/react";
 import type { EditorFile } from "./files";
 import type { FileLocation } from "./links";
-import { defineEditorThemes, editorLanguage, useEditorTheme } from "./monaco";
+import {
+  defineEditorThemes,
+  editorFontFamily,
+  editorLanguage,
+  useEditorTheme,
+} from "./monaco";
 
 export function CodeEditor({
   file,
@@ -58,8 +63,7 @@ export function CodeEditor({
       options={{
         automaticLayout: true,
         contextmenu: true,
-        fontFamily:
-          '"Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace',
+        fontFamily: editorFontFamily,
         fontSize: 13,
         lineHeight: 21,
         minimap: { enabled: false },

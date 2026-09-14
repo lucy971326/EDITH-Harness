@@ -3,9 +3,10 @@ import { DiffEditor } from "@monaco-editor/react";
 import { Button } from "@/components/ui/button";
 import { ResizeHandle } from "@/components/resize-handle";
 import type { RPCClient } from "../client/rpc";
-import { Columns2, FileText, Rows3, Undo2 } from "../icons";
+import { Columns2, FileText, PanelRight, Rows3, Undo2 } from "../icons";
 import {
   defineEditorThemes,
+  editorFontFamily,
   editorLanguage,
   useEditorTheme,
 } from "../editor/monaco";
@@ -65,6 +66,7 @@ export function ReviewView({
   const [loading, setLoading] = useState(false);
   const [reverting, setReverting] = useState(false);
   const [treeWidth, setTreeWidth] = useState(storedTreeWidth);
+  const [treeOpen, setTreeOpen] = useState(false);
   const [editorWidth, setEditorWidth] = useState(800);
   const [sideBySide, setSideBySide] = useState(true);
   const editorPane = useRef<HTMLElement>(null);
@@ -192,7 +194,7 @@ export function ReviewView({
         <div className="review-toolbar-actions">
           <Button
             variant="ghost"
-            size="icon"
+            size="icon-xs"
             aria-label={renderSideBySide ? "使用单栏 Diff" : "使用双栏 Diff"}
             disabled={editorWidth < 720}
             onClick={() => setSideBySide(!sideBySide)}
@@ -200,14 +202,23 @@ export function ReviewView({
             {renderSideBySide ? <Rows3 /> : <Columns2 />}
           </Button>
           <Button
-            variant="outline"
-            size="sm"
+            variant="ghost"
+            size="xs"
             disabled={!selected || runActive || reverting || !client?.connected}
             title={runActive ? "运行结束后才能撤销" : undefined}
             onClick={() => void revertSelected()}
           >
             <Undo2 />
             {reverting ? "撤销中…" : "撤销此文件"}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={treeOpen ? "收起变更文件列表" : "展开变更文件列表"}
+            aria-expanded={treeOpen}
+            onClick={() => setTreeOpen(!treeOpen)}
+          >
+            <PanelRight />
           </Button>
         </div>
       </div>
@@ -241,8 +252,7 @@ export function ReviewView({
               options={{
                 automaticLayout: true,
                 contextmenu: true,
-                fontFamily:
-                  '"Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace',
+                fontFamily: editorFontFamily,
                 fontSize: 13,
                 lineHeight: 21,
                 minimap: { enabled: false },
@@ -255,7 +265,7 @@ export function ReviewView({
           )}
         </section>
 
-        <aside className="review-tree-pane" style={{ width: treeWidth }}>
+        {treeOpen && <aside className="review-tree-pane" style={{ width: treeWidth }}>
           <ResizeHandle
             label="调整变更文件列表宽度"
             value={treeWidth}
@@ -270,20 +280,20 @@ export function ReviewView({
                 key={item.path}
                 role="option"
                 aria-selected={item.path === selectedPath}
-                title={item.path}
+                title={`${item.path} · ${operationLabel(item.operation)}`}
+                aria-label={`${displayPath(workspace, item.path)}，${operationLabel(item.operation)}，新增 ${item.additions} 行，删除 ${item.deletions} 行`}
                 onClick={() => setSelectedPath(item.path)}
               >
                 <FileText />
                 <span>
                   <strong>{displayPath(workspace, item.path)}</strong>
-                  <small>{operationLabel(item.operation)}</small>
                 </span>
                 <i className="diff-additions">+{item.additions}</i>
                 <i className="diff-deletions">-{item.deletions}</i>
               </button>
             ))}
           </div>
-        </aside>
+        </aside>}
       </div>
     </div>
   );

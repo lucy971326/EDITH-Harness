@@ -254,4 +254,5 @@ Client    只依赖手写 TS 契约和自身 UI；不读取 Go Host
 
 
 ## 用户偏好
-用户是重度ADHD患者
+用户是重度ADHD患者。
+UI 改动完成后，由用户运行 `make run` 并截图验收；Agent 不操作浏览器做视觉验收。
