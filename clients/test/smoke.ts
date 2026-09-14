@@ -13,7 +13,7 @@ try {
   await client.call('harness/session/settings/update', {
     ...params,
     agentID: 'default',
-    model: 'deepseek/deepseek-v4-flash',
+    model: 'deepseek/deepseek-flash',
     reasoningEffort: 'off',
   });
   assert.equal((await client.call('harness/session/get', params)).session.sessionID, session.sessionID);

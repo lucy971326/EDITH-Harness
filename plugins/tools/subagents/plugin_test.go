@@ -137,7 +137,7 @@ func newFixture(t *testing.T) fixture {
 		t.Fatal(err)
 	}
 	err = f.settings.Put("parent", settings.SessionSettings{
-		AgentID: agents.DefaultID, Model: "deepseek/deepseek-v4-flash",
+		AgentID: agents.DefaultID, Model: "deepseek/deepseek-flash",
 		ReasoningEffort: "high", Workspace: t.TempDir(),
 	})
 	if err != nil {
@@ -373,9 +373,9 @@ func TestIndependentSettingOverrides(t *testing.T) {
 		args                 spawnArgs
 		agent, model, effort string
 	}{
-		{spawnArgs{AgentID: worker.ID}, worker.ID, "deepseek/deepseek-v4-flash", "high"},
+		{spawnArgs{AgentID: worker.ID}, worker.ID, "deepseek/deepseek-flash", "high"},
 		{spawnArgs{Model: "deepseek/deepseek-v4-pro"}, agents.DefaultID, "deepseek/deepseek-v4-pro", "high"},
-		{spawnArgs{ReasoningEffort: "low"}, agents.DefaultID, "deepseek/deepseek-v4-flash", "low"},
+		{spawnArgs{ReasoningEffort: "low"}, agents.DefaultID, "deepseek/deepseek-flash", "low"},
 	} {
 		tc.args.Description = "independent override"
 		data, err := json.Marshal(tc.args)

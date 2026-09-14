@@ -233,7 +233,7 @@ func createParentRun(t *testing.T, f subagentsFixture, workspace string) (string
 	}
 	err = f.settings.Put("parent-session", settings.SessionSettings{
 		AgentID:         agents.DefaultID,
-		Model:           "deepseek/deepseek-v4-flash",
+		Model:           "deepseek/deepseek-flash",
 		ReasoningEffort: "high",
 		Workspace:       workspace,
 	})

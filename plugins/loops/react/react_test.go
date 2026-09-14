@@ -89,7 +89,7 @@ func TestReactRunsToolRoundTrip(t *testing.T) {
 		}},
 		SystemPrompt: "system",
 		LLMConfig: llm.RunConfig{
-			Model:           "deepseek/deepseek-v4-flash",
+			Model:           "deepseek/deepseek-flash",
 			ReasoningEffort: "off",
 		},
 		ToolNames: []string{"echo"},
@@ -460,7 +460,7 @@ func TestReactCancelDuringTextPersistsIncompleteWithSameEntryID(t *testing.T) {
 	err := loop.Run(ctx, loops.Invocation{
 		History: []session.Message{{Role: session.RoleUser, Blocks: []session.Block{{Kind: "text", Text: "ask"}}}},
 		LLMConfig: llm.RunConfig{
-			Model:           "deepseek/deepseek-v4-flash",
+			Model:           "deepseek/deepseek-flash",
 			ReasoningEffort: "off",
 		},
 		Emit: func(_ context.Context, event loops.Event) error {
@@ -625,7 +625,7 @@ func TestReactCancellingOneOfMultipleToolCallsPersistsEveryResult(t *testing.T) 
 	}
 	err = settingsStore.Put("session-1", settings.SessionSettings{
 		AgentID:         agents.DefaultID,
-		Model:           "deepseek/deepseek-v4-flash",
+		Model:           "deepseek/deepseek-flash",
 		ReasoningEffort: "off",
 		Workspace:       "/workspace",
 	})
@@ -814,7 +814,7 @@ func testInvocation(toolNames []string) loops.Invocation {
 		}},
 		SystemPrompt: "system",
 		LLMConfig: llm.RunConfig{
-			Model:           "deepseek/deepseek-v4-flash",
+			Model:           "deepseek/deepseek-flash",
 			ReasoningEffort: "off",
 		},
 		ToolNames: toolNames,

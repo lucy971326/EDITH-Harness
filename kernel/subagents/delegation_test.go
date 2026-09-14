@@ -47,7 +47,7 @@ func TestInheritedIncompatibleEffortIsNotSilentlyReplaced(t *testing.T) {
 	}
 	// 自定义 Loop 不请求 LLM，模拟父快照中存在目标模型不支持的档位。
 	err = f.settings.Put("parent-session", settings.SessionSettings{
-		AgentID: agents.DefaultID, Model: "deepseek/deepseek-v4-flash",
+		AgentID: agents.DefaultID, Model: "deepseek/deepseek-flash",
 		ReasoningEffort: "unsupported", Workspace: t.TempDir(),
 	})
 	if err != nil {

@@ -479,6 +479,12 @@
 .turn {
   margin-bottom: 52px;
 }
+.user-prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
 .user-message {
   margin-left: auto;
   max-width: 76%;
@@ -502,6 +508,20 @@
   max-height: 360px;
   object-fit: contain;
   border-radius: var(--radius);
+}
+.user-message-images {
+  display: flex;
+  max-width: 76%;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  margin-bottom: 0;
+}
+.user-message-images img {
+  width: 104px;
+  height: 104px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  border-radius: 12px;
 }
 .user-actions {
   display: flex;
@@ -1709,12 +1729,6 @@
   .composer-area {
     padding-block: 16px 10px;
   }
-  .composer-toolbar {
-    flex-wrap: wrap;
-  }
-  .composer-right {
-    margin-left: auto;
-  }
   .settings-page {
     padding: 20px;
   }
@@ -1759,6 +1773,12 @@
   }
 }
 
+@container chat-pane (max-width: 440px) {
+  .composer-model {
+    display: none;
+  }
+}
+
 @container chat-pane (max-width: 400px) {
   .messages,
   .composer-area {
@@ -1771,7 +1791,8 @@
   .composer-right {
     gap: 2px;
   }
-  .composer-model {
-    display: none;
+  .user-message-images img {
+    width: 88px;
+    height: 88px;
   }
 }

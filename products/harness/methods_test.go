@@ -133,8 +133,8 @@ func TestSettingsUpdateRejectsInvalidChoicesWithoutStartingOrSaving(t *testing.T
 	for _, input := range []appserver.UpdateSettingsParams{
 		{SessionID: created.Meta.ID, AgentID: ""},
 		{SessionID: created.Meta.ID, AgentID: "default", Model: "missing", ReasoningEffort: "high"},
-		{SessionID: created.Meta.ID, AgentID: "default", Model: "deepseek/deepseek-v4-flash", ReasoningEffort: "missing"},
-		{SessionID: created.Meta.ID, AgentID: "missing", Model: "deepseek/deepseek-v4-flash", ReasoningEffort: "high"},
+		{SessionID: created.Meta.ID, AgentID: "default", Model: "deepseek/deepseek-flash", ReasoningEffort: "missing"},
+		{SessionID: created.Meta.ID, AgentID: "missing", Model: "deepseek/deepseek-flash", ReasoningEffort: "high"},
 	} {
 		_, err = fixture.service.UpdateSettings(t.Context(), input.SessionID, settings.SessionSettings{
 			AgentID: input.AgentID, Model: input.Model, ReasoningEffort: input.ReasoningEffort,
@@ -167,7 +167,7 @@ func TestSettingsUpdatePersistsAndRejectsWhileRunning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	params := json.RawMessage(`{"sessionID":"` + created.Meta.ID + `","agentID":"default","model":"deepseek/deepseek-v4-flash","reasoningEffort":"high"}`)
+	params := json.RawMessage(`{"sessionID":"` + created.Meta.ID + `","agentID":"default","model":"deepseek/deepseek-flash","reasoningEffort":"high"}`)
 	raw, err := server.Call(t.Context(), "harness/session/settings/update", params)
 	if err != nil {
 		t.Fatal(err)
@@ -176,7 +176,7 @@ func TestSettingsUpdatePersistsAndRejectsWhileRunning(t *testing.T) {
 	if err := json.Unmarshal(raw, &result); err != nil {
 		t.Fatal(err)
 	}
-	if result.Session.Settings.Workspace != created.Settings.Workspace || result.Session.Settings.Model != "deepseek/deepseek-v4-flash" {
+	if result.Session.Settings.Workspace != created.Settings.Workspace || result.Session.Settings.Model != "deepseek/deepseek-flash" {
 		t.Fatalf("updated session = %#v", result.Session)
 	}
 
@@ -249,7 +249,7 @@ func TestSendAcceptsValidatedImageAndRejectsBadImage(t *testing.T) {
 	assertMethodError(t, err, appserver.CodeInvalidParams)
 
 	_, err = fixture.service.UpdateSettings(t.Context(), created.Meta.ID, settings.SessionSettings{
-		AgentID: "default", Model: "deepseek/deepseek-v4-flash", ReasoningEffort: "high",
+		AgentID: "default", Model: "deepseek/deepseek-v4-pro", ReasoningEffort: "high",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -291,7 +291,7 @@ func TestSendExpectedRunDoesNotStartOrSteerAnotherRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	setup.Model, setup.ReasoningEffort = "deepseek/deepseek-v4-flash", "high"
+	setup.Model, setup.ReasoningEffort = "deepseek/deepseek-flash", "high"
 	err = fixture.settings.Put(id, setup)
 	if err != nil {
 		t.Fatal(err)

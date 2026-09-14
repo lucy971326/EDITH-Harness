@@ -25,7 +25,13 @@ import { runLabel } from "./state/chat";
 import type { Block } from "../../contracts/run.ts";
 import type { FileLocation } from "./editor/links";
 
-function MessageImages({ blocks }: { blocks: Block[] }) {
+function MessageImages({
+  blocks,
+  compact = false,
+}: {
+  blocks: Block[];
+  compact?: boolean;
+}) {
   const images = blocks.filter(
     (block) =>
       block.kind === "image" &&
@@ -34,7 +40,7 @@ function MessageImages({ blocks }: { blocks: Block[] }) {
   );
   if (images.length === 0) return null;
   return (
-    <div className="message-images">
+    <div className={`message-images${compact ? " user-message-images" : ""}`}>
       {images.map((block, index) => (
         <img
           key={`${block.media!.mime}:${index}`}
@@ -174,9 +180,17 @@ export function WorkProcess({
     <article className="turn" data-run-id={turn.id}>
       {turn.prompt && (
         <div data-entry-id={turn.prompt.id}>
-          <div className="user-message">
-            <MessageImages blocks={turn.prompt.message.blocks} />
-            <MessageMarkdown text={promptText} workspace={workspace} onOpenFile={onOpenFile} />
+          <div className="user-prompt">
+            <MessageImages blocks={turn.prompt.message.blocks} compact />
+            {promptText.trim() && (
+              <div className="user-message">
+                <MessageMarkdown
+                  text={promptText}
+                  workspace={workspace}
+                  onOpenFile={onOpenFile}
+                />
+              </div>
+            )}
           </div>
           <div className="user-actions">
             <CopyMessage text={promptText} label="复制用户消息" />

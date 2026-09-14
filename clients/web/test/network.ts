@@ -31,7 +31,7 @@ try {
   assert.ok(
     models.some(
       (model) =>
-        model.id === "deepseek/deepseek-v4-flash" &&
+        model.id === "deepseek/deepseek-flash" &&
         model.reasoningEfforts.includes("high"),
     ),
   );
@@ -44,7 +44,7 @@ try {
   await client.updateSettings({
     ...params,
     agentID: "default",
-    model: "deepseek/deepseek-v4-flash",
+    model: "deepseek/deepseek-flash",
     reasoningEffort: "high",
   });
   await client.send({ ...params, text: "你好" });

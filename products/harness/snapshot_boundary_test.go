@@ -32,7 +32,7 @@ func TestSnapshotAfterEndPublicationDoesNotResurrectRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer unlisten()
-	err = f.service.Start(context.Background(), harness.RunInput{SessionID: info.Meta.ID, Model: "deepseek/deepseek-v4-flash", ReasoningEffort: "high", Message: session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "finish"}}}})
+	err = f.service.Start(context.Background(), harness.RunInput{SessionID: info.Meta.ID, Model: "deepseek/deepseek-flash", ReasoningEffort: "high", Message: session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "finish"}}}})
 	if err != nil {
 		t.Fatal(err)
 	}

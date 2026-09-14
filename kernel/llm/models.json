@@ -1,6 +1,6 @@
 {
   "models": {
-    "deepseek/deepseek-v4-flash": {
+    "deepseek/deepseek-flash": {
       "provider": "deepseek",
       "id": "deepseek-flash",
       "contextWindow": 1000000,

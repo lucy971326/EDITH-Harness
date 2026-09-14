@@ -258,7 +258,7 @@ func newCompactFixture(t *testing.T, handler http.HandlerFunc) runnerFixture {
 	}
 	err = fixture.settings.Put("session-1", settings.SessionSettings{
 		AgentID:         agents.DefaultID,
-		Model:           "deepseek/deepseek-v4-flash",
+		Model:           "deepseek/deepseek-flash",
 		ReasoningEffort: "off",
 		Workspace:       "/workspace/a",
 	})

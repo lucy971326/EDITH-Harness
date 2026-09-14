@@ -186,7 +186,7 @@ func TestRealReactWaitReceivesCompletionOrUserInput(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			err = settingsStore.Put("parent", settings.SessionSettings{AgentID: agents.DefaultID, Model: "deepseek/deepseek-v4-flash", ReasoningEffort: "off", Workspace: t.TempDir()})
+			err = settingsStore.Put("parent", settings.SessionSettings{AgentID: agents.DefaultID, Model: "deepseek/deepseek-flash", ReasoningEffort: "off", Workspace: t.TempDir()})
 			if err != nil {
 				t.Fatal(err)
 			}

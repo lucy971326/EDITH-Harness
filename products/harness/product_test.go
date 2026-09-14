@@ -55,7 +55,7 @@ func TestProductRunsWithoutWebAndForksCompletedSegment(t *testing.T) {
 	defer unsubscribe()
 
 	err = fixture.service.Start(context.Background(), harness.RunInput{
-		SessionID: created.Meta.ID, Model: "deepseek/deepseek-v4-flash", ReasoningEffort: "high",
+		SessionID: created.Meta.ID, Model: "deepseek/deepseek-flash", ReasoningEffort: "high",
 		Message: session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "first"}}},
 	})
 	if err != nil {
@@ -107,7 +107,7 @@ func TestProductRunsWithoutWebAndForksCompletedSegment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if setup.Workspace != workspace || setup.Model != "deepseek/deepseek-v4-flash" || setup.ReasoningEffort != "high" {
+	if setup.Workspace != workspace || setup.Model != "deepseek/deepseek-flash" || setup.ReasoningEffort != "high" {
 		t.Fatalf("fork settings = %#v", setup)
 	}
 
@@ -116,7 +116,7 @@ func TestProductRunsWithoutWebAndForksCompletedSegment(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = fixture.service.Start(context.Background(), harness.RunInput{
-		SessionID: stopping.Meta.ID, Model: "deepseek/deepseek-v4-flash", ReasoningEffort: "high",
+		SessionID: stopping.Meta.ID, Model: "deepseek/deepseek-flash", ReasoningEffort: "high",
 		Message: session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "stop"}}},
 	})
 	if err != nil {
@@ -374,7 +374,7 @@ func TestSubagentsChatIsolation(t *testing.T) {
 	}
 
 	err = fixture.service.Start(context.Background(), harness.RunInput{
-		SessionID: created.Meta.ID, Model: "deepseek/deepseek-v4-flash", ReasoningEffort: "high",
+		SessionID: created.Meta.ID, Model: "deepseek/deepseek-flash", ReasoningEffort: "high",
 		Message: session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "parent prompt"}}},
 	})
 	if err != nil {

@@ -78,7 +78,7 @@ func TestLoadModels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	flash := got["deepseek/deepseek-v4-flash"]
+	flash := got["deepseek/deepseek-flash"]
 	if flash.Provider != "deepseek" || flash.ID != "deepseek-flash" || flash.ContextWindow != 1000000 || !flash.Vision {
 		t.Fatalf("flash = %#v", flash)
 	}

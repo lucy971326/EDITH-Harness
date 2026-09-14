@@ -23,7 +23,7 @@ func notificationParent(t *testing.T, f subagentsFixture) (*runner.RunHandle, lo
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = f.settings.Put("parent-session", settings.SessionSettings{AgentID: agents.DefaultID, Model: "deepseek/deepseek-v4-flash", ReasoningEffort: "high", Workspace: t.TempDir()})
+	err = f.settings.Put("parent-session", settings.SessionSettings{AgentID: agents.DefaultID, Model: "deepseek/deepseek-flash", ReasoningEffort: "high", Workspace: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
