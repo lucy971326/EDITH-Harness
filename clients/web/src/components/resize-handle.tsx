@@ -21,14 +21,49 @@ export function ResizeHandle({
     return Math.max(min, Math.min(max, next));
   }
 
-  function move(event: PointerEvent<HTMLDivElement>) {
-    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
-    const startX = Number(event.currentTarget.dataset.startX);
-    const startValue = Number(event.currentTarget.dataset.startValue);
-    const distance = event.clientX - startX;
-    onChange(
-      clamp(startValue + (growToward === "right" ? distance : -distance)),
+  function dragValue(element: HTMLDivElement, clientX: number) {
+    const startX = Number(element.dataset.startX);
+    const startValue = Number(element.dataset.startValue);
+    const distance = clientX - startX;
+    return clamp(
+      startValue + (growToward === "right" ? distance : -distance),
     );
+  }
+
+  function preview(event: PointerEvent<HTMLDivElement>) {
+    const element = event.currentTarget;
+    if (!element.hasPointerCapture(event.pointerId)) return;
+    const startValue = Number(element.dataset.startValue);
+    const next = dragValue(element, event.clientX);
+    const offset =
+      growToward === "right" ? next - startValue : startValue - next;
+    element.dataset.nextValue = String(next);
+    element.style.transform = `translateX(${offset}px)`;
+  }
+
+  function finish(event: PointerEvent<HTMLDivElement>) {
+    const element = event.currentTarget;
+    if (!element.hasPointerCapture(event.pointerId)) return;
+    const next = dragValue(element, event.clientX);
+    element.style.removeProperty("transform");
+    delete element.dataset.dragging;
+    delete element.dataset.startX;
+    delete element.dataset.startValue;
+    delete element.dataset.nextValue;
+    element.releasePointerCapture(event.pointerId);
+    // 长聊天只在松手时重新布局一次，拖动期间仅移动指示线。
+    onChange(next);
+  }
+
+  function cancel(event: PointerEvent<HTMLDivElement>) {
+    const element = event.currentTarget;
+    element.style.removeProperty("transform");
+    delete element.dataset.dragging;
+    delete element.dataset.startX;
+    delete element.dataset.startValue;
+    delete element.dataset.nextValue;
+    if (element.hasPointerCapture(event.pointerId))
+      element.releasePointerCapture(event.pointerId);
   }
 
   function moveWithKeyboard(event: KeyboardEvent<HTMLDivElement>) {
@@ -50,14 +85,16 @@ export function ResizeHandle({
       className={`resize-handle ${className}`}
       onKeyDown={moveWithKeyboard}
       onPointerDown={(event) => {
+        event.preventDefault();
         event.currentTarget.dataset.startX = String(event.clientX);
         event.currentTarget.dataset.startValue = String(value);
+        event.currentTarget.dataset.nextValue = String(value);
+        event.currentTarget.dataset.dragging = "true";
         event.currentTarget.setPointerCapture(event.pointerId);
       }}
-      onPointerMove={move}
-      onPointerUp={(event) =>
-        event.currentTarget.releasePointerCapture(event.pointerId)
-      }
+      onPointerMove={preview}
+      onPointerUp={finish}
+      onPointerCancel={cancel}
     />
   );
 }

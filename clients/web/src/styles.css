@@ -1619,6 +1619,12 @@
 .resize-handle:hover {
   background: var(--ring);
 }
+.resize-handle[data-dragging="true"] {
+  background: var(--ring);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ring) 22%, transparent);
+  will-change: transform;
+  z-index: 50;
+}
 .settings-page {
   padding: 26px 36px;
   flex: 1;
