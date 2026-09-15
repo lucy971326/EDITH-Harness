@@ -8,15 +8,8 @@ import (
 	"harness/kernel/session"
 )
 
-// Send 向指定孩子追加要求：忙时 Steer，空闲时在同一子 Session 开启新 Run。
+// Send 由父 Agent 向孩子追加文字；调用必须仍属于一个活跃的父 Run。
 func (s *Subagents) Send(ctx context.Context, parentSessionID, parentRunID, taskID string, input session.UserMessage) (SendResult, error) {
-	err := ctx.Err()
-	if err != nil {
-		return SendResult{}, err
-	}
-	if taskID == "" {
-		return SendResult{}, fmt.Errorf("subagents: empty task id")
-	}
 	var text strings.Builder
 	for _, block := range input.Blocks {
 		if block.Kind != "text" || block.Tool != nil || block.Result != nil || block.Media != nil {
@@ -26,6 +19,69 @@ func (s *Subagents) Send(ctx context.Context, parentSessionID, parentRunID, task
 	}
 	if strings.TrimSpace(text.String()) == "" {
 		return SendResult{}, ErrDescriptionEmpty
+	}
+	permit, err := s.admit(parentSessionID, parentRunID)
+	if err != nil {
+		return SendResult{}, err
+	}
+	return s.sendAccepted(ctx, parentSessionID, taskID, input, permit)
+}
+
+// SendFromUser 由用户从 Subagent 页面续聊；父 Run 可以已经结束。
+func (s *Subagents) SendFromUser(ctx context.Context, parentSessionID, taskID string, input session.UserMessage) (SendResult, error) {
+	if !validUserMessage(input) {
+		return SendResult{}, ErrDescriptionEmpty
+	}
+
+	s.mu.RLock()
+	coord := s.coords[taskID]
+	if s.closed {
+		s.mu.RUnlock()
+		return SendResult{}, ErrClosed
+	}
+	if coord == nil || coord.record.ParentSessionID != parentSessionID {
+		s.mu.RUnlock()
+		return SendResult{}, ErrTaskNotFound
+	}
+	childSessionID := coord.record.ChildSessionID
+	permit := admission{parentSessionID: parentSessionID, generation: s.families[parentSessionID].generation}
+	s.mu.RUnlock()
+	setup, err := s.settings.For(childSessionID)
+	if err != nil {
+		return SendResult{}, fmt.Errorf("%w: %v", ErrTaskNotUsable, err)
+	}
+
+	for _, block := range input.Blocks {
+		if block.Kind == "image" && !s.models.Vision(setup.Model) {
+			return SendResult{}, fmt.Errorf("subagents: current model does not support images")
+		}
+	}
+	return s.sendAccepted(ctx, parentSessionID, taskID, input, permit)
+}
+
+func validUserMessage(input session.UserMessage) bool {
+	for _, block := range input.Blocks {
+		switch block.Kind {
+		case "text":
+			if strings.TrimSpace(block.Text) != "" {
+				return true
+			}
+		case "image":
+			if block.Media != nil && block.Media.MIME != "" && block.Media.Data != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (s *Subagents) sendAccepted(ctx context.Context, parentSessionID, taskID string, input session.UserMessage, permit admission) (SendResult, error) {
+	err := ctx.Err()
+	if err != nil {
+		return SendResult{}, err
+	}
+	if taskID == "" {
+		return SendResult{}, fmt.Errorf("subagents: empty task id")
 	}
 
 	s.mu.RLock()
@@ -43,11 +99,6 @@ func (s *Subagents) Send(ctx context.Context, parentSessionID, parentRunID, task
 	defer s.inFlight.Done()
 	if coord == nil {
 		return SendResult{}, ErrTaskNotFound
-	}
-
-	permit, err := s.admit(parentSessionID, parentRunID)
-	if err != nil {
-		return SendResult{}, err
 	}
 
 	coord.mu.Lock()
@@ -78,16 +129,14 @@ func (s *Subagents) Send(ctx context.Context, parentSessionID, parentRunID, task
 		turn := projection.view.Turn
 		childSessionID := coord.record.ChildSessionID
 		coord.mu.Unlock()
-		err = s.runner.SteerRun(childSessionID, live.RunID, input)
+		err = s.runner.SteerRunContext(ctx, childSessionID, live.RunID, input)
 		coord.mu.Lock()
 		if err != nil {
-			// Steer 可能已落账，错误时不盲目重发。
 			return SendResult{}, fmt.Errorf("subagents: steer child run: %w", err)
 		}
 		return SendResult{Turn: turn, RunID: live.RunID, Steered: true}, nil
 	}
 
-	// 子 Session 和设置是启动新 Run 的真实资源。
 	_, err = s.sessions.Get(coord.record.ChildSessionID)
 	if err != nil {
 		return SendResult{}, fmt.Errorf("%w: %v", ErrTaskNotUsable, err)

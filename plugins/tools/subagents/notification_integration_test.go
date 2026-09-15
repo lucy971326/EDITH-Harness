@@ -98,7 +98,7 @@ func TestRealReactWaitReceivesCompletionOrUserInput(t *testing.T) {
 				}
 				switch parentRequests.Add(1) {
 				case 1:
-					modelTool(w, "spawn-call", "subagent_spawn", `{"description":"child request"}`)
+					modelTool(w, "spawn-call", "subagent_spawn", `{"taskName":"test","description":"child request"}`)
 				case 2:
 					var taskID string
 					for _, message := range request.Messages {

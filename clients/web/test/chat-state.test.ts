@@ -150,6 +150,31 @@ test("run diff updates replace the Run projection without mutating older snapsho
   assert.equal(next.runs[0].diff?.files[0].path, "main.go");
 });
 
+test("a delta only copies its own run and keeps durable entries shared", () => {
+  const other = {
+    runID: "other",
+    status: "success" as const,
+    afterEntrySeq: 0,
+  };
+  const state: Snapshot = {
+    ...empty(),
+    entries: [entry("user", 1, "user", "hello")],
+    runs: [
+      { runID: "run", status: "running", afterEntrySeq: 1 },
+      other,
+    ],
+  };
+  const next = update(state, {
+    kind: "text-delta",
+    entryID: "answer",
+    blockSeq: 1,
+    text: "a",
+  });
+  assert.equal(next.entries, state.entries);
+  assert.equal(next.runs[1], other);
+  assert.notEqual(next.runs[0], state.runs[0]);
+});
+
 test("late delta cannot turn a durable entry into a draft", () => {
   let state = update(empty(), {
     entry: entry("answer", 1, "assistant", "done"),

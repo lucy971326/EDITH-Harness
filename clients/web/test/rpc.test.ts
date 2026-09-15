@@ -204,6 +204,40 @@ test("terminal output is dispatched only to its process listener", async () => {
   client.close();
 });
 
+test("one websocket dispatches run events to independent view listeners", async () => {
+  const socket = new FakeSocket();
+  const client = new RPCClient("ws://example/rpc", () => {}, factory(socket));
+  await client.connect();
+  const received: string[] = [];
+  const removeFirst = client.onRunEvent(({ subscriptionID }) => {
+    received.push(`first:${subscriptionID}`);
+  });
+  client.onRunEvent(({ subscriptionID }) => {
+    received.push(`second:${subscriptionID}`);
+  });
+  socket.dispatchEvent(
+    new MessageEvent("message", {
+      data: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "harness/run/event",
+        params: {
+          subscriptionID: "child-a",
+          event: {
+            sessionID: "hidden-child",
+            runID: "run",
+            kind: "run-started",
+            updateSeq: 1,
+            seqEpoch: "epoch",
+          },
+        },
+      }),
+    }),
+  );
+  assert.deepEqual(received, ["first:child-a", "second:child-a"]);
+  removeFirst();
+  client.close();
+});
+
 test("malformed error still finishes a request that has no timeout", async () => {
   const socket = new FakeSocket();
   const client = new RPCClient("ws://example/rpc", () => {}, factory(socket));

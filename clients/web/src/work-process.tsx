@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import {
   Collapsible,
   CollapsibleContent,
@@ -23,6 +23,7 @@ import {
 } from "./state/chat-process";
 import { runLabel } from "./state/chat";
 import type { Block } from "../../contracts/run.ts";
+import type { RunDiffSummary } from "../../contracts/run.ts";
 import type { FileLocation } from "./editor/links";
 
 function MessageImages({
@@ -129,6 +130,30 @@ function Detail({
   );
 }
 
+function SubagentCard({
+  item,
+  onOpen,
+}: {
+  item: ProcessItem;
+  onOpen?: (taskID: string) => void;
+}) {
+  if (!item.taskID) return <Detail item={item} onInspect={() => {}} />;
+  return (
+    <button
+      className="subagent-card"
+      onClick={() => onOpen?.(item.taskID!)}
+      aria-label={`打开子任务 ${item.taskName ?? ""}`}
+    >
+      <Bot />
+      <span>
+        <strong>{item.taskName || "子任务"}</strong>
+        <small>{item.kind === "collaboration" ? item.text : item.status}</small>
+      </span>
+      <ChevronRight />
+    </button>
+  );
+}
+
 const toolActions: Record<string, string> = {
   subagent_options: "查看子任务能力",
   subagent_spawn: "派出子任务",
@@ -142,7 +167,7 @@ const toolActions: Record<string, string> = {
   edit: "编辑文件",
 };
 
-export function WorkProcess({
+function WorkProcessComponent({
   turn,
   onInspect,
   onFork,
@@ -152,6 +177,7 @@ export function WorkProcess({
   workspace,
   onOpenFile,
   onOpenDiff,
+  onOpenSubagent,
 }: {
   turn: ChatTurn;
   onInspect: () => void;
@@ -161,7 +187,8 @@ export function WorkProcess({
   stopping?: boolean;
   workspace?: string | null;
   onOpenFile?: (location: FileLocation) => void;
-  onOpenDiff?: (runID: string) => void;
+  onOpenDiff?: (runID: string, summary: RunDiffSummary) => void;
+  onOpenSubagent?: (taskID: string) => void;
 }) {
   const status = turn.run?.status;
   const [open, setOpen] = useState(status !== "success");
@@ -199,10 +226,13 @@ export function WorkProcess({
       )}
       {turn.standalone &&
         turn.items.map((item) =>
-          item.kind === "detail" ||
-          item.kind === "tool" ||
-          item.kind === "reasoning" ||
-          item.kind === "collaboration" ? (
+          item.kind === "subagent" ||
+          (item.kind === "collaboration" && item.taskID) ? (
+            <SubagentCard key={item.id} item={item} onOpen={onOpenSubagent} />
+          ) : item.kind === "detail" ||
+            item.kind === "tool" ||
+            item.kind === "reasoning" ||
+            item.kind === "collaboration" ? (
             <Detail key={item.id} item={item} onInspect={onInspect} />
           ) : (
             <div key={item.id} className="progress-text">
@@ -263,6 +293,13 @@ export function WorkProcess({
                       ))}
                     </CollapsibleContent>
                   </Collapsible>
+                ) : group.kind === "subagent" ||
+                  (group.kind === "collaboration" && group.taskID) ? (
+                  <SubagentCard
+                    key={group.id}
+                    item={group}
+                    onOpen={onOpenSubagent}
+                  />
                 ) : group.kind === "detail" ||
                   group.kind === "reasoning" ||
                   group.kind === "collaboration" ? (
@@ -292,9 +329,17 @@ export function WorkProcess({
                       </span>
                     )}
                     {group.kind === "steer" ? (
-                      <MessageMarkdown text={group.text} workspace={workspace} onOpenFile={onOpenFile} />
+                      <MessageMarkdown
+                        text={group.text}
+                        workspace={workspace}
+                        onOpenFile={onOpenFile}
+                      />
                     ) : group.kind === "text" ? (
-                      <MessageMarkdown text={group.text} workspace={workspace} onOpenFile={onOpenFile} />
+                      <MessageMarkdown
+                        text={group.text}
+                        workspace={workspace}
+                        onOpenFile={onOpenFile}
+                      />
                     ) : (
                       group.text
                     )}
@@ -316,7 +361,11 @@ export function WorkProcess({
       {turn.answer && (
         <div data-entry-id={turn.answer.id}>
           <div className="answer">
-            <MessageMarkdown text={turn.answer.text} workspace={workspace} onOpenFile={onOpenFile} />
+            <MessageMarkdown
+              text={turn.answer.text}
+              workspace={workspace}
+              onOpenFile={onOpenFile}
+            />
           </div>
           <div className="answer-controls">
             <CopyMessage text={turn.answer.text} label="复制回答" />
@@ -337,17 +386,25 @@ export function WorkProcess({
       {turn.run?.diff && turn.run.diff.files.length > 0 && (
         <button
           className="run-diff-card"
-          onClick={() => onOpenDiff?.(turn.run!.runID)}
+          onClick={() => onOpenDiff?.(turn.run!.runID, turn.run!.diff!)}
         >
           <GitCompareArrows />
           <span>
             <strong>已修改 {turn.run.diff.files.length} 个文件</strong>
             <small>
               <i className="diff-additions">
-                +{turn.run.diff.files.reduce((sum, file) => sum + file.additions, 0)}
+                +
+                {turn.run.diff.files.reduce(
+                  (sum, file) => sum + file.additions,
+                  0,
+                )}
               </i>{" "}
               <i className="diff-deletions">
-                -{turn.run.diff.files.reduce((sum, file) => sum + file.deletions, 0)}
+                -
+                {turn.run.diff.files.reduce(
+                  (sum, file) => sum + file.deletions,
+                  0,
+                )}
               </i>
             </small>
           </span>
@@ -360,3 +417,44 @@ export function WorkProcess({
     </article>
   );
 }
+
+function sameTurn(previous: ChatTurn, next: ChatTurn): boolean {
+  if (previous === next) return true;
+  if (
+    previous.id !== next.id ||
+    previous.standalone !== next.standalone ||
+    previous.run?.status !== next.run?.status ||
+    previous.run?.error !== next.run?.error ||
+    previous.run?.diff?.revision !== next.run?.diff?.revision ||
+    previous.prompt?.id !== next.prompt?.id ||
+    previous.prompt?.message !== next.prompt?.message ||
+    previous.answer?.id !== next.answer?.id ||
+    previous.answer?.text !== next.answer?.text ||
+    previous.items.length !== next.items.length
+  )
+    return false;
+  return previous.items.every((item, index) => {
+    const candidate = next.items[index];
+    return (
+      item.id === candidate.id &&
+      item.kind === candidate.kind &&
+      item.title === candidate.title &&
+      item.text === candidate.text &&
+      item.status === candidate.status &&
+      item.media === candidate.media &&
+      item.taskID === candidate.taskID &&
+      item.taskName === candidate.taskName
+    );
+  });
+}
+
+// 流式输出只重绘正在变化的 Turn，旧消息中的 Markdown 和图片不重复解析。
+export const WorkProcess = memo(
+  WorkProcessComponent,
+  (previous, next) =>
+    sameTurn(previous.turn, next.turn) &&
+    previous.stopping === next.stopping &&
+    previous.forking === next.forking &&
+    previous.forkDisabled === next.forkDisabled &&
+    previous.workspace === next.workspace,
+);

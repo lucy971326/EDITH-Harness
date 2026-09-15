@@ -447,6 +447,7 @@ func TestSubagentsSpawnValidation(t *testing.T) {
 
 	// 缺少父信息
 	_, err := f.subagents.Spawn(context.Background(), SpawnInput{
+		TaskName:    "test",
 		Description: "test",
 	})
 	if !errors.Is(err, ErrParentRequired) {
@@ -455,6 +456,7 @@ func TestSubagentsSpawnValidation(t *testing.T) {
 
 	// 描述为空
 	_, err = f.subagents.Spawn(context.Background(), SpawnInput{
+		TaskName:        "test",
 		ParentSessionID: parentSessionID,
 		ParentRunID:     parentRunID,
 		Description:     "   ",
@@ -465,6 +467,7 @@ func TestSubagentsSpawnValidation(t *testing.T) {
 
 	// 未知 Agent
 	_, err = f.subagents.Spawn(context.Background(), SpawnInput{
+		TaskName:        "test",
 		ParentSessionID: parentSessionID,
 		ParentRunID:     parentRunID,
 		Description:     "test",
@@ -476,6 +479,7 @@ func TestSubagentsSpawnValidation(t *testing.T) {
 
 	// 未知 Model
 	_, err = f.subagents.Spawn(context.Background(), SpawnInput{
+		TaskName:        "test",
 		ParentSessionID: parentSessionID,
 		ParentRunID:     parentRunID,
 		Description:     "test",
@@ -611,6 +615,7 @@ func TestSubagentsFastCompletionAndResultBinding(t *testing.T) {
 	defer f.loop.releaseParent()
 
 	spawnRes, err := f.subagents.Spawn(context.Background(), SpawnInput{
+		TaskName:        "test",
 		ParentSessionID: parentSessionID,
 		ParentRunID:     parentRunID,
 		Description:     "do work",
@@ -654,6 +659,7 @@ func TestSubagentsNestedDelegationRejected(t *testing.T) {
 	defer f.loop.releaseParent()
 
 	spawnRes, err := f.subagents.Spawn(context.Background(), SpawnInput{
+		TaskName:        "test",
 		ParentSessionID: parentSessionID,
 		ParentRunID:     parentRunID,
 		Description:     "first child",
@@ -665,6 +671,7 @@ func TestSubagentsNestedDelegationRejected(t *testing.T) {
 
 	// 尝试以孩子作为父进行二级委派
 	_, err = f.subagents.Spawn(context.Background(), SpawnInput{
+		TaskName:        "test",
 		ParentSessionID: spawnRes.ChildSessionID,
 		ParentRunID:     spawnRes.RunID,
 		Description:     "nested child",
@@ -684,6 +691,7 @@ func TestSubagentsSendIdleAndMultiTurn(t *testing.T) {
 	defer f.loop.releaseParent()
 
 	spawnRes, err := f.subagents.Spawn(context.Background(), SpawnInput{
+		TaskName:        "test",
 		ParentSessionID: parentSessionID,
 		ParentRunID:     parentRunID,
 		Description:     "turn 1",
@@ -734,6 +742,7 @@ func TestTaskPerTurnHistoryAndNotificationsAndDeepCopy(t *testing.T) {
 	defer f.loop.releaseParent()
 
 	spawnRes, err := f.subagents.Spawn(context.Background(), SpawnInput{
+		TaskName:        "test",
 		ParentSessionID: parentSessionID,
 		ParentRunID:     parentRunID,
 		Description:     "turn 1 description",
@@ -831,6 +840,7 @@ func TestSubagentsSendRunningSteers(t *testing.T) {
 	defer f.loop.releaseParent()
 
 	spawnRes, err := f.subagents.Spawn(context.Background(), SpawnInput{
+		TaskName:        "test",
 		ParentSessionID: parentSessionID,
 		ParentRunID:     parentRunID,
 		Description:     "running child",
@@ -882,6 +892,7 @@ func TestWaitReturnsCompletedTurnDespiteImmediateSend(t *testing.T) {
 	defer f.loop.releaseParent()
 
 	spawnRes, err := f.subagents.Spawn(context.Background(), SpawnInput{
+		TaskName:        "test",
 		ParentSessionID: parentSessionID,
 		ParentRunID:     parentRunID,
 		Description:     "wait turn pinning test",
@@ -955,6 +966,7 @@ func TestListConcurrentWithSendAndFinish(t *testing.T) {
 	defer f.loop.releaseParent()
 
 	spawnRes, err := f.subagents.Spawn(context.Background(), SpawnInput{
+		TaskName:        "test",
 		ParentSessionID: parentSessionID,
 		ParentRunID:     parentRunID,
 		Description:     "race list test",
@@ -1015,6 +1027,7 @@ func TestSubagentsStopAndStopFamily(t *testing.T) {
 	defer f.loop.releaseParent()
 
 	spawnRes, err := f.subagents.Spawn(context.Background(), SpawnInput{
+		TaskName:        "test",
 		ParentSessionID: parentSessionID,
 		ParentRunID:     parentRunID,
 		Description:     "child to stop",
@@ -1085,6 +1098,7 @@ func TestCloseBlockedSpawnAndConcurrency(t *testing.T) {
 	go func() {
 		defer close(spawnDone)
 		_, spawnErr = f.subagents.Spawn(context.Background(), SpawnInput{
+			TaskName:        "test",
 			ParentSessionID: parentSessionID,
 			ParentRunID:     parentRunID,
 			Description:     "blocked spawn",
@@ -1135,6 +1149,7 @@ func TestCloseBlockedSpawnAndConcurrency(t *testing.T) {
 
 	// 验证后续请求被拒绝
 	_, err := f.subagents.Spawn(context.Background(), SpawnInput{
+		TaskName:        "test",
 		ParentSessionID: parentSessionID,
 		ParentRunID:     parentRunID,
 		Description:     "after close",
@@ -1161,6 +1176,7 @@ func TestSpawnInitialPersistFailureConsistency(t *testing.T) {
 
 	// 初始落盘失败
 	_, err = f.subagents.Spawn(context.Background(), SpawnInput{
+		TaskName:        "test",
 		ParentSessionID: parentSessionID,
 		ParentRunID:     parentRunID,
 		Description:     "initial save fail test",
@@ -1193,6 +1209,7 @@ func TestSubagentsCloseStopsAndExitsCleanly(t *testing.T) {
 	defer f.loop.releaseParent()
 
 	spawnRes, err := f.subagents.Spawn(context.Background(), SpawnInput{
+		TaskName:        "test",
 		ParentSessionID: parentSessionID,
 		ParentRunID:     parentRunID,
 		Description:     "child for close test",
@@ -1219,6 +1236,7 @@ func TestSubagentsCloseStopsAndExitsCleanly(t *testing.T) {
 
 	// 关闭后新请求被拒绝
 	_, err = f.subagents.Spawn(context.Background(), SpawnInput{
+		TaskName:        "test",
 		ParentSessionID: parentSessionID,
 		ParentRunID:     parentRunID,
 		Description:     "after close",

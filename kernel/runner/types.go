@@ -79,8 +79,8 @@ type RunDiffFile struct {
 	Revision   uint64              `json:"revision"`
 	Path       string              `json:"path"`
 	Operation  tools.FileOperation `json:"operation"`
-	OldContent *string             `json:"oldContent"`
-	NewContent *string             `json:"newContent"`
+	OldContent *string             `json:"oldContent" jsonschema:"nullable"`
+	NewContent *string             `json:"newContent" jsonschema:"nullable"`
 }
 
 // 数据。一本会话的账本、运行状态和可比较的更新边界。

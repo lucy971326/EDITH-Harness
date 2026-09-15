@@ -8,6 +8,7 @@ export interface ProcessItem {
     | "text"
     | "steer"
     | "tool"
+    | "subagent"
     | "detail"
     | "reasoning"
     | "collaboration"
@@ -16,6 +17,8 @@ export interface ProcessItem {
   text: string;
   status?: string;
   media?: NonNullable<Block["media"]>;
+  taskID?: string;
+  taskName?: string;
 }
 export interface ChatTurn {
   id: string;
@@ -96,9 +99,14 @@ export function chatTurns(snapshot: Snapshot): ChatTurn[] {
         const itemID = `${item.id}:${index}`;
         if (block.tool) {
           const result = results.get(`${id}:${block.tool.id}`);
+          const child = subagentFromTool(
+            block.tool.name,
+            block.tool.args,
+            result?.content,
+          );
           items.push({
             id: itemID,
-            kind: "tool",
+            kind: child ? "subagent" : "tool",
             title: block.tool.name,
             status: result
               ? result.isError
@@ -110,6 +118,8 @@ export function chatTurns(snapshot: Snapshot): ChatTurn[] {
                   ? "结果未记录"
                   : "状态未记录",
             text: `参数\n${block.tool.args}\n\n结果\n${result?.content ?? "尚无结果记录"}`,
+            taskID: child?.taskID,
+            taskName: child?.taskName,
           });
         } else if (block.result) {
           // 已配对结果回填卡片；孤立结果原位保留。
@@ -136,11 +146,11 @@ export function chatTurns(snapshot: Snapshot): ChatTurn[] {
                   ? "reasoning"
                   : role === "collaboration"
                     ? "collaboration"
-                  : detail
-                    ? "detail"
-                    : role === "user"
-                      ? "steer"
-                      : "text",
+                    : detail
+                      ? "detail"
+                      : role === "user"
+                        ? "steer"
+                        : "text",
             title:
               block.kind === "reasoning"
                 ? "思考"
@@ -163,6 +173,8 @@ export function chatTurns(snapshot: Snapshot): ChatTurn[] {
               : item.draft
                 ? "生成中"
                 : undefined,
+            taskID:
+              role === "collaboration" ? item.message.sourceTaskID : undefined,
           });
         }
       }
@@ -176,6 +188,25 @@ export function chatTurns(snapshot: Snapshot): ChatTurn[] {
       answer,
     };
   });
+}
+
+function subagentFromTool(name: string, args: string, result?: string) {
+  if (name !== "subagent_spawn" || !result) return undefined;
+  try {
+    const input = JSON.parse(args) as { taskName?: unknown };
+    const output = JSON.parse(result) as { taskID?: unknown };
+    if (typeof output.taskID !== "string" || output.taskID === "")
+      return undefined;
+    return {
+      taskID: output.taskID,
+      taskName:
+        typeof input.taskName === "string" && input.taskName.trim()
+          ? input.taskName.trim()
+          : "Subagent",
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 // 只合并真正连续的工具调用；其他条目保持账本里的同级顺序。

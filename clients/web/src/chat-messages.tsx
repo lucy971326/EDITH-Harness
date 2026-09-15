@@ -10,6 +10,7 @@ import { ArrowDown } from "./icons";
 import { chatTurns } from "./state/chat-process";
 import { WorkProcess } from "./work-process";
 import type { Snapshot } from "../../contracts/run.ts";
+import type { RunDiffSummary } from "../../contracts/run.ts";
 import type { FileLocation } from "./editor/links";
 
 export function ChatMessages({
@@ -22,6 +23,7 @@ export function ChatMessages({
   workspace,
   onOpenFile,
   onOpenDiff,
+  onOpenSubagent,
   children,
 }: {
   snapshot: Snapshot | null;
@@ -32,7 +34,8 @@ export function ChatMessages({
   onFork?: (runID: string, boundaryEntryID: string) => void;
   workspace?: string | null;
   onOpenFile?: (location: FileLocation) => void;
-  onOpenDiff?: (runID: string) => void;
+  onOpenDiff?: (runID: string, summary: RunDiffSummary) => void;
+  onOpenSubagent?: (taskID: string) => void;
   children?: ReactNode;
 }) {
   const scroll = useRef<HTMLDivElement>(null);
@@ -107,6 +110,7 @@ export function ChatMessages({
               workspace={workspace}
               onOpenFile={onOpenFile}
               onOpenDiff={onOpenDiff}
+              onOpenSubagent={onOpenSubagent}
               onInspect={() => {
                 follow.current = false;
                 userScroll.current = false;

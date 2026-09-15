@@ -2,6 +2,7 @@ package subagents
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -15,6 +16,7 @@ func TestSendRejectsBlankBeforeStartingTurn(t *testing.T) {
 	defer f.host.Close()
 	parent, run := createParentRun(t, f, t.TempDir())
 	child, err := f.subagents.Spawn(context.Background(), SpawnInput{
+		TaskName:        "test",
 		ParentSessionID: parent, ParentRunID: run, Description: "first",
 	})
 	if err != nil {
@@ -60,7 +62,8 @@ func TestInheritedIncompatibleEffortIsNotSilentlyReplaced(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.loop.waitParentStarted(t)
-	input := SpawnInput{ParentSessionID: "parent-session", ParentRunID: handle.RunID(),
+	input := SpawnInput{
+		TaskName: "test", ParentSessionID: "parent-session", ParentRunID: handle.RunID(),
 		Description: "child", Model: "deepseek/deepseek-v4-pro"}
 	_, err = f.subagents.Spawn(context.Background(), input)
 	if err == nil {
@@ -74,5 +77,87 @@ func TestInheritedIncompatibleEffortIsNotSilentlyReplaced(t *testing.T) {
 	_, err = f.subagents.Spawn(context.Background(), input)
 	if err != nil {
 		t.Fatalf("explicit compatible effort rejected: %v", err)
+	}
+}
+
+func TestUserCanContinueChildAfterParentRunEnds(t *testing.T) {
+	f := newSubagentsFixture(t)
+	defer f.host.Close()
+	parentSessionID, parentRunID := createParentRun(t, f, t.TempDir())
+	child, err := f.subagents.Spawn(context.Background(), SpawnInput{
+		TaskName: "继续实现", ParentSessionID: parentSessionID,
+		ParentRunID: parentRunID, Description: "first",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.loop.waitStarted(t)
+	f.loop.release()
+	_, err = f.subagents.Wait(context.Background(), parentSessionID, WaitInput{
+		TaskIDs: []string{child.TaskID}, Timeout: time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	f.loop.releaseParent()
+	deadline := time.Now().Add(time.Second)
+	for {
+		if _, active := f.runner.State(parentSessionID); !active {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("parent run did not finish")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	result, err := f.subagents.SendFromUser(context.Background(), parentSessionID, child.TaskID, session.UserMessage{
+		Blocks: []session.Block{{Kind: "text", Text: "continue after parent"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Turn != 2 || result.Steered {
+		t.Fatalf("expected a second child turn, got %+v", result)
+	}
+	f.loop.waitStarted(t)
+	f.loop.release()
+}
+
+func TestTaskSettingsOnlyChangeWhenChildIsIdle(t *testing.T) {
+	f := newSubagentsFixture(t)
+	defer f.host.Close()
+	parentSessionID, parentRunID := createParentRun(t, f, t.TempDir())
+	defer f.loop.releaseParent()
+	child, err := f.subagents.Spawn(context.Background(), SpawnInput{
+		TaskName: "设置测试", ParentSessionID: parentSessionID,
+		ParentRunID: parentRunID, Description: "first",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.loop.waitStarted(t)
+	_, err = f.subagents.UpdateSettings(context.Background(), parentSessionID, child.TaskID, TaskSettingsInput{
+		Model: "deepseek/deepseek-v4-pro", ReasoningEffort: "high",
+	})
+	if !errors.Is(err, ErrTaskActive) {
+		t.Fatalf("active child settings update returned %v", err)
+	}
+	f.loop.release()
+	_, err = f.subagents.Wait(context.Background(), parentSessionID, WaitInput{
+		TaskIDs: []string{child.TaskID}, Timeout: time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	next, err := f.subagents.UpdateSettings(context.Background(), parentSessionID, child.TaskID, TaskSettingsInput{
+		Model: "deepseek/deepseek-v4-pro", ReasoningEffort: "high",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.AgentID != agents.DefaultID || next.Model != "deepseek/deepseek-v4-pro" || next.Workspace == "" {
+		t.Fatalf("fixed settings changed or model was not saved: %+v", next)
 	}
 }

@@ -11,9 +11,10 @@ export interface Block {
 export interface Message {
   messageID?: string;
   sourceSessionID?: string;
+  sourceTaskID?: string;
   sourceRunID?: string;
   runID?: string;
-  role: 'user' | 'assistant' | 'tool' | 'system' | 'collaboration';
+  role: "user" | "assistant" | "tool" | "system" | "collaboration";
   blocks: Block[];
   incomplete?: boolean;
   afterSeq?: number;
@@ -35,16 +36,20 @@ export interface RunDraft {
 export interface RunState {
   runID: string;
   afterEntrySeq: number;
-  status: 'running' | 'success' | 'cancelled' | 'failed' | 'interrupted';
+  status: "running" | "success" | "cancelled" | "failed" | "interrupted";
   error?: string;
   drafts?: RunDraft[];
-  usage?: { inputTokens: number; cacheReadTokens: number; contextWindow: number };
+  usage?: {
+    inputTokens: number;
+    cacheReadTokens: number;
+    contextWindow: number;
+  };
   diff?: RunDiffSummary;
 }
 
 export interface FileDiffSummary {
   path: string;
-  operation: 'add' | 'update' | 'delete';
+  operation: "add" | "update" | "delete";
   additions: number;
   deletions: number;
 }
@@ -59,7 +64,7 @@ export interface RunDiffFile {
   runID: string;
   revision: number;
   path: string;
-  operation: 'add' | 'update' | 'delete';
+  operation: "add" | "update" | "delete";
   oldContent: string | null;
   newContent: string | null;
 }
@@ -74,19 +79,36 @@ export interface Snapshot {
 export interface RunEvent {
   sessionID: string;
   runID: string;
-  kind: 'run-started' | 'message-started' | 'text-delta' | 'reasoning-delta' | 'tool-started' | 'tool-finished' | 'message' | 'usage' | 'run-ended' | 'run-diff-updated';
+  kind:
+    | "run-started"
+    | "message-started"
+    | "text-delta"
+    | "reasoning-delta"
+    | "tool-started"
+    | "tool-finished"
+    | "message"
+    | "usage"
+    | "run-ended"
+    | "run-diff-updated";
   entryID?: string;
   afterEntrySeq?: number;
   blockSeq?: number;
   text?: string;
   entry?: Entry;
   tool?: { id: string; name: string; isError: boolean };
-  usage?: { inputTokens: number; cacheReadTokens: number; contextWindow: number };
-  status?: 'running' | 'success' | 'cancelled' | 'failed' | 'interrupted';
+  usage?: {
+    inputTokens: number;
+    cacheReadTokens: number;
+    contextWindow: number;
+  };
+  status?: "running" | "success" | "cancelled" | "failed" | "interrupted";
   error?: string;
   diff?: RunDiffSummary | null;
   updateSeq: number;
   seqEpoch: string;
 }
 
-export interface RunNotification { subscriptionID: string; event: RunEvent }
+export interface RunNotification {
+  subscriptionID: string;
+  event: RunEvent;
+}

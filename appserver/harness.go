@@ -8,21 +8,29 @@ import (
 	"harness/kernel/events"
 	"harness/kernel/runner"
 	"harness/kernel/session/settings"
+	"harness/kernel/subagents"
 	"harness/products/harness"
 )
 
 const (
-	createMethod         = "harness/session/create"
-	listMethod           = "harness/session/list"
-	getMethod            = "harness/session/get"
-	updateSettingsMethod = "harness/session/settings/update"
-	forkMethod           = "harness/session/fork"
-	sendMethod           = "harness/session/send"
-	snapshotMethod       = "harness/session/snapshot"
-	subscribeMethod      = "harness/session/subscribe"
-	stopMethod           = "harness/session/stop"
-	readRunDiffMethod    = "harness/run/diff/read"
-	revertRunDiffMethod  = "harness/run/diff/revertFile"
+	createMethod             = "harness/session/create"
+	listMethod               = "harness/session/list"
+	getMethod                = "harness/session/get"
+	updateSettingsMethod     = "harness/session/settings/update"
+	forkMethod               = "harness/session/fork"
+	sendMethod               = "harness/session/send"
+	snapshotMethod           = "harness/session/snapshot"
+	subscribeMethod          = "harness/session/subscribe"
+	stopMethod               = "harness/session/stop"
+	readRunDiffMethod        = "harness/run/diff/read"
+	revertRunDiffMethod      = "harness/run/diff/revertFile"
+	subagentListMethod       = "harness/subagent/list"
+	subagentSubscribeMethod  = "harness/subagent/subscribe"
+	subagentSendMethod       = "harness/subagent/send"
+	subagentSettingsMethod   = "harness/subagent/settings/update"
+	subagentStopMethod       = "harness/subagent/stop"
+	readSubagentDiffMethod   = "harness/subagent/run/diff/read"
+	revertSubagentDiffMethod = "harness/subagent/run/diff/revertFile"
 )
 
 // BindHarness 在监听前接入产品与事件来源，登记 Harness 的对外方法。
@@ -81,7 +89,41 @@ func (s *Server) BindHarness(product *harness.Product, runService *runner.Runner
 	if err != nil {
 		return err
 	}
-	return registerSession(s, revertRunDiffMethod, func(input RevertRunDiffParams) string { return input.SessionID }, s.handleRevertRunDiff)
+	err = registerSession(s, revertRunDiffMethod, func(input RevertRunDiffParams) string { return input.SessionID }, s.handleRevertRunDiff)
+	if err != nil {
+		return err
+	}
+	err = Register(s, subagentListMethod, s.handleSubagentList)
+	if err != nil {
+		return err
+	}
+	err = Register(s, subagentSubscribeMethod, s.handleSubagentSubscribe)
+	if err != nil {
+		return err
+	}
+	err = registerSession(s, subagentSendMethod, func(input SubagentSendParams) string {
+		return input.ParentSessionID + "\x00" + input.TaskID
+	}, s.handleSubagentSend)
+	if err != nil {
+		return err
+	}
+	err = registerSession(s, subagentSettingsMethod, func(input SubagentSettingsParams) string {
+		return input.ParentSessionID + "\x00" + input.TaskID
+	}, s.handleSubagentSettings)
+	if err != nil {
+		return err
+	}
+	err = Register(s, subagentStopMethod, s.handleSubagentStop)
+	if err != nil {
+		return err
+	}
+	err = Register(s, readSubagentDiffMethod, s.handleReadSubagentRunDiff)
+	if err != nil {
+		return err
+	}
+	return registerSession(s, revertSubagentDiffMethod, func(input RevertSubagentRunDiffParams) string {
+		return input.ParentSessionID + "\x00" + input.TaskID
+	}, s.handleRevertSubagentRunDiff)
 }
 
 func (s *Server) handleCreate(_ context.Context, input CreateParams) (SessionResult, error) {
@@ -143,6 +185,21 @@ func methodError(err error) error {
 	}
 	if errors.Is(err, harness.ErrRunChanged) {
 		return &Error{Code: CodeConflict, Message: "expected run has ended or changed", Cause: err}
+	}
+	if errors.Is(err, subagents.ErrTaskNotFound) || errors.Is(err, subagents.ErrOwnershipMismatch) {
+		return &Error{Code: CodeNotFound, Message: "subagent task not found", Cause: err}
+	}
+	if errors.Is(err, subagents.ErrTaskStopped) || errors.Is(err, subagents.ErrFamilyStopped) {
+		return &Error{Code: CodeConflict, Message: "subagent task was stopped", Cause: err}
+	}
+	if errors.Is(err, subagents.ErrTaskActive) {
+		return &Error{Code: CodeConflict, Message: "subagent has an active run", Cause: err}
+	}
+	if errors.Is(err, subagents.ErrInvalidSettings) {
+		return &Error{Code: CodeInvalidParams, Message: "subagent model or reasoning effort is unavailable", Cause: err}
+	}
+	if errors.Is(err, subagents.ErrDescriptionEmpty) || errors.Is(err, subagents.ErrTaskNameEmpty) {
+		return &Error{Code: CodeInvalidParams, Message: "subagent input is empty", Cause: err}
 	}
 	if errors.Is(err, runner.ErrRunDiffNotFound) {
 		return &Error{Code: CodeNotFound, Message: "run diff file not found", Cause: err}

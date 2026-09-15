@@ -116,3 +116,73 @@ type SubscribeResult struct {
 	SubscriptionID string           `json:"subscriptionID"`
 	Snapshot       harness.Snapshot `json:"snapshot"`
 }
+
+// 对外 Subagent 接口：父会话与任务共同定位，绝不接受子 Session ID。
+
+// 数据。定位父会话中的一个子任务。
+type SubagentParams struct {
+	ParentSessionID string `json:"parentSessionID" jsonschema:"minLength=1"`
+	TaskID          string `json:"taskID" jsonschema:"minLength=1"`
+}
+
+// 数据。列出一个父会话的全部直接子任务。
+type SubagentListParams struct {
+	ParentSessionID string `json:"parentSessionID" jsonschema:"minLength=1"`
+}
+
+// 数据。子任务列表结果。
+type SubagentListResult struct {
+	Tasks []harness.SubagentInfo `json:"tasks"`
+}
+
+// 数据。子任务订阅先返回快照，后续复用 harness/run/event 通知。
+type SubagentSubscribeResult struct {
+	SubscriptionID string               `json:"subscriptionID"`
+	Task           harness.SubagentInfo `json:"task"`
+	Snapshot       harness.Snapshot     `json:"snapshot"`
+}
+
+// 数据。用户从子任务页面发送文字或图片。
+type SubagentSendParams struct {
+	ParentSessionID string       `json:"parentSessionID" jsonschema:"minLength=1"`
+	TaskID          string       `json:"taskID" jsonschema:"minLength=1"`
+	Text            string       `json:"text,omitempty"`
+	Images          []ImageInput `json:"images,omitempty" jsonschema:"maxItems=4"`
+}
+
+// 数据。子任务发送已被接受。
+type SubagentSendResult struct {
+	Mode  string `json:"mode" jsonschema:"enum=started,enum=steered"`
+	Turn  int    `json:"turn"`
+	RunID string `json:"runID"`
+}
+
+// 数据。子任务空闲时可更新下一轮的模型和思考档位。
+type SubagentSettingsParams struct {
+	ParentSessionID string `json:"parentSessionID" jsonschema:"minLength=1"`
+	TaskID          string `json:"taskID" jsonschema:"minLength=1"`
+	Model           string `json:"model" jsonschema:"minLength=1"`
+	ReasoningEffort string `json:"reasoningEffort" jsonschema:"minLength=1"`
+}
+
+// 数据。子任务设置更新后返回任务投影。
+type SubagentSettingsResult struct {
+	Task harness.SubagentInfo `json:"task"`
+}
+
+// 数据。读取一个子任务 Run Diff 文件。
+type ReadSubagentRunDiffParams struct {
+	ParentSessionID string `json:"parentSessionID" jsonschema:"minLength=1"`
+	TaskID          string `json:"taskID" jsonschema:"minLength=1"`
+	RunID           string `json:"runID" jsonschema:"minLength=1"`
+	Path            string `json:"path" jsonschema:"minLength=1"`
+}
+
+// 数据。撤销一个子任务 Run Diff 文件。
+type RevertSubagentRunDiffParams struct {
+	ParentSessionID  string `json:"parentSessionID" jsonschema:"minLength=1"`
+	TaskID           string `json:"taskID" jsonschema:"minLength=1"`
+	RunID            string `json:"runID" jsonschema:"minLength=1"`
+	Path             string `json:"path" jsonschema:"minLength=1"`
+	ExpectedRevision uint64 `json:"expectedRevision" jsonschema:"minimum=1"`
+}

@@ -44,11 +44,11 @@ class Socket extends EventTarget {
     this.dispatchEvent(new Event("close"));
   }
 }
-function setup() {
+function setup(change: (state: unknown) => void = () => {}) {
   const sockets: Socket[] = [];
   const chat = new ChatConnection(
     "ws://local/rpc",
-    () => {},
+    change,
     () => {},
     () => {},
     () => {
@@ -62,6 +62,66 @@ function setup() {
   chat.connect();
   return { chat, sockets };
 }
+
+test("browser rendering is limited to one update per animation frame", async (t) => {
+  const originalRequest = globalThis.requestAnimationFrame;
+  const originalCancel = globalThis.cancelAnimationFrame;
+  let frame: FrameRequestCallback | undefined;
+  globalThis.requestAnimationFrame = (callback) => {
+    frame = callback;
+    return 1;
+  };
+  globalThis.cancelAnimationFrame = () => {
+    frame = undefined;
+  };
+  t.after(() => {
+    globalThis.requestAnimationFrame = originalRequest;
+    globalThis.cancelAnimationFrame = originalCancel;
+  });
+  let changes = 0;
+  const { chat, sockets } = setup(() => changes++);
+  try {
+    await setImmediate();
+    const socket = sockets[0];
+    socket.reply(subscription(socket).id, {
+      subscriptionID: "sub",
+      snapshot: snapshot(),
+    });
+    const before = changes;
+    for (const [updateSeq, text] of [
+      [3, "a"],
+      [4, "b"],
+    ] as const) {
+      socket.frame({
+        jsonrpc: "2.0",
+        method: "harness/run/event",
+        params: {
+          subscriptionID: "sub",
+          event: {
+            sessionID: "one",
+            runID: "run",
+            kind: "text-delta",
+            entryID: "answer",
+            blockSeq: 1,
+            afterEntrySeq: 1,
+            text,
+            updateSeq,
+            seqEpoch: "epoch",
+          },
+        },
+      });
+    }
+    assert.equal(changes, before);
+    assert.equal(
+      chat.state.snapshot!.runs[0].drafts![0].blocks[0].text,
+      "ab",
+    );
+    frame?.(0);
+    assert.equal(changes, before + 1);
+  } finally {
+    chat.close();
+  }
+});
 function subscription(socket: Socket, index = -1) {
   return socket.requests
     .filter((request) => request.method === "harness/session/subscribe")

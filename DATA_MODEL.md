@@ -30,7 +30,7 @@
 │  Harness 内置 Skill；与用户可编辑内容分开
 │
 ├─ subagents/tasks/<task-id>.json
-│  只保存 TaskID、父 Session、子 Session 和委派说明；v1 JSON 原子替换
+│  只保存 TaskID、稳定任务名、父 Session、子 Session 和委派说明；v1 JSON 原子替换
 │  轮次、状态、结果和通知全部从子 Session 账本与 runs.json 派生
 │
 └─ sessions/<session-id>/
@@ -79,7 +79,7 @@ Runner 运行结果
    重启把未收尾的 running 标为 interrupted，不自动续跑
 
 Subagents
-└─ 父子 Session 关系、稳定任务 ID 和委派说明
+└─ 父子 Session 关系、稳定任务 ID、稳定任务名和委派说明
    子会话仍使用普通账本及 SessionSettings，但不进入普通聊天列表或空会话复用
    轮次、状态、错误和结果由子会话 messages.jsonl / runs.json 提供；Task 不重复保存
    重启只恢复关系；Runner 将未完成轮次标记中断，不自动启动
@@ -89,7 +89,7 @@ Subagents
 
 Client 状态
 └─ 当前设备上的临时界面状态与后台投影
-   面板开关与宽度、折叠展开状态、主题偏好、审查／终端标签与当前文件选择
+   面板开关与宽度、折叠展开状态、主题偏好、审查／终端／子任务标签与当前文件选择
 
 app-server 瞬时状态
 └─ 连接、JSON-RPC 请求响应配对、订阅和待回答请求
@@ -151,7 +151,7 @@ Skill 正文
 id      这一条是谁；生成开始时分配，增量、草稿和落账共用，不靠 stepSeq 对应
 parent  接在前一条哪里；支持分叉
 seq     全局写入顺序，只在实际落账时分配
-body    本条事实：role、runID、blocks；协作消息另带 messageID、sourceSessionID、sourceRunID
+body    本条事实：role、runID、blocks；协作消息另带 messageID、sourceSessionID、sourceRunID、sourceTaskID
         未完成助手消息带 incomplete；生成开始时的账本锚点为 afterSeq
 ```
 
@@ -169,7 +169,7 @@ messages.jsonl
 
 `blocks` 只记录实际发生的对话内容：`text`、`image`、`reasoning`、`tool-call`、`tool-result`、`summary`。图片保存 Client 压缩后的 MIME 与 Base64，不另存原始大图。页面长什么样、哪些内容展开，不是账本事实。`summary` 是压缩落账的助手块；`History()` 把它收成普通文本再发给模型。未完成消息保留半截正文与思考，并附「未完成」说明；不把思考改成普通正文，不携带悬空工具调用。工具结果按 `ToolCall.ID` 回填，工具结果消息有自己的 Entry.ID。
 
-协作消息在账本使用 `role=collaboration`，`runID` 是接收它的父 Run，`sourceSessionID/sourceRunID` 是孩子的来源。启动前失败没有真实子 Run，来源 RunID 留空，不捏造身份。发给模型时转换成带来源说明的普通输入，不提升为系统指令。通知进入活 Run 后先留在 Runner 的待提交输入中，只有检查点落账后才算投递；重试按父账本中实际存在的 `messageID` 去重，不靠内存中的“已发送”判断。
+协作消息在账本使用 `role=collaboration`，`runID` 是接收它的父 Run，`sourceSessionID/sourceRunID/sourceTaskID` 是孩子的来源。TaskID 让页面按稳定身份打开子任务，不靠解析正文猜测。启动前失败没有真实子 Run，来源 RunID 留空，不捏造身份。发给模型时转换成带来源说明的普通输入，不提升为系统指令。通知进入活 Run 后先留在 Runner 的待提交输入中，只有检查点落账后才算投递；重试按父账本中实际存在的 `messageID` 去重，不靠内存中的“已发送”判断。
 
 待提交输入只是当前活 Run 的内存状态，不是第二份事实来源。Steer 在检查点落账并发布后才确认成功；若 Run 先结束或被停止，则拒绝尚未落账的 Steer。Stop 只通过 Context 取消运行，不是业务输入，也不写入对话账本。
 

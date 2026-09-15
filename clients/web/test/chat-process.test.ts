@@ -160,7 +160,10 @@ test("only consecutive tools share a group", () => {
   const groups = processGroups(chatTurns(s)[0].items);
   assert.equal(groups.length, 5);
   assert.ok(Array.isArray(groups[0]) && groups[0].length === 1);
-  assert.equal(Array.isArray(groups[1]) ? undefined : groups[1].kind, "reasoning");
+  assert.equal(
+    Array.isArray(groups[1]) ? undefined : groups[1].kind,
+    "reasoning",
+  );
   assert.ok(Array.isArray(groups[2]) && groups[2].length === 1);
 });
 
@@ -221,4 +224,38 @@ test("collaboration, compact and orphan results remain visible as detail records
     turn.items.map((item) => item.text),
     ["孩子回报", "摘要", "孤立"],
   );
+});
+
+test("subagent spawn and collaboration expose the stable task identity", () => {
+  const spawnCall: Block = {
+    kind: "tool-call",
+    tool: {
+      id: "spawn",
+      name: "subagent_spawn",
+      args: JSON.stringify({ taskName: "检查终端", description: "检查" }),
+    },
+  };
+  const spawnResult: Block = {
+    kind: "tool-result",
+    result: {
+      id: "spawn",
+      name: "subagent_spawn",
+      content: JSON.stringify({ taskID: "task-1", runID: "child-run" }),
+    },
+  };
+  const collaboration = entry(4, "collaboration", [text("已完成")]);
+  collaboration.message.sourceTaskID = "task-1";
+  const turns = chatTurns(
+    snapshot([
+      user,
+      entry(2, "assistant", [spawnCall], 1),
+      entry(3, "tool", [spawnResult], 1),
+      collaboration,
+    ]),
+  );
+  assert.equal(turns[0].items[0].kind, "subagent");
+  assert.equal(turns[0].items[0].taskID, "task-1");
+  assert.equal(turns[0].items[0].taskName, "检查终端");
+  assert.equal(turns[0].items[1].kind, "collaboration");
+  assert.equal(turns[0].items[1].taskID, "task-1");
 });

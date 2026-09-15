@@ -22,6 +22,9 @@ func (s *Subagents) Spawn(ctx context.Context, input SpawnInput) (SpawnResult, e
 	if strings.TrimSpace(input.Description) == "" {
 		return SpawnResult{}, ErrDescriptionEmpty
 	}
+	if strings.TrimSpace(input.TaskName) == "" {
+		return SpawnResult{}, ErrTaskNameEmpty
+	}
 
 	s.mu.RLock()
 	if s.closed {
@@ -116,6 +119,7 @@ func (s *Subagents) Spawn(ctx context.Context, input SpawnInput) (SpawnResult, e
 		ID:              taskID,
 		ParentSessionID: input.ParentSessionID,
 		ChildSessionID:  childSessionID,
+		TaskName:        strings.TrimSpace(input.TaskName),
 		Description:     input.Description,
 	}
 

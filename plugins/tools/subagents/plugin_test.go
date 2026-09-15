@@ -230,12 +230,14 @@ func TestRegistrationAndExistingAgentPermissions(t *testing.T) {
 func TestSchemaAndCallerIdentity(t *testing.T) {
 	f := newFixture(t)
 	for _, tc := range []struct{ name, args string }{
-		{"subagent_spawn", `{"description":"job","parentSessionID":"spoof"}`},
-		{"subagent_spawn", `{"description":"job","workspace":"/spoof"}`},
-		{"subagent_spawn", `{"description":"   "}`},
-		{"subagent_spawn", `{"description":"job","model":"unknown"}`},
-		{"subagent_spawn", `{"description":"job","agentID":"unknown"}`},
-		{"subagent_spawn", `{"description":"job","reasoningEffort":"unknown"}`},
+		{"subagent_spawn", `{"description":"job"}`},
+		{"subagent_spawn", `{"taskName":"   ","description":"job"}`},
+		{"subagent_spawn", `{"taskName":"test","description":"job","parentSessionID":"spoof"}`},
+		{"subagent_spawn", `{"taskName":"test","description":"job","workspace":"/spoof"}`},
+		{"subagent_spawn", `{"taskName":"test","description":"   "}`},
+		{"subagent_spawn", `{"taskName":"test","description":"job","model":"unknown"}`},
+		{"subagent_spawn", `{"taskName":"test","description":"job","agentID":"unknown"}`},
+		{"subagent_spawn", `{"taskName":"test","description":"job","reasoningEffort":"unknown"}`},
 		{"subagent_send", `{"taskID":"x","text":"hi","model":"other"}`},
 		{"subagent_send", `{"taskID":"x","text":"   "}`},
 		{"subagent_wait", `{"taskIDs":["x"],"timeoutSeconds":-1}`},
@@ -281,7 +283,7 @@ func TestToolLifecycleAndIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	child := decode[delegation.SpawnResult](t, f.call(t, "subagent_spawn", `{"description":"child job"}`))
+	child := decode[delegation.SpawnResult](t, f.call(t, "subagent_spawn", `{"taskName":"test","description":"child job"}`))
 	invocation := f.nextRun(t)
 	if invocation.Workspace != f.parent.Workspace || invocation.LLMConfig != f.parent.LLMConfig ||
 		len(invocation.History) != 1 || invocation.History[0].Blocks[0].Text != "child job" {
@@ -296,7 +298,7 @@ func TestToolLifecycleAndIsolation(t *testing.T) {
 	// 孩子即使有工具权限也不能派孙子。
 	nested := f
 	nested.parent = invocation
-	if !nested.call(t, "subagent_spawn", `{"description":"grandchild"}`).IsError {
+	if !nested.call(t, "subagent_spawn", `{"taskName":"test","description":"grandchild"}`).IsError {
 		t.Fatal("nested delegation accepted")
 	}
 	intruder := f
@@ -377,6 +379,7 @@ func TestIndependentSettingOverrides(t *testing.T) {
 		{spawnArgs{Model: "deepseek/deepseek-v4-pro"}, agents.DefaultID, "deepseek/deepseek-v4-pro", "high"},
 		{spawnArgs{ReasoningEffort: "low"}, agents.DefaultID, "deepseek/deepseek-flash", "low"},
 	} {
+		tc.args.TaskName = "test"
 		tc.args.Description = "independent override"
 		data, err := json.Marshal(tc.args)
 		if err != nil {
@@ -399,7 +402,7 @@ func TestIndependentSettingOverrides(t *testing.T) {
 
 func TestSendPublicationFailureDoesNotRepeatInput(t *testing.T) {
 	f := newFixture(t)
-	child := decode[delegation.SpawnResult](t, f.call(t, "subagent_spawn", `{"description":"child"}`))
+	child := decode[delegation.SpawnResult](t, f.call(t, "subagent_spawn", `{"taskName":"test","description":"child"}`))
 	invocation := f.nextRun(t)
 	registry := resolve[*events.Registry](t, f.host, "events")
 	unsubscribe, err := events.Subscribe(registry, func(ctx context.Context, event runner.RunEvent) error {

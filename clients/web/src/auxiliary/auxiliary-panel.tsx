@@ -15,6 +15,7 @@ export interface AuxiliaryTab {
   dirty?: boolean;
   contextPath?: string;
   closable?: boolean;
+  status?: string;
 }
 
 export interface AuxiliaryView {
@@ -22,7 +23,7 @@ export interface AuxiliaryView {
   label: string;
   icon: ComponentType<{ className?: string }>;
   render: (tab?: AuxiliaryTab) => ReactNode;
-  onCreate: () => void;
+  onCreate?: () => void;
   keepMounted?: boolean;
 }
 
@@ -73,6 +74,13 @@ export function AuxiliaryPanel({
                   <Icon />
                   <span>{tab.title}</span>
                   {tab.dirty && <i aria-label="未保存" />}
+                  {tab.status && (
+                    <span
+                      className="subagent-tab-status"
+                      data-status={tab.status}
+                      aria-label={tab.status}
+                    />
+                  )}
                 </button>
                 {tab.closable !== false && (
                   <Button
@@ -102,15 +110,17 @@ export function AuxiliaryPanel({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
-            {views.map((view) => {
-              const Icon = view.icon;
-              return (
-                <DropdownMenuItem key={view.kind} onSelect={view.onCreate}>
-                  <Icon />
-                  {view.label}
-                </DropdownMenuItem>
-              );
-            })}
+            {views
+              .filter((view) => view.onCreate)
+              .map((view) => {
+                const Icon = view.icon;
+                return (
+                  <DropdownMenuItem key={view.kind} onSelect={view.onCreate!}>
+                    <Icon />
+                    {view.label}
+                  </DropdownMenuItem>
+                );
+              })}
           </DropdownMenuContent>
         </DropdownMenu>
 

@@ -82,11 +82,10 @@
   --icon-size: 16px;
   --icon-stroke: 1.7;
   --space: 4px;
-  --font-system:
-    "Harness Ginto", "Noto Sans SC Variable", sans-serif;
-  --font-code:
-    "JetBrains Mono Variable", "Noto Sans SC Variable", monospace;
-  --shadow-floating: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --font-system: "Harness Ginto", "Noto Sans SC Variable", sans-serif;
+  --font-code: "JetBrains Mono Variable", "Noto Sans SC Variable", monospace;
+  --shadow-floating:
+    0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
   --shadow-composer: 0 4px 12px -2px rgb(0 0 0 / 0.05), 0 0 0 1px var(--border);
 }
 .dark {
@@ -441,7 +440,8 @@
 .chat-entry {
   margin-bottom: calc(var(--space) * 8);
 }
-.message-text, .message-reasoning {
+.message-text,
+.message-reasoning {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -629,6 +629,63 @@
 .process-collaboration .process-detail-preview {
   color: var(--muted-foreground);
   font-size: var(--font-size-caption);
+}
+.subagent-card {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--muted);
+  color: var(--foreground);
+  text-align: left;
+}
+.subagent-card:hover {
+  background: var(--accent);
+}
+.subagent-card > span {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+.subagent-card strong,
+.subagent-card small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.subagent-card strong {
+  font-size: var(--font-size-label);
+  font-weight: 550;
+}
+.subagent-card small {
+  color: var(--muted-foreground);
+  font-size: var(--font-size-caption);
+}
+.subagent-chat {
+  width: 100%;
+  height: 100%;
+}
+.subagent-tab-status {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--muted-foreground);
+}
+.subagent-tab-status[data-status="running"] {
+  background: var(--ring);
+}
+.subagent-tab-status[data-status="completed"] {
+  background: var(--diff-added);
+}
+.subagent-tab-status[data-status="failed"] {
+  background: var(--destructive);
 }
 .tool-output {
   background: var(--tool);

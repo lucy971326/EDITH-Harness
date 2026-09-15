@@ -40,7 +40,7 @@ import { type ModelSelection } from "./model-menu";
 import { compressImage } from "./image-compression";
 import { workspaceName } from "./state/projects";
 import type { FileLocation } from "./editor/links";
-import type { ReviewOpenRequest } from "./workspace-tabs";
+import type { ReviewOpenRequest, SubagentOpenRequest } from "./workspace-tabs";
 import type { SendParams, SessionView } from "../../contracts/harness.ts";
 import type {
   AgentListResult,
@@ -123,7 +123,10 @@ export default function App() {
       Math.min(
         1200,
         Number(preference("reading-panel-width", "0")) ||
-          Math.min(480, (typeof window === "undefined" ? 1280 : window.innerWidth) * 0.25),
+          Math.min(
+            480,
+            (typeof window === "undefined" ? 1280 : window.innerWidth) * 0.25,
+          ),
       ),
     ),
   );
@@ -167,8 +170,12 @@ export default function App() {
     (FileLocation & { requestID: number; workspace: string }) | undefined
   >();
   const fileOpenRequestID = useRef(0);
-  const [reviewOpenRequest, setReviewOpenRequest] = useState<ReviewOpenRequest>();
+  const [reviewOpenRequest, setReviewOpenRequest] =
+    useState<ReviewOpenRequest>();
   const reviewOpenRequestID = useRef(0);
+  const [subagentOpenRequest, setSubagentOpenRequest] =
+    useState<SubagentOpenRequest>();
+  const subagentOpenRequestID = useRef(0);
   const composer = useRef<ComposerHandle>(null);
   const objectUrls = useRef<string[]>([]);
   const drafts = useRef(new Map<string, Draft>());
@@ -755,12 +762,7 @@ export default function App() {
   async function forkAnswer(runID: string, boundaryEntryID: string) {
     const client = clientRef.current;
     const sourceID = selectedIDRef.current;
-    if (
-      !client?.connected ||
-      !sourceID ||
-      !synchronized ||
-      forkPending.current
-    )
+    if (!client?.connected || !sourceID || !synchronized || forkPending.current)
       return;
     forkPending.current = true;
     setForkingEntryID(boundaryEntryID);
@@ -1047,6 +1049,16 @@ export default function App() {
                       requestID: ++reviewOpenRequestID.current,
                     });
                   }}
+                  onOpenSubagent={(taskID) => {
+                    if (!selectedID) return;
+                    setPanel(true);
+                    setSettings(false);
+                    setSubagentOpenRequest({
+                      parentSessionID: selectedID,
+                      taskID,
+                      requestID: ++subagentOpenRequestID.current,
+                    });
+                  }}
                   onFork={(runID, boundaryEntryID) =>
                     void forkAnswer(runID, boundaryEntryID)
                   }
@@ -1172,6 +1184,9 @@ export default function App() {
               client={connected ? clientRef.current : null}
               openRequest={fileOpenRequest}
               reviewRequest={reviewOpenRequest}
+              subagentRequest={subagentOpenRequest}
+              models={models}
+              agents={agentCatalog?.agents ?? null}
               onHide={() => setPanel(false)}
             />
           </aside>

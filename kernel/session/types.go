@@ -55,6 +55,7 @@ type Block struct {
 type Message struct {
 	MessageID       string  `json:"messageID,omitempty"`
 	SourceSessionID string  `json:"sourceSessionID,omitempty"`
+	SourceTaskID    string  `json:"sourceTaskID,omitempty"`
 	SourceRunID     string  `json:"sourceRunID,omitempty"`
 	RunID           string  `json:"runID,omitempty"`
 	Role            Role    `json:"role"`

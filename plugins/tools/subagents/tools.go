@@ -17,10 +17,10 @@ func toolEntries(s *delegation.Subagents) []tools.Tool {
 			value, err := s.Options(ctx)
 			return jsonResult(value, err)
 		}),
-		withIdentity("subagent_spawn", "Delegate asynchronously to a new child session. Returns immediately after startup. Only one delegation level is allowed. The child shares your workspace, not your history.", func(ctx context.Context, call tools.Call, args spawnArgs) (tools.Result, error) {
+		withIdentity("subagent_spawn", "Delegate asynchronously to a new child session. Give it a short taskName for the user-facing tab. Returns immediately after startup. Only one delegation level is allowed. The child shares your workspace, not your history.", func(ctx context.Context, call tools.Call, args spawnArgs) (tools.Result, error) {
 			value, err := s.Spawn(ctx, delegation.SpawnInput{
 				ParentSessionID: call.SessionID, ParentRunID: call.RunID,
-				Description: args.Description, AgentID: args.AgentID,
+				TaskName: args.TaskName, Description: args.Description, AgentID: args.AgentID,
 				Model: args.Model, ReasoningEffort: args.ReasoningEffort,
 			})
 			return jsonResult(value, err)

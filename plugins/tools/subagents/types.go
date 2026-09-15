@@ -13,6 +13,7 @@ type optionsArgs struct{}
 
 // 数据。模型只能指定委派说明与可选设置；身份、工作区由程序提供。
 type spawnArgs struct {
+	TaskName        string `json:"taskName" jsonschema:"minLength=1,description=Short stable name shown to the user for this child task."`
 	Description     string `json:"description" jsonschema:"minLength=1,description=Self-contained instructions for the child. Parent history is not copied."`
 	AgentID         string `json:"agentID,omitempty" jsonschema:"minLength=1,description=Agent ID from subagent_options. Omit to inherit the parent run setting."`
 	Model           string `json:"model,omitempty" jsonschema:"minLength=1,description=Model ID from subagent_options. Omit to inherit."`

@@ -52,6 +52,7 @@ func TestCloseWhileSendReadsSettings(t *testing.T) {
 	defer f.host.Close()
 	parent, run := createParentRun(t, f, t.TempDir())
 	child, err := f.subagents.Spawn(context.Background(), SpawnInput{
+		TaskName:        "test",
 		ParentSessionID: parent, ParentRunID: run, Description: "first",
 	})
 	if err != nil {
@@ -102,6 +103,7 @@ func TestTaskRecordStaysRelationOnlyAfterCompletion(t *testing.T) {
 	parent, run := createParentRun(t, f, t.TempDir())
 	f.loop.release()
 	child, err := f.subagents.Spawn(context.Background(), SpawnInput{
+		TaskName:        "test",
 		ParentSessionID: parent, ParentRunID: run, Description: "fast",
 	})
 	if err != nil {
@@ -126,6 +128,7 @@ func TestRecoveryProjectsHistoryFromChildSession(t *testing.T) {
 	defer f.host.Close()
 	parent, run := createParentRun(t, f, t.TempDir())
 	child, err := f.subagents.Spawn(context.Background(), SpawnInput{
+		TaskName:        "test",
 		ParentSessionID: parent, ParentRunID: run, Description: "first",
 	})
 	if err != nil {
@@ -138,6 +141,14 @@ func TestRecoveryProjectsHistoryFromChildSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err = f.subagents.Close(); err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := f.subagents.store.loadTask(child.TaskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy.TaskName = ""
+	if err = f.subagents.store.saveTask(legacy); err != nil {
 		t.Fatal(err)
 	}
 
@@ -154,7 +165,7 @@ func TestRecoveryProjectsHistoryFromChildSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tasks) != 1 || tasks[0].Status != StatusCompleted || len(tasks[0].Turns) != 1 || len(tasks[0].Results) != 1 {
+	if len(tasks) != 1 || tasks[0].TaskName == "" || tasks[0].Status != StatusCompleted || len(tasks[0].Turns) != 1 || len(tasks[0].Results) != 1 {
 		t.Fatalf("recovery lost child projection: %+v", tasks)
 	}
 	if !recovered.IsChildSession(child.ChildSessionID) {

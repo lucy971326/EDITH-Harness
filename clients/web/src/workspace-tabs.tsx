@@ -1,5 +1,6 @@
 import {
   lazy,
+  memo,
   Suspense,
   useCallback,
   useEffect,
@@ -40,10 +41,13 @@ import {
   type EditorFile,
   type ProjectEditorState,
 } from "./editor/files";
-import { FileText, GitCompareArrows, PanelRight } from "./icons";
+import { Bot, FileText, GitCompareArrows, PanelRight } from "./icons";
 import { Terminal } from "./icons";
 import type { FileLocation } from "./editor/links";
 import type { RunState } from "../../contracts/run.ts";
+import type { RunDiffSummary } from "../../contracts/run.ts";
+import type { AgentView, ModelChoice } from "../../contracts/appserver.ts";
+import type { SubagentInfo } from "../../contracts/harness.ts";
 
 const CodeEditor = lazy(() =>
   import("./editor/code-editor").then((module) => ({
@@ -63,10 +67,28 @@ const TerminalView = lazy(() =>
   })),
 );
 
+const SubagentView = lazy(() =>
+  import("./subagent/subagent-view").then((module) => ({
+    default: module.SubagentView,
+  })),
+);
+
+const SubagentReviewView = lazy(() =>
+  import("./subagent/subagent-review-view").then((module) => ({
+    default: module.SubagentReviewView,
+  })),
+);
+
 export interface ReviewOpenRequest {
   requestID: number;
   sessionID: string;
   runID: string;
+}
+
+export interface SubagentOpenRequest {
+  requestID: number;
+  parentSessionID: string;
+  taskID: string;
 }
 
 interface WatchTarget {
@@ -79,6 +101,24 @@ interface TerminalTab {
   processID: string;
   title: string;
   workspace: string;
+}
+
+interface SubagentTab {
+  id: string;
+  parentSessionID: string;
+  taskID: string;
+  title: string;
+  status?: string;
+}
+
+interface SubagentReviewTab {
+  id: string;
+  parentSessionID: string;
+  taskID: string;
+  title: string;
+  summary: RunDiffSummary;
+  workspace: string;
+  runActive: boolean;
 }
 
 const emptyFileTabID = "file:empty";
@@ -97,7 +137,7 @@ function storedTreeWidth(): number {
   }
 }
 
-export function WorkspaceTabs({
+function WorkspaceTabsComponent({
   workspace,
   sessionID,
   runs,
@@ -105,6 +145,9 @@ export function WorkspaceTabs({
   client,
   openRequest,
   reviewRequest,
+  subagentRequest,
+  models,
+  agents,
   onHide,
 }: {
   workspace: string | null;
@@ -114,6 +157,9 @@ export function WorkspaceTabs({
   client: RPCClient | null;
   openRequest?: FileLocation & { requestID: number; workspace: string };
   reviewRequest?: ReviewOpenRequest;
+  subagentRequest?: SubagentOpenRequest;
+  models: ModelChoice[] | null;
+  agents: AgentView[] | null;
   onHide: () => void;
 }) {
   const projects = useRef(new Map<string, ProjectEditorState>());
@@ -122,6 +168,7 @@ export function WorkspaceTabs({
   const saveTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const saving = useRef(new Set<string>());
   const handledReviewRequestID = useRef(0);
+  const handledSubagentRequestID = useRef(0);
   const terminalSequence = useRef(0);
   const [, setRevision] = useState(0);
   const [treeRevision, setTreeRevision] = useState(0);
@@ -131,6 +178,10 @@ export function WorkspaceTabs({
   const [location, setLocation] = useState<FileLocation>();
   const [reviewRunIDs, setReviewRunIDs] = useState<string[]>([]);
   const [terminals, setTerminals] = useState<TerminalTab[]>([]);
+  const [subagentTabs, setSubagentTabs] = useState<SubagentTab[]>([]);
+  const [subagentReviews, setSubagentReviews] = useState<SubagentReviewTab[]>(
+    [],
+  );
   const [activeTabID, setActiveTabID] = useState("");
 
   const project = workspace ? projects.current.get(workspace) : undefined;
@@ -139,7 +190,12 @@ export function WorkspaceTabs({
   const activeReviewRunID = reviewRunIDs.find(
     (runID) => reviewTabID(runID) === activeTabID,
   );
-  const activeReview = runs.find((run) => run.runID === activeReviewRunID)?.diff;
+  const activeReview = runs.find(
+    (run) => run.runID === activeReviewRunID,
+  )?.diff;
+  const activeSubagentReview = subagentReviews.find(
+    (item) => item.id === activeTabID,
+  );
 
   function createTerminal() {
     if (!workspace || !client?.connected) return;
@@ -181,7 +237,8 @@ export function WorkspaceTabs({
 
   const watch = useCallback(
     async (path: string, kind: WatchTarget["kind"]) => {
-      if (!workspace || !client?.connected || watchPaths.current.has(path)) return;
+      if (!workspace || !client?.connected || watchPaths.current.has(path))
+        return;
       watchPaths.current.set(path, "pending");
       try {
         await client.watchFile(path, (subscriptionID) => {
@@ -284,13 +341,16 @@ export function WorkspaceTabs({
   );
 
   useEffect(() => {
-    if (!openRequest || !workspace || openRequest.workspace !== workspace) return;
+    if (!openRequest || !workspace || openRequest.workspace !== workspace)
+      return;
     setLocation(openRequest);
     void openFile(openRequest.path, openRequest);
   }, [openRequest?.requestID, workspace, client]);
 
   useEffect(() => {
     setReviewRunIDs([]);
+    setSubagentTabs([]);
+    setSubagentReviews([]);
     setActiveTabID(currentProject()?.activePath ?? "");
   }, [sessionID, workspace]);
 
@@ -309,6 +369,28 @@ export function WorkspaceTabs({
     );
     setActiveTabID(reviewTabID(run.runID));
   }, [reviewRequest?.requestID, sessionID, runs]);
+
+  useEffect(() => {
+    if (!subagentRequest || subagentRequest.parentSessionID !== sessionID)
+      return;
+    if (subagentRequest.requestID === handledSubagentRequestID.current) return;
+    handledSubagentRequestID.current = subagentRequest.requestID;
+    const id = `subagent:${subagentRequest.parentSessionID}:${subagentRequest.taskID}`;
+    setSubagentTabs((current) =>
+      current.some((item) => item.id === id)
+        ? current
+        : [
+            ...current,
+            {
+              id,
+              parentSessionID: subagentRequest.parentSessionID,
+              taskID: subagentRequest.taskID,
+              title: "Subagent",
+            },
+          ],
+    );
+    setActiveTabID(id);
+  }, [subagentRequest?.requestID, sessionID]);
 
   async function openFile(path: string, target?: FileLocation) {
     const state = currentProject();
@@ -376,7 +458,8 @@ export function WorkspaceTabs({
   async function saveFile(path: string, overwriteHash?: string) {
     const file = currentProject()?.files.get(path);
     if (!file || !client?.connected || saving.current.has(path)) return;
-    if (!file.hash || file.status === "missing" || file.status === "loading") return;
+    if (!file.hash || file.status === "missing" || file.status === "loading")
+      return;
     if (file.content === file.savedContent && !overwriteHash) return;
 
     const submittedContent = file.content;
@@ -441,7 +524,8 @@ export function WorkspaceTabs({
     watchPaths.current.delete(path);
     if (subscriptionID && subscriptionID !== "pending") {
       watches.current.delete(subscriptionID);
-      if (client?.connected) void client.unsubscribe(subscriptionID).catch(() => {});
+      if (client?.connected)
+        void client.unsubscribe(subscriptionID).catch(() => {});
     }
     setClosingPath("");
     render();
@@ -468,8 +552,7 @@ export function WorkspaceTabs({
         kind: "file",
         title: file.name,
         contextPath: path,
-        dirty:
-          file.content !== file.savedContent || file.status === "conflict",
+        dirty: file.content !== file.savedContent || file.status === "conflict",
       };
     }) ?? []),
     ...reviewRunIDs.map((runID) => ({
@@ -483,6 +566,19 @@ export function WorkspaceTabs({
       kind: "terminal",
       title: terminal.title,
       contextPath: terminal.workspace,
+    })),
+    ...subagentTabs.map((tab) => ({
+      id: tab.id,
+      kind: "subagent",
+      title: tab.title,
+      contextPath: tab.taskID,
+      status: tab.status,
+    })),
+    ...subagentReviews.map((tab) => ({
+      id: tab.id,
+      kind: "subagent-review",
+      title: "审查更改",
+      contextPath: tab.summary.runID,
     })),
   ];
   const visibleTabs: AuxiliaryTab[] =
@@ -636,7 +732,9 @@ export function WorkspaceTabs({
       },
       render: () =>
         sessionID && activeReview ? (
-          <Suspense fallback={<div className="editor-loading">正在加载审查…</div>}>
+          <Suspense
+            fallback={<div className="editor-loading">正在加载审查…</div>}
+          >
             <ReviewView
               key={`${sessionID}:${activeReview.runID}`}
               sessionID={sessionID}
@@ -647,7 +745,10 @@ export function WorkspaceTabs({
             />
           </Suspense>
         ) : (
-          <EmptyEditor title="没有可审查的更改" detail="Agent 的文件修改会显示在这里。" />
+          <EmptyEditor
+            title="没有可审查的更改"
+            detail="Agent 的文件修改会显示在这里。"
+          />
         ),
     },
     {
@@ -671,6 +772,102 @@ export function WorkspaceTabs({
           </Suspense>
         ) : null;
       },
+    },
+    {
+      kind: "subagent",
+      label: "Subagent",
+      icon: Bot,
+      keepMounted: true,
+      render: (tab) => {
+        const child = subagentTabs.find((item) => item.id === tab?.id);
+        return child ? (
+          <Suspense
+            fallback={<div className="editor-loading">正在加载子任务…</div>}
+          >
+            <SubagentView
+              parentSessionID={child.parentSessionID}
+              taskID={child.taskID}
+              client={client}
+              models={models}
+              agents={agents}
+              active={activeTabID === child.id}
+              onTask={(task: SubagentInfo) =>
+                setSubagentTabs((current) =>
+                  current.map((item) =>
+                    item.id === child.id
+                      ? { ...item, title: task.taskName, status: task.status }
+                      : item,
+                  ),
+                )
+              }
+              onOpenFile={(target) => void openFile(target.path, target)}
+              onOpenDiff={(_runID, summary, childRunActive) => {
+                const id = `subagent-review:${child.taskID}:${summary.runID}`;
+                setSubagentReviews((current) => {
+                  const existing = current.find((item) => item.id === id);
+                  if (existing)
+                    return current.map((item) =>
+                      item.id === id
+                        ? { ...item, summary, runActive: childRunActive }
+                        : item,
+                    );
+                  return [
+                    ...current,
+                    {
+                      id,
+                      parentSessionID: child.parentSessionID,
+                      taskID: child.taskID,
+                      title: child.title,
+                      summary,
+                      workspace: workspace ?? "",
+                      runActive: childRunActive,
+                    },
+                  ];
+                });
+                setActiveTabID(id);
+              }}
+              onDiffUpdate={(runID, summary, childRunActive) => {
+                const id = `subagent-review:${child.taskID}:${runID}`;
+                setSubagentReviews((current) => {
+                  const existing = current.find((item) => item.id === id);
+                  if (
+                    !existing ||
+                    (existing.summary.revision === summary.revision &&
+                      existing.runActive === childRunActive)
+                  )
+                    return current;
+                  return current.map((item) =>
+                    item.id === id
+                      ? { ...item, summary, runActive: childRunActive }
+                      : item,
+                  );
+                });
+              }}
+            />
+          </Suspense>
+        ) : null;
+      },
+    },
+    {
+      kind: "subagent-review",
+      label: "Subagent 审查",
+      icon: GitCompareArrows,
+      render: () =>
+        activeSubagentReview ? (
+          <Suspense
+            fallback={<div className="editor-loading">正在加载审查…</div>}
+          >
+            <SubagentReviewView
+              key={`${activeSubagentReview.parentSessionID}:${activeSubagentReview.taskID}:${activeSubagentReview.summary.runID}`}
+              parentSessionID={activeSubagentReview.parentSessionID}
+              taskID={activeSubagentReview.taskID}
+              workspace={activeSubagentReview.workspace}
+              initialSummary={activeSubagentReview.summary}
+              initialRunActive={activeSubagentReview.runActive}
+              client={client}
+            />
+          </Suspense>
+        ) : null,
     },
   ];
 
@@ -701,19 +898,25 @@ export function WorkspaceTabs({
               current.filter((item) => item.processID !== tab.id),
             );
             if (activeTabID === tab.id)
-              setActiveTabID(
-                tabs[index - 1]?.id ?? tabs[index + 1]?.id ?? "",
-              );
+              setActiveTabID(tabs[index - 1]?.id ?? tabs[index + 1]?.id ?? "");
             return;
           }
           const index = tabs.findIndex((item) => item.id === tab.id);
-          setReviewRunIDs((current) =>
-            current.filter((runID) => reviewTabID(runID) !== tab.id),
-          );
-          if (activeTabID === tab.id)
-            setActiveTabID(
-              tabs[index - 1]?.id ?? tabs[index + 1]?.id ?? "",
+          if (tab.kind === "subagent") {
+            setSubagentTabs((current) =>
+              current.filter((item) => item.id !== tab.id),
             );
+          } else if (tab.kind === "subagent-review") {
+            setSubagentReviews((current) =>
+              current.filter((item) => item.id !== tab.id),
+            );
+          } else {
+            setReviewRunIDs((current) =>
+              current.filter((runID) => reviewTabID(runID) !== tab.id),
+            );
+          }
+          if (activeTabID === tab.id)
+            setActiveTabID(tabs[index - 1]?.id ?? tabs[index + 1]?.id ?? "");
         }}
         onHide={onHide}
       />
@@ -743,6 +946,34 @@ export function WorkspaceTabs({
     </div>
   );
 }
+
+function sameRunView(previous: RunState[], next: RunState[]): boolean {
+  if (previous.length !== next.length) return false;
+  return previous.every((run, index) => {
+    const candidate = next[index];
+    return (
+      run.runID === candidate.runID &&
+      run.status === candidate.status &&
+      run.diff?.revision === candidate.diff?.revision
+    );
+  });
+}
+
+// 聊天文字增量不改变辅助区；避免流式输出带着 Monaco、终端和隐藏标签重绘。
+export const WorkspaceTabs = memo(
+  WorkspaceTabsComponent,
+  (previous, next) =>
+    previous.workspace === next.workspace &&
+    previous.sessionID === next.sessionID &&
+    sameRunView(previous.runs, next.runs) &&
+    previous.runActive === next.runActive &&
+    previous.client === next.client &&
+    previous.openRequest === next.openRequest &&
+    previous.reviewRequest === next.reviewRequest &&
+    previous.subagentRequest === next.subagentRequest &&
+    previous.models === next.models &&
+    previous.agents === next.agents,
+);
 
 function EmptyEditor({ title, detail }: { title: string; detail: string }) {
   return (

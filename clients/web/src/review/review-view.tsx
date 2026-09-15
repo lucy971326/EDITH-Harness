@@ -50,12 +50,20 @@ export function ReviewView({
   initialSummary,
   client,
   runActive,
+  readDiff,
+  revertDiff,
 }: {
   sessionID: string;
   workspace: string | null;
   initialSummary: RunDiffSummary;
   client: RPCClient | null;
   runActive: boolean;
+  readDiff?: (runID: string, path: string) => Promise<RunDiffFile>;
+  revertDiff?: (
+    runID: string,
+    path: string,
+    expectedRevision: number,
+  ) => Promise<RunDiffSummary>;
 }) {
   const [summary, setSummary] = useState(initialSummary);
   const [selectedPath, setSelectedPath] = useState(
@@ -118,8 +126,11 @@ export function ReviewView({
     }
     const revision = summary.revision;
     setLoading(true);
-    void client
-      .readRunDiff(sessionID, summary.runID, selectedPath)
+    const read =
+      readDiff ??
+      ((runID: string, path: string) =>
+        client.readRunDiff(sessionID, runID, path));
+    void read(summary.runID, selectedPath)
       .then((result) => {
         if (generation !== readRequestID.current) return;
         if (
@@ -142,7 +153,14 @@ export function ReviewView({
     return () => {
       readRequestID.current++;
     };
-  }, [client, selectedPath, sessionID, summary.revision, summary.runID]);
+  }, [
+    client,
+    selectedPath,
+    sessionID,
+    summary.revision,
+    summary.runID,
+    readDiff,
+  ]);
 
   async function revertSelected() {
     const path = selectedRef.current;
@@ -156,12 +174,11 @@ export function ReviewView({
     setReverting(true);
     setError("");
     try {
-      const result = await client.revertRunDiff(
-        sessionID,
-        current.runID,
-        path,
-        current.revision,
-      );
+      const revert =
+        revertDiff ??
+        ((runID: string, target: string, revision: number) =>
+          client.revertRunDiff(sessionID, runID, target, revision));
+      const result = await revert(current.runID, path, current.revision);
       if (generation !== revertRequestID.current) return;
       if (
         summaryRef.current.runID !== current.runID ||
@@ -190,7 +207,9 @@ export function ReviewView({
   return (
     <div className="review-view">
       <div className="review-toolbar">
-        <span title={selectedPath}>{selected ? displayPath(workspace, selected.path) : "审查更改"}</span>
+        <span title={selectedPath}>
+          {selected ? displayPath(workspace, selected.path) : "审查更改"}
+        </span>
         <div className="review-toolbar-actions">
           <Button
             variant="ghost"
@@ -224,7 +243,11 @@ export function ReviewView({
       </div>
 
       <div className="review-workspace">
-        <section ref={editorPane} className="review-editor-pane" aria-label="Diff 审查">
+        <section
+          ref={editorPane}
+          className="review-editor-pane"
+          aria-label="Diff 审查"
+        >
           {summary.files.length === 0 ? (
             <div className="workspace-chooser">
               <FileText />
@@ -265,35 +288,41 @@ export function ReviewView({
           )}
         </section>
 
-        {treeOpen && <aside className="review-tree-pane" style={{ width: treeWidth }}>
-          <ResizeHandle
-            label="调整变更文件列表宽度"
-            value={treeWidth}
-            min={180}
-            max={520}
-            growToward="left"
-            onChange={setTreeWidth}
-          />
-          <div className="review-file-list" role="listbox" aria-label="本轮变更文件">
-            {summary.files.map((item) => (
-              <button
-                key={item.path}
-                role="option"
-                aria-selected={item.path === selectedPath}
-                title={`${item.path} · ${operationLabel(item.operation)}`}
-                aria-label={`${displayPath(workspace, item.path)}，${operationLabel(item.operation)}，新增 ${item.additions} 行，删除 ${item.deletions} 行`}
-                onClick={() => setSelectedPath(item.path)}
-              >
-                <FileText />
-                <span>
-                  <strong>{displayPath(workspace, item.path)}</strong>
-                </span>
-                <i className="diff-additions">+{item.additions}</i>
-                <i className="diff-deletions">-{item.deletions}</i>
-              </button>
-            ))}
-          </div>
-        </aside>}
+        {treeOpen && (
+          <aside className="review-tree-pane" style={{ width: treeWidth }}>
+            <ResizeHandle
+              label="调整变更文件列表宽度"
+              value={treeWidth}
+              min={180}
+              max={520}
+              growToward="left"
+              onChange={setTreeWidth}
+            />
+            <div
+              className="review-file-list"
+              role="listbox"
+              aria-label="本轮变更文件"
+            >
+              {summary.files.map((item) => (
+                <button
+                  key={item.path}
+                  role="option"
+                  aria-selected={item.path === selectedPath}
+                  title={`${item.path} · ${operationLabel(item.operation)}`}
+                  aria-label={`${displayPath(workspace, item.path)}，${operationLabel(item.operation)}，新增 ${item.additions} 行，删除 ${item.deletions} 行`}
+                  onClick={() => setSelectedPath(item.path)}
+                >
+                  <FileText />
+                  <span>
+                    <strong>{displayPath(workspace, item.path)}</strong>
+                  </span>
+                  <i className="diff-additions">+{item.additions}</i>
+                  <i className="diff-deletions">-{item.deletions}</i>
+                </button>
+              ))}
+            </div>
+          </aside>
+        )}
       </div>
     </div>
   );

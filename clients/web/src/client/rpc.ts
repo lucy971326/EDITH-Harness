@@ -66,7 +66,12 @@ export interface CallOptions<Result = unknown> {
 // 浏览器 JSON-RPC 连接。请求 ID 只配对响应；有副作用的调用超时或断线后不自动重发。
 export class RPCClient {
   onRun: ((notification: RunNotification) => void) | null = null;
-  onFileChanged: ((notification: FileChangedNotification) => void) | null = null;
+
+  private readonly runListeners = new Set<
+    (notification: RunNotification) => void
+  >();
+  onFileChanged: ((notification: FileChangedNotification) => void) | null =
+    null;
   private commandOutputListeners = new Map<
     string,
     Set<(notification: CommandExecOutputDeltaNotification) => void>
@@ -243,9 +248,13 @@ export class RPCClient {
   }
 
   watchFile(path: string, accept: (subscriptionID: string) => void) {
-    return this.call("fs/watch", { path }, {
-      accept: (result) => accept(result.subscriptionID),
-    });
+    return this.call(
+      "fs/watch",
+      { path },
+      {
+        accept: (result) => accept(result.subscriptionID),
+      },
+    );
   }
 
   execTerminal(processId: string, cwd: string, rows: number, cols: number) {
@@ -301,6 +310,71 @@ export class RPCClient {
 
   stop(sessionID: string) {
     return this.call("harness/session/stop", { sessionID });
+  }
+
+  listSubagents(parentSessionID: string) {
+    return this.call("harness/subagent/list", { parentSessionID });
+  }
+
+  sendSubagent(params: Methods["harness/subagent/send"]["params"]) {
+    return this.call("harness/subagent/send", params);
+  }
+
+  updateSubagentSettings(
+    params: Methods["harness/subagent/settings/update"]["params"],
+  ) {
+    return this.call("harness/subagent/settings/update", params);
+  }
+
+  stopSubagent(parentSessionID: string, taskID: string) {
+    return this.call("harness/subagent/stop", { parentSessionID, taskID });
+  }
+
+  subscribeSubagent(
+    parentSessionID: string,
+    taskID: string,
+    accept: (result: Methods["harness/subagent/subscribe"]["result"]) => void,
+  ) {
+    return this.call(
+      "harness/subagent/subscribe",
+      { parentSessionID, taskID },
+      { accept },
+    );
+  }
+
+  readSubagentRunDiff(
+    parentSessionID: string,
+    taskID: string,
+    runID: string,
+    path: string,
+  ) {
+    return this.call("harness/subagent/run/diff/read", {
+      parentSessionID,
+      taskID,
+      runID,
+      path,
+    });
+  }
+
+  revertSubagentRunDiff(
+    parentSessionID: string,
+    taskID: string,
+    runID: string,
+    path: string,
+    expectedRevision: number,
+  ) {
+    return this.call("harness/subagent/run/diff/revertFile", {
+      parentSessionID,
+      taskID,
+      runID,
+      path,
+      expectedRevision,
+    });
+  }
+
+  onRunEvent(listener: (notification: RunNotification) => void): () => void {
+    this.runListeners.add(listener);
+    return () => this.runListeners.delete(listener);
   }
 
   readRunDiff(sessionID: string, runID: string, path: string) {
@@ -371,7 +445,9 @@ export class RPCClient {
           typeof envelope.params?.subscriptionID === "string" &&
           envelope.params?.event
         ) {
-          this.onRun?.(envelope.params as RunNotification);
+          const notification = envelope.params as RunNotification;
+          this.onRun?.(notification);
+          for (const listener of this.runListeners) listener(notification);
         } else if (
           envelope.method === "fs/changed" &&
           typeof envelope.params?.subscriptionID === "string" &&
@@ -432,6 +508,7 @@ export class RPCClient {
     const detail = error instanceof Error ? error.message : "连接失败";
     this.initialized = false;
     this.commandOutputListeners.clear();
+    this.runListeners.clear();
     this.rejectAll(error instanceof Error ? error : new Error(detail));
     const socket = this.socket;
     this.socket = null;

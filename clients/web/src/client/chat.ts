@@ -39,6 +39,7 @@ export class ChatConnection {
   private revision = 0;
   private attempt = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private renderFrame: number | null = null;
   private closed = false;
   private readonly url: string;
   private readonly change: (state: ChatConnectionState) => void;
@@ -106,7 +107,8 @@ export class ChatConnection {
         return;
       }
       if (snapshot === this.state.snapshot) return;
-      this.update({ snapshot });
+      // 模型可能在一帧内送来许多很小的增量。内部投影立即前进，画面每帧最多刷新一次。
+      this.update({ snapshot }, true);
       if (
         (event.kind === "message" && event.entry?.message.role === "user") ||
         event.kind === "run-ended"
@@ -181,12 +183,29 @@ export class ChatConnection {
     this.revision++;
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    if (this.renderFrame !== null && typeof cancelAnimationFrame === "function")
+      cancelAnimationFrame(this.renderFrame);
+    this.renderFrame = null;
     this.client?.close();
     this.client = null;
   }
 
-  private update(patch: Partial<ChatConnectionState>): void {
+  private update(
+    patch: Partial<ChatConnectionState>,
+    deferToFrame = false,
+  ): void {
     this.state = { ...this.state, ...patch };
+    if (deferToFrame && typeof requestAnimationFrame === "function") {
+      if (this.renderFrame !== null) return;
+      this.renderFrame = requestAnimationFrame(() => {
+        this.renderFrame = null;
+        if (!this.closed) this.change(this.state);
+      });
+      return;
+    }
+    if (this.renderFrame !== null && typeof cancelAnimationFrame === "function")
+      cancelAnimationFrame(this.renderFrame);
+    this.renderFrame = null;
     this.change(this.state);
   }
 }

@@ -25,33 +25,39 @@ var imageMIMEs = map[string]bool{
 }
 
 func (s *Server) handleSend(ctx context.Context, input SendParams) (SendResult, error) {
-	blocks := make([]session.Block, 0, len(input.Images)+1)
-	for _, image := range input.Images {
+	message, err := messageFromInput(input.Text, input.Images)
+	if err != nil {
+		return SendResult{}, err
+	}
+	mode, err := s.harnessProduct.Send(ctx, harness.RunInput{
+		SessionID: input.SessionID, ExpectedRunID: input.ExpectedRunID, Message: message,
+	})
+	return SendResult{Mode: mode}, methodError(err)
+}
+
+func messageFromInput(text string, images []ImageInput) (session.UserMessage, error) {
+	blocks := make([]session.Block, 0, len(images)+1)
+	for _, image := range images {
 		data, err := base64.StdEncoding.DecodeString(image.Data)
 		if err != nil {
-			return SendResult{}, invalidImage("image data is not valid base64", err)
+			return session.UserMessage{}, invalidImage("image data is not valid base64", err)
 		}
 		if len(data) == 0 || len(data) > maxImageBytes {
-			return SendResult{}, invalidImage("image must be between 1 byte and 2 MB", nil)
+			return session.UserMessage{}, invalidImage("image must be between 1 byte and 2 MB", nil)
 		}
 		detected := http.DetectContentType(data)
 		if !imageMIMEs[image.MIME] || detected != image.MIME {
-			return SendResult{}, invalidImage("image MIME does not match its contents", nil)
+			return session.UserMessage{}, invalidImage("image MIME does not match its contents", nil)
 		}
 		blocks = append(blocks, session.Block{
 			Kind:  "image",
 			Media: &session.Media{MIME: image.MIME, Data: image.Data},
 		})
 	}
-	if input.Text != "" {
-		blocks = append(blocks, session.Block{Kind: "text", Text: input.Text})
+	if text != "" {
+		blocks = append(blocks, session.Block{Kind: "text", Text: text})
 	}
-	mode, err := s.harnessProduct.Send(ctx, harness.RunInput{
-		SessionID:     input.SessionID,
-		ExpectedRunID: input.ExpectedRunID,
-		Message:       session.UserMessage{Blocks: blocks},
-	})
-	return SendResult{Mode: mode}, methodError(err)
+	return session.UserMessage{Blocks: blocks}, nil
 }
 
 func invalidImage(message string, cause error) error {

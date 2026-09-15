@@ -21,7 +21,8 @@ func TestStopFamilyDoesNotWaitForChildSettingsOrStartLateChild(t *testing.T) {
 	}}
 	spawnDone := make(chan error, 1)
 	go func() {
-		_, err := f.subagents.Spawn(context.Background(), SpawnInput{ParentSessionID: parent.SessionID, ParentRunID: parent.RunID, Description: "blocked startup"})
+		_, err := f.subagents.Spawn(context.Background(), SpawnInput{
+			TaskName: "test", ParentSessionID: parent.SessionID, ParentRunID: parent.RunID, Description: "blocked startup"})
 		spawnDone <- err
 	}()
 	awaitSignal(t, entered)

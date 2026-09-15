@@ -156,7 +156,7 @@ func (s *Subagents) deliverTasks(parentID string, retryOnly bool) error {
 }
 
 func notificationMessage(task TaskView, notification Notification) (session.Message, error) {
-	text := fmt.Sprintf("子任务 %s，第 %d 轮，状态：%s", notification.TaskID, notification.Turn, notification.Status)
+	text := fmt.Sprintf("子任务 %s，第 %d 轮，状态：%s", task.TaskName, notification.Turn, notification.Status)
 	if notification.Error != "" {
 		text += "\n错误：" + notification.Error
 	}
@@ -178,6 +178,7 @@ func notificationMessage(task TaskView, notification Notification) (session.Mess
 		Role:            session.RoleCollaboration,
 		MessageID:       notification.NotificationID,
 		SourceSessionID: notification.ChildSessionID,
+		SourceTaskID:    notification.TaskID,
 		SourceRunID:     notification.RunID,
 		Blocks:          []session.Block{{Kind: "text", Text: text}},
 	}, nil

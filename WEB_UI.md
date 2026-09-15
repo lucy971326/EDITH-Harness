@@ -20,7 +20,7 @@ app-server → Product / 公共服务 → kernel
 - Client 共用 `clients/contracts/` 中手写的 TypeScript 契约；接口修改时同步 Go 与 TS，不自动生成。
 - UI 不直接拼 JSON-RPC 封套，不知道 Go Host、Runner 或 Product 的具体实现。
 - Wails 首版承载同一套前端并连接同一 WebSocket，不另写一套 IPC 业务层。
-- 文件面板通过 `fs/readFile / writeFile / readDirectory / getMetadata / watch` 调用后台；变化由 `fs/changed` 通知，取消监听复用 `server/unsubscribe`。Diff 审查通过 `harness/run/diff/read / revertFile` 按需读取和撤销单文件。终端通过 `command/exec / write / resize / terminate` 控制后台 PTY，并接收 `command/exec/outputDelta` 实时输出。
+- 文件面板通过 `fs/readFile / writeFile / readDirectory / getMetadata / watch` 调用后台；变化由 `fs/changed` 通知，取消监听复用 `server/unsubscribe`。Diff 审查通过 `harness/run/diff/read / revertFile` 按需读取和撤销单文件。终端通过 `command/exec / write / resize / terminate` 控制后台 PTY，并接收 `command/exec/outputDelta` 实时输出。子任务工作页通过 `harness/subagent/*` 查询、订阅、发送、设置、停止和审查 Diff；对外只使用父 SessionID 与 TaskID，不暴露子 SessionID。
 
 ## 2. 状态边界
 
@@ -51,6 +51,7 @@ Client 不写账本，不把本地状态冒充业务事实。刷新可丢失的�
 App-server 的运行订阅负责把内核并发通知排成连续序号，Client 不再造一套乱序队列。输出位置以消息的 `afterSeq`／草稿的 `afterEntrySeq` 为准，不把本轮 Run 的起点套给插话后的所有回答。
 
 - 直接以 Snapshot 的 `entries + runs/drafts` 作为聊天投影；实时更新同一份数据，完整 Entry 替换同 ID 草稿。快照省略空草稿时，首个增量仍可建立它；已落账的 ID 不被迟到增量重建。
+- 事件序号与内存投影逐条前进；React 绘制按动画帧合并。旧 Turn、辅助区和隐藏子任务只在自己依赖的状态变化时重绘，Diff 视图只消费序号、运行状态和 Diff 事件。
 - 只订阅选中会话；切设置不断订阅，切会话解除旧订阅。迟到的旧订阅响应也要解除，不能覆盖新选择。订阅响应处理时同步安装 Snapshot，随后才接受通知；失败不是空历史。
 - 序号重复忽略，缺口或 epoch 变化重新订阅，不排队猜顺序。恢复完成前禁用发送和停止。
 - 自动重连间隔为 1／2／4／8／10 秒，之后上限 10 秒；手动重连替换旧尝试，卸载清理定时器和连接。只恢复读取，不重发业务操作。
@@ -119,6 +120,8 @@ Composer 按聊天区域自身宽度响应：宽布局显示完整模型与推�
 - 本轮最后一条助手消息满足完整正文、无工具调用／压缩摘要且运行成功，才将 text 移到过程外；按落账次序选最后一条，不向前借旧说明。afterSeq 必须覆盖本轮最后输入，防止 Steer 后空输出误用旧回答。`runs.json` 引入前的旧历史没有运行状态时，只兼容外置已落账、完整且结构上合格的末条助手正文；工具状态仍显示“状态未记录”。无 RunID 的旧条目不伪造轮次。
 - 展示由 Snapshot 只读派生；工具按同一 Run 内的 ToolCall.ID 回填。未返回结果显示“等待结果”，不推断正在执行；结束仍无结果标“结果未记录”，未知运行状态则标“状态未记录”。
 - 工作过程按结构化 `role` 与 block kind 同级顺序展示：text 是普通说明，reasoning 是折叠项，连续 tool 合并为紧凑工具行，collaboration 显示为子任务回报卡片；只有展开详情局部缩进。不得解析正文猜阶段、重排账本或维护第二份展示状态。
+- 子任务创建和回报使用独立 Bot 图标及稳定 TaskID；点击后在辅助面板打开对应工作页，重复点击激活已有标签。子任务不能从辅助面板“＋”菜单创建，也不会自动弹出；关闭标签只取消该视图订阅，不停止孩子。
+- 子任务工作页复用普通消息时间线、工作过程、Tool、图片、Diff 和输入框；每个打开的标签在同一条 WebSocket 上使用独立 subscriptionID。可续聊和单独停止，空闲时可改模型与思考档位，不能修改 Agent 或工作区。
 - 子任务回报、压缩摘要在过程内提供折叠入口；纯问答没有其他过程内容时不画空过程壳。普通增量不覆盖手动折叠选择。
 - Markdown 只用于用户消息和最终回答，渲染后必须清洗；推理、工具参数和结果默认按纯文本显示。
 - 图片、模型、思考档位、Agent、命令和 Skill 候选都通过类型化接口取得。Agent 公共服务由 appserver 直接调用，不经 Product 转发。

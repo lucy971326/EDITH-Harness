@@ -36,7 +36,8 @@ func notificationParent(t *testing.T, f subagentsFixture) (*runner.RunHandle, lo
 
 func notificationChild(t *testing.T, f subagentsFixture, parent loops.Invocation) SpawnResult {
 	t.Helper()
-	child, err := f.subagents.Spawn(context.Background(), SpawnInput{ParentSessionID: parent.SessionID, ParentRunID: parent.RunID, Description: "child request"})
+	child, err := f.subagents.Spawn(context.Background(), SpawnInput{
+		TaskName: "test", ParentSessionID: parent.SessionID, ParentRunID: parent.RunID, Description: "child request"})
 	if err != nil {
 		t.Fatal(err)
 	}

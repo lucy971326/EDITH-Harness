@@ -7,6 +7,8 @@ import (
 
 	"harness/kernel/agents"
 	"harness/kernel/llm"
+	"harness/kernel/runner"
+	"harness/kernel/session/settings"
 )
 
 var (
@@ -15,10 +17,13 @@ var (
 	ErrTaskStopped        = errors.New("subagents: this child run was stopped")
 	ErrTaskNotFound       = errors.New("subagents: task not found")
 	ErrParentRequired     = errors.New("subagents: parent session and run id are required")
+	ErrTaskNameEmpty      = errors.New("subagents: task name cannot be empty")
 	ErrDescriptionEmpty   = errors.New("subagents: description cannot be empty")
 	ErrNestedDelegation   = errors.New("subagents: nested delegation not allowed (caller is already a child)")
 	ErrOwnershipMismatch  = errors.New("subagents: task does not belong to specified parent session")
 	ErrTaskNotUsable      = errors.New("subagents: child session or settings incomplete")
+	ErrTaskActive         = errors.New("subagents: child run is active")
+	ErrInvalidSettings    = errors.New("subagents: model or reasoning effort is unavailable")
 	ErrPersistFailed      = errors.New("subagents: task state could not be reliably persisted")
 	ErrUnsupportedVersion = errors.New("subagents: unsupported task version")
 	ErrInvalidTaskData    = errors.New("subagents: invalid task data")
@@ -63,6 +68,7 @@ type TaskRecord struct {
 	ID              string `json:"id"`
 	ParentSessionID string `json:"parentSessionID"`
 	ChildSessionID  string `json:"childSessionID"`
+	TaskName        string `json:"taskName,omitempty"`
 	Description     string `json:"description"`
 }
 
@@ -71,6 +77,7 @@ type TaskView struct {
 	ID              string `json:"id"`
 	ParentSessionID string `json:"parentSessionID"`
 	ChildSessionID  string `json:"childSessionID"`
+	TaskName        string `json:"taskName"`
 	Description     string `json:"description"`
 
 	AgentID         string `json:"agentID,omitempty"`
@@ -103,8 +110,24 @@ type SpawnInput struct {
 	AgentID         string
 	Model           string
 	ReasoningEffort string
+	TaskName        string
 	Description     string
 }
+
+// 数据。受父任务归属保护的子会话运行快照，仅供产品层组装页面投影。
+type TaskSnapshot struct {
+	Task TaskView
+	View runner.SessionView
+}
+
+// 数据。子任务页面允许修改的下一轮设置。
+type TaskSettingsInput struct {
+	Model           string
+	ReasoningEffort string
+}
+
+// 数据。子任务页面设置更新后的完整运行设置。
+type TaskSettingsResult = settings.SessionSettings
 
 // 数据。Spawn 的返回结果。
 type SpawnResult struct {

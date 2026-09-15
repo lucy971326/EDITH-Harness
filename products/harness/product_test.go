@@ -388,7 +388,7 @@ func TestSubagentsChatIsolation(t *testing.T) {
 		t.Fatal("expected parent running")
 	}
 
-	spawnRes, err := fixture.subagents.Spawn(context.Background(), subagents.SpawnInput{
+	spawnRes, err := fixture.subagents.Spawn(context.Background(), subagents.SpawnInput{TaskName: "test",
 		ParentSessionID: created.Meta.ID,
 		ParentRunID:     state.RunID,
 		Description:     "isolated child",

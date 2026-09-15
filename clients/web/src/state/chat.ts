@@ -17,17 +17,19 @@ export function applyRunEvent(
   if (event.updateSeq <= snapshot.updateSeq) return snapshot;
   if (event.updateSeq !== snapshot.updateSeq + 1) return null;
 
-  const next: Snapshot = {
-    ...snapshot,
-    updateSeq: event.updateSeq,
-    entries: [...snapshot.entries],
-    runs: snapshot.runs.map((run) => ({
-      ...run,
-      drafts: [...(run.drafts ?? [])],
-    })),
-  };
-  let run = next.runs.find((item) => item.runID === event.runID);
-  if (!run) {
+  const runIndex = snapshot.runs.findIndex(
+    (item) => item.runID === event.runID,
+  );
+  let run: RunState;
+  let runs: RunState[];
+  if (runIndex >= 0) {
+    run = {
+      ...snapshot.runs[runIndex],
+      drafts: [...(snapshot.runs[runIndex].drafts ?? [])],
+    };
+    runs = [...snapshot.runs];
+    runs[runIndex] = run;
+  } else {
     // Runner 先落首条用户输入、发 message，再发 run-started。
     if (event.kind !== "run-started" && event.kind !== "message") return null;
     run = {
@@ -36,8 +38,14 @@ export function applyRunEvent(
       status: "running",
       drafts: [],
     };
-    next.runs.push(run);
+    runs = [...snapshot.runs, run];
   }
+  const next: Snapshot = {
+    ...snapshot,
+    updateSeq: event.updateSeq,
+    entries: snapshot.entries,
+    runs,
+  };
 
   switch (event.kind) {
     case "message-started":
@@ -75,6 +83,7 @@ export function applyRunEvent(
     }
     case "message": {
       if (!event.entry) return null;
+      next.entries = [...next.entries];
       const index = next.entries.findIndex(
         (entry) => entry.id === event.entry!.id,
       );
