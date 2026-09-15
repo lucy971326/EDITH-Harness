@@ -1,0 +1,70 @@
+# EDITH-Harness
+
+**面向软件开发的本地多 Agent 工作台。**
+
+EDITH-Harness 将 Agent 运行时、文件编辑、终端、Diff 审查和 Subagent 协作放进同一个桌面式工作区。后台由 Go 单进程承载，Web 界面通过 WebSocket + JSON-RPC 2.0 使用统一能力。
+
+## 架构
+
+```mermaid
+flowchart LR
+    Client[React Client] -->|WebSocket<br/>JSON-RPC 2.0| Server[app-server]
+    Server --> Product[Harness Product]
+    Product --> Kernel[Agent Kernel]
+    Kernel --> Runtime[Runner · Session · LLM]
+    Kernel --> Machine[Tools · PTY · Files]
+    Kernel --> Subagents[Subagents]
+```
+
+`Host` 是进程内唯一组装根，负责登记服务与管理生命周期；`app-server` 只负责协议和连接；Product 编排业务；Kernel 提供可复用的执行与数据能力。
+
+## 已实现
+
+- **Agent 执行**：流式对话、思考与工具过程、Steer、停止、分叉、重连和后台恢复。
+- **开发工具**：`exec_command`、`write_stdin`、`apply_patch`，统一通过本机 machine 服务执行。
+- **文件工作区**：Monaco 编辑器、文件树、自动保存、外部变更同步和真实 Git Bash 终端。
+- **Diff 审查**：按 Run 实时聚合文件变化，支持单文件查看、版本保护和撤销。
+- **Subagent 协作**：多个子任务并行运行，各自拥有 Session、Run、工作过程和 Diff，并可在辅助面板中继续交互。
+- **可扩展配置**：自定义 Agent、Skills、MCP、模型与思考档位按作用域组合生效。
+
+## 界面
+
+### Agent 设置
+
+Agent 的提示词、执行类型和工具权限在同一处配置。
+
+![Agent 设置](docs/assets/settings.png)
+
+### 工作过程与编辑器
+
+聊天区展示结果和执行过程，辅助工作区可同时打开文件、Diff 与终端。
+
+![工作过程与编辑器](docs/assets/编辑器展示.png)
+
+### Subagent 工作区
+
+从主 Agent 的子任务卡片打开独立工作页，实时查看进度、继续对话或审查修改。
+
+![Subagent 工作区](docs/assets/subagent.png)
+
+## 运行
+
+环境要求：Go、Node.js、npm、Make，以及 Windows 上的 Git Bash。
+
+```bash
+make run
+```
+
+其他常用命令：
+
+```bash
+make build        # 构建前端并产出 .build/harness
+make agent-check  # 日常快速回归
+make test         # 完整串行验收
+```
+
+启动后访问 `http://127.0.0.1:8888/`。本机数据保存在 `~/.harness`。
+
+## 技术栈
+
+Go · React · TypeScript · Vite · WebSocket · JSON-RPC 2.0 · Monaco Editor · xterm.js · ConPTY
