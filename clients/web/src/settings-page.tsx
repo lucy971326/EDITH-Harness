@@ -143,23 +143,6 @@ export function SettingsPage({
                 </button>
               ))}
             </div>
-            <div className="appearance-note">
-              <div>
-                <span>配色</span>
-                <strong>中性灰</strong>
-              </div>
-              <div>
-                <span>字体</span>
-                <strong>Ginto / Noto Sans SC · JetBrains Mono</strong>
-              </div>
-              <div>
-                <span>图标</span>
-                <strong>Lucide</strong>
-              </div>
-            </div>
-            <p className="metadata">
-              主题在本机记住；所有页面使用同一套语义 Token。
-            </p>
           </TabsContent>
 
           <TabsContent value="agents">

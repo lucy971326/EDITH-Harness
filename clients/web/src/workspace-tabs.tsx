@@ -81,6 +81,8 @@ interface TerminalTab {
   workspace: string;
 }
 
+const emptyFileTabID = "file:empty";
+
 function storedTreeWidth(): number {
   try {
     return Math.max(
@@ -483,6 +485,18 @@ export function WorkspaceTabs({
       contextPath: terminal.workspace,
     })),
   ];
+  const visibleTabs: AuxiliaryTab[] =
+    workspace && (project?.order.length ?? 0) === 0
+      ? [
+          {
+            id: emptyFileTabID,
+            kind: "file",
+            title: "查看文件",
+            closable: false,
+          },
+          ...tabs,
+        ]
+      : tabs;
 
   const views: AuxiliaryView[] = [
     {
@@ -663,13 +677,13 @@ export function WorkspaceTabs({
   return (
     <div className="workspace-tabs">
       <AuxiliaryPanel
-        tabs={tabs}
-        activeTabID={activeTabID || project?.activePath || ""}
+        tabs={visibleTabs}
+        activeTabID={activeTabID || project?.activePath || emptyFileTabID}
         views={views}
         onActivateTab={(tab) => {
           setActiveTabID(tab.id);
           if (project && tab.kind === "file") {
-            project.activePath = tab.id;
+            project.activePath = tab.id === emptyFileTabID ? "" : tab.id;
             setLocation(undefined);
             render();
           }

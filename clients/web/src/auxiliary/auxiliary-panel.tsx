@@ -14,6 +14,7 @@ export interface AuxiliaryTab {
   title: string;
   dirty?: boolean;
   contextPath?: string;
+  closable?: boolean;
 }
 
 export interface AuxiliaryView {
@@ -73,15 +74,17 @@ export function AuxiliaryPanel({
                   <span>{tab.title}</span>
                   {tab.dirty && <i aria-label="未保存" />}
                 </button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={`关闭 ${tab.title}`}
-                  data-context-close
-                  onClick={() => onCloseTab(tab)}
-                >
-                  <X />
-                </Button>
+                {tab.closable !== false && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`关闭 ${tab.title}`}
+                    data-context-close
+                    onClick={() => onCloseTab(tab)}
+                  >
+                    <X />
+                  </Button>
+                )}
               </div>
             );
           })}
