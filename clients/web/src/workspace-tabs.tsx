@@ -170,6 +170,7 @@ function WorkspaceTabsComponent({
   const handledReviewRequestID = useRef(0);
   const handledSubagentRequestID = useRef(0);
   const terminalSequence = useRef(0);
+  const treePane = useRef<HTMLElement>(null);
   const [, setRevision] = useState(0);
   const [treeRevision, setTreeRevision] = useState(0);
   const [treeOpen, setTreeOpen] = useState(true);
@@ -694,13 +695,21 @@ function WorkspaceTabsComponent({
             </section>
 
             {treeOpen && workspace && (
-              <aside className="file-tree-pane" style={{ width: treeWidth }}>
+              <aside
+                ref={treePane}
+                className="file-tree-pane"
+                style={{ width: treeWidth }}
+              >
                 <ResizeHandle
                   label="调整文件树宽度"
                   value={treeWidth}
                   min={180}
                   max={520}
                   growToward="left"
+                  onResize={(width) => {
+                    if (treePane.current)
+                      treePane.current.style.width = `${width}px`;
+                  }}
                   onChange={setTreeWidth}
                 />
                 <FileTree

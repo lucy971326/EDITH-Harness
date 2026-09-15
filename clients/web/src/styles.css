@@ -251,6 +251,7 @@
 .sidebar {
   width: var(--sidebar-width);
   flex-shrink: 0;
+  contain: layout;
   background: var(--sidebar);
   display: flex;
   flex-direction: column;
@@ -375,6 +376,7 @@
   background: var(--background);
   flex: 1;
   min-width: 0;
+  contain: layout;
   display: flex;
   flex-direction: column;
 }
@@ -1177,6 +1179,7 @@
 .aux-panel {
   width: var(--panel-width);
   flex-shrink: 0;
+  contain: layout;
   border-left: 1px solid var(--border);
   position: relative;
   background: var(--card);
@@ -1622,7 +1625,6 @@
 .resize-handle[data-dragging="true"] {
   background: var(--ring);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--ring) 22%, transparent);
-  will-change: transform;
   z-index: 50;
 }
 .settings-page {

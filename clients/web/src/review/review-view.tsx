@@ -78,6 +78,7 @@ export function ReviewView({
   const [editorWidth, setEditorWidth] = useState(800);
   const [sideBySide, setSideBySide] = useState(true);
   const editorPane = useRef<HTMLElement>(null);
+  const treePane = useRef<HTMLElement>(null);
   const readRequestID = useRef(0);
   const revertRequestID = useRef(0);
   const summaryRef = useRef(summary);
@@ -289,13 +290,21 @@ export function ReviewView({
         </section>
 
         {treeOpen && (
-          <aside className="review-tree-pane" style={{ width: treeWidth }}>
+          <aside
+            ref={treePane}
+            className="review-tree-pane"
+            style={{ width: treeWidth }}
+          >
             <ResizeHandle
               label="调整变更文件列表宽度"
               value={treeWidth}
               min={180}
               max={520}
               growToward="left"
+              onResize={(width) => {
+                if (treePane.current)
+                  treePane.current.style.width = `${width}px`;
+              }}
               onChange={setTreeWidth}
             />
             <div

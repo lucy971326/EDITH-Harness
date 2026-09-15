@@ -1,4 +1,4 @@
-import type { KeyboardEvent, PointerEvent } from "react";
+import { useEffect, useRef, type KeyboardEvent, type PointerEvent } from "react";
 
 export function ResizeHandle({
   label,
@@ -7,6 +7,7 @@ export function ResizeHandle({
   max,
   growToward,
   className = "",
+  onResize,
   onChange,
 }: {
   label: string;
@@ -15,8 +16,20 @@ export function ResizeHandle({
   max: number;
   growToward: "left" | "right";
   className?: string;
+  onResize: (value: number) => void;
   onChange: (value: number) => void;
 }) {
+  const resizeFrame = useRef<number | null>(null);
+  const pendingValue = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (resizeFrame.current !== null)
+        cancelAnimationFrame(resizeFrame.current);
+    },
+    [],
+  );
+
   function clamp(next: number) {
     return Math.max(min, Math.min(max, next));
   }
@@ -30,40 +43,49 @@ export function ResizeHandle({
     );
   }
 
-  function preview(event: PointerEvent<HTMLDivElement>) {
+  function resizeOnNextFrame(next: number) {
+    pendingValue.current = next;
+    if (resizeFrame.current !== null) return;
+    resizeFrame.current = requestAnimationFrame(() => {
+      resizeFrame.current = null;
+      const value = pendingValue.current;
+      pendingValue.current = null;
+      if (value !== null) onResize(value);
+    });
+  }
+
+  function move(event: PointerEvent<HTMLDivElement>) {
     const element = event.currentTarget;
     if (!element.hasPointerCapture(event.pointerId)) return;
-    const startValue = Number(element.dataset.startValue);
-    const next = dragValue(element, event.clientX);
-    const offset =
-      growToward === "right" ? next - startValue : startValue - next;
-    element.dataset.nextValue = String(next);
-    element.style.transform = `translateX(${offset}px)`;
+    resizeOnNextFrame(dragValue(element, event.clientX));
   }
 
   function finish(event: PointerEvent<HTMLDivElement>) {
     const element = event.currentTarget;
     if (!element.hasPointerCapture(event.pointerId)) return;
     const next = dragValue(element, event.clientX);
-    element.style.removeProperty("transform");
+    if (resizeFrame.current !== null) cancelAnimationFrame(resizeFrame.current);
+    resizeFrame.current = null;
+    pendingValue.current = null;
     delete element.dataset.dragging;
     delete element.dataset.startX;
     delete element.dataset.startValue;
-    delete element.dataset.nextValue;
     element.releasePointerCapture(event.pointerId);
-    // 长聊天只在松手时重新布局一次，拖动期间仅移动指示线。
+    onResize(next);
     onChange(next);
   }
 
   function cancel(event: PointerEvent<HTMLDivElement>) {
     const element = event.currentTarget;
-    element.style.removeProperty("transform");
+    if (resizeFrame.current !== null) cancelAnimationFrame(resizeFrame.current);
+    resizeFrame.current = null;
+    pendingValue.current = null;
     delete element.dataset.dragging;
     delete element.dataset.startX;
     delete element.dataset.startValue;
-    delete element.dataset.nextValue;
     if (element.hasPointerCapture(event.pointerId))
       element.releasePointerCapture(event.pointerId);
+    onResize(value);
   }
 
   function moveWithKeyboard(event: KeyboardEvent<HTMLDivElement>) {
@@ -88,11 +110,10 @@ export function ResizeHandle({
         event.preventDefault();
         event.currentTarget.dataset.startX = String(event.clientX);
         event.currentTarget.dataset.startValue = String(value);
-        event.currentTarget.dataset.nextValue = String(value);
         event.currentTarget.dataset.dragging = "true";
         event.currentTarget.setPointerCapture(event.pointerId);
       }}
-      onPointerMove={preview}
+      onPointerMove={move}
       onPointerUp={finish}
       onPointerCancel={cancel}
     />

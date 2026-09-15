@@ -105,6 +105,7 @@ export function shouldClearSubmittedDraft(
 }
 
 export default function App() {
+  const appElement = useRef<HTMLDivElement>(null);
   const [settings, setSettings] = useState(false);
   const [sidebar, setSidebar] = useState(true);
   const [sidebarWidth, setSidebarWidth] = useState(() =>
@@ -877,6 +878,7 @@ export default function App() {
   return (
     <TooltipProvider>
       <div
+        ref={appElement}
         className="app"
         data-panel-overlay={panelOverlay}
         style={
@@ -914,6 +916,12 @@ export default function App() {
             max={420}
             growToward="right"
             className="sidebar-resize-handle"
+            onResize={(width) =>
+              appElement.current?.style.setProperty(
+                "--sidebar-width",
+                `${width}px`,
+              )
+            }
             onChange={setSidebarWidth}
           />
         )}
@@ -1174,6 +1182,12 @@ export default function App() {
               min={320}
               max={panelMaxWidth}
               growToward="left"
+              onResize={(width) =>
+                appElement.current?.style.setProperty(
+                  "--panel-width",
+                  `${width}px`,
+                )
+              }
               onChange={setPanelWidth}
             />
             <WorkspaceTabs
