@@ -30,7 +30,6 @@ playground/
 
 reference.zip
 .codegraph/
-learn/
 # 实验原型不进入正式源码。
 prototypes/*
 .codegraph/
