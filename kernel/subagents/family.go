@@ -20,7 +20,7 @@ type admission struct {
 func (s *Subagents) admit(parentSessionID, parentRunID string) (admission, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.closed {
+	if s.ctx.Err() != nil {
 		return admission{}, ErrClosed
 	}
 	if parentSessionID == "" || parentRunID == "" {
@@ -39,7 +39,7 @@ func (s *Subagents) admit(parentSessionID, parentRunID string) (admission, error
 
 // admissionErrorLocked 的调用方持有 s.mu；父正常完成不使已接收操作失效。
 func (s *Subagents) admissionErrorLocked(permit admission) error {
-	if s.closed {
+	if s.ctx.Err() != nil {
 		return ErrClosed
 	}
 	family := s.families[permit.parentSessionID]

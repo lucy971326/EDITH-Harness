@@ -17,7 +17,7 @@ func (s *Subagents) Stop(ctx context.Context, parentSessionID, taskID string) er
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.closed {
+	if s.ctx.Err() != nil {
 		return ErrClosed
 	}
 	coord := s.coords[taskID]
@@ -52,7 +52,7 @@ func (s *Subagents) StopFamily(ctx context.Context, parentSessionID string) erro
 	}
 
 	s.mu.Lock()
-	if s.closed {
+	if s.ctx.Err() != nil {
 		s.mu.Unlock()
 		return ErrClosed
 	}

@@ -27,18 +27,18 @@ func (s *Subagents) Spawn(ctx context.Context, input SpawnInput) (SpawnResult, e
 	}
 
 	s.mu.RLock()
-	if s.closed {
+	if s.ctx.Err() != nil {
 		s.mu.RUnlock()
 		return SpawnResult{}, ErrClosed
 	}
-	s.inFlight.Add(1)
+	s.work.Add(1)
 	if _, isChild := s.childSessions[input.ParentSessionID]; isChild {
 		s.mu.RUnlock()
-		s.inFlight.Done()
+		s.work.Done()
 		return SpawnResult{}, ErrNestedDelegation
 	}
 	s.mu.RUnlock()
-	defer s.inFlight.Done()
+	defer s.work.Done()
 	permit, err := s.admit(input.ParentSessionID, input.ParentRunID)
 	if err != nil {
 		return SpawnResult{}, err

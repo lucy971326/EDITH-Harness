@@ -31,6 +31,7 @@ type taskCoord struct {
 
 // 活对象。挂在 Host 的 subagents 键上的子会话委派服务。
 type Subagents struct {
+	// 会话、配置与执行能力；store 保存本服务的任务关系。
 	sessions *session.Store
 	settings settings.SessionSettingsStore
 	agents   *agents.Service
@@ -38,26 +39,23 @@ type Subagents struct {
 	runner   *runner.Runner
 	store    *taskStore
 
-	ctx    context.Context
-	cancel context.CancelFunc
-
+	// 父子关系与停止边界。
 	mu            sync.RWMutex
-	closed        bool
-	closeOnce     sync.Once
-	closeDone     chan struct{}
-	closeErr      error
-	inFlight      sync.WaitGroup
 	childSessions map[string]string   // childSessionID -> taskID
 	parentTasks   map[string][]string // parentSessionID -> []taskID
 	coords        map[string]*taskCoord
 	families      map[string]familyState
 
-	wg          sync.WaitGroup
-	deliveryMu  sync.Mutex
-	confirmed   map[string]struct{} // 父账本已确认存在的通知；仅为可丢弃的进程内缓存。
-	pending     map[string]struct{} // 尚需定时重试投递的 taskID。
-	changed     chan struct{}
-	unsubscribe func()
+	// 回报投递与状态变化通知；changed 由 mu 保护。
+	deliveryMu sync.Mutex
+	confirmed  map[string]struct{} // 父账本已确认存在的通知；仅为可丢弃的进程内缓存。
+	pending    map[string]struct{} // 尚需定时重试投递的 taskID。
+	changed    chan struct{}
+
+	// 服务生命周期。取消与调用登记在 mu 下互斥，work 等待调用和后台一起退出。
+	ctx      context.Context
+	work     sync.WaitGroup
+	shutdown func() error
 }
 
 // NewSubagents 组装子会话委派服务并从统一持久化服务恢复关系。
@@ -121,8 +119,6 @@ func newSubagentsWithStore(
 		runner:        runnerService,
 		store:         store,
 		ctx:           ctx,
-		cancel:        cancel,
-		closeDone:     make(chan struct{}),
 		childSessions: make(map[string]string),
 		parentTasks:   make(map[string][]string),
 		coords:        make(map[string]*taskCoord),
@@ -155,7 +151,7 @@ func newSubagentsWithStore(
 		}
 	}
 
-	s.unsubscribe, err = events.Subscribe(eventRegistry, func(ctx context.Context, event runner.RunEvent) error {
+	unsubscribe, err := events.Subscribe(eventRegistry, func(ctx context.Context, event runner.RunEvent) error {
 		if event.Kind != runner.RunStarted {
 			return nil
 		}
@@ -165,7 +161,34 @@ func newSubagentsWithStore(
 		cancel()
 		return nil, err
 	}
-	s.wg.Add(1)
+	// 关闭资源只由此函数持有；OnceValue 负责并发等待与复用关闭结果。
+	s.shutdown = sync.OnceValue(func() error {
+		// 先关门并取消；之后不能再登记新的外部调用。
+		s.mu.Lock()
+		cancel()
+		s.mu.Unlock()
+		unsubscribe()
+
+		// 在途调用先登记派生工作再退出，计数不会在交接期间归零。
+		s.work.Wait()
+
+		s.mu.RLock()
+		coords := make([]*taskCoord, 0, len(s.coords))
+		for _, coord := range s.coords {
+			coords = append(coords, coord)
+		}
+		s.mu.RUnlock()
+		var deliveryErrs []error
+		for _, coord := range coords {
+			coord.mu.Lock()
+			if coord.deliveryErr != nil {
+				deliveryErrs = append(deliveryErrs, coord.deliveryErr)
+			}
+			coord.mu.Unlock()
+		}
+		return errors.Join(deliveryErrs...)
+	})
+	s.work.Add(1)
 	go s.deliverLoop()
 	return s, nil
 }
@@ -188,13 +211,13 @@ func (s *Subagents) Options(ctx context.Context) (OptionsResult, error) {
 		return OptionsResult{}, err
 	}
 	s.mu.RLock()
-	if s.closed {
+	if s.ctx.Err() != nil {
 		s.mu.RUnlock()
 		return OptionsResult{}, ErrClosed
 	}
-	s.inFlight.Add(1)
+	s.work.Add(1)
 	s.mu.RUnlock()
-	defer s.inFlight.Done()
+	defer s.work.Done()
 
 	agentList, err := s.agents.List()
 	if err != nil {
@@ -205,43 +228,13 @@ func (s *Subagents) Options(ctx context.Context) (OptionsResult, error) {
 
 // Close 拒绝新请求、取消孩子，并等待公开调用和后台工作退出。
 func (s *Subagents) Close() error {
-	s.closeOnce.Do(func() {
-		s.cancel()
-		s.unsubscribe()
-
-		s.mu.Lock()
-		s.closed = true
-		coords := make([]*taskCoord, 0, len(s.coords))
-		for _, coord := range s.coords {
-			coords = append(coords, coord)
-		}
-		s.mu.Unlock()
-
-		s.inFlight.Wait()
-		s.wg.Wait()
-
-		var deliveryErrs []error
-		for _, coord := range coords {
-			coord.mu.Lock()
-			if coord.deliveryErr != nil {
-				deliveryErrs = append(deliveryErrs, coord.deliveryErr)
-			}
-			coord.mu.Unlock()
-		}
-		if len(deliveryErrs) > 0 {
-			s.closeErr = errors.Join(deliveryErrs...)
-		}
-		close(s.closeDone)
-	})
-
-	<-s.closeDone
-	return s.closeErr
+	return s.shutdown()
 }
 
 func (s *Subagents) trackRun(handle *runner.RunHandle) {
-	s.wg.Add(1)
+	s.work.Add(1)
 	go func() {
-		defer s.wg.Done()
+		defer s.work.Done()
 		handle.Wait()
 		s.signalChange()
 	}()

@@ -38,14 +38,14 @@ func (s *Subagents) UpdateSettings(ctx context.Context, parentSessionID, taskID 
 	}
 
 	s.mu.RLock()
-	if s.closed {
+	if s.ctx.Err() != nil {
 		s.mu.RUnlock()
 		return TaskSettingsResult{}, ErrClosed
 	}
-	s.inFlight.Add(1)
+	s.work.Add(1)
 	coord := s.coords[taskID]
 	s.mu.RUnlock()
-	defer s.inFlight.Done()
+	defer s.work.Done()
 	if coord == nil {
 		return TaskSettingsResult{}, ErrTaskNotFound
 	}

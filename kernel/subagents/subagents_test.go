@@ -1126,6 +1126,11 @@ func TestCloseBlockedSpawnAndConcurrency(t *testing.T) {
 
 	// 服务已经开始关闭，但仍需等待被阻塞的 Spawn。
 	awaitSignal(t, f.subagents.ctx.Done())
+	select {
+	case <-closeErrs:
+		t.Error("close returned before blocked spawn exited")
+	case <-time.After(30 * time.Millisecond):
+	}
 
 	// 放开 Put
 	close(unblockPut)

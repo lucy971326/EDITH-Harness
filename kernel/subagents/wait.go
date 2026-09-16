@@ -18,11 +18,11 @@ func (s *Subagents) Wait(ctx context.Context, parentSessionID string, input Wait
 	}
 
 	s.mu.RLock()
-	if s.closed {
+	if s.ctx.Err() != nil {
 		s.mu.RUnlock()
 		return WaitResponse{}, ErrClosed
 	}
-	s.inFlight.Add(1)
+	s.work.Add(1)
 	generation := s.families[parentSessionID].generation
 	coords := make([]*taskCoord, 0, len(input.TaskIDs))
 	seenTasks := make(map[string]bool)
@@ -34,7 +34,7 @@ func (s *Subagents) Wait(ctx context.Context, parentSessionID string, input Wait
 		seenTasks[id] = true
 	}
 	s.mu.RUnlock()
-	defer s.inFlight.Done()
+	defer s.work.Done()
 
 	seen := make(map[string]bool)
 	for _, id := range input.SeenNotificationIDs {
@@ -147,17 +147,17 @@ func (s *Subagents) List(parentSessionID, taskID string) ([]TaskView, error) {
 	}
 
 	s.mu.RLock()
-	if s.closed {
+	if s.ctx.Err() != nil {
 		s.mu.RUnlock()
 		return nil, ErrClosed
 	}
-	s.inFlight.Add(1)
+	s.work.Add(1)
 	var targetCoords []*taskCoord
 	if taskID != "" {
 		coord := s.coords[taskID]
 		if coord == nil {
 			s.mu.RUnlock()
-			s.inFlight.Done()
+			s.work.Done()
 			return nil, ErrTaskNotFound
 		}
 		targetCoords = []*taskCoord{coord}
@@ -171,7 +171,7 @@ func (s *Subagents) List(parentSessionID, taskID string) ([]TaskView, error) {
 		}
 	}
 	s.mu.RUnlock()
-	defer s.inFlight.Done()
+	defer s.work.Done()
 
 	out := make([]TaskView, 0, len(targetCoords))
 	var queryErrs []error

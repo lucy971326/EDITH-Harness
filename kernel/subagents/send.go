@@ -35,7 +35,7 @@ func (s *Subagents) SendFromUser(ctx context.Context, parentSessionID, taskID st
 
 	s.mu.RLock()
 	coord := s.coords[taskID]
-	if s.closed {
+	if s.ctx.Err() != nil {
 		s.mu.RUnlock()
 		return SendResult{}, ErrClosed
 	}
@@ -85,18 +85,18 @@ func (s *Subagents) sendAccepted(ctx context.Context, parentSessionID, taskID st
 	}
 
 	s.mu.RLock()
-	if s.closed {
+	if s.ctx.Err() != nil {
 		s.mu.RUnlock()
 		return SendResult{}, ErrClosed
 	}
-	s.inFlight.Add(1)
+	s.work.Add(1)
 	coord := s.coords[taskID]
 	var stopGeneration uint64
 	if coord != nil {
 		stopGeneration = coord.stopGeneration
 	}
 	s.mu.RUnlock()
-	defer s.inFlight.Done()
+	defer s.work.Done()
 	if coord == nil {
 		return SendResult{}, ErrTaskNotFound
 	}

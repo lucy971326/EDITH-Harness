@@ -23,7 +23,7 @@ func (s *Subagents) changeSignal() <-chan struct{} {
 
 // deliverLoop 只向已有父 Run 重试通知，从不启动父会话。
 func (s *Subagents) deliverLoop() {
-	defer s.wg.Done()
+	defer s.work.Done()
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	retryOnly := false
@@ -55,11 +55,11 @@ func (s *Subagents) retryDeliveries() error {
 
 func (s *Subagents) deliverTasks(parentID string, retryOnly bool) error {
 	s.mu.RLock()
-	if s.closed || s.ctx.Err() != nil {
+	if s.ctx.Err() != nil {
 		s.mu.RUnlock()
 		return nil
 	}
-	s.inFlight.Add(1)
+	s.work.Add(1)
 	var coords []*taskCoord
 	if parentID != "" {
 		for _, id := range s.parentTasks[parentID] {
@@ -71,7 +71,7 @@ func (s *Subagents) deliverTasks(parentID string, retryOnly bool) error {
 		}
 	}
 	s.mu.RUnlock()
-	defer s.inFlight.Done()
+	defer s.work.Done()
 
 	s.deliveryMu.Lock()
 	defer s.deliveryMu.Unlock()

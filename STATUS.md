@@ -103,6 +103,8 @@ Windows 启动继续要求 Git Bash；Agent 长期进程与 UI 终端 PTY 均使
 
 ## 本次验证
 
+- Subagents 生命周期收为 `ctx / work / shutdown`：取消状态统一用于关闭准入，一份计数等待调用与后台退出，`sync.OnceValue` 复用关闭结果；取消与解除订阅函数只由关闭函数持有。补强了创建阻塞期间并发 Close 不得提前返回的测试。
+- 本次关闭基线与修改后的相关测试、Subagents 及产品/Runner/委派工具 race、Go vet、前端构建、64 项前端测试和 TS 契约检查通过。`make agent-check` 未全通过：本机 `plugins/machine/local.TestProcessOutputIsIncremental` 在普通与 race 检查均因首次输出为空失败，单独 race 复核仍失败；未修改该模块。
 - TypeScript 编译、生产构建、TS 契约检查及 64 项前端测试通过。
 - `apply_patch` 的真实 Delta、Run 内聚合、缓存与失效测试通过；Diff 正文恢复、分叉复制、单文件撤销和后续修改冲突测试通过。
 - 受 Runner 新增 machine 依赖影响的 subagents 与 ReAct 测试脚手架已补齐真实 machine-local；对应 race 检查通过。
