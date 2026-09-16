@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tool 与长期 PTY 进程现场</title>
+  <style>
+    html,body{margin:0;height:100%;overflow:hidden;background:#0a1118;color:#eaf5f8;font:14px/1.45 "PingFang SC","Noto Sans SC",sans-serif}canvas{display:block}.ui{position:absolute;inset:0;pointer-events:none}header{position:absolute;left:24px;top:20px;max-width:515px;text-shadow:0 2px 16px #000}h1{margin:0 0 4px;font-size:20px}header p{margin:0;color:#bcd3da;font-size:13px}.controls{position:absolute;right:24px;top:20px;display:flex;gap:8px;pointer-events:auto}button{border:1px solid #66d9ca66;border-radius:999px;background:#ffffff10;color:#9ce9df;padding:9px 16px;font-weight:700;cursor:pointer}#next{background:#74e2d1;color:#08221f;border:0}.caption{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);width:min(900px,calc(100% - 28px));background:#091923dd;border:1px solid #74e2d133;border-radius:16px;padding:14px 18px 12px;backdrop-filter:blur(12px)}.caption b{display:block;color:#74e2d1;font-size:13px;margin-bottom:4px}.dots{display:flex;gap:5px;margin-top:10px}.dots i{display:block;width:8px;height:8px;border-radius:99px;background:#74e2d133}.dots i.on{background:#74e2d1}
+  </style>
+</head>
+<body>
+  <div class="ui"><header><h1>Tool 与长期 PTY 进程现场</h1><p>拖动旋转；每次只移动一张票据。地面是账本，空中是会随进程消失的 machine-local 现场。</p></header><div class="controls"><button id="prev">上一步</button><button id="next">下一步</button></div><div class="caption" id="caption"><b></b><div></div><div class="dots" id="dots"></div></div></div>
+  <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
+  <script type="module">
+    import * as THREE from "three";
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+    const scene=new THREE.Scene();scene.background=new THREE.Color('#101c25');scene.fog=new THREE.Fog('#101c25',16,36);
+    const camera=new THREE.PerspectiveCamera(42,innerWidth/innerHeight,.1,80);camera.position.set(10,6.9,11.8);
+    const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=true;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.08;document.body.appendChild(renderer.domElement);
+    const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.target.set(0,1.45,.1);controls.minDistance=6;controls.maxDistance=19;controls.maxPolarAngle=Math.PI*.48;
+    scene.add(new THREE.HemisphereLight(0xcff8f0,0x172632,.82));const sun=new THREE.DirectionalLight(0xb4fff3,1.25);sun.position.set(7,11,5);sun.castShadow=true;scene.add(sun);scene.add(new THREE.PointLight(0x54dec9,2.2,17,1.6)).position.set(1,4.7,.4);
+    const std=(color,more={})=>new THREE.MeshStandardMaterial({color,roughness:.52,metalness:.08,...more});
+    const put=(geo,mat,x,y,z,parent=scene)=>{const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.castShadow=m.receiveShadow=true;parent.add(m);return m};
+    const tex=(paint,w=512,h=256)=>{const c=document.createElement('canvas');c.width=w;c.height=h;paint(c.getContext('2d'),w,h);const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t};
+    const face=(lines,bg='#ebfffb',fg='#153f42')=>tex((g,w,h)=>{g.fillStyle=bg;g.fillRect(0,0,w,h);g.fillStyle=fg;g.textAlign='center';g.font="700 32px 'PingFang SC',sans-serif";lines.forEach((line,i)=>g.fillText(line,w/2,86+i*48));});
+    function plaque(text,w=2){const s=new THREE.Sprite(new THREE.SpriteMaterial({map:tex((g,W,H)=>{g.fillStyle='#0a1923e8';g.roundRect(26,28,W-52,H-56,30);g.fill();g.strokeStyle='#74e2d199';g.lineWidth=6;g.stroke();g.fillStyle='#d5fff7';g.font="700 52px 'PingFang SC',sans-serif";g.textAlign='center';g.textBaseline='middle';g.fillText(text,W/2,H/2);}),transparent:true}));s.scale.set(w,w*.31,1);scene.add(s);return s}
+    const floor=put(new THREE.PlaneGeometry(16,13),std('#18313a',{roughness:.88}),0,0,.3);floor.rotation.x=-Math.PI/2;put(new THREE.BoxGeometry(16,4.1,.2),std('#15252d'),0,2.05,-6.1);put(new THREE.BoxGeometry(.2,4.1,13),std('#15252d'),-8,2.05,.3);
+    function book(x,z,color,label){const g=new THREE.Group();scene.add(g);g.position.set(x,0,z);put(new THREE.BoxGeometry(2.9,.16,1.85),std(color),0,.19,0,g);put(new THREE.BoxGeometry(2.66,.10,1.62),std('#dcebe6'),.04,.34,0,g);plaque(label,1.55).position.set(x,1.08,z);return g}
+    book(-4.05,2.6,'#35688a','Session 账本');
+    const registry=new THREE.Group();scene.add(registry);registry.position.set(-.75,1.42,.15);put(new THREE.CylinderGeometry(1.25,1.42,.38,28),std('#76559d',{metalness:.35}),0,0,0,registry);put(new THREE.CylinderGeometry(.94,1.02,.1,28),std('#d1b3f1',{emissive:'#8f53c4',emissiveIntensity:.32}),0,.25,0,registry);plaque('Tools Registry',1.85).position.set(-.75,2.25,.15);plaque('Allow + Schema',1.18).position.set(-.75,1.81,.72);
+    const machine=new THREE.Group();scene.add(machine);machine.position.set(3.85,1.02,.18);put(new THREE.BoxGeometry(3.35,1.75,2.2),std('#287668',{metalness:.2}),0,0,0,machine);put(new THREE.BoxGeometry(2.86,1.28,.08),std('#0a2524',{emissive:'#48d5b9',emissiveIntensity:.3}),0,.14,1.13,machine);const terminalText=new THREE.Mesh(new THREE.PlaneGeometry(2.62,1.04),new THREE.MeshBasicMaterial({map:face(['PTY · Bash','交互终端'],'#0b2525','#90f6e4')}));terminalText.position.set(3.85,1.16,1.24);scene.add(terminalText);plaque('machine-local',1.85).position.set(3.85,2.1,.18);plaque('PTY',.82).position.set(3.85,1.7,1.28);
+    const processShelf=new THREE.Group();scene.add(processShelf);processShelf.position.set(3.9,2.35,-.55);put(new THREE.BoxGeometry(3.35,.18,1.42),std('#385d70',{metalness:.28}),0,0,0,processShelf);put(new THREE.BoxGeometry(.12,1.15,1.25),std('#315263'),-1.42,-.56,0,processShelf);put(new THREE.BoxGeometry(.12,1.15,1.25),std('#315263'),1.42,-.56,0,processShelf);plaque('processes 进程表（内存）',2.45).position.set(3.9,3.17,-.55);
+    const buffer=new THREE.Group();scene.add(buffer);buffer.position.set(5.62,1.72,1.16);put(new THREE.CylinderGeometry(.38,.38,1.28,20),std('#e9b960',{transparent:true,opacity:.66,emissive:'#c7902b',emissiveIntensity:.18}),0,0,0,buffer);plaque('新增输出缓冲',1.12).position.set(5.62,2.55,1.16);
+    const wall=put(new THREE.BoxGeometry(3.9,1.72,.15),std('#12313a'),-.65,2.62,-5.96);const wallText=new THREE.Mesh(new THREE.PlaneGeometry(3.5,1.36),new THREE.MeshBasicMaterial({map:face(['墙上事件','不是进程状态'],'#0b2931','#a5f3e6')}));wallText.position.set(-.65,2.62,-5.86);scene.add(wallText);
+    function slip(lines,color='#fff3c9'){const g=new THREE.Group();scene.add(g);put(new THREE.BoxGeometry(1.3,.04,.82),std(color),0,0,0,g);const p=new THREE.Mesh(new THREE.PlaneGeometry(1.22,.74),new THREE.MeshBasicMaterial({map:face(lines,color,'#1e4045')}));p.rotation.x=-Math.PI/2;p.position.y=.026;g.add(p);g.visible=false;return g}
+    const call=slip(['模型调用','exec_command']);const request=slip(['ProcessRequest','TTY = true'],'#ead9ff');const card=slip(['localProcess','owner = Session A'],'#d8f7ea');const receipt=slip(['tool-result','process_id = 918'],'#d9f6ff');const input=slip(['write_stdin','"status\\n"'],'#f8e0ba');const output=slip(['新增输出','running…'],'#d9f6ff');const stop=slip(['取消 Run','终止进程树'],'#ffc9c9');
+    const pos={hide:new THREE.Vector3(0,14,0),ledger:new THREE.Vector3(-4.05,.48,2.6),registry:new THREE.Vector3(-.75,1.7,.15),machine:new THREE.Vector3(3.85,1.94,1.22),shelf:new THREE.Vector3(3.9,2.56,-.55),buffer:new THREE.Vector3(5.62,1.92,1.16),wall:new THREE.Vector3(-.65,2.62,-5.74)};
+    const target=new Map();function go(o,p,visible=true){o.visible=visible;target.set(o,p.clone());if(visible&&o.position.y>10)o.position.copy(p)}
+    const captions=[
+      ['0 / 10  先认地方','地面只有 Session 账本：那里留下工具调用和结果。紫色登记台、绿色 machine-local、PTY、进程表和输出缓冲都悬在空中，都是进程内存。'],
+      ['1 / 10  模型提出行动','模型要跑一个长期命令，产出 exec_command 调用。这张调用票最终会写进账本；模型只是在点菜单，还没有碰到操作系统。'],
+      ['2 / 10  Tools Registry 审核','票移到登记台。Registry 检查这轮 Allow 是否允许 exec_command，再用 JSON Schema 校验参数；菜单可见不等于无条件执行。'],
+      ['3 / 10  Tool 交给机器','exec_command 只把参数翻成 ProcessRequest：Bash、工作目录、TTY 和等待时间。票进入 machine-local；Tool 自己不保存进程。'],
+      ['4 / 10  机器创建 PTY 与进程记录','machine-local 启动 Bash 和 PTY，把 localProcess 放进 processes[随机 process_id]。卡片上的 owner=Session A 是可信归属，不来自模型参数。'],
+      ['5 / 10  首次等待到点：交付收据','命令还在跑时，machine-local 把 process_id 和目前输出交还。收据落进账本，进程卡仍留在空中的进程表，所以之后还能找到同一个进程。'],
+      ['6 / 10  下一次 Tool 用同一张收据','模型从历史里的 tool-result 知道 process_id，调用 write_stdin。新的输入票携带这个 ID；machine-local 还会核对调用者仍是 Session A。'],
+      ['7 / 10  字符进入同一个 PTY','输入票进入绿色终端。只有 TTY=true 时，chars 才能像终端输入一样写入 PTY；普通管道也能长期运行，但不能持续写普通 stdin。'],
+      ['8 / 10  只取新增输出','PTY 的新输出先进入进程的内存缓冲。write_stdin 轮询时取走这批新增字节，输出票落进账本；取走后缓冲清空，下一次只会看到更新。'],
+      ['9 / 10  取消或关闭时','Run 取消或 machine 关闭，会终止整棵进程树，再等待退出，然后从进程表移走卡片。Unix 用进程组，Windows 用 Job Object。'],
+      ['10 / 10  重启后留下什么','账本还在，里面能读到过去的调用、process_id 和输出；但进程表、PTY、缓冲都不持久化。重启后不能凭旧 process_id 接回旧进程。']
+    ];
+    const dots=document.getElementById('dots');captions.forEach(()=>dots.appendChild(document.createElement('i')));let step=0;
+    function show(n){step=Math.max(0,Math.min(captions.length-1,n));[call,request,card,receipt,input,output,stop].forEach(o=>go(o,pos.hide,false));processShelf.visible=step!==10;machine.visible=step!==10;buffer.visible=step!==10;wallText.material.map=face(['墙上事件','不是进程状态'],'#0b2931','#a5f3e6');
+      if(step>=1)go(call,pos.ledger);if(step===2)go(call,pos.registry);if(step>=3)go(request,pos.machine);if(step>=4)go(card,pos.shelf);if(step>=5){go(card,pos.shelf);go(receipt,pos.ledger)}if(step===6){go(card,pos.shelf);go(receipt,pos.ledger);go(input,pos.registry)}if(step===7){go(card,pos.shelf);go(receipt,pos.ledger);go(input,pos.machine)}if(step>=8&&step<10){go(card,pos.shelf);go(receipt,pos.ledger);go(output,pos.ledger)}if(step===9){go(stop,pos.machine);wallText.material.map=face(['取消 / Close','终止整棵进程树'],'#0b2931','#ffc9c9')}if(step===10){go(receipt,pos.ledger);go(output,pos.ledger);wallText.material.map=face(['进程现场已消失','账本仍在'],'#0b2931','#a5f3e6')}
+      document.querySelector('#caption b').textContent=captions[step][0];document.querySelector('#caption div').textContent=captions[step][1];[...dots.children].forEach((d,i)=>d.classList.toggle('on',i===step));}
+    document.getElementById('next').onclick=()=>show(step+1);document.getElementById('prev').onclick=()=>show(step-1);addEventListener('keydown',e=>{if(e.key==='ArrowRight')show(step+1);if(e.key==='ArrowLeft')show(step-1)});addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+    show(0);(function animate(){requestAnimationFrame(animate);for(const o of [call,request,card,receipt,input,output,stop]){const p=target.get(o);if(p)o.position.lerp(p,.09)}controls.update();renderer.render(scene,camera)})();
+  </script>
+</body>
+</html>
