@@ -10,7 +10,7 @@ import (
 	"harness/kernel/session/settings"
 )
 
-// Spawn 派出子任务：查父快照、校验一层委派、原子保存关系与内存发布、创建Session并启动。
+// Spawn 派出子任务：查父快照、校验委派深度、原子保存关系与内存发布、创建Session并启动。
 func (s *Subagents) Spawn(ctx context.Context, input SpawnInput) (SpawnResult, error) {
 	err := ctx.Err()
 	if err != nil {
@@ -32,10 +32,16 @@ func (s *Subagents) Spawn(ctx context.Context, input SpawnInput) (SpawnResult, e
 		return SpawnResult{}, ErrClosed
 	}
 	s.work.Add(1)
-	if _, isChild := s.childSessions[input.ParentSessionID]; isChild {
+	parentDepth, err := s.sessionDepthLocked(input.ParentSessionID)
+	if err != nil {
 		s.mu.RUnlock()
 		s.work.Done()
-		return SpawnResult{}, ErrNestedDelegation
+		return SpawnResult{}, err
+	}
+	if parentDepth >= maxDelegationDepth {
+		s.mu.RUnlock()
+		s.work.Done()
+		return SpawnResult{}, ErrDepthLimit
 	}
 	s.mu.RUnlock()
 	defer s.work.Done()

@@ -20,7 +20,7 @@ app-server → Product / 公共服务 → kernel
 - Client 共用 `clients/contracts/` 中手写的 TypeScript 契约；接口修改时同步 Go 与 TS，不自动生成。
 - UI 不直接拼 JSON-RPC 封套，不知道 Go Host、Runner 或 Product 的具体实现。
 - Wails 首版承载同一套前端并连接同一 WebSocket，不另写一套 IPC 业务层。
-- 文件面板通过 `fs/readFile / writeFile / readDirectory / getMetadata / watch` 调用后台；变化由 `fs/changed` 通知，取消监听复用 `server/unsubscribe`。Diff 审查通过 `harness/run/diff/read / revertFile` 按需读取和撤销单文件。终端通过 `command/exec / write / resize / terminate` 控制后台 PTY，并接收 `command/exec/outputDelta` 实时输出。子任务工作页通过 `harness/subagent/*` 查询、订阅、发送、设置、停止和审查 Diff；对外只使用父 SessionID 与 TaskID，不暴露子 SessionID。
+- 文件面板通过 `fs/readFile / writeFile / readDirectory / getMetadata / watch` 调用后台；变化由 `fs/changed` 通知，取消监听复用 `server/unsubscribe`。Diff 审查通过 `harness/run/diff/read / revertFile` 按需读取和撤销单文件。终端通过 `command/exec / write / resize / terminate` 控制后台 PTY，并接收 `command/exec/outputDelta` 实时输出。子任务工作页通过 `harness/subagent/*` 查询、订阅、发送、设置、停止和审查 Diff；操作始终使用直属父 SessionID 与 TaskID，订阅结果中的孩子 SessionID 只用于从当前面板打开下一层。
 
 ## 2. 状态边界
 
@@ -120,8 +120,8 @@ Composer 按聊天区域自身宽度响应：宽布局显示完整模型与推�
 - 本轮最后一条助手消息满足完整正文、无工具调用／压缩摘要且运行成功，才将 text 移到过程外；按落账次序选最后一条，不向前借旧说明。afterSeq 必须覆盖本轮最后输入，防止 Steer 后空输出误用旧回答。`runs.json` 引入前的旧历史没有运行状态时，只兼容外置已落账、完整且结构上合格的末条助手正文；工具状态仍显示“状态未记录”。无 RunID 的旧条目不伪造轮次。
 - 展示由 Snapshot 只读派生；工具按同一 Run 内的 ToolCall.ID 回填。未返回结果显示“等待结果”，不推断正在执行；结束仍无结果标“结果未记录”，未知运行状态则标“状态未记录”。
 - 工作过程按结构化 `role` 与 block kind 同级顺序展示：text 是普通说明，reasoning 是折叠项，连续 tool 合并为紧凑工具行，collaboration 显示为子任务回报卡片；只有展开详情局部缩进。不得解析正文猜阶段、重排账本或维护第二份展示状态。
-- 子任务创建和回报使用独立 Bot 图标及稳定 TaskID；点击后在辅助面板打开对应工作页，重复点击激活已有标签。子任务不能从辅助面板“＋”菜单创建，也不会自动弹出；关闭标签只取消该视图订阅，不停止孩子。
-- 子任务工作页复用普通消息时间线、工作过程、Tool、图片、Diff 和输入框；每个打开的标签在同一条 WebSocket 上使用独立 subscriptionID。可续聊和单独停止，空闲时可改模型与思考档位，不能修改 Agent 或工作区。
+- 子任务创建和回报使用独立 Bot 图标及稳定 TaskID；点击后在辅助面板打开对应工作页，子任务页中的孙子卡片可以继续打开独立标签，重复点击激活已有标签。标签显示 `主会话 › 孩子 › 孙子` 完整路径。子任务不能从辅助面板“＋”菜单创建，也不会自动弹出；关闭父标签不关闭后代标签，关闭标签只取消该视图订阅，不停止运行。
+- 子任务工作页复用普通消息时间线、工作过程、Tool、图片、Diff 和输入框；每个打开的标签在同一条 WebSocket 上使用独立 subscriptionID。可续聊和递归停止该任务族，空闲时可改模型与思考档位，不能修改 Agent 或工作区。
 - 子任务回报、压缩摘要在过程内提供折叠入口；纯问答没有其他过程内容时不画空过程壳。普通增量不覆盖手动折叠选择。
 - Markdown 只用于用户消息和最终回答，渲染后必须清洗；推理、工具参数和结果默认按纯文本显示。
 - 图片、模型、思考档位、Agent、命令和 Skill 候选都通过类型化接口取得。Agent 公共服务由 appserver 直接调用，不经 Product 转发。

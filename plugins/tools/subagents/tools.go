@@ -17,7 +17,7 @@ func toolEntries(s *delegation.Subagents) []tools.Tool {
 			value, err := s.Options(ctx)
 			return jsonResult(value, err)
 		}),
-		withIdentity("subagent_spawn", "Delegate asynchronously to a new child session. Give it a short taskName for the user-facing tab. Returns immediately after startup. Only one delegation level is allowed. The child shares your workspace, not your history.", func(ctx context.Context, call tools.Call, args spawnArgs) (tools.Result, error) {
+		withIdentity("subagent_spawn", "Delegate asynchronously to a new child session. Give it a short taskName for the user-facing tab. Returns immediately after startup. At most two delegation levels are allowed. The child shares your workspace, not your history.", func(ctx context.Context, call tools.Call, args spawnArgs) (tools.Result, error) {
 			value, err := s.Spawn(ctx, delegation.SpawnInput{
 				ParentSessionID: call.SessionID, ParentRunID: call.RunID,
 				TaskName: args.TaskName, Description: args.Description, AgentID: args.AgentID,
@@ -52,7 +52,7 @@ func toolEntries(s *delegation.Subagents) []tools.Tool {
 			value, err := s.Wait(ctx, call.SessionID, delegation.WaitInput{TaskIDs: args.TaskIDs, SeenNotificationIDs: args.SeenNotificationIDs, Timeout: time.Duration(seconds) * time.Second, InputSignal: call.InputSignal})
 			return jsonResult(value, err)
 		}),
-		withIdentity("subagent_stop", "Request cancellation of your child's current run, not the parent. Records remain available. Use subagent_list or subagent_wait to observe completion.", func(ctx context.Context, call tools.Call, args stopArgs) (tools.Result, error) {
+		withIdentity("subagent_stop", "Request cancellation of your child's current run and all descendant runs, not the parent. Records remain available. Use subagent_list or subagent_wait to observe completion.", func(ctx context.Context, call tools.Call, args stopArgs) (tools.Result, error) {
 			err := s.Stop(ctx, call.SessionID, args.TaskID)
 			return jsonResult(stopResult{TaskID: args.TaskID, StopRequested: err == nil}, err)
 		}),

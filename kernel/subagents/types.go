@@ -19,7 +19,7 @@ var (
 	ErrParentRequired     = errors.New("subagents: parent session and run id are required")
 	ErrTaskNameEmpty      = errors.New("subagents: task name cannot be empty")
 	ErrDescriptionEmpty   = errors.New("subagents: description cannot be empty")
-	ErrNestedDelegation   = errors.New("subagents: nested delegation not allowed (caller is already a child)")
+	ErrDepthLimit         = errors.New("subagents: delegation depth limit reached")
 	ErrOwnershipMismatch  = errors.New("subagents: task does not belong to specified parent session")
 	ErrTaskNotUsable      = errors.New("subagents: child session or settings incomplete")
 	ErrTaskActive         = errors.New("subagents: child run is active")

@@ -1193,6 +1193,7 @@ export default function App() {
             <WorkspaceTabs
               workspace={selected?.settings.workspace ?? null}
               sessionID={selectedID}
+              sessionTitle={selected?.title ?? null}
               runs={snapshot?.runs ?? []}
               runActive={!!currentRun}
               client={connected ? clientRef.current : null}

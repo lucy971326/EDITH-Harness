@@ -117,7 +117,7 @@ type SubscribeResult struct {
 	Snapshot       harness.Snapshot `json:"snapshot"`
 }
 
-// 对外 Subagent 接口：父会话与任务共同定位，绝不接受子 Session ID。
+// 对外 Subagent 接口：直属父会话与任务共同定位；父会话本身可以是 Subagent。
 
 // 数据。定位父会话中的一个子任务。
 type SubagentParams struct {
@@ -140,6 +140,7 @@ type SubagentSubscribeResult struct {
 	SubscriptionID string               `json:"subscriptionID"`
 	Task           harness.SubagentInfo `json:"task"`
 	Snapshot       harness.Snapshot     `json:"snapshot"`
+	ChildSessionID string               `json:"childSessionID" jsonschema:"minLength=1"`
 }
 
 // 数据。用户从子任务页面发送文字或图片。

@@ -150,6 +150,10 @@ func newSubagentsWithStore(
 			record:    record,
 		}
 	}
+	if err := s.validateTaskGraphLocked(); err != nil {
+		cancel()
+		return nil, fmt.Errorf("subagents: recover task graph: %w", err)
+	}
 
 	unsubscribe, err := events.Subscribe(eventRegistry, func(ctx context.Context, event runner.RunEvent) error {
 		if event.Kind != runner.RunStarted {

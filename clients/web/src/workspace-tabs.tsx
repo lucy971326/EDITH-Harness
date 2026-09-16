@@ -108,6 +108,7 @@ interface SubagentTab {
   parentSessionID: string;
   taskID: string;
   title: string;
+  ancestors: string[];
   status?: string;
 }
 
@@ -140,6 +141,7 @@ function storedTreeWidth(): number {
 function WorkspaceTabsComponent({
   workspace,
   sessionID,
+  sessionTitle,
   runs,
   runActive,
   client,
@@ -152,6 +154,7 @@ function WorkspaceTabsComponent({
 }: {
   workspace: string | null;
   sessionID: string | null;
+  sessionTitle: string | null;
   runs: RunState[];
   runActive: boolean;
   client: RPCClient | null;
@@ -217,6 +220,29 @@ function WorkspaceTabsComponent({
 
   function render() {
     setRevision((value) => value + 1);
+  }
+
+  function openSubagent(
+    parentSessionID: string,
+    taskID: string,
+    ancestors: string[],
+  ) {
+    const id = `subagent:${parentSessionID}:${taskID}`;
+    setSubagentTabs((current) =>
+      current.some((item) => item.id === id)
+        ? current
+        : [
+            ...current,
+            {
+              id,
+              parentSessionID,
+              taskID,
+              title: "Subagent",
+              ancestors,
+            },
+          ],
+    );
+    setActiveTabID(id);
   }
 
   function updateFile(path: string, update: (file: EditorFile) => void) {
@@ -376,21 +402,11 @@ function WorkspaceTabsComponent({
       return;
     if (subagentRequest.requestID === handledSubagentRequestID.current) return;
     handledSubagentRequestID.current = subagentRequest.requestID;
-    const id = `subagent:${subagentRequest.parentSessionID}:${subagentRequest.taskID}`;
-    setSubagentTabs((current) =>
-      current.some((item) => item.id === id)
-        ? current
-        : [
-            ...current,
-            {
-              id,
-              parentSessionID: subagentRequest.parentSessionID,
-              taskID: subagentRequest.taskID,
-              title: "Subagent",
-            },
-          ],
+    openSubagent(
+      subagentRequest.parentSessionID,
+      subagentRequest.taskID,
+      [],
     );
-    setActiveTabID(id);
   }, [subagentRequest?.requestID, sessionID]);
 
   async function openFile(path: string, target?: FileLocation) {
@@ -571,7 +587,9 @@ function WorkspaceTabsComponent({
     ...subagentTabs.map((tab) => ({
       id: tab.id,
       kind: "subagent",
-      title: tab.title,
+      title: [sessionTitle ?? "主会话", ...tab.ancestors, tab.title].join(
+        " › ",
+      ),
       contextPath: tab.taskID,
       status: tab.status,
     })),
@@ -809,6 +827,12 @@ function WorkspaceTabsComponent({
                   ),
                 )
               }
+              onOpenSubagent={(parentSessionID, taskID) =>
+                openSubagent(parentSessionID, taskID, [
+                  ...child.ancestors,
+                  child.title,
+                ])
+              }
               onOpenFile={(target) => void openFile(target.path, target)}
               onOpenDiff={(_runID, summary, childRunActive) => {
                 const id = `subagent-review:${child.taskID}:${summary.runID}`;
@@ -974,6 +998,7 @@ export const WorkspaceTabs = memo(
   (previous, next) =>
     previous.workspace === next.workspace &&
     previous.sessionID === next.sessionID &&
+    previous.sessionTitle === next.sessionTitle &&
     sameRunView(previous.runs, next.runs) &&
     previous.runActive === next.runActive &&
     previous.client === next.client &&

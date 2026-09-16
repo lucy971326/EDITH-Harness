@@ -43,7 +43,7 @@ type Snapshot struct {
 	SeqEpoch  string            `json:"seqEpoch"`
 }
 
-// 数据。Subagent 页面可见的任务身份与当前状态，不暴露子 Session ID。
+// 数据。Subagent 页面可见的任务身份与当前状态；孩子 Session ID 只随订阅结果返回。
 type SubagentInfo struct {
 	TaskID          string               `json:"taskID"`
 	TaskName        string               `json:"taskName"`

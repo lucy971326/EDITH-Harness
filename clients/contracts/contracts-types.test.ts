@@ -107,6 +107,12 @@ const childTarget: SubagentSubscribe["params"] = {
   parentSessionID: "parent",
   taskID: "task",
 };
+const childSubscription: SubagentSubscribe["result"] = {
+  subscriptionID: "subscription",
+  childSessionID: "child",
+  task: {} as SubagentSubscribe["result"]["task"],
+  snapshot: {} as SubagentSubscribe["result"]["snapshot"],
+};
 const childSettings: SubagentSettings["params"] = {
   parentSessionID: "parent",
   taskID: "task",
@@ -125,7 +131,7 @@ const changedChildAgent: SubagentSettings["params"] = {
   // @ts-expect-error Agent 类型和工作区不是子任务页面可修改的设置。
   agentID: "other",
 };
-void [childTarget, childSettings, exposedChildSession, changedChildAgent];
+void [childTarget, childSubscription, childSettings, exposedChildSession, changedChildAgent];
 
 type ReadFile = ServerMethods["fs/readFile"];
 type WriteFile = ServerMethods["fs/writeFile"];

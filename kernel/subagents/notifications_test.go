@@ -194,6 +194,88 @@ func TestFinalCheckpointRetainsNotificationUntilUserStarts(t *testing.T) {
 	}
 }
 
+func TestGrandchildResultEntersDirectParentOnNextRun(t *testing.T) {
+	f := newSubagentsFixture(t)
+	defer f.host.Close()
+	_, parent := notificationParent(t, f)
+	child := notificationChild(t, f, parent)
+	f.loop.release()
+	_, err := f.subagents.Wait(context.Background(), parent.SessionID, WaitInput{
+		TaskIDs: []string{child.TaskID}, Timeout: time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	childTurn, err := f.subagents.Send(context.Background(), parent.SessionID, parent.RunID, child.TaskID, session.UserMessage{
+		Blocks: []session.Block{{Kind: "text", Text: "delegate deeper"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	childInvocation := f.loop.waitStarted(t)
+	grandchild, err := f.subagents.Spawn(context.Background(), SpawnInput{
+		TaskName: "grandchild", ParentSessionID: child.ChildSessionID,
+		ParentRunID: childInvocation.RunID, Description: "nested work",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.loop.waitStarted(t)
+
+	// 直属父亲先结束，孙子随后完成；回报必须保留到直属父亲的下一轮。
+	if !f.runner.StopRun(child.ChildSessionID, childTurn.RunID) {
+		t.Fatal("child run was not active")
+	}
+	deadline := time.Now().Add(time.Second)
+	for {
+		if _, active := f.runner.State(child.ChildSessionID); !active {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("child run did not stop")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	f.loop.release()
+	_, err = f.subagents.Wait(context.Background(), child.ChildSessionID, WaitInput{
+		TaskIDs: []string{grandchild.TaskID}, Timeout: time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entries := collaborationEntries(t, f, child.ChildSessionID); len(entries) != 0 {
+		t.Fatalf("grandchild result entered idle parent: %+v", entries)
+	}
+
+	_, err = f.subagents.Send(context.Background(), parent.SessionID, parent.RunID, child.TaskID, session.UserMessage{
+		Blocks: []session.Block{{Kind: "text", Text: "continue child"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	nextChild := f.loop.waitStarted(t)
+	count := 0
+	for _, message := range nextChild.History {
+		if message.Role == session.RoleCollaboration && message.SourceTaskID == grandchild.TaskID {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("child initial history has %d grandchild results: %+v", count, nextChild.History)
+	}
+
+	rootMessages, err := parent.Checkpoint(context.Background(), loops.CheckpointContinue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, message := range rootMessages {
+		if message.SourceTaskID == grandchild.TaskID {
+			t.Fatalf("grandchild result bypassed direct parent: %+v", message)
+		}
+	}
+}
+
 func TestWaitUserInputAndCancellationDoNotStopChildren(t *testing.T) {
 	f := newSubagentsFixture(t)
 	defer f.host.Close()

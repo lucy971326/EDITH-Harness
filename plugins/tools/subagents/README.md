@@ -4,11 +4,11 @@
 
 ```text
 subagent_options  查看可用 Agent / 模型
-subagent_spawn    派出任务
+subagent_spawn    派出任务（主会话第 0 层，最多到第 2 层）
 subagent_send     追加指令
 subagent_list     查看任务
 subagent_wait     等待完成
-subagent_stop     停止任务
+subagent_stop     停止任务及其全部后代
 ```
 
 - `tools.go`：工具声明与调用转发。

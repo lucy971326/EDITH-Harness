@@ -18,6 +18,7 @@ export function SubagentView({
   agents,
   active,
   onTask,
+  onOpenSubagent,
   onOpenFile,
   onOpenDiff,
   onDiffUpdate,
@@ -29,6 +30,7 @@ export function SubagentView({
   agents: AgentView[] | null;
   active: boolean;
   onTask: (task: SubagentInfo) => void;
+  onOpenSubagent: (parentSessionID: string, taskID: string) => void;
   onOpenFile: (location: FileLocation) => void;
   onOpenDiff: (
     runID: string,
@@ -53,6 +55,7 @@ export function SubagentView({
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [generation, setGeneration] = useState(0);
   const subscription = useRef("");
+  const childSessionID = useRef("");
   const compressionPending = useRef(false);
   const snapshotRef = useRef<Snapshot | null>(null);
   const taskRef = useRef<SubagentInfo | null>(null);
@@ -75,6 +78,7 @@ export function SubagentView({
   }
 
   useEffect(() => {
+    childSessionID.current = "";
     if (!client?.connected) {
       setSyncing(true);
       return;
@@ -132,6 +136,7 @@ export function SubagentView({
         }
         subscriptionID = result.subscriptionID;
         subscription.current = subscriptionID;
+        childSessionID.current = result.childSessionID;
         taskRef.current = result.task;
         snapshotRef.current = result.snapshot;
         setTask(result.task);
@@ -292,6 +297,10 @@ export function SubagentView({
             ) ?? false,
           )
         }
+        onOpenSubagent={(nestedTaskID) => {
+          if (childSessionID.current)
+            onOpenSubagent(childSessionID.current, nestedTaskID);
+        }}
       >
         <div className="empty-chat">
           <h1>{syncing ? "正在同步子任务…" : (task?.taskName ?? "子任务")}</h1>

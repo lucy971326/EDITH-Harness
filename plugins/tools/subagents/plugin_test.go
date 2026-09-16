@@ -295,12 +295,6 @@ func TestToolLifecycleAndIsolation(t *testing.T) {
 	if wait.Tasks[0].Status != delegation.StatusRunning {
 		t.Fatalf("immediate wait: %+v", wait)
 	}
-	// 孩子即使有工具权限也不能派孙子。
-	nested := f
-	nested.parent = invocation
-	if !nested.call(t, "subagent_spawn", `{"taskName":"test","description":"grandchild"}`).IsError {
-		t.Fatal("nested delegation accepted")
-	}
 	intruder := f
 	intruder.parent.SessionID = "intruder"
 	for _, name := range []string{"subagent_list", "subagent_wait", "subagent_stop"} {
@@ -362,6 +356,26 @@ func TestToolLifecycleAndIsolation(t *testing.T) {
 	_, active := f.runner.State("parent")
 	if !active {
 		t.Fatal("child stop also stopped parent")
+	}
+}
+
+func TestToolDelegationDepthLimit(t *testing.T) {
+	f := newFixture(t)
+	child := decode[delegation.SpawnResult](t, f.call(t, "subagent_spawn", `{"taskName":"child","description":"child"}`))
+	childInvocation := f.nextRun(t)
+
+	nested := f
+	nested.parent = childInvocation
+	grandchild := decode[delegation.SpawnResult](t, nested.call(t, "subagent_spawn", `{"taskName":"grandchild","description":"grandchild"}`))
+	if child.TaskID == "" || grandchild.TaskID == "" {
+		t.Fatal("two delegation levels were not created")
+	}
+	grandchildInvocation := f.nextRun(t)
+
+	tooDeep := f
+	tooDeep.parent = grandchildInvocation
+	if !tooDeep.call(t, "subagent_spawn", `{"taskName":"too-deep","description":"great grandchild"}`).IsError {
+		t.Fatal("delegation exceeded depth limit")
 	}
 }
 

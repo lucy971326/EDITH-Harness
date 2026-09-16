@@ -3,14 +3,16 @@
 > 用父 Session 委派、等待和控制子 Session。
 
 ```text
-父 Session
-   └─ task.json（只记关系）
+主 Session（第 0 层）
+   └─ task.json（直属关系）
           ↓
-      子 Session（完整普通会话）
-          ↓
-状态 / 结果从子会话投影
-          ↓
-回报写进父账本
+      子 Session（第 1 层）
+         └─ task.json（直属关系）
+                ↓
+            孙子 Session（第 2 层）
+
+每层状态 / 结果从自己的会话投影
+回报只写进直属父账本
 ```
 
 ## 从哪里读
@@ -30,6 +32,8 @@ store.go          task.json 关系文件
 ## 铁律
 
 - 子 Session 与主 Session 平级，格式完全一致。
-- `task.json` 不复制状态、结果或 delivered。
+- 最大深度固定为 2；第 2 层不能继续委派。
+- `task.json` 不复制 depth、rootID、状态、结果或 delivered。
 - 子账本是执行事实；父账本中的 MessageID 是回报已送达的证明。
+- Stop 沿父子关系停止目标及全部后代；正常完成不停止孩子。
 - 内存缓存可以丢，重启后必须能从账本恢复判断。

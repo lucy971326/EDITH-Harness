@@ -650,7 +650,7 @@ func TestSubagentsFastCompletionAndResultBinding(t *testing.T) {
 	}
 }
 
-func TestSubagentsNestedDelegationRejected(t *testing.T) {
+func TestSubagentsDelegationDepthLimit(t *testing.T) {
 	f := newSubagentsFixture(t)
 	defer f.host.Close()
 
@@ -658,7 +658,7 @@ func TestSubagentsNestedDelegationRejected(t *testing.T) {
 	parentSessionID, parentRunID := createParentRun(t, f, workspace)
 	defer f.loop.releaseParent()
 
-	spawnRes, err := f.subagents.Spawn(context.Background(), SpawnInput{
+	child, err := f.subagents.Spawn(context.Background(), SpawnInput{
 		TaskName:        "test",
 		ParentSessionID: parentSessionID,
 		ParentRunID:     parentRunID,
@@ -667,19 +667,34 @@ func TestSubagentsNestedDelegationRejected(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.loop.waitStarted(t)
+	childRun := f.loop.waitStarted(t)
 
-	// 尝试以孩子作为父进行二级委派
+	// 第一层孩子可以继续派出第二层孩子。
+	grandchild, err := f.subagents.Spawn(context.Background(), SpawnInput{
+		TaskName:        "test",
+		ParentSessionID: child.ChildSessionID,
+		ParentRunID:     childRun.RunID,
+		Description:     "grandchild",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	grandchildRun := f.loop.waitStarted(t)
+
+	// 第二层已经到达固定上限，不能再派第三层。
 	_, err = f.subagents.Spawn(context.Background(), SpawnInput{
 		TaskName:        "test",
-		ParentSessionID: spawnRes.ChildSessionID,
-		ParentRunID:     spawnRes.RunID,
-		Description:     "nested child",
+		ParentSessionID: grandchild.ChildSessionID,
+		ParentRunID:     grandchildRun.RunID,
+		Description:     "great grandchild",
 	})
-	if !errors.Is(err, ErrNestedDelegation) {
-		t.Fatalf("expected ErrNestedDelegation, got %v", err)
+	if !errors.Is(err, ErrDepthLimit) {
+		t.Fatalf("expected ErrDepthLimit, got %v", err)
 	}
-	f.loop.release()
+	tasks, err := f.subagents.List(child.ChildSessionID, grandchild.TaskID)
+	if err != nil || len(tasks) != 1 || tasks[0].ChildSessionID != grandchild.ChildSessionID {
+		t.Fatalf("grandchild relation missing: %+v, %v", tasks, err)
+	}
 }
 
 func TestSubagentsSendIdleAndMultiTurn(t *testing.T) {

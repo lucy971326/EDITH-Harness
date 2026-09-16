@@ -47,6 +47,7 @@ func (s *Server) handleSubagentSubscribe(ctx context.Context, input SubagentPara
 	listener.start(snapshot.Snapshot)
 	return SubagentSubscribeResult{
 		SubscriptionID: subscription.ID(), Task: snapshot.Task, Snapshot: snapshot.Snapshot,
+		ChildSessionID: snapshot.ChildSessionID,
 	}, nil
 }
 

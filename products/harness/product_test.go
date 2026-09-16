@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"harness/products/harness"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,6 +25,9 @@ import (
 	"harness/kernel/subagents"
 	"harness/kernel/tools"
 	machinelocal "harness/plugins/machine/local"
+	"harness/products/harness"
+
+	"github.com/coder/websocket"
 )
 
 func TestProductRunsWithoutWebAndForksCompletedSegment(t *testing.T) {
@@ -491,4 +494,146 @@ func TestSubagentsChatIsolation(t *testing.T) {
 	if !errors.Is(err, harness.ErrSessionNotFound) {
 		t.Fatalf("expected ErrSessionNotFound, got %v", err)
 	}
+}
+
+func TestNestedSubagentInterfacesUseDirectParent(t *testing.T) {
+	fixture := newTestFixture(t)
+	defer fixture.host.Close()
+
+	created, err := fixture.service.Create(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = fixture.service.Start(t.Context(), harness.RunInput{
+		SessionID: created.Meta.ID, Model: "deepseek/deepseek-flash", ReasoningEffort: "high",
+		Message: session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "root"}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := fixture.loop.waitStarted(t)
+	child, err := fixture.subagents.Spawn(t.Context(), subagents.SpawnInput{
+		TaskName: "child", ParentSessionID: created.Meta.ID, ParentRunID: root.RunID, Description: "delegate",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.loop.waitStarted(t)
+	grandchild, err := fixture.subagents.Spawn(t.Context(), subagents.SpawnInput{
+		TaskName: "grandchild", ParentSessionID: child.ChildSessionID, ParentRunID: child.RunID, Description: "nested delegate",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.loop.waitStarted(t)
+
+	tasks, err := fixture.service.SubagentList(child.ChildSessionID)
+	if err != nil || len(tasks) != 1 || tasks[0].TaskID != grandchild.TaskID {
+		t.Fatalf("nested list = %+v, %v", tasks, err)
+	}
+	snapshot, err := fixture.service.SubagentSnapshot(child.ChildSessionID, grandchild.TaskID)
+	if err != nil || snapshot.ChildSessionID != grandchild.ChildSessionID {
+		t.Fatalf("nested snapshot = %+v, %v", snapshot, err)
+	}
+	_, err = fixture.service.SubagentSnapshot(created.Meta.ID, grandchild.TaskID)
+	if err == nil {
+		t.Fatalf("wrong direct parent accessed grandchild: %v", err)
+	}
+	for _, childSessionID := range []string{child.ChildSessionID, grandchild.ChildSessionID} {
+		_, err = fixture.service.Session(childSessionID)
+		if !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("ordinary session API exposed %q: %v", childSessionID, err)
+		}
+	}
+
+	// 真实 WebSocket 订阅必须带回下一层面板继续导航所需的孩子 Session ID。
+	server := newRPCServer(t, fixture)
+	defer server.Close()
+	baseURL, err := server.Listen("127.0.0.1:0", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ws, _, err := websocket.Dial(t.Context(), "ws"+strings.TrimPrefix(baseURL, "http")+"/rpc", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ws.CloseNow()
+	writeSocketRequest(t, ws, `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1}}`)
+	readSocketResponse(t, ws)
+	params, err := json.Marshal(appserver.SubagentParams{ParentSessionID: child.ChildSessionID, TaskID: grandchild.TaskID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeSocketRequest(t, ws, string(mustJSON(t, map[string]any{
+		"jsonrpc": "2.0", "id": 2, "method": "harness/subagent/subscribe", "params": json.RawMessage(params),
+	})))
+	response := readSocketResponse(t, ws)
+	if response.Error != nil {
+		t.Fatalf("nested subscribe: %+v", response.Error)
+	}
+	var subscribed appserver.SubagentSubscribeResult
+	if err := json.Unmarshal(response.Result, &subscribed); err != nil {
+		t.Fatal(err)
+	}
+	if subscribed.ChildSessionID != grandchild.ChildSessionID {
+		t.Fatalf("subscribe childSessionID = %q, want %q", subscribed.ChildSessionID, grandchild.ChildSessionID)
+	}
+
+	err = fixture.service.StopSubagent(t.Context(), child.ChildSessionID, grandchild.TaskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, fixture.runner, grandchild.ChildSessionID)
+	updated, err := fixture.service.UpdateSubagentSettings(t.Context(), child.ChildSessionID, grandchild.TaskID, "deepseek/deepseek-flash", "high")
+	if err != nil || updated.Model != "deepseek/deepseek-flash" {
+		t.Fatalf("nested settings = %+v, %v", updated, err)
+	}
+	sent, err := fixture.service.SendSubagent(t.Context(), child.ChildSessionID, grandchild.TaskID, session.UserMessage{
+		Blocks: []session.Block{{Kind: "text", Text: "more work"}},
+	})
+	if err != nil || sent.Steered {
+		t.Fatalf("nested send = %+v, %v", sent, err)
+	}
+	fixture.loop.waitStarted(t)
+}
+
+type socketRPCResponse struct {
+	Result json.RawMessage `json:"result"`
+	Error  *struct {
+		Code    int64  `json:"code"`
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+func writeSocketRequest(t *testing.T, ws *websocket.Conn, raw string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	if err := ws.Write(ctx, websocket.MessageText, []byte(raw)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func readSocketResponse(t *testing.T, ws *websocket.Conn) socketRPCResponse {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	_, raw, err := ws.Read(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var response socketRPCResponse
+	if err := json.Unmarshal(raw, &response); err != nil {
+		t.Fatal(err)
+	}
+	return response
+}
+
+func mustJSON(t *testing.T, value any) []byte {
+	t.Helper()
+	raw, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
 }

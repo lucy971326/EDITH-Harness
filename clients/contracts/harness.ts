@@ -116,6 +116,7 @@ export interface SubagentSubscribeResult {
   subscriptionID: string;
   task: SubagentInfo;
   snapshot: Snapshot;
+  childSessionID: string;
 }
 export interface SubagentSendParams extends SubagentParams {
   text?: string;
