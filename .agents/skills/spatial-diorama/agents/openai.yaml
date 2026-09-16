@@ -1,0 +1,6 @@
+interface:
+  display_name: "空间沙盘讲解"
+  short_description: "用可旋转三维沙盘讲清运行时数据住在哪、何时搬家"
+  default_prompt: "用 $spatial-diorama 把这块运行时状态摆成可旋转的三维沙盘：什么在内存，什么在磁盘，何时搬家。"
+policy:
+  allow_implicit_invocation: true
