@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Runner 多轮现场</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #0d0b09; overflow: hidden; font: 14px/1.45 "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif; color: #f7efe2; }
+    canvas { display: block; }
+    .ui { position: absolute; inset: 0; pointer-events: none; }
+    header { position: absolute; left: 24px; top: 20px; max-width: 460px; text-shadow: 0 2px 16px #000; }
+    h1 { margin: 0 0 4px; font-size: 20px; }
+    header p { margin: 0; color: #d9cbb3; font-size: 13px; }
+    .controls { position: absolute; right: 24px; top: 20px; display: flex; gap: 8px; pointer-events: auto; }
+    button { border: 0; border-radius: 999px; padding: 9px 16px; font-weight: 700; cursor: pointer; font-size: 13px; }
+    #next { background: #f0c36a; color: #1b140c; }
+    .ghost { background: #ffffff12; color: #f0c36a; border: 1px solid #f0c36a55 !important; }
+    .caption { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); width: min(860px, calc(100% - 28px)); background: #140f0cd4; border: 1px solid #f0c36a33; border-radius: 16px; padding: 14px 18px 12px; backdrop-filter: blur(12px); }
+    .caption b { color: #f0c36a; display: block; margin-bottom: 4px; font-size: 13px; }
+    .dots { display: flex; gap: 5px; margin-top: 10px; flex-wrap: wrap; }
+    .dots i { width: 8px; height: 8px; border-radius: 99px; background: #f0c36a33; display: block; }
+    .dots i.on { background: #f0c36a; }
+  </style>
+</head>
+<body>
+  <div class="ui">
+    <header>
+      <h1>Runner 多轮现场</h1>
+      <p>拖动旋转。看 Loop 怎么一轮一轮决定：有工具或有加菜就继续，两样都没有才停。</p>
+    </header>
+    <div class="controls">
+      <button class="ghost" id="prev">上一步</button>
+      <button id="next">下一步</button>
+    </div>
+    <div class="caption" id="caption"><b>0</b><div></div><div class="dots" id="dots"></div></div>
+  </div>
+  <script type="importmap">{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }}</script>
+  <script type="module">
+    import * as THREE from "three";
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+    const caption = document.getElementById("caption");
+    const dots = document.getElementById("dots");
+    const LAST = 12;
+    for (let n = 0; n <= LAST; n++) dots.appendChild(document.createElement("i"));
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color("#1a1510");
+    scene.fog = new THREE.Fog("#1a1510", 16, 36);
+    const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.1, 80);
+    camera.position.set(9.6, 6, 10.2);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.12;
+    document.body.appendChild(renderer.domElement);
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true; controls.target.set(0.2, 1.7, 0.1);
+    controls.maxPolarAngle = Math.PI * 0.47; controls.minDistance = 6; controls.maxDistance = 18;
+    scene.add(new THREE.HemisphereLight(0xffe6bf, 0x2a2118, 0.72));
+    const sun = new THREE.DirectionalLight(0xffe1b0, 1.3); sun.position.set(7, 12, 6); sun.castShadow = true; scene.add(sun);
+    scene.add(new THREE.PointLight(0xffc56a, 2.2, 16, 1.6)).position.set(0, 6.2, 0.4);
+
+    function tex(draw, w=512,h=512){const c=document.createElement("canvas");c.width=w;c.height=h;draw(c.getContext("2d"),w,h);const t=new THREE.CanvasTexture(c);t.anisotropy=8;t.colorSpace=THREE.SRGBColorSpace;return t;}
+    const woodTex=tex((g,w,h)=>{g.fillStyle="#6b4a2c";g.fillRect(0,0,w,h);for(let i=0;i<70;i++){g.strokeStyle=`rgba(30,16,6,${0.06+Math.random()*0.1})`;g.beginPath();g.moveTo(0,i*8);g.bezierCurveTo(w*.3,i*8+5,w*.7,i*8-5,w,i*8);g.stroke();}});
+    woodTex.wrapS=woodTex.wrapT=THREE.RepeatWrapping;woodTex.repeat.set(2,2);
+    const paperTex=tex((g,w,h)=>{g.fillStyle="#f6ecd0";g.fillRect(0,0,w,h);g.strokeStyle="#e2d3aa";for(let y=36;y<h;y+=28){g.beginPath();g.moveTo(20,y);g.lineTo(w-12,y);g.stroke();}},256,256);
+    function mesh(geo,mat,x,y,z,parent=scene){const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m;}
+    function std(c,e={}){return new THREE.MeshStandardMaterial({color:c,roughness:.55,metalness:.08,...e});}
+    function faceCanvas(w,h,paint){const c=document.createElement("canvas");c.width=w;c.height=h;paint(c.getContext("2d"),w,h);const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t;}
+    function plaque(text,width=2.4){const c=document.createElement("canvas");c.width=1024;c.height=256;const g=c.getContext("2d");g.fillStyle="#1b140ce8";g.roundRect(40,40,944,176,40);g.fill();g.strokeStyle="#f0c36a99";g.lineWidth=8;g.stroke();g.fillStyle="#f6e7c6";g.font="700 58px 'PingFang SC',sans-serif";g.textAlign="center";g.textBaseline="middle";g.fillText(text,512,128);const s=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true}));s.scale.set(width,width*.25,1);scene.add(s);return s;}
+
+    const floor=mesh(new THREE.PlaneGeometry(16,13),new THREE.MeshStandardMaterial({map:woodTex,roughness:.85}),0,0,.4);floor.rotation.x=-Math.PI/2;
+    mesh(new THREE.BoxGeometry(16,4.6,.22),std("#2b241c"),0,2.3,-6.1);
+    mesh(new THREE.BoxGeometry(.22,4.6,13),std("#261f19"),-8,2.3,.4);
+    const screenMat=std("#07140d",{emissive:"#1d5c38",emissiveIntensity:.15});
+    mesh(new THREE.BoxGeometry(3.8,2.4,.18),std("#1a1512"),-1.7,2.6,-6.05);
+    mesh(new THREE.BoxGeometry(3.35,1.95,.05),screenMat,-1.7,2.6,-5.94);
+    const screenText=new THREE.Mesh(new THREE.PlaneGeometry(3.15,1.75),new THREE.MeshBasicMaterial());
+    screenText.position.set(-1.7,2.6,-5.9);scene.add(screenText);
+    function paintScreen(title,line){screenText.material.map=faceCanvas(1024,576,g=>{g.fillStyle="#07140d";g.fillRect(0,0,1024,576);g.fillStyle="#7dffb0";g.font="700 42px 'PingFang SC',sans-serif";g.fillText(title,60,100);g.fillStyle="#c6f5d6";g.font="34px 'PingFang SC',sans-serif";g.fillText(line,60,200);g.fillStyle="#4d7a5e";g.font="26px sans-serif";g.fillText("没工具且托盘空 → 停",60,470);});screenMat.emissiveIntensity=1.3;}
+    paintScreen("屏幕 · 只听铃","现在是空的");
+
+    const island=new THREE.Group();scene.add(island);
+    mesh(new THREE.BoxGeometry(4.8,.16,3.3),std("#e2b15a",{metalness:.35,roughness:.28}),0,2.42,0,island);
+    mesh(new THREE.BoxGeometry(4.6,.22,3.1),std("#7a4e24"),0,2.24,0,island);
+    [[-2,-1.3],[2,-1.3],[-2,1.3],[2,1.3]].forEach(([x,z])=>mesh(new THREE.CylinderGeometry(.09,.12,2.16,12),std("#5c3a1d"),x,1.08,z,island));
+    mesh(new THREE.BoxGeometry(1.86,1.3,.08),std("#5b3b1d"),-1.25,3.2,.08,island);
+    mesh(new THREE.BoxGeometry(1.7,1.15,.04),new THREE.MeshStandardMaterial({map:paperTex}),-1.25,3.2,.14,island);
+    mesh(new THREE.BoxGeometry(1.62,.12,1.12),std("#6a4022"),1.2,2.55,.55,island);
+    mesh(new THREE.BoxGeometry(1.55,.07,1.05),std("#8a5a32"),1.2,2.62,.55,island);
+    const bell=new THREE.Group();island.add(bell);bell.position.set(1.45,2.72,-.15);
+    mesh(new THREE.SphereGeometry(.28,20,12,0,Math.PI*2,0,Math.PI/2),std("#d7a441",{metalness:.7,roughness:.25}),0,.18,0,bell);
+
+    const book=new THREE.Group();scene.add(book);book.position.set(-3.55,0,2.4);
+    mesh(new THREE.BoxGeometry(2.5,.12,1.8),std("#3d5c9a"),0,.18,0,book);
+    mesh(new THREE.BoxGeometry(2.35,.16,1.65),new THREE.MeshStandardMaterial({map:paperTex}),.04,.3,0,book);
+    mesh(new THREE.BoxGeometry(1.9,1.55,1.25),std("#8d8377"),3.7,.78,2.45);
+
+    plaque("白板 本轮草稿",2.2).position.set(-1.25,4.15,.2);
+    plaque("托盘 加菜",1.8).position.set(1.2,3.35,.7);
+    plaque("账本",1.4).position.set(-3.55,1.15,2.4);
+
+    function makeSlip(lines){const g=new THREE.Group();mesh(new THREE.BoxGeometry(1.18,.03,.76),new THREE.MeshStandardMaterial({map:paperTex}),0,0,0,g);const face=new THREE.Mesh(new THREE.PlaneGeometry(1.12,.7),new THREE.MeshStandardMaterial());face.rotation.x=-Math.PI/2;face.position.y=.022;g.add(face);g.userData.face=face;scene.add(g);g.visible=false;setSlip(g,lines);return g;}
+    function setSlip(slip,lines){slip.userData.face.material.map=faceCanvas(512,320,ctx=>{ctx.fillStyle="#fbf3dc";ctx.fillRect(0,0,512,320);ctx.fillStyle="#5b3b14";ctx.textAlign="center";ctx.font="700 34px 'PingFang SC',sans-serif";lines.forEach((l,i)=>ctx.fillText(l,256,100+i*52));});}
+    const user=makeSlip(["用户","改 foo"]);
+    const a1=makeSlip(["第1轮助手","要点 bash"]);
+    const tool=makeSlip(["工具结果","文件内容"]);
+    const a2=makeSlip(["第2轮助手","改完了"]);
+    const steer=makeSlip(["加菜","测试别动"]);
+    const a3=makeSlip(["第3轮助手","测试没动"]);
+
+    const pos={
+      hidden:new THREE.Vector3(0,14,0),
+      board:new THREE.Vector3(-1.25,3.85,.35),
+      tray:new THREE.Vector3(1.2,2.82,.55),
+      b1:new THREE.Vector3(-3.85,.48,2.05),
+      b2:new THREE.Vector3(-3.6,.52,2.22),
+      b3:new THREE.Vector3(-3.4,.56,2.38),
+      b4:new THREE.Vector3(-3.2,.6,2.52),
+      b5:new THREE.Vector3(-3.0,.64,2.66),
+      b6:new THREE.Vector3(-2.8,.68,2.78),
+    };
+    const target=new Map();
+    function go(obj,p,show){obj.visible=show;target.set(obj,p.clone());if(show&&obj.position.y>10)obj.position.copy(p);}
+    const sounds=[];const bellWorld=new THREE.Vector3();const screenWorld=new THREE.Vector3(-1.7,2.6,-5.7);
+    function ring(title,line){bell.getWorldPosition(bellWorld);const orb=new THREE.Mesh(new THREE.SphereGeometry(.11,12,12),new THREE.MeshBasicMaterial({color:"#7dffb0",transparent:true,opacity:.95}));orb.position.copy(bellWorld);scene.add(orb);sounds.push({mesh:orb,from:bellWorld.clone(),t:0});paintScreen(title,line);}
+
+    const texts=[
+      ["0 / 12  认地方","金岛是这一盘菜。白板是本轮没干的墨，托盘是加菜，蓝本是账本。"],
+      ["1 / 12  开桌 + 用户落账","用户页进账本。窗口打开。第 0 轮还没问模型。"],
+      ["2 / 12  第1轮：写在白板","模型边说边写 drafts。铃把增量打到屏幕。账本还没有这页。"],
+      ["3 / 12  第1轮落账（要点工具）","先落账再通知。这页带 tool-call。因为要点工具，Loop 不会停。"],
+      ["4 / 12  工具结果落账","工具页进账本。这锅「模型输出+整批工具」才算炒完。"],
+      ["5 / 12  检查点：托盘空，但有工具","抬头：没有加菜。可是刚才有工具，所以继续。不是因为铃，是因为还要再问。"],
+      ["6 / 12  第2轮：又写白板","带着工具结果再问模型。新的 Node.id，新的一格 drafts。"],
+      ["7 / 12  加菜进托盘（第2轮还在炒）","你说「测试别动」。纸条在托盘等。厨师颠勺，不听。"],
+      ["8 / 12  第2轮落账，模型没点工具","终稿进账本。若托盘是空的，本该收工。但托盘里有纸。"],
+      ["9 / 12  检查点：有 Steer → 继续","加菜落入账本，交还 Loop。没工具，但有加菜，所以再开一轮。"],
+      ["10 / 12  第3轮：再写白板","history 里已经有「测试别动」。模型按加菜再答。"],
+      ["11 / 12  第3轮落账","没点工具。"],
+      ["12 / 12  检查点：没工具且托盘空 → 停","抬头两样都没有。Loop return。岛收摊，账本还在。"],
+    ];
+
+    let i=0;
+    function show(n){
+      i=Math.max(0,Math.min(LAST,n));
+      island.visible=i>=1&&i<=11;
+      [user,a1,tool,a2,steer,a3].forEach(o=>go(o,pos.hidden,false));
+      paintScreen("屏幕 · 只听铃","现在是空的"); screenMat.emissiveIntensity=.15;
+      if(i>=1) go(user,pos.b1,true);
+      if(i===2){ setSlip(a1,["第1轮草稿","我去跑 bash"]); go(a1,pos.board,true); ring("第1轮增量","纸在白板"); }
+      if(i>=3){ setSlip(a1,["第1轮已落账","tool-call bash"]); go(a1,pos.b2,true); }
+      if(i===3) ring("第1轮 message","有工具 → 不能停");
+      if(i>=4) go(tool,pos.b3,true);
+      if(i===5) ring("检查点","托盘空，但有工具 → 继续");
+      if(i===6){ setSlip(a2,["第2轮草稿","改完了"]); go(a2,pos.board,true); ring("第2轮增量","新的 Node.id"); }
+      if(i===7){ setSlip(a2,["第2轮草稿","改完了"]); go(a2,pos.board,true); go(steer,pos.tray,true); }
+      if(i>=8){ setSlip(a2,["第2轮已落账","没点工具"]); go(a2,pos.b4,true); }
+      if(i===7||i===8) go(steer,pos.tray,true);
+      if(i===8) ring("第2轮 message","没工具，但托盘有纸");
+      if(i>=9) go(steer,pos.b5,true);
+      if(i===9) ring("检查点","有 Steer → 继续");
+      if(i===10){ setSlip(a3,["第3轮草稿","测试没动"]); go(a3,pos.board,true); ring("第3轮增量","带着加菜再问"); }
+      if(i>=11){ setSlip(a3,["第3轮已落账","没点工具"]); go(a3,pos.b6,true); }
+      if(i===11) ring("第3轮 message","没工具");
+      if(i===12) paintScreen("停","没工具 且 托盘空");
+      caption.querySelector("b").textContent=texts[i][0];
+      caption.querySelector("div").textContent=texts[i][1];
+      [...dots.children].forEach((d,idx)=>d.classList.toggle("on",idx===i));
+    }
+    document.getElementById("next").onclick=()=>show(i+1);
+    document.getElementById("prev").onclick=()=>show(i-1);
+    addEventListener("keydown",e=>{if(e.key==="ArrowRight")show(i+1);if(e.key==="ArrowLeft")show(i-1);});
+    addEventListener("resize",()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+    show(0);
+    (function loop(){
+      requestAnimationFrame(loop);
+      for(const obj of [user,a1,tool,a2,steer,a3]){const p=target.get(obj);if(p)obj.position.lerp(p,.09);}
+      for(let s=sounds.length-1;s>=0;s--){const it=sounds[s];it.t+=.02;it.mesh.position.lerpVectors(it.from,screenWorld,Math.min(it.t,1));it.mesh.material.opacity=1-Math.max(0,it.t-.7)/.3;if(it.t>=1){scene.remove(it.mesh);sounds.splice(s,1);}}
+      screenMat.emissiveIntensity+=(0.15-screenMat.emissiveIntensity)*0.02;
+      controls.update();renderer.render(scene,camera);
+    })();
+  </script>
+</body>
+</html>
