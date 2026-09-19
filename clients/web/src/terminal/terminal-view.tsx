@@ -28,6 +28,7 @@ export function TerminalView({
 
     const terminal = new Terminal({
       cursorBlink: true,
+      cursorStyle: "bar",
       convertEol: false,
       fontFamily: terminalFont(),
       fontSize: 13,
