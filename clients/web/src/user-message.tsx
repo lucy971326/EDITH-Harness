@@ -14,12 +14,18 @@ export function UserMessage({
   onOpenFile?: (location: FileLocation) => void;
 }) {
   const decoded = decodeReferences(text);
+  let assistantReferenceNumber = 0;
+  const references = decoded.references.map((reference) => ({
+    reference,
+    assistantNumber: reference.kind === "assistant-selection"
+      ? ++assistantReferenceNumber : undefined,
+  }));
   return (
     <>
       {decoded.references.length > 0 && (
         <div className="context-references" aria-label="引用上下文">
-          {decoded.references.map((reference, index) => (
-            <ContextReferenceTag key={index} reference={reference} />
+          {references.map(({ reference, assistantNumber }, index) => (
+            <ContextReferenceTag key={index} reference={reference} assistantNumber={assistantNumber} />
           ))}
         </div>
       )}

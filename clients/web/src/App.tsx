@@ -281,10 +281,11 @@ export default function App() {
     return client.searchPaths(workspace, query);
   }, []);
   const addContextReference = useCallback((reference: ContextReference) => {
-    if (!selectedID || selectedIDRef.current !== selectedID || !referenceWorkspace) return;
-    const normalized = {
+    if (!selectedID || selectedIDRef.current !== selectedID) return;
+    if (reference.kind !== "assistant-selection" && !referenceWorkspace) return;
+    const normalized = reference.kind === "assistant-selection" ? reference : {
       ...reference,
-      path: referencePath(referenceWorkspace, reference.path),
+      path: referencePath(referenceWorkspace!, reference.path),
     };
     const next = addReference(referencesRef.current, normalized);
     referencesRef.current = next;
@@ -1123,6 +1124,8 @@ export default function App() {
                       requestID: ++subagentOpenRequestID.current,
                     });
                   }}
+                  onAddReference={addContextReference}
+                  pendingReferences={references}
                   onFork={(runID, boundaryEntryID) =>
                     void forkAnswer(runID, boundaryEntryID)
                   }

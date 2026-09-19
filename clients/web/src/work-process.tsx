@@ -361,7 +361,7 @@ function WorkProcessComponent({
         )}
       {turn.answer && (
         <div data-entry-id={turn.answer.id}>
-          <div className="answer">
+          <div className="answer" data-assistant-entry-id={turn.answer.id}>
             <MessageMarkdown
               text={turn.answer.text}
               workspace={workspace}

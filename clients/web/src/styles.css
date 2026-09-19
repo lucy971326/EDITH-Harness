@@ -1143,6 +1143,9 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.context-reference-quote {
+  white-space: nowrap;
+}
 .context-reference-remove {
   flex-shrink: 0;
   padding: 2px;
@@ -1164,6 +1167,34 @@
   line-height: 1.6;
   white-space: pre;
   tab-size: 4;
+}
+.context-reference-tooltip {
+  max-width: min(420px, calc(100vw - 16px));
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: var(--shadow-floating);
+  text-align: left;
+  text-wrap: wrap;
+}
+.context-reference-tooltip pre {
+  margin: 0;
+  font-family: var(--font-system);
+  font-size: var(--font-size-label);
+  line-height: var(--leading-label);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.context-reference-tooltip-separator {
+  height: 1px;
+  margin: 9px 0;
+  background: var(--border);
+}
+.context-reference-tooltip > svg {
+  background: var(--popover);
+  fill: var(--popover);
 }
 .suggestion-status {
   padding: 8px 12px;
@@ -1690,6 +1721,12 @@
   background: var(--popover);
   box-shadow: var(--shadow-floating);
 }
+.app-context-menu-compact {
+  width: max-content;
+}
+.app-context-menu-compact button {
+  white-space: nowrap;
+}
 .app-context-menu button {
   height: 32px;
   padding: 0 9px;
@@ -1710,6 +1747,55 @@
   height: 1px;
   margin: 4px;
   background: var(--border);
+}
+.assistant-comment-editor {
+  display: flex;
+  align-items: center;
+  width: min(340px, calc(100vw - 16px));
+  min-height: 42px;
+  gap: 6px;
+  padding: 4px 5px 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--popover);
+  box-shadow: var(--shadow-floating);
+}
+.assistant-comment-editor input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--popover-foreground);
+  font-size: var(--font-size-label);
+}
+.assistant-comment-editor input::placeholder {
+  color: var(--muted-foreground);
+}
+.assistant-comment-editor button {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.assistant-comment-marker {
+  position: fixed;
+  z-index: 99;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  transform: translateY(-20%);
+  border-radius: 50%;
+  background: var(--ring);
+  color: white;
+  font-size: var(--font-size-label);
+  font-weight: 600;
+  pointer-events: none;
 }
 .resize-handle:hover {
   background: var(--ring);

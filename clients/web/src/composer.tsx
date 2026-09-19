@@ -294,6 +294,13 @@ export function Composer({
     });
   }
 
+  let assistantReferenceNumber = 0;
+  const numberedReferences = references.map((item) => ({
+    ...item,
+    assistantNumber: item.reference.kind === "assistant-selection"
+      ? ++assistantReferenceNumber : undefined,
+  }));
+
   return (
     <div className="composer-area">
       <div className="composer-column">
@@ -354,7 +361,8 @@ export function Composer({
             </div>
           )}
           {references.length > 0 && <div className="context-references" aria-label="待发送引用">
-            {references.map((item) => <ContextReferenceTag key={item.id} reference={item.reference}
+            {numberedReferences.map((item) => <ContextReferenceTag key={item.id} reference={item.reference}
+              assistantNumber={item.assistantNumber}
               onRemove={() => onRemoveReference?.(item.id)} />)}
           </div>}
           <Textarea

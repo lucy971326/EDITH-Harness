@@ -9,6 +9,14 @@ export type ContextReference =
       endLine: number;
       endColumn: number;
       content: string;
+    }
+  | {
+      kind: "assistant-selection";
+      entryID: string;
+      startOffset: number;
+      endOffset: number;
+      content: string;
+      comment?: string;
     };
 
 export interface ReferenceAttachment {
@@ -16,24 +24,31 @@ export interface ReferenceAttachment {
   reference: ContextReference;
 }
 
-const referenceStart = "\n\n引用上下文（harness-context-v1）：\n";
+const referenceV1Start = "\n\n引用上下文（harness-context-v1）：\n";
+const referenceV2Start = "\n\n引用上下文（harness-context-v2）：\n";
 const referenceEnd = "\n（上下文引用结束）";
 
 export function encodeReferences(text: string, references: ContextReference[]): string {
   if (!references.length) return text;
   // JSON 转义正文中的换行、引号和边界文字；模型与历史使用同一份原文。
-  return text + referenceStart + JSON.stringify(references) + referenceEnd;
+  const start = references.some((reference) => reference.kind === "assistant-selection")
+    ? referenceV2Start : referenceV1Start;
+  return text + start + JSON.stringify(references) + referenceEnd;
 }
 
 export function decodeReferences(text: string): { text: string; references: ContextReference[] } {
   const unchanged = { text, references: [] as ContextReference[] };
   if (!text.endsWith(referenceEnd)) return unchanged;
-  const start = text.lastIndexOf(referenceStart);
+  const v2 = text.lastIndexOf(referenceV2Start);
+  const v1 = text.lastIndexOf(referenceV1Start);
+  const start = Math.max(v1, v2);
   if (start < 0) return unchanged;
   try {
-    const raw = text.slice(start + referenceStart.length, -referenceEnd.length);
+    const marker = start === v2 ? referenceV2Start : referenceV1Start;
+    const raw = text.slice(start + marker.length, -referenceEnd.length);
     const references: unknown = JSON.parse(raw);
-    if (!Array.isArray(references) || !references.length || !references.every(isReference))
+    const valid = start === v2 ? isReference : isV1Reference;
+    if (!Array.isArray(references) || !references.length || !references.every(valid))
       return unchanged;
     return { text: text.slice(0, start), references };
   } catch {
@@ -45,6 +60,17 @@ export function decodeReferences(text: string): { text: string; references: Cont
 function isReference(value: unknown): value is ContextReference {
   if (!value || typeof value !== "object") return false;
   const item = value as Record<string, unknown>;
+  if (item.kind === "assistant-selection") {
+    if (typeof item.entryID !== "string" || !item.entryID || item.entryID.includes("\0") ||
+        typeof item.content !== "string" || !item.content)
+      return false;
+    if (!Number.isSafeInteger(item.startOffset) || !Number.isSafeInteger(item.endOffset) ||
+        (item.startOffset as number) < 0 || (item.endOffset as number) <= (item.startOffset as number))
+      return false;
+    return Object.keys(item).every((key) =>
+      ["kind", "entryID", "startOffset", "endOffset", "content", "comment"].includes(key)) &&
+      (item.comment === undefined || (typeof item.comment === "string" && !!item.comment.trim()));
+  }
   if (typeof item.path !== "string" || !item.path || item.path.includes("\0")) return false;
   if (item.kind === "file" || item.kind === "directory")
     return Object.keys(item).every((key) => key === "kind" || key === "path");
@@ -60,13 +86,22 @@ function isReference(value: unknown): value is ContextReference {
     ["kind", "path", "startLine", "startColumn", "endLine", "endColumn", "content"].includes(key));
 }
 
+function isV1Reference(value: unknown): value is ContextReference {
+  return isReference(value) && value.kind !== "assistant-selection";
+}
+
 export function addReference(current: ReferenceAttachment[], reference: ContextReference): ReferenceAttachment[] {
   if (current.some((item) => sameReference(item.reference, reference))) return current;
   return [...current, { id: crypto.randomUUID(), reference }];
 }
 
 function sameReference(left: ContextReference, right: ContextReference): boolean {
-  if (left.kind !== right.kind || left.path !== right.path) return false;
+  if (left.kind !== right.kind) return false;
+  if (left.kind === "assistant-selection" && right.kind === "assistant-selection")
+    return left.entryID === right.entryID && left.startOffset === right.startOffset &&
+      left.endOffset === right.endOffset && left.content === right.content;
+  if (left.kind === "assistant-selection" || right.kind === "assistant-selection") return false;
+  if (left.path !== right.path) return false;
   if (left.kind !== "selection" || right.kind !== "selection") return true;
   return left.startLine === right.startLine && left.startColumn === right.startColumn &&
     left.endLine === right.endLine && left.endColumn === right.endColumn && left.content === right.content;
@@ -102,6 +137,7 @@ export function referencePath(workspace: string, path: string): string {
 }
 
 export function referenceLabel(reference: ContextReference): string {
+  if (reference.kind === "assistant-selection") return "引用";
   if (reference.kind !== "selection") return reference.path;
   // Monaco 的结束位置不包含该字符；终点为下一行列 1 时，该行不属于选区。
   const lastLine = reference.endColumn === 1 && reference.endLine > reference.startLine

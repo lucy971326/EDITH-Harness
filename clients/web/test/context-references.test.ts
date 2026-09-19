@@ -11,6 +11,15 @@ const selection: ContextReference = {
   content: '未保存的内容\r\n\t"quotes" \\ `code`\n```\n<script>x</script>\n\n引用上下文（harness-context-v1）：\n[]\n（上下文引用结束）\n😀\u0000',
 };
 
+const assistantSelection: ContextReference = {
+  kind: "assistant-selection",
+  entryID: "assistant-entry-1",
+  startOffset: 4,
+  endOffset: 38,
+  content: '正文："quotes" \\ `code`\n<script>x</script> 😄',
+  comment: '请解释这里的 "设计"\n和特殊字符 \\',
+};
+
 test("reference text round-trips paths, ranges and arbitrary selection content", () => {
   const references: ContextReference[] = [
     { kind: "file", path: "src/a.ts" },
@@ -28,16 +37,43 @@ test("reference text round-trips paths, ranges and arbitrary selection content",
   assert.equal(encodeReferences("原样\n", []), "原样\n");
 });
 
+test("assistant selections use v2 and round-trip with existing references", () => {
+  const references: ContextReference[] = [
+    { kind: "file", path: "src/a.ts" },
+    assistantSelection,
+  ];
+  const encoded = encodeReferences("继续说明", references);
+  assert.match(encoded, /harness-context-v2/);
+  assert.deepEqual(decodeReferences(encoded), { text: "继续说明", references });
+  assert.deepEqual(decodeReferences(JSON.parse(JSON.stringify(encoded))), {
+    text: "继续说明",
+    references,
+  });
+});
+
 test("incomplete, unknown and invalid reference sections preserve all original text", () => {
   const valid = encodeReferences("正文", [selection]);
   const invalid = [
-    valid.slice(0, -1), valid + "后续文字", valid.replace("v1", "v2"),
+    valid.slice(0, -1), valid + "后续文字", valid.replace("v1", "v3"),
     valid.replace('"selection"', '"unknown"'), valid.replace('"startLine":2', '"startLine":0'),
     valid.replace('"endLine":7', '"endLine":1'),
     valid.replace('"startColumn":3', '"startColumn":2.5'),
     valid.replace('"content":', '"extra":true,"content":'),
     "\n\n引用上下文（harness-context-v1）：\n[]\n（上下文引用结束）",
     "\n\n引用上下文（harness-context-v1）：\nnot json\n（上下文引用结束）",
+  ];
+  for (const text of invalid) assert.deepEqual(decodeReferences(text), { text, references: [] });
+});
+
+test("invalid assistant selections preserve the original v2 text", () => {
+  const valid = encodeReferences("正文", [assistantSelection]);
+  const invalid = [
+    valid.replace('"entryID":"assistant-entry-1"', '"entryID":""'),
+    valid.replace('"startOffset":4', '"startOffset":-1'),
+    valid.replace('"endOffset":38', '"endOffset":4'),
+    valid.replace('"content":', '"extra":true,"content":'),
+    valid.replace(/"comment":"[^"]*(?:\\.[^"]*)*"/, '"comment":"   "'),
+    valid.replace('"assistant-selection"', '"unknown"'),
   ];
   for (const text of invalid) assert.deepEqual(decodeReferences(text), { text, references: [] });
 });
@@ -57,6 +93,11 @@ test("deduplication uses kind and full path; selections also require exact range
   assert.equal(addReference(selected, { ...selection }), selected);
   assert.equal(addReference(selected, { ...selection, content: "new unsaved content" }).length, 3);
   assert.equal(addReference(selected, { ...selection, startColumn: 4 }).length, 3);
+  const quoted = addReference(selected, assistantSelection);
+  assert.equal(addReference(quoted, { ...assistantSelection }), quoted);
+  assert.equal(addReference(quoted, { ...assistantSelection, entryID: "assistant-entry-2" }).length, 4);
+  assert.equal(addReference(quoted, { ...assistantSelection, startOffset: 5 }).length, 4);
+  assert.equal(addReference(quoted, { ...assistantSelection, content: "另一段文字" }).length, 4);
 });
 
 test("successful acknowledgment clears only submitted IDs, including after switching drafts", () => {

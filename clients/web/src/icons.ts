@@ -37,4 +37,5 @@ export {
   Undo2,
   Columns2,
   Rows3,
+  MessageSquareQuote,
 } from "lucide-react";
