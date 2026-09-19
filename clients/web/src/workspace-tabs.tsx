@@ -25,6 +25,7 @@ import {
   type AuxiliaryView,
 } from "./auxiliary/auxiliary-panel";
 import type { RPCClient } from "./client/rpc";
+import type { ContextReference } from "./context-references";
 import { RPCError } from "./client/rpc";
 import { FileTree } from "./editor/file-tree";
 import {
@@ -151,6 +152,7 @@ function WorkspaceTabsComponent({
   models,
   agents,
   onHide,
+  onAddReference,
 }: {
   workspace: string | null;
   sessionID: string | null;
@@ -164,6 +166,7 @@ function WorkspaceTabsComponent({
   models: ModelChoice[] | null;
   agents: AgentView[] | null;
   onHide: () => void;
+  onAddReference: (reference: ContextReference) => void;
 }) {
   const projects = useRef(new Map<string, ProjectEditorState>());
   const watches = useRef(new Map<string, WatchTarget>());
@@ -702,6 +705,7 @@ function WorkspaceTabsComponent({
                     }
                   >
                     <CodeEditor
+                      onAddReference={onAddReference}
                       file={activeFile}
                       location={location}
                       onChange={(content) => editFile(activeFile.path, content)}
@@ -1006,7 +1010,8 @@ export const WorkspaceTabs = memo(
     previous.reviewRequest === next.reviewRequest &&
     previous.subagentRequest === next.subagentRequest &&
     previous.models === next.models &&
-    previous.agents === next.agents,
+    previous.agents === next.agents &&
+    previous.onAddReference === next.onAddReference,
 );
 
 function EmptyEditor({ title, detail }: { title: string; detail: string }) {

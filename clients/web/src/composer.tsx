@@ -14,10 +14,12 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ArrowUp, BookOpen, Command, Square, X, Plus } from "./icons";
+import { ArrowUp, BookOpen, Command, Square, X, Plus, FileText, Folder } from "./icons";
+import type { ContextReference, ReferenceAttachment } from "./context-references";
+import { ContextReferenceTag } from "./context-reference-tags";
 import { ModelMenu, type ModelSelection } from "./model-menu";
 import { AgentMenu } from "./agent-menu";
-import type { ModelChoice } from "../../contracts/appserver.ts";
+import type { ModelChoice, PathSearchResult } from "../../contracts/appserver.ts";
 import type {
   AgentView,
   CommandView,
@@ -39,7 +41,7 @@ export type CommandSelection = {
 };
 
 export interface ComposerTrigger {
-  prefix: "/" | "$";
+  prefix: "/" | "$" | "@";
   query: string;
   start: number;
   end: number;
@@ -47,20 +49,21 @@ export interface ComposerTrigger {
 
 type Suggestion =
   | { kind: "command"; name: string; description: string }
-  | { kind: "skill"; name: string; description: string; scope: string };
+  | { kind: "skill"; name: string; description: string; scope: string }
+  | { kind: "path"; name: string; description: string; reference: ContextReference };
 
-// 候选只识别光标前最后一个独立的 / 或 $ 词段。
+// 候选只识别光标前最后一个独立的 /、$ 或 @ 词段。
 export function composerTrigger(
   value: string,
   cursor: number,
 ): ComposerTrigger | null {
   const beforeCursor = value.slice(0, cursor);
-  const match = /(?:^|\s)([/$])([^\s]*)$/.exec(beforeCursor);
+  const match = /(?:^|\s)([/$@])([^\s]*)$/.exec(beforeCursor);
   if (!match) return null;
   const remaining = value.slice(cursor);
   const nextWhitespace = remaining.search(/\s/);
   return {
-    prefix: match[1] as "/" | "$",
+    prefix: match[1] as "/" | "$" | "@",
     query: match[2].toLowerCase(),
     start: cursor - match[2].length - 1,
     end: nextWhitespace < 0 ? value.length : cursor + nextWhitespace,
@@ -120,6 +123,11 @@ export function Composer({
   onCommand,
   onDismissNotice,
   composerRef,
+  references = [],
+  referenceWorkspace,
+  onSearchPaths,
+  onAddReference,
+  onRemoveReference,
 }: {
   draft: string;
   images: Attachment[];
@@ -157,16 +165,61 @@ export function Composer({
   onCommand: (name: string, selection: CommandSelection) => Promise<void>;
   onDismissNotice: () => void;
   composerRef?: RefObject<ComposerHandle | null>;
+  references?: ReferenceAttachment[];
+  referenceWorkspace?: string;
+  onSearchPaths?: (workspace: string, query: string) => Promise<PathSearchResult>;
+  onAddReference?: (reference: ContextReference) => void;
+  onRemoveReference?: (id: string) => void;
 }) {
   const input = useRef<HTMLTextAreaElement>(null);
   const imageInput = useRef<HTMLInputElement>(null);
+  const suggestionList = useRef<HTMLDivElement>(null);
   const [cursor, setCursor] = useState(draft.length);
   const [activeSuggestion, setActiveSuggestion] = useState(0);
   const [dismissedTrigger, setDismissedTrigger] = useState("");
+  const [composing, setComposing] = useState(false);
+  const [pathSearch, setPathSearch] = useState<(PathSearchResult & {
+    key: string;
+    loading: boolean;
+    error: string;
+  }) | null>(null);
   const trigger = composerTrigger(draft, Math.min(cursor, draft.length));
   const triggerKey = trigger ? `${draft}\u0000${cursor}` : "";
+  const searchQuery = trigger?.prefix === "@" ? trigger.query : null;
+  const searchKey = JSON.stringify([referenceWorkspace, searchQuery]);
+  const showPathSuggestions = searchQuery !== null && !!referenceWorkspace && !!onAddReference &&
+    !suggestionsDisabled && !composing && triggerKey !== dismissedTrigger;
+  const search = pathSearch?.key === searchKey ? pathSearch : null;
+  useEffect(() => {
+    if (!showPathSuggestions || !onSearchPaths || !referenceWorkspace || searchQuery === null)
+      return;
+    let current = true;
+    setPathSearch({ key: searchKey, loading: true, error: "", entries: [], truncated: false });
+    const timer = setTimeout(() => {
+      void onSearchPaths(referenceWorkspace, searchQuery).then((result) => {
+        if (current) setPathSearch({ ...result, key: searchKey, loading: false, error: "" });
+      }).catch(() => {
+        if (current) setPathSearch({
+          key: searchKey, loading: false, entries: [], truncated: false,
+          error: "文件搜索失败，请修改搜索词重试；也可从文件树右键添加。",
+        });
+      });
+    }, 200);
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
+  }, [showPathSuggestions, onSearchPaths, referenceWorkspace, searchQuery, searchKey]);
   const suggestions = useMemo(() => {
     if (!trigger || suggestionsDisabled) return [];
+    if (trigger.prefix === "@") {
+      if (!showPathSuggestions) return [];
+      return (search?.entries ?? []).map((entry): Suggestion => ({
+        kind: "path", name: entry.path,
+        description: entry.kind === "directory" ? "目录" : "文件",
+        reference: { kind: entry.kind, path: entry.path },
+      }));
+    }
     const matches = (name: string) =>
       name.toLowerCase().includes(trigger.query);
     const items: Suggestion[] = [];
@@ -185,9 +238,9 @@ export function Composer({
         });
     }
     return items;
-  }, [commandBusy, commands, running, skills, suggestionsDisabled, trigger]);
+  }, [commandBusy, commands, running, skills, suggestionsDisabled, trigger, showPathSuggestions, search]);
   const showSuggestions =
-    suggestions.length > 0 && triggerKey !== dismissedTrigger;
+    !composing && (suggestions.length > 0 || showPathSuggestions) && triggerKey !== dismissedTrigger;
   const usedTokens = usage
     ? usage.inputTokens + usage.cacheReadTokens
     : 0;
@@ -201,6 +254,9 @@ export function Composer({
   useEffect(() => {
     setActiveSuggestion(0);
   }, [triggerKey, suggestions.length]);
+  useEffect(() => {
+    suggestionList.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
+  }, [activeSuggestion]);
   useImperativeHandle(composerRef, () => ({
     focus() {
       input.current?.focus();
@@ -226,6 +282,11 @@ export function Composer({
       replaceTrigger(`$${item.name} `, trigger);
       return;
     }
+    if (item.kind === "path") {
+      onAddReference?.(item.reference);
+      replaceTrigger("", trigger);
+      return;
+    }
     await onCommand(item.name, {
       draft,
       start: trigger.start,
@@ -246,7 +307,7 @@ export function Composer({
         )}
         <div className="composer">
           {showSuggestions && (
-            <div className="suggestions" role="listbox" aria-label="输入候选">
+            <div ref={suggestionList} className="suggestions" role="listbox" aria-label="输入候选">
               {suggestions.map((item, index) => (
                 <button
                   key={`${item.kind}:${item.name}`}
@@ -256,10 +317,11 @@ export function Composer({
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => void selectSuggestion(item)}
                 >
-                  {item.kind === "command" ? <Command /> : <BookOpen />}
+                  {item.kind === "command" ? <Command /> : item.kind === "skill" ? <BookOpen /> :
+                    item.reference.kind === "directory" ? <Folder /> : <FileText />}
                   <span>
                     <strong>
-                      {item.kind === "command" ? "/" : "$"}
+                      {item.kind === "command" ? "/" : item.kind === "skill" ? "$" : ""}
                       {item.name}
                     </strong>
                     <small>{item.description}</small>
@@ -267,6 +329,13 @@ export function Composer({
                   {item.kind === "skill" && <small>{item.scope}</small>}
                 </button>
               ))}
+              {showPathSuggestions && (!search || search.loading || search.error ||
+                search.entries.length === 0 || search.truncated) &&
+                <div className="suggestion-status" role="status">
+                  {!search || search.loading ? "正在搜索…" : search.error ||
+                    (search.entries.length === 0 ? "没有匹配的文件或目录" :
+                      "仅显示前 50 项，请输入更具体的路径")}
+                </div>}
             </div>
           )}
           {images.length > 0 && (
@@ -284,6 +353,10 @@ export function Composer({
               ))}
             </div>
           )}
+          {references.length > 0 && <div className="context-references" aria-label="待发送引用">
+            {references.map((item) => <ContextReferenceTag key={item.id} reference={item.reference}
+              onRemove={() => onRemoveReference?.(item.id)} />)}
+          </div>}
           <Textarea
             ref={input}
             aria-label="消息输入"
@@ -295,10 +368,17 @@ export function Composer({
               onDraftChange(event.target.value);
             }}
             onSelect={(event) => setCursor(event.currentTarget.selectionStart)}
+            onCompositionStart={() => setComposing(true)}
+            onCompositionEnd={(event) => {
+              setComposing(false);
+              setCursor(event.currentTarget.selectionStart);
+            }}
             onKeyDown={(event) => {
+              if (composing || event.nativeEvent.isComposing || event.keyCode === 229) return;
               if (showSuggestions) {
                 if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                   event.preventDefault();
+                  if (suggestions.length === 0) return;
                   const direction = event.key === "ArrowDown" ? 1 : -1;
                   setActiveSuggestion(
                     (activeSuggestion + direction + suggestions.length) %
@@ -313,9 +393,8 @@ export function Composer({
                 }
                 if (isComposerSubmitKey(event)) {
                   event.preventDefault();
-                  void selectSuggestion(
-                    suggestions[activeSuggestion] ?? suggestions[0],
-                  );
+                  const item = suggestions[activeSuggestion] ?? suggestions[0];
+                  if (item) void selectSuggestion(item);
                   return;
                 }
               }

@@ -1,4 +1,12 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  addReference,
+  clearSubmittedReferences,
+  encodeReferences,
+  referencePath,
+  type ContextReference,
+  type ReferenceAttachment,
+} from "./context-references";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -51,7 +59,11 @@ import type {
   SkillView,
 } from "../../contracts/appserver.ts";
 
-type Draft = { text: string; images: Attachment[] };
+type Draft = {
+  text: string;
+  images: Attachment[];
+  references: ReferenceAttachment[];
+};
 
 function preference(key: string, fallback: string) {
   try {
@@ -137,6 +149,7 @@ export default function App() {
   const [theme, setTheme] = useState(() => preference("theme", "system"));
   const [draft, setDraft] = useState("");
   const [images, setImages] = useState<Attachment[]>([]);
+  const [references, setReferences] = useState<ReferenceAttachment[]>([]);
   const [notice, setNotice] = useState("");
   const [chatState, setChatState] = useState(initialChatState);
   const { connection, detail: connectionDetail } = chatState;
@@ -192,10 +205,12 @@ export default function App() {
   const forkPending = useRef(false);
   const draftRef = useRef(draft);
   const imagesRef = useRef(images);
+  const referencesRef = useRef(references);
   const selectGeneration = useRef(0);
   const listGeneration = useRef(0);
   draftRef.current = draft;
   imagesRef.current = images;
+  referencesRef.current = references;
 
   const connected = connection === "connected";
   const sidebarSpace = sidebar ? sidebarWidth : 0;
@@ -248,7 +263,7 @@ export default function App() {
     !stoppingCurrent &&
     !commandBusy &&
     !compressingImages &&
-    (!!draft.trim() || images.length > 0) &&
+    (!!draft.trim() || images.length > 0 || references.length > 0) &&
     (!!currentRun || (!!validAgent && !!validModel && !modelError)) &&
     (!images.length || !!selectedModel?.vision);
 
@@ -259,22 +274,52 @@ export default function App() {
     setDraft(text);
   }
 
+  const referenceWorkspace = selected?.settings.workspace;
+  const searchContextPaths = useCallback(async (workspace: string, query: string) => {
+    const client = clientRef.current;
+    if (!client?.connected) throw new Error("后台未连接");
+    return client.searchPaths(workspace, query);
+  }, []);
+  const addContextReference = useCallback((reference: ContextReference) => {
+    if (!selectedID || selectedIDRef.current !== selectedID || !referenceWorkspace) return;
+    const normalized = {
+      ...reference,
+      path: referencePath(referenceWorkspace, reference.path),
+    };
+    const next = addReference(referencesRef.current, normalized);
+    referencesRef.current = next;
+    setReferences(next);
+    setSettings(false);
+    requestAnimationFrame(() => composer.current?.focus());
+  }, [selectedID, referenceWorkspace]);
+
+  function removeReference(id: string) {
+    const next = referencesRef.current.filter((item) => item.id !== id);
+    referencesRef.current = next;
+    setReferences(next);
+  }
+
   function rememberDraft(
     sessionID: string | null,
     text: string,
     attachments: Attachment[],
   ) {
-    drafts.current.set(draftKey(sessionID), { text, images: attachments });
+    drafts.current.set(draftKey(sessionID), {
+      text, images: attachments, references: referencesRef.current,
+    });
   }
   function applyDraft(sessionID: string | null) {
     const stored = drafts.current.get(draftKey(sessionID)) ?? {
       text: "",
       images: [],
+      references: [],
     };
     setDraft(stored.text);
     setImages(stored.images);
+    setReferences(stored.references);
     draftRef.current = stored.text;
     imagesRef.current = stored.images;
+    referencesRef.current = stored.references;
   }
   function setCurrentSession(id: string | null, session: SessionView | null) {
     if (id !== selectedIDRef.current) setSkills([]);
@@ -326,6 +371,7 @@ export default function App() {
         const stored = drafts.current.get(key) ?? {
           text: "",
           images: initialImages,
+          references: [],
         };
         drafts.current.set(key, { ...stored, images: next });
       }
@@ -631,23 +677,30 @@ export default function App() {
       return;
     const text = draftRef.current;
     const submittedImages = [...imagesRef.current];
+    const submittedReferences = [...referencesRef.current];
     const version = draftVersions.current.get(id) ?? 0;
     sendingRef.current.add(id);
     setSending([...sendingRef.current]);
     setNotice("");
     try {
       await client.send(
-        chatSendParams(id, text, submittedImages, currentRun?.runID),
+        chatSendParams(
+          id,
+          encodeReferences(text, submittedReferences.map((item) => item.reference)),
+          submittedImages,
+          currentRun?.runID,
+        ),
       );
-      // 文字按编辑版本清理；图片按 ID 清理，保留等待期间的新输入。
+      // 文字按编辑版本清理；图片和引用按 ID 清理，保留等待期间的新输入。
       const visible = selectedIDRef.current === id;
       const currentDraft = visible
-        ? { text: draftRef.current, images: imagesRef.current }
-        : (drafts.current.get(id) ?? { text, images: submittedImages });
+        ? { text: draftRef.current, images: imagesRef.current, references: referencesRef.current }
+        : (drafts.current.get(id) ?? { text, images: submittedImages, references: submittedReferences });
       const submittedImageIDs = new Set(
         submittedImages.map((image) => image.id),
       );
       const nextDraft = {
+        references: clearSubmittedReferences(currentDraft.references, submittedReferences),
         text: shouldClearSubmittedDraft(draftVersions.current, id, version)
           ? ""
           : currentDraft.text,
@@ -662,6 +715,8 @@ export default function App() {
         imagesRef.current = nextDraft.images;
         setDraft(nextDraft.text);
         setImages(nextDraft.images);
+        referencesRef.current = nextDraft.references;
+        setReferences(nextDraft.references);
       }
       if (client === clientRef.current && client.connected)
         void loadSessions(client);
@@ -730,7 +785,7 @@ export default function App() {
 
       const visible = selectedIDRef.current === sessionID;
       const currentDraft = visible
-        ? { text: draftRef.current, images: imagesRef.current }
+        ? { text: draftRef.current, images: imagesRef.current, references: referencesRef.current }
         : drafts.current.get(key);
       if (
         !currentDraft ||
@@ -742,6 +797,7 @@ export default function App() {
       const nextDraft = {
         text: `${selection.draft.slice(0, selection.start)}${selection.draft.slice(selection.end)}`,
         images: currentDraft.images,
+        references: currentDraft.references,
       };
       drafts.current.set(key, nextDraft);
       draftVersions.current.set(key, version + 1);
@@ -1115,6 +1171,12 @@ export default function App() {
                   </div>
                 </ChatMessages>
                 <Composer
+                  key={selectedID ?? ""}
+                  references={references}
+                  referenceWorkspace={referenceWorkspace}
+                  onSearchPaths={searchContextPaths}
+                  onAddReference={addContextReference}
+                  onRemoveReference={removeReference}
                   draft={draft}
                   images={images}
                   notice={notice}
@@ -1191,6 +1253,7 @@ export default function App() {
               onChange={setPanelWidth}
             />
             <WorkspaceTabs
+              onAddReference={addContextReference}
               workspace={selected?.settings.workspace ?? null}
               sessionID={selectedID}
               sessionTitle={selected?.title ?? null}
@@ -1206,7 +1269,7 @@ export default function App() {
             />
           </aside>
         </>
-        <AppContextMenu />
+        <AppContextMenu onAddReference={selected && selectedID === selected.sessionID ? addContextReference : undefined} />
       </div>
     </TooltipProvider>
   );

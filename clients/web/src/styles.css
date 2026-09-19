@@ -1093,11 +1093,88 @@
   width: 12px;
   height: 12px;
 }
+.context-references {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  margin-bottom: 8px;
+}
+.composer .context-references {
+  padding: 4px 8px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.context-reference {
+  min-width: 0;
+  max-width: 100%;
+}
+.context-reference[data-expanded="true"] {
+  width: 100%;
+}
+.context-reference-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--muted);
+  font-size: var(--font-size-caption);
+}
+.context-reference-tag svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+.context-reference-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.context-reference-label span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.context-reference-remove {
+  flex-shrink: 0;
+  padding: 2px;
+  color: var(--muted-foreground);
+}
+.context-reference-remove:hover {
+  color: var(--foreground);
+}
+.context-reference-code {
+  max-height: 240px;
+  overflow: auto;
+  padding: 10px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--muted);
+  font-family: var(--font-code);
+  font-size: var(--font-size-caption);
+  line-height: 1.6;
+  white-space: pre;
+  tab-size: 4;
+}
+.suggestion-status {
+  padding: 8px 12px;
+  color: var(--muted-foreground);
+  font-size: var(--font-size-caption);
+}
 .suggestions {
   position: absolute;
   bottom: calc(100% + 8px);
   left: 0;
-  width: min(400px, 100%);
+  width: 100%;
   padding: 8px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -1131,13 +1208,19 @@
   color: var(--muted-foreground);
 }
 .suggestions button > span {
-  display: grid;
+  display: flex;
+  align-items: baseline;
   flex: 1;
-  gap: 2px;
+  gap: 8px;
   min-width: 0;
+  white-space: nowrap;
 }
 .suggestions strong {
+  min-width: 0;
   font-weight: 550;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .suggestions small {
   color: var(--muted-foreground);
@@ -1145,6 +1228,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.suggestions button > span > small {
+  flex: 1;
+  min-width: 0;
 }
 .back-latest {
   position: absolute;
@@ -1618,6 +1705,11 @@
 }
 .app-context-menu button:disabled {
   color: var(--muted-foreground);
+}
+.app-context-menu-separator {
+  height: 1px;
+  margin: 4px;
+  background: var(--border);
 }
 .resize-handle:hover {
   background: var(--ring);

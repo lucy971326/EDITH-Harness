@@ -1,6 +1,6 @@
 # 项目状态
 
-更新日期：2026-09-16
+更新日期：2026-09-19
 
 ## 当前形状
 
@@ -23,6 +23,7 @@ appserver.Server
 
 - 项目与会话：原生目录选择、按工作区分组、新建或复用空会话、切换及自动命名。
 - 聊天：文字与图片、实时输出、直接 Steer、停止父子任务、历史、刷新、重连与后台重启恢复。
+- 上下文引用：主聊天 `@` 搜文件／目录、文件树右键与 Monaco 选区右键添加；输入框上方标签可整块删除，选区可展开预览并保留添加时未保存内容。引用随会话草稿保留，允许仅带引用发送，失败保留，确认只清本次提交的附件；用带版本标记的普通文本落账，用户历史、Steer、刷新和分叉共用还原逻辑。
 - 呈现：Snapshot 与事件共用一份投影；工作过程按账本结构同级展示说明、思考、工具和子任务回报，工具详情局部展开；支持 Markdown 清洗、最终回答及失败／停止状态。流式增量每帧最多刷新一次，只重绘变化的 Turn；辅助区和隐藏子任务不随聊天文字重绘。
 - 设置：模型与思考、SessionSettings、Agent 增删改及删除保护。
 - 操作：上下文用量、回答分叉、Skill 候选、命令候选与 compact。
@@ -46,7 +47,7 @@ appserver.Server
 - 耐久消息先落账再发布；增量只进入运行投影。生成、草稿和最终 Entry 共用同一个 Entry.ID。
 - 每个 Session 同时只有一个活 Run；运行状态、最近用量和 Diff 摘要保存在 `runs.json`，Diff 正文独立压缩保存；未完成运行在重启后标记 interrupted，不自动续跑。
 - Client 只保存服务端投影和草稿、主题、折叠等临时界面状态，不成为业务事实来源。
-- appserver 已显式接入同一份 machine 文件能力，提供读取、受版本保护的保存、目录、元数据与监听 RPC；监听复用统一订阅和断线清理。
+- appserver 已显式接入同一份 machine 文件能力，提供读取、受版本保护的保存、目录、路径搜索、元数据与监听 RPC；监听复用统一订阅和断线清理。`fs/searchPaths` 搜索工作区相对路径，逐层遵守 `.gitignore`、跳过 `.git` 与符号链接，最多 50 项；前端 200ms 防抖并忽略迟到结果。
 - appserver 通过连接级 `command/exec` 系列 RPC 管理 UI 终端；进程按 `ConnectionID + processId` 隔离，输出实时通知 Client，断线、取消或服务关闭都会终止并等待进程收尾。它不进入 Product、Host 或 Session 账本。
 - machine-local 持有文件与长期进程的平台能力；长期进程按 Harness Session 隔离，进程 ID 已交付后可跨 Turn 存活，关闭时终止进程树并等待读取与回收完成。`apply_patch` 写入前完整计算所有目标，匹配失败或文件并发变化时不覆盖，I/O 中途失败准确返回已提交前缀。Agent Tool 只转换参数和呈现结果。
 
@@ -95,6 +96,7 @@ Windows 启动继续要求 Git Bash；Agent 长期进程与 UI 终端 PTY 均使
 
 ## 已知未验证
 
+- 上下文引用三个入口的实机交互、中文输入法和亮暗／窄屏布局待用户 `make run` 截图验收；按最新要求不新增 UI 自动化测试。
 - Windows 原生目录选择器仍需在交互式 Windows 桌面验收。
 - Subagent 工作页的窄面板布局、嵌套打开 `主会话 › 孩子 › 孙子`、点击去重、关闭父标签后孙子保持订阅及实机流式交互仍需浏览器验收。
 - 前端主包与延迟加载的 Monaco 包超过 Vite 默认 500KB 提示；编辑器及 Worker 均为本地资源并按需加载，当前不影响启动和离线运行。
@@ -103,6 +105,7 @@ Windows 启动继续要求 Git Bash；Agent 长期进程与 UI 终端 PTY 均使
 
 ## 本次验证
 
+- 上下文引用只保留两组核心测试：后端路径搜索的 `.gitignore`／匹配／截断，前端引用文本的转义往返／无效段回退／去重与确认清理。Go 编译、相关包 vet、TS 契约检查和前端生产构建通过；只有既有 Vite 大包提示。未新增 UI 自动化测试，也未执行包含全量 UI 测试的 `make agent-check`。
 - Subagent 两层委派、恢复图校验、直属回报、递归停止、准备期停止竞态、停止后逐层续聊、隐藏会话隔离和真实 WebSocket 嵌套订阅测试通过；TS 契约、RPC 类型检查、64 项前端测试、生产构建和 Go vet 通过。`make agent-check` 仅有已记录的 machine-local `TestProcessOutputIsIncremental` 首次输出为空，在普通与 race 检查中失败；未修改该模块。
 - Subagents 生命周期收为 `ctx / work / shutdown`：取消状态统一用于关闭准入，一份计数等待调用与后台退出，`sync.OnceValue` 复用关闭结果；取消与解除订阅函数只由关闭函数持有。补强了创建阻塞期间并发 Close 不得提前返回的测试。
 - 本次关闭基线与修改后的相关测试、Subagents 及产品/Runner/委派工具 race、Go vet、前端构建、64 项前端测试和 TS 契约检查通过。`make agent-check` 未全通过：本机 `plugins/machine/local.TestProcessOutputIsIncremental` 在普通与 race 检查均因首次输出为空失败，单独 race 复核仍失败；未修改该模块。

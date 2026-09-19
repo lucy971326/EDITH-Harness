@@ -18,6 +18,7 @@ const (
 	readFileMethod      = "fs/readFile"
 	writeFileMethod     = "fs/writeFile"
 	readDirectoryMethod = "fs/readDirectory"
+	searchPathsMethod   = "fs/searchPaths"
 	getMetadataMethod   = "fs/getMetadata"
 	watchMethod         = "fs/watch"
 	changedMethod       = "fs/changed"
@@ -58,6 +59,12 @@ type ReadDirectoryResult struct {
 	Entries []FileEntry `json:"entries"`
 }
 
+// 数据。在一个工作区内按名称或部分路径搜索；空查询只列根目录。
+type SearchPathsParams struct {
+	Workspace string `json:"workspace" jsonschema:"minLength=1"`
+	Query     string `json:"query" jsonschema:"maxLength=1024"`
+}
+
 // 数据。文件或目录的类型与毫秒时间戳。
 type GetMetadataResult struct {
 	IsDirectory  bool  `json:"isDirectory"`
@@ -82,7 +89,12 @@ func (s *Server) BindFilesystem(filesystem machine.FileSystem) error {
 	if filesystem == nil || s.filesystem != nil {
 		return fmt.Errorf("appserver: nil or already bound filesystem")
 	}
+	pathSearcher, ok := filesystem.(machine.PathSearcher)
+	if !ok {
+		return fmt.Errorf("appserver: filesystem does not support path search")
+	}
 	s.filesystem = filesystem
+	s.pathSearcher = pathSearcher
 	if err := Register(s, readFileMethod, s.handleReadFile); err != nil {
 		return err
 	}
@@ -90,6 +102,10 @@ func (s *Server) BindFilesystem(filesystem machine.FileSystem) error {
 		return err
 	}
 	if err := Register(s, readDirectoryMethod, s.handleReadDirectory); err != nil {
+		return err
+	}
+	err := Register(s, searchPathsMethod, s.handleSearchPaths)
+	if err != nil {
 		return err
 	}
 	if err := Register(s, getMetadataMethod, s.handleGetMetadata); err != nil {
@@ -147,6 +163,15 @@ func (s *Server) handleReadDirectory(_ context.Context, input FilePathParams) (R
 		})
 	}
 	return result, nil
+}
+
+func (s *Server) handleSearchPaths(ctx context.Context, input SearchPathsParams) (machine.PathSearchResult, error) {
+	err := checkAbsolutePath(input.Workspace)
+	if err != nil {
+		return machine.PathSearchResult{}, err
+	}
+	result, err := s.pathSearcher.SearchPaths(ctx, input.Workspace, input.Query)
+	return result, filesystemMethodError(err)
 }
 
 func (s *Server) handleGetMetadata(_ context.Context, input FilePathParams) (GetMetadataResult, error) {

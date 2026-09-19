@@ -29,6 +29,7 @@ type Server struct {
 	skills          skills.Skills
 	commands        commands.Commands
 	filesystem      machine.FileSystem
+	pathSearcher    machine.PathSearcher
 	commandExec     *commandExecManager
 	workspacePicker workspacepicker.Picker
 

@@ -1,21 +1,20 @@
 import { useEffect, useState } from "react";
-
-interface MenuItem {
-  label: string;
-  action: () => void | Promise<void>;
-  disabled?: boolean;
-}
+import type { ContextReference } from "../context-references";
+import { ContextMenu, type ContextMenuItem } from "./context-menu";
 
 interface MenuState {
   x: number;
   y: number;
-  items: MenuItem[];
+  items: ContextMenuItem[];
 }
 
-export function AppContextMenu() {
+export function AppContextMenu({ onAddReference }: {
+  onAddReference?: (reference: ContextReference) => void;
+}) {
   const [menu, setMenu] = useState<MenuState | null>(null);
 
   useEffect(() => {
+    setMenu(null);
     function open(event: MouseEvent) {
       const origin = event.target;
       const target =
@@ -28,7 +27,7 @@ export function AppContextMenu() {
       // Monaco 自带菜单使用它自己的 Command API，保留其完整编辑能力。
       if (target.closest(".monaco-editor")) return;
       event.preventDefault();
-      setMenu(createMenu(target, event.clientX, event.clientY));
+      setMenu(createMenu(target, event.clientX, event.clientY, onAddReference));
     }
     function openFromKeyboard(event: KeyboardEvent) {
       if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10"))
@@ -37,71 +36,34 @@ export function AppContextMenu() {
       if (!(target instanceof HTMLElement) || target.closest(".monaco-editor")) return;
       event.preventDefault();
       const bounds = target.getBoundingClientRect();
-      setMenu(createMenu(target, bounds.left + 12, bounds.top + 12));
-    }
-    function close() {
-      setMenu(null);
+      setMenu(createMenu(target, bounds.left + 12, bounds.top + 12, onAddReference));
     }
     window.addEventListener("contextmenu", open);
     window.addEventListener("keydown", openFromKeyboard);
-    window.addEventListener("blur", close);
-    window.addEventListener("resize", close);
     return () => {
       window.removeEventListener("contextmenu", open);
       window.removeEventListener("keydown", openFromKeyboard);
-      window.removeEventListener("blur", close);
-      window.removeEventListener("resize", close);
     };
-  }, []);
-
-  useEffect(() => {
-    if (!menu) return;
-    function close() {
-      setMenu(null);
-    }
-    window.addEventListener("pointerdown", close);
-    window.addEventListener("scroll", close, true);
-    return () => {
-      window.removeEventListener("pointerdown", close);
-      window.removeEventListener("scroll", close, true);
-    };
-  }, [menu]);
+  }, [onAddReference]);
 
   if (!menu) return null;
   return (
-    <div
-      className="app-context-menu"
-      role="menu"
-      aria-label="快捷操作"
-      style={{
-        left: Math.min(menu.x, window.innerWidth - 190),
-        top: Math.min(menu.y, window.innerHeight - menu.items.length * 34 - 12),
-      }}
-      onPointerDown={(event) => event.stopPropagation()}
-    >
-      {menu.items.map((item) => (
-        <button
-          key={item.label}
-          role="menuitem"
-          disabled={item.disabled}
-          onClick={() => {
-            setMenu(null);
-            void item.action();
-          }}
-        >
-          {item.label}
-        </button>
-      ))}
-    </div>
+    <ContextMenu
+      x={menu.x}
+      y={menu.y}
+      items={menu.items}
+      onClose={() => setMenu(null)}
+    />
   );
 }
 
-function createMenu(target: HTMLElement, x: number, y: number): MenuState {
+function createMenu(target: HTMLElement, x: number, y: number,
+  onAddReference?: (reference: ContextReference) => void): MenuState {
   const editable = editableElement(target);
   const selected = window.getSelection()?.toString() ?? "";
   const pathElement = target.closest<HTMLElement>("[data-file-path]");
   const path = pathElement?.dataset.filePath;
-  const items: MenuItem[] = [];
+  const items: ContextMenuItem[] = [];
 
   if (editable) {
     items.push(
@@ -140,6 +102,10 @@ function createMenu(target: HTMLElement, x: number, y: number): MenuState {
   }
 
   if (path) {
+    const kind = pathElement?.dataset.referenceKind;
+    if (onAddReference && (kind === "file" || kind === "directory")) {
+      items.push({ label: "添加到对话", action: () => onAddReference({ kind, path }) });
+    }
     const closeButton = pathElement
       ?.closest(".workspace-tab")
       ?.querySelector<HTMLButtonElement>("[data-context-close]");

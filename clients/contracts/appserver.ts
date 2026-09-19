@@ -56,6 +56,15 @@ export interface FileEntry {
   isFile: boolean;
 }
 
+export interface PathMatch {
+  path: string;
+  kind: 'file' | 'directory';
+}
+export interface PathSearchResult {
+  entries: PathMatch[];
+  truncated: boolean;
+}
+
 export interface FileMetadata {
   isDirectory: boolean;
   isFile: boolean;
@@ -89,6 +98,7 @@ export interface ServerMethods {
   'fs/readFile': { params: { path: string }; result: { dataBase64: string; hash: string } };
   'fs/writeFile': { params: { path: string; dataBase64: string; expectedHash: string }; result: { hash: string } };
   'fs/readDirectory': { params: { path: string }; result: { entries: FileEntry[] } };
+  'fs/searchPaths': { params: { workspace: string; query: string }; result: PathSearchResult };
   'fs/getMetadata': { params: { path: string }; result: FileMetadata };
   'fs/watch': { params: { path: string }; result: { subscriptionID: string } };
   'command/exec': {

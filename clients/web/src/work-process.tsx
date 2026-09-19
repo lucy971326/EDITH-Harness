@@ -16,6 +16,7 @@ import {
   GitCompareArrows,
 } from "./icons";
 import { MessageMarkdown } from "./message-markdown";
+import { UserMessage } from "./user-message";
 import {
   processGroups,
   type ChatTurn,
@@ -211,7 +212,7 @@ function WorkProcessComponent({
             <MessageImages blocks={turn.prompt.message.blocks} compact />
             {promptText.trim() && (
               <div className="user-message">
-                <MessageMarkdown
+                <UserMessage
                   text={promptText}
                   workspace={workspace}
                   onOpenFile={onOpenFile}
@@ -329,7 +330,7 @@ function WorkProcessComponent({
                       </span>
                     )}
                     {group.kind === "steer" ? (
-                      <MessageMarkdown
+                      <UserMessage
                         text={group.text}
                         workspace={workspace}
                         onOpenFile={onOpenFile}

@@ -112,6 +112,7 @@ function DirectoryNode({
         style={{ paddingLeft: `${8 + depth * 14}px` }}
         title={path}
         data-file-path={path}
+        data-reference-kind="directory"
         onClick={toggle}
       >
         <ChevronRight className="file-tree-chevron" data-open={open} />
@@ -160,6 +161,7 @@ function DirectoryNode({
                 style={{ paddingLeft: `${26 + depth * 14}px` }}
                 title={childPath}
                 data-file-path={childPath}
+                data-reference-kind={entry.isFile ? "file" : undefined}
                 onClick={() => void openEntry(entry, childPath)}
               >
                 <FileText />

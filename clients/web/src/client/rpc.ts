@@ -247,6 +247,10 @@ export class RPCClient {
     return this.call("fs/getMetadata", { path });
   }
 
+  searchPaths(workspace: string, query: string) {
+    return this.call("fs/searchPaths", { workspace, query });
+  }
+
   watchFile(path: string, accept: (subscriptionID: string) => void) {
     return this.call(
       "fs/watch",

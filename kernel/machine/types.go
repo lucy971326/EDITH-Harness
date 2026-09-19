@@ -26,6 +26,18 @@ type DirEntry struct {
 	IsFile bool
 }
 
+// 数据。工作区搜索命中的文件或目录；Path 使用工作区相对路径。
+type PathMatch struct {
+	Path string `json:"path" jsonschema:"minLength=1"`
+	Kind string `json:"kind" jsonschema:"enum=file,enum=directory"`
+}
+
+// 数据。最多 50 个路径候选；Truncated 表示还有未展示的匹配项。
+type PathSearchResult struct {
+	Entries   []PathMatch `json:"entries"`
+	Truncated bool        `json:"truncated"`
+}
+
 // 数据。一份文件内容及其 SHA-256 版本。
 type FileContent struct {
 	Data []byte
@@ -121,6 +133,11 @@ type Machine interface {
 
 	// 路径
 	ResolvePath(workspace string, path string) string
+}
+
+// 契约。同一份 machine 服务可选提供的工作区路径搜索能力。
+type PathSearcher interface {
+	SearchPaths(ctx context.Context, workspace, query string) (PathSearchResult, error)
 }
 
 // 契约。同一份 machine 服务提供的版本化文件操作、元数据与监听能力。
