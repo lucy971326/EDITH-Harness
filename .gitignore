@@ -8,7 +8,6 @@ __MACOSX/
 ._*
 
 # Go
-.forward/
 .harness-data/
 .agy/
 .build/
@@ -16,8 +15,6 @@ __MACOSX/
 # Node 依赖。
 node_modules/
 
-# 练习与实验目录
-playground/
 
 # IDE
 .claude/
