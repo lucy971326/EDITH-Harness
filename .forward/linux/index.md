@@ -1,66 +1,97 @@
-# Linux 基础前置知识 · 可学清单
+# Linux 权限与沙箱 · 学习计划
 
-按“为权限×沙箱服务”筛过，每项一句话，学什么你点。
+## 目标
 
-## A. 内核：王国政府的构造 ★
+为 Harness 的 Linux / WSL2 Agent 执行边界补齐必要知识，最终理解并验证：
 
-- 用户态 / 内核态：CPU 的两副面孔，程序平时住用户态，内核态是禁地
-- 系统调用：从用户态敲内核大门的唯一合法通道（陷入/trap）
-- 虚拟内存：每人的桌子带锁，翻不动别人的——内存隔离的物理基础
-- 上下文切换：工人干一半被按下，换另一个，现场怎么保存
+```text
+权限策略 Allow / Ask / Deny
+          ↓
+bubblewrap：进程、文件与网络隔离
+          ↓
+seccomp：缩小系统调用面
+          ↓
+cgroup + 信号 + wait：限制资源并完整收尾
+```
 
-## B. 进程世界 ★
+重点是知道每层保护什么、删除后会坏什么；不学习完整内核，也不自己重写 bubblewrap。
 
-- [x] PID/PPID/进程树/孤儿过继（已学）
-- [x] fork 复印 + exec 换脸 + 权限龙生龙（已学）
-- 进程状态：就绪/运行/阻塞；D 状态（不可中断睡眠）是什么
-- 进程组与会话：Ctrl+C 的“打击范围”到底是谁
-- 守护进程：怎么“离家出走”变成国王直属（daemonize 三连）
-- 线程：共用一张桌子的工人；Linux 内核眼里线程 = 轻量进程
-- 进程本体 task_struct：只需认识四个成员——cred 权限 / mm 内存 / files 工具箱 / nsproxy 命名空间（沙箱全跟这四个挂钩）
+## 学习对象
 
-## C. 工具箱与窥视孔 ★
+Docker、Podman 和 bubblewrap 都是在组合 Linux 内核提供的基础机制：
 
-- fd 表与 0/1/2：管道、FIFO、socket、设备为什么长得一样
-- `/proc`：内核开给你偷看的窗户，ps / top / kill 全在这读
-- inode、硬链接 vs 软链接、绝对 vs 相对路径
+```text
+Docker / Podman / bubblewrap
+        ↓ 负责组合与管理
+┌────────────────────────────┐
+│ namespace    隔离资源视图   │
+│ cgroup       限制资源使用   │
+│ capabilities 拆分 root 权力 │
+│ seccomp      过滤系统调用   │
+│ LSM          强制访问控制   │
+│ mount        构造文件系统视图│
+│ UID/GID      进程与文件身份 │
+└────────────────────────────┘
+        ↓
+     Linux 内核
+```
 
-## D. 权限：钥匙体系 ★★★（本课核心）
+本计划学习这些底层机制；Docker 用于反向验证理解，Harness 最终按需要组合 bubblewrap、seccomp 与进程监管。
 
-- [x] uid/gid 三件套 + 龙生龙（已学）
-- DAC 三位权限：属主/组/其他 的 rwx
-- setuid/setgid：剧本穿上别人的身份牌（提权是怎么发生的）
-- sticky 位：公共目录各扫门前雪（/tmp 为什么能共存）
-- capabilities：root 的权杖切成一把把钥匙，按需发放
-- ACL（setfacl）：比 rwx 三位更细的条目制
-- MAC：SELinux / AppArmor，标签与配置文件强制的“不听话就拒绝”
-- seccomp：工人自缚，只放行这些系统调用
-- Landlock：无特权也能给自己画文件牢笼（新内核特性）
+## 一、进程与继承
 
-## E. 资源与隔离 ★★★（沙箱的两根支柱）
+- [x] PID、PPID、进程树与孤儿进程
+- [x] `fork`、`exec` 与权限继承
+- 进程组、Session、信号、退出码与 `wait`
+- 文件描述符和环境变量的继承
 
-- cgroup：CPU / 内存 / PID 数量的牢笼
-- namespace：PID / mount / net / user / UTS 各自的“单机幻觉”
-- chroot：改“根”目录的老式土办法
-- 网络隔离：netns + iptables 一句话版本
+**验收：**能解释超时、父进程退出和后台派生时，如何停止并回收整棵进程树。
 
-## F. 信号与终点 ★
+## 二、身份与文件权限
 
-- 信号全谱：TERM / KILL / INT / HUP / STOP / CONT / CHLD 各自性格
-- waitpid / 收尸 / 僵尸（第三幕埋过伏笔）
-- 退出码与 128+n 惯例
+- [x] UID、GID 与补充组
+- 文件和目录的 `rwx`、`umask`、sticky、setuid / setgid
+- inode、硬链接、符号链接与路径逐段解析
+- ACL、capabilities 与 `no_new_privs`
 
-## G. 旁支（想深入了解再选）
+**验收：**能解释常见读写删除实验、链接越界风险，以及为什么路径字符串检查不能构成沙箱。
 
-- ptrace：一个工人趴另一个工人背上（调试也是权限）
-- strace / lsof 用法：上面的知识怎么变成手上的工具
+## 三、隔离与资源限制
 
-## 明确不要碰（防止挖太深）
+- user / mount / PID / network namespace：分别隔离身份、文件视图、进程和网络
+- cgroup v2 与 rlimit：限制 CPU、内存、进程数和文件描述符
+- seccomp：过滤系统调用，但不冒充完整沙箱
+- Landlock、AppArmor / SELinux：了解与 namespace、seccomp 的职责差异
 
-内核源码、调度器算法、ext4 磁盘结构、写驱动、块层、TCP/IP 协议栈——这些对做沙箱没有增量，别啃。
+**验收：**能为每种机制各写一句“保护什么”和“不保护什么”。
 
----
+## 四、bubblewrap 实验
 
-**我建议的顺序**：A 内核地基 → B 进程深化 → D 权限 → E 隔离 → C 工具箱（穿插在 D 之前讲 fd）→ F 信号收尾。
+- 用普通用户建立最小沙箱，只暴露必要程序、库、设备和临时目录
+- 分别验证工作区只读、工作区可写、工作区外不可见和禁用网络
+- 清理不需要继承的环境变量、文件描述符和 capabilities
+- 叠加 `no_new_privs`、seccomp、cgroup、超时与进程树回收
+- 用 `/proc`、`strace`、`namei`、`capsh` 观察真实边界
 
-想从 A 开始吗？还是你看到哪个词两眼放光想先听的？
+**验收：**用一张测试表证明允许的行为正常，文件越界、网络、提权、资源耗尽和残留进程受到预期限制。
+
+## 五、映射回 Harness
+
+- `machine-local` 原始机器通道与 Agent 受控通道在哪里分开？
+- Read Only、Ask for approval 与 Full Access 各自使用什么沙箱边界？
+- 为什么审批只能允许一次操作，不能扩大整轮 Sandbox？
+- Tool、MCP 与子 Agent 如何共用一条权限和执行主干？
+- 启动失败、Stop 或 Harness 关闭时，怎样拒绝执行并回收全部进程？
+- 哪些保证来自 Harness 策略，哪些必须由 Linux 内核强制执行？
+
+**最终验收：**能画出一次 Agent 操作从权限决策到沙箱执行和进程收尾的完整链路，并指出删除每层后的具体后果。
+
+## 暂不深入
+
+内核源码、调度算法、驱动、磁盘结构、Kubernetes、自制 namespace 启动器、自制 seccomp BPF 编译器及复杂 SELinux / AppArmor 策略；遇到真实实现阻塞时再补。
+
+## 顺序
+
+```text
+进程继承 → 身份与文件权限 → 隔离与资源 → bubblewrap 实验 → Harness 设计
+```
