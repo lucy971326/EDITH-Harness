@@ -38,7 +38,7 @@ func outputTokenBudget(requested *int) (int, error) {
 }
 
 func renderProcessOutput(output machine.ProcessOutput, wallTime time.Duration, maxTokens int) string {
-	raw := strings.ToValidUTF8(string(output.Output), "�")
+	raw := flattenTerminalOutput(string(output.Output))
 	originalBytes := int64(len(output.Output)) + output.OmittedBytes
 	originalTokens := (originalBytes + 3) / 4
 	if output.OmittedBytes > 0 {
@@ -56,6 +56,124 @@ func renderProcessOutput(output machine.ProcessOutput, wallTime time.Duration, m
 	remaining := maxTokens*4 - len(header) - 1
 	raw = truncateOutput(raw, remaining, originalTokens)
 	return header + "\n" + raw
+}
+
+// flattenTerminalOutput 将终端原地重绘还原为适合聊天卡片的纯文本。
+func flattenTerminalOutput(text string) string {
+	text = strings.ToValidUTF8(text, "�")
+	var output strings.Builder
+	var line []rune
+	cursor := 0
+
+	for index := 0; index < len(text); {
+		if text[index] == 0x1b {
+			if index+1 >= len(text) {
+				break
+			}
+			switch text[index+1] {
+			case '[':
+				end := index + 2
+				for end < len(text) && (text[end] < 0x40 || text[end] > 0x7e) {
+					end++
+				}
+				if end >= len(text) {
+					return output.String() + string(line)
+				}
+				parameter := 0
+				for offset := index + 2; offset < end && text[offset] >= '0' && text[offset] <= '9'; offset++ {
+					parameter = parameter*10 + int(text[offset]-'0')
+				}
+				switch text[end] {
+				case 'K':
+					switch parameter {
+					case 0:
+						if cursor < len(line) {
+							line = line[:cursor]
+						}
+					case 1:
+						limit := min(cursor+1, len(line))
+						for position := 0; position < limit; position++ {
+							line[position] = ' '
+						}
+					case 2:
+						line = line[:0]
+					}
+				case 'G':
+					if parameter == 0 {
+						parameter = 1
+					}
+					cursor = parameter - 1
+				case 'C':
+					if parameter == 0 {
+						parameter = 1
+					}
+					cursor += parameter
+				case 'D':
+					if parameter == 0 {
+						parameter = 1
+					}
+					cursor = max(0, cursor-parameter)
+				}
+				index = end + 1
+				continue
+			case ']', 'P', 'X', '^', '_':
+				index += 2
+				for index < len(text) {
+					if text[index] == 0x07 {
+						index++
+						break
+					}
+					if text[index] == 0x1b && index+1 < len(text) && text[index+1] == '\\' {
+						index += 2
+						break
+					}
+					index++
+				}
+				continue
+			default:
+				end := index + 1
+				for end < len(text) && text[end] >= 0x20 && text[end] <= 0x2f {
+					end++
+				}
+				if end < len(text) {
+					end++
+				}
+				index = end
+				continue
+			}
+		}
+
+		r, size := utf8.DecodeRuneInString(text[index:])
+		index += size
+		switch r {
+		case '\r':
+			cursor = 0
+		case '\n':
+			output.WriteString(string(line))
+			output.WriteByte('\n')
+			line = line[:0]
+			cursor = 0
+		case '\b':
+			cursor = max(0, cursor-1)
+		case '\t':
+			next := (cursor/8 + 1) * 8
+			for len(line) < next {
+				line = append(line, ' ')
+			}
+			cursor = next
+		default:
+			if r < 0x20 || r == 0x7f {
+				continue
+			}
+			for len(line) <= cursor {
+				line = append(line, ' ')
+			}
+			line[cursor] = r
+			cursor++
+		}
+	}
+	output.WriteString(string(line))
+	return output.String()
 }
 
 func truncateOutput(text string, maxBytes int, originalTokens int64) string {

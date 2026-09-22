@@ -99,7 +99,7 @@ Windows 启动继续要求 Git Bash；Agent 长期进程与 UI 终端 PTY 均使
 
 ## 已知未验证
 
-- 沙箱不提供硬链接别名隔离；保护目录内部的细粒度子路径授权暂时拒绝。Linux 临时占位在正常退出时清理，宿主被强杀或断电可能留下空目录；不自动删除来源不明的目录。macOS Seatbelt 已编写，真实文件限制、PTY、DNS/TLS 与 macOS 版本兼容性待实机验证。Windows 沙箱、模型审核与 MCP 执行边界仍待后续实现。
+- 沙箱不提供硬链接别名隔离；保护目录内部的细粒度子路径授权暂时拒绝。Linux 临时占位在正常退出时清理，宿主被强杀或断电可能留下空目录；不自动删除来源不明的目录。macOS Seatbelt 已在 macOS 27.0 arm64 实机验证，其他 macOS 版本与 Intel 机器未运行。Windows 沙箱、模型审核与 MCP 执行边界仍待后续实现。
 
 - 上下文引用各入口、助手选区浮层／悬停预览、中文输入法和亮暗／窄屏布局待用户 `make run` 截图验收；按最新要求不新增 UI 自动化测试。
 - Windows 原生目录选择器仍需在交互式 Windows 桌面验收。
@@ -152,3 +152,7 @@ Windows 启动继续要求 Git Bash；Agent 长期进程与 UI 终端 PTY 均使
 - 新增 Darwin 平台的 Seatbelt 启动方案，使用固定系统 sandbox-exec、内存 SBPL 与独立路径参数；命令与文件修改助手复用同一入口。处理系统顶层路径别名、授权根及祖先保护、元数据目录保护、网络开关与特殊 fcntl 限制；失败不降级。
 - `make agent-check` 通过；macOS arm64 / amd64 的 machine-local 测试可执行文件与完整 Harness 可执行文件交叉编译通过。未在 Linux 上执行 Mac 二进制，不能视为实机限制验证通过。
 - 已编写一组 Mac 核心集成测试：目录写入与保护、符号链接、只读与本次授权、文件助手、PTY、取消及 TCP / Unix socket。换到 Mac 后执行 `go test ./plugins/machine/local -run TestDarwinAgentSandbox -v`；再用 `make run` 验收实际 HTTPS 与审批授权。测试不访问外网。
+- macOS 27.0 arm64 实机执行 `go test ./plugins/machine/local -run '^TestDarwinAgentSandbox$' -v -count=1` 通过。首次运行发现 Unix socket 测试地址超过系统长度限制，改用短临时路径后，文件边界、保护目录、符号链接、本次授权回落、文件助手、PTY、取消及 TCP / Unix socket 网络开关全部通过。
+- 本机 `make agent-check` 的前端生产构建、71 项前端测试、TS 契约与 RPC 检查及其余 Go 包通过；普通和 race 检查均命中已记录的 `TestProcessOutputIsIncremental` 首包为空时序问题，因此全量目标退出失败。
+- 用户手工验收通过项目内免审批写入、项目外拒绝与单次授权、真实 HTTPS 单次联网、只读、完全访问和交互式 PTY。单次授权不会延续到下一次操作；未申请额外权限的联网直接由规则拒绝。停止和刷新审批本轮未重复验证，属于平台无关的审批生命周期与界面行为。
+- Agent PTY 的 Tool 结果在进入模型与聊天卡片前转换为稳定纯文本，处理回车覆盖、退格、清行和 ANSI 控制序列；machine 仍保存原始增量字节，右侧 xterm 终端不受影响。回归用例覆盖 SSH 密码提示的同一行重复重绘，exec Tool 测试通过；`make agent-check` 的前端、契约和其余 Go 检查通过，普通与 race 仍只命中已记录的 `TestProcessOutputIsIncremental` 首包时序问题。

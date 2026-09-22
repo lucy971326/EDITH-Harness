@@ -155,10 +155,15 @@ func TestDarwinAgentSandbox(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	socketDir, err := os.MkdirTemp("/tmp", "harness-sandbox-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(socketDir) })
 	for _, network := range []string{"tcp", "unix"} {
 		address := "127.0.0.1:0"
 		if network == "unix" {
-			address = filepath.Join(root, "probe.sock")
+			address = filepath.Join(socketDir, "probe.sock")
 		}
 		listener, err := net.Listen(network, address)
 		if err != nil {

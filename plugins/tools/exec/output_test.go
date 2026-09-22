@@ -26,6 +26,28 @@ func TestRenderProcessOutput(t *testing.T) {
 	}
 }
 
+func TestRenderProcessOutputFlattensTerminalRedraws(t *testing.T) {
+	content := renderProcessOutput(machine.ProcessOutput{
+		ProcessID: 42,
+		Output: []byte(
+			"connecting\x1b[2K\r" +
+				"lucy@server's password:\r" +
+				"lucy@server's password:\n" +
+				"abc\b\bXY\n",
+		),
+	}, time.Second, defaultOutputTokens)
+
+	if strings.Contains(content, "\x1b") || strings.Contains(content, "connecting") {
+		t.Fatalf("terminal controls were not flattened:\n%s", content)
+	}
+	if count := strings.Count(content, "lucy@server's password:"); count != 1 {
+		t.Fatalf("password prompt count = %d, want 1:\n%s", count, content)
+	}
+	if !strings.Contains(content, "\naXY\n") {
+		t.Fatalf("backspace was not applied:\n%s", content)
+	}
+}
+
 func TestRenderProcessOutputReportsBothCaps(t *testing.T) {
 	content := renderProcessOutput(machine.ProcessOutput{
 		ProcessID:    42,
