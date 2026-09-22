@@ -104,7 +104,12 @@ func TestApplyPatchToolRegistrationAndCall(t *testing.T) {
 	if err := h.RegisterService("machine", m); err != nil {
 		t.Fatal(err)
 	}
-	for _, plugin := range []host.Plugin{kerneltools.NewPlugin(), approvals.NewPlugin(), applypatch.New()} {
+	service := approvals.New()
+	t.Cleanup(func() { _ = service.Close() })
+	if err := h.RegisterService("approvals", service); err != nil {
+		t.Fatal(err)
+	}
+	for _, plugin := range []host.Plugin{kerneltools.NewPlugin(), applypatch.New()} {
 		if err := h.Install(plugin); err != nil {
 			t.Fatal(err)
 		}

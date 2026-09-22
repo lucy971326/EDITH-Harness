@@ -39,6 +39,8 @@ func (s *Subagents) Send(ctx context.Context, parentSessionID, parentRunID, task
 		return SendResult{}, err
 	}
 	defer s.work.Done()
+	input.SourceSessionID = parentSessionID
+	input.SourceRunID = parentRunID
 	return s.sendAccepted(ctx, input, permit)
 }
 

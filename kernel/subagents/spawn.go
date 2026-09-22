@@ -171,7 +171,9 @@ func (s *Subagents) Spawn(ctx context.Context, input SpawnInput) (SpawnResult, e
 	}
 
 	runID, err := s.startTurn(coord, session.UserMessage{
-		Blocks: []session.Block{{Kind: "text", Text: input.Description}},
+		SourceSessionID: input.ParentSessionID,
+		SourceRunID:     input.ParentRunID,
+		Blocks:          []session.Block{{Kind: "text", Text: input.Description}},
 	})
 	if err != nil {
 		return SpawnResult{}, err

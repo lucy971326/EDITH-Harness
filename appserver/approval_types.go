@@ -5,6 +5,9 @@ import (
 	"harness/kernel/permissions"
 )
 
+// 数据。读取全局智能审批设置。
+type ApprovalSettingsParams struct{}
+
 // 数据。本机用户订阅全部待审批，包含子 Agent 的来源身份。
 type ApprovalSubscribeParams struct{}
 

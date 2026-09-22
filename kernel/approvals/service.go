@@ -5,11 +5,16 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"net/http"
 	"slices"
 	"sort"
 	"sync"
+	"time"
 
+	"harness/kernel/llm"
 	"harness/kernel/permissions"
+	"harness/kernel/persist"
+	"harness/kernel/session"
 )
 
 // ErrExpired 表示请求已回答、已取消或不存在。
@@ -23,7 +28,21 @@ type pendingRequest struct {
 
 // 活对象。拥有待审批请求与订阅；等待沿用工具的 Context。
 type Service struct {
+	// 审核依赖；密钥只在启动读取。
+	models   *llm.Client
+	sessions *session.Store
+	files    *persist.Files
+	jevKey   string
+	http     *http.Client
+
+	// 服务关闭时取消审核与人工等待，并等待在途申请退出。
+	ctx    context.Context
+	cancel context.CancelFunc
+	work   sync.WaitGroup
+
+	// 全局设置、待审批与订阅状态。
 	mu        sync.Mutex
+	settings  Settings
 	pending   map[string]*pendingRequest
 	listeners map[chan []Pending]struct{}
 	closed    bool
@@ -31,7 +50,14 @@ type Service struct {
 
 // New 创建审批服务，不启动后台任务。
 func New() *Service {
-	return &Service{pending: make(map[string]*pendingRequest), listeners: make(map[chan []Pending]struct{})}
+	ctx, cancel := context.WithCancel(context.Background())
+	return &Service{
+		pending:   make(map[string]*pendingRequest),
+		listeners: make(map[chan []Pending]struct{}),
+		settings:  Settings{Engine: "llm"},
+		http:      &http.Client{Timeout: 30 * time.Second},
+		ctx:       ctx, cancel: cancel,
+	}
 }
 
 // Authorize 检查申请，必要时等待审核，返回本次独立权限。
@@ -48,10 +74,26 @@ func (s *Service) Authorize(ctx context.Context, identity Identity, kind permiss
 	if requirement == permissions.Allow {
 		return request.Current, nil
 	}
-	if kind != permissions.HumanReviewer {
+	if kind != permissions.HumanReviewer && kind != permissions.ModelReviewer {
 		return permissions.Policy{}, fmt.Errorf("approvals: reviewer %q is unavailable; additional permissions were not granted", kind)
 	}
-	reviewer := humanReviewer{service: s, identity: identity}
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return permissions.Policy{}, context.Canceled
+	}
+	settings := s.settings
+	s.work.Add(1)
+	s.mu.Unlock()
+	defer s.work.Done()
+	ctx, cancel := context.WithCancel(ctx)
+	stop := context.AfterFunc(s.ctx, cancel)
+	defer stop()
+	defer cancel()
+	var reviewer permissions.Reviewer = humanReviewer{service: s, identity: identity}
+	if kind == permissions.ModelReviewer {
+		reviewer = modelReviewer{service: s, identity: identity, settings: settings}
+	}
 	decision, err := reviewer.Review(ctx, request)
 	if err != nil {
 		return permissions.Policy{}, err
@@ -60,12 +102,16 @@ func (s *Service) Authorize(ctx context.Context, identity Identity, kind permiss
 	if err != nil {
 		return permissions.Policy{}, err
 	}
+	if s.ctx.Err() != nil {
+		return permissions.Policy{}, context.Canceled
+	}
 	return permissions.ApplyDecision(request, decision)
 }
 
 type humanReviewer struct {
 	service  *Service
 	identity Identity
+	reason   string
 }
 
 var _ permissions.Reviewer = humanReviewer{}
@@ -74,7 +120,7 @@ func (r humanReviewer) Review(ctx context.Context, request permissions.ApprovalR
 	if r.identity.SessionID == "" || r.identity.RunID == "" || r.identity.ToolCallID == "" {
 		return permissions.Decision{}, fmt.Errorf("approvals: missing trusted call identity")
 	}
-	item := &pendingRequest{view: Pending{ID: rand.Text(), Identity: r.identity, Request: cloneRequest(request)}, ctx: ctx, answer: make(chan permissions.Decision, 1)}
+	item := &pendingRequest{view: Pending{ID: rand.Text(), Identity: r.identity, Request: cloneRequest(request), ReviewReason: r.reason}, ctx: ctx, answer: make(chan permissions.Decision, 1)}
 	s := r.service
 	s.mu.Lock()
 	if s.closed || ctx.Err() != nil {
@@ -140,11 +186,13 @@ func (s *Service) Subscribe() ([]Pending, <-chan []Pending, func()) {
 // Close 拒绝待审批申请并关闭订阅，不保留跨重启授权。
 func (s *Service) Close() error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.closed {
+		s.mu.Unlock()
+		s.work.Wait()
 		return nil
 	}
 	s.closed = true
+	s.cancel()
 	for id, item := range s.pending {
 		delete(s.pending, id)
 		item.answer <- permissions.Decision{Reason: "approval service closed"}
@@ -153,6 +201,9 @@ func (s *Service) Close() error {
 		close(listener)
 		delete(s.listeners, listener)
 	}
+	s.mu.Unlock()
+	s.work.Wait()
+	s.http.CloseIdleConnections()
 	return nil
 }
 

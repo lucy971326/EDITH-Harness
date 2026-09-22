@@ -20,9 +20,12 @@ func Instructions(policy Policy, reviewer ReviewerKind) string {
 	}
 	switch reviewer {
 	case HumanReviewer:
-		text.WriteString("额外权限由用户审批。exec_command 可随命令填写 extra_permissions（writeRoots 为已有的绝对目录，network 为是否需要联网）和 justification。可以在首次执行前申请；未申请的命令按现有权限执行。沙箱失败后按需要重新申请，不盲目重复已产生副作用的命令。apply_patch 根据目标路径自动申请目录权限。批准仅用于本次操作，不修改会话模式；已有进程保留启动权限。\n")
+		text.WriteString("额外权限由用户审批。\n")
 	case ModelReviewer:
-		text.WriteString("当前选择模型审核，但模型审核尚未接入。现有权限内可执行，额外权限申请将失败。\n")
+		text.WriteString("额外权限由已配置的智能审核器审批；拒绝则不执行，不确定或审核不可用时转人工审批。现有权限内的操作不触发智能审核。\n")
+	}
+	if reviewer == HumanReviewer || reviewer == ModelReviewer {
+		text.WriteString("exec_command 可随命令填写 extra_permissions（writeRoots 为已有的绝对目录，network 为是否需要联网）和 justification。可以在首次执行前申请；未申请的命令按现有权限执行。沙箱失败后按需要重新申请，不盲目重复已产生副作用的命令。apply_patch 根据目标路径自动申请目录权限；尚不存在的受保护目录需要用户先创建，不能通过申请父目录解除保护。批准仅用于本次操作，不修改会话模式；已有进程保留启动权限。\n")
 	}
 	text.WriteString("这些沙箱限制覆盖本机命令和补丁工具；其他工具不能据此假定受到相同隔离。")
 	return text.String()

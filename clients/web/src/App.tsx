@@ -1,4 +1,5 @@
 import { Approvals } from "./approvals";
+import { ApprovalSettingsPanel } from "./approval-settings";
 import type { PermissionModeChoice } from "../../contracts/approvals.ts";
 import type { PermissionMode } from "../../contracts/harness.ts";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
@@ -1047,6 +1048,17 @@ export default function App() {
           <div className="workspace">
             {settings ? (
               <SettingsPage
+                approvalSettings={<ApprovalSettingsPanel
+                  client={approvalClient} models={models} modelError={modelError}
+                  onReloadModels={() => {
+                    const client = clientRef.current;
+                    if (client?.connected) void loadModels(client);
+                  }}
+                  onSaved={() => {
+                    const client = clientRef.current;
+                    if (client?.connected) void loadPermissionModes(client);
+                  }}
+                />}
                 theme={theme}
                 setTheme={setTheme}
                 onBack={() => setSettings(false)}

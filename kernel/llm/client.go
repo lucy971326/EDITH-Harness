@@ -31,6 +31,15 @@ func (c *Client) Models() []ModelChoice {
 	return out
 }
 
+// ValidateConfig 检查模型对应的本地 Provider 是否配置了密钥。
+func (c *Client) ValidateConfig(id string) error {
+	definition, ok := c.models[id]
+	if !ok || c.config.Providers[definition.Provider].APIKey == "" {
+		return fmt.Errorf("llm: model provider is not configured")
+	}
+	return nil
+}
+
 // ContextWindow 返回指定模型的窗口大小；未知模型返回 0。
 func (c *Client) ContextWindow(id string) int {
 	if c == nil {

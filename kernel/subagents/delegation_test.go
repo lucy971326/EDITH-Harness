@@ -23,6 +23,14 @@ func TestSendRejectsBlankBeforeStartingTurn(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.loop.waitStarted(t)
+	childSession, err := f.sessions.Get(child.ChildSessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := childSession.Entries()[0].Message
+	if first.UserAuthored || first.SourceSessionID != parent || first.SourceRunID != run {
+		t.Fatal("delegation must not become user authorization")
+	}
 	f.loop.release()
 	_, err = f.subagents.Wait(context.Background(), parent, WaitInput{TaskIDs: []string{child.TaskID}, Timeout: time.Second})
 	if err != nil {
@@ -137,6 +145,19 @@ func TestUserCanContinueChildAfterParentRunEnds(t *testing.T) {
 		t.Fatalf("expected a second child turn, got %+v", result)
 	}
 	f.loop.waitStarted(t)
+	childSession, err := f.sessions.Get(child.ChildSessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, entry := range childSession.Entries() {
+		if entry.Message.RunID == result.RunID && entry.Message.Role == session.RoleUser {
+			found = entry.Message.UserAuthored && entry.Message.SourceSessionID == ""
+		}
+	}
+	if !found {
+		t.Fatal("direct user input lost its trusted origin")
+	}
 	f.loop.release()
 }
 

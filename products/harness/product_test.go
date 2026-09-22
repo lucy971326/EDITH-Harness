@@ -12,6 +12,7 @@ import (
 
 	"harness/appserver"
 	"harness/kernel/agents"
+	"harness/kernel/approvals"
 	"harness/kernel/commands"
 	"harness/kernel/events"
 	"harness/kernel/host"
@@ -141,7 +142,7 @@ func TestProductRunsWithoutWebAndForksCompletedSegment(t *testing.T) {
 func TestProductCreateDiscardsSessionWhenSettingsSaveFails(t *testing.T) {
 	fixture := newTestFixture(t)
 	defer fixture.host.Close()
-	service, err := harness.New(fixture.sessions, failingSettings{store: fixture.settings}, fixture.agents, fixture.models, fixture.runner, fixture.commands, fixture.subagents)
+	service, err := harness.New(fixture.sessions, failingSettings{store: fixture.settings}, fixture.agents, fixture.models, fixture.runner, fixture.commands, fixture.subagents, approvals.New())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +175,7 @@ func TestProductSessionDoesNotReadOtherSessionSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service, err := harness.New(fixture.sessions, selectiveFailSettings{store: fixture.settings, badID: "bad"}, fixture.agents, fixture.models, fixture.runner, fixture.commands, fixture.subagents)
+	service, err := harness.New(fixture.sessions, selectiveFailSettings{store: fixture.settings, badID: "bad"}, fixture.agents, fixture.models, fixture.runner, fixture.commands, fixture.subagents, approvals.New())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +221,7 @@ func newTestFixture(t *testing.T) testFixture {
 	t.Cleanup(func() { _ = os.Setenv("HOME", previousHome) })
 
 	h := host.NewHost()
-	plugins := []host.Plugin{&persist.Plugin{Dir: filepath.Join(home, ".harness")}, &session.Plugin{}, &llm.Plugin{}, machinelocal.New(), events.NewPlugin(), loops.NewPlugin(), skills.NewPlugin(), tools.NewPlugin(), agents.NewPlugin(), commands.NewPlugin(), runner.NewPlugin(), subagents.NewPlugin(), harness.NewPlugin()}
+	plugins := []host.Plugin{&persist.Plugin{Dir: filepath.Join(home, ".harness")}, &session.Plugin{}, &llm.Plugin{}, approvals.NewPlugin(), machinelocal.New(), events.NewPlugin(), loops.NewPlugin(), skills.NewPlugin(), tools.NewPlugin(), agents.NewPlugin(), commands.NewPlugin(), runner.NewPlugin(), subagents.NewPlugin(), harness.NewPlugin()}
 	for _, plugin := range plugins {
 		err = h.Install(plugin)
 		if err != nil {

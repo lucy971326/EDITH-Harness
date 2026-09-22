@@ -18,6 +18,7 @@ import (
 
 type memoryMachine struct {
 	files         map[string][]byte
+	directories   map[string]bool
 	failWritePath string
 	afterWrite    func()
 }
@@ -46,8 +47,11 @@ func (m *memoryMachine) ReadFileVersion(path string, _ int64) (machine.FileConte
 	}
 	return machine.FileContent{Data: data, Hash: testHash(data)}, nil
 }
-func (m *memoryMachine) Metadata(string) (machine.FileMetadata, error) {
-	return machine.FileMetadata{}, errors.New("not implemented")
+func (m *memoryMachine) Metadata(path string) (machine.FileMetadata, error) {
+	if m.directories[path] {
+		return machine.FileMetadata{IsDir: true}, nil
+	}
+	return machine.FileMetadata{}, os.ErrNotExist
 }
 func (m *memoryMachine) Watch(string) (machine.FileWatch, error) {
 	return nil, errors.New("not implemented")
@@ -89,6 +93,34 @@ func (m *memoryMachine) RemoveFileIfUnchanged(path string, expectedHash string) 
 func testHash(data []byte) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
+}
+
+func TestApplyPatchMissingProtectedDirectory(t *testing.T) {
+	for _, name := range []string{".harness", ".agents", ".git"} {
+		for _, exists := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/exists=%t", name, exists), func(t *testing.T) {
+				m := &memoryMachine{files: map[string][]byte{}, directories: map[string]bool{"/work": true, "/work/" + name: exists}}
+				service := approvals.New()
+				defer service.Close()
+				call := tools.Call{Policy: permissions.Policy{WriteRoots: []string{"/work"}}, Workspace: "/work"}
+				patch := "*** Begin Patch\n*** Add File: " + name + "/probe.txt\n+probe\n*** End Patch"
+				_, _, err := applyPatch(t.Context(), m, testAgentFiles{m}, service, call, patch)
+				want := "ask the user to create the protected directory first"
+				if exists {
+					// 没有提供审核者：已有保护目录应确实申请审批，而非提前拒绝或直接写入。
+					want = "additional permissions were not granted"
+				}
+				if err == nil || !strings.Contains(err.Error(), want) {
+					t.Fatalf("expected %q, got %v", want, err)
+				}
+				pending, _, unsubscribe := service.Subscribe()
+				defer unsubscribe()
+				if len(m.files) != 0 || len(pending) != 0 {
+					t.Fatalf("unexpected writes or pending approval: %v, %v", m.files, pending)
+				}
+			})
+		}
+	}
 }
 
 type changingMachine struct {

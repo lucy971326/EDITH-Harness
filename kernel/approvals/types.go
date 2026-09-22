@@ -1,4 +1,4 @@
-// Package approvals 管理本次操作的权限申请与人工回答。
+// Package approvals 管理本次操作的权限申请、智能审核与人工回答。
 package approvals
 
 import "harness/kernel/permissions"
@@ -14,5 +14,20 @@ type Identity struct {
 type Pending struct {
 	ID string `json:"id"`
 	Identity
-	Request permissions.ApprovalRequest `json:"request"`
+	Request      permissions.ApprovalRequest `json:"request"`
+	ReviewReason string                      `json:"reviewReason,omitempty"`
+}
+
+// 数据。所有智能审批共用的审核配置；密钥不在此处。
+type Settings struct {
+	Engine          string `json:"engine" jsonschema:"enum=llm,enum=jev"`
+	Model           string `json:"model"`
+	ReasoningEffort string `json:"reasoningEffort"`
+}
+
+// 数据。设置页投影；配置状态不包含密钥。
+type SettingsView struct {
+	Settings      Settings `json:"settings"`
+	JevConfigured bool     `json:"jevConfigured"`
+	Available     bool     `json:"available"`
 }

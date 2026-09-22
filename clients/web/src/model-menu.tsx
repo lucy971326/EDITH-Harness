@@ -21,6 +21,7 @@ export function ModelMenu({
   onChange,
   onRetry,
   requiresVision,
+  description = "用于下一轮。运行中不能修改。",
 }: {
   models: ModelChoice[] | null;
   value: ModelSelection;
@@ -29,6 +30,7 @@ export function ModelMenu({
   onChange: (value: ModelSelection) => void;
   onRetry: () => void;
   requiresVision: boolean;
+  description?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [pendingModel, setPendingModel] = useState(value.model);
@@ -56,7 +58,7 @@ export function ModelMenu({
       </PopoverTrigger>
       <PopoverContent className="model-popover" align="end" side="top">
         <h3>模型与思考</h3>
-        <p className="metadata">用于下一轮。运行中不能修改。</p>
+        <p className="metadata">{description}</p>
         {error ? (
           <div role="status">
             <p className="inline-error">{error}</p>

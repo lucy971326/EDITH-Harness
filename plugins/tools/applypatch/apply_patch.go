@@ -87,6 +87,16 @@ func applyPatch(ctx context.Context, files machine.FileSystem, agent machine.Age
 			}
 			root = filepath.Dir(root)
 		}
+		// 已有父目录的授权可能仍不覆盖受保护目标，不能把无效申请交给审核者。
+		candidate := call.Policy
+		candidate.WriteRoots = append(slices.Clone(call.Policy.WriteRoots), root)
+		requirement, checkErr = permissions.Evaluate(candidate, permissions.ExtraPermissions{WriteRoots: []string{change.path}})
+		if checkErr != nil {
+			return tools.AppliedFileDelta{Exact: true}, "", checkErr
+		}
+		if requirement != permissions.Allow {
+			return tools.AppliedFileDelta{Exact: true}, "", fmt.Errorf("apply_patch: cannot authorize protected target %s through existing parent %s; ask the user to create the protected directory first, then retry for explicit approval", change.path, root)
+		}
 		if !slices.Contains(requested.WriteRoots, root) {
 			requested.WriteRoots = append(requested.WriteRoots, root)
 		}

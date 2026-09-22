@@ -9,6 +9,7 @@ export interface Block {
 }
 
 export interface Message {
+	userAuthored?: boolean;
   messageID?: string;
   sourceSessionID?: string;
   sourceTaskID?: string;

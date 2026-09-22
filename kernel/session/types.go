@@ -53,6 +53,8 @@ type Block struct {
 
 // 数据。账本中的一个完整节点内容。
 type Message struct {
+	// UserAuthored 由 Runner 标记真实用户输入；旧记录缺失时不作为自动授权证据。
+	UserAuthored    bool    `json:"userAuthored,omitempty"`
 	MessageID       string  `json:"messageID,omitempty"`
 	SourceSessionID string  `json:"sourceSessionID,omitempty"`
 	SourceTaskID    string  `json:"sourceTaskID,omitempty"`
@@ -77,4 +79,7 @@ type Entry struct {
 // 数据。Runner 交给 Session 的用户输入。
 type UserMessage struct {
 	Blocks []Block `json:"blocks"`
+	// 仅进程内委派填写，网络输入不能指定来源。
+	SourceSessionID string `json:"-"`
+	SourceRunID     string `json:"-"`
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -65,6 +65,7 @@ export function SettingsPage({
   onReload,
   onSave,
   onDelete,
+  approvalSettings,
 }: {
   theme: string;
   setTheme: (theme: string) => void;
@@ -78,6 +79,7 @@ export function SettingsPage({
   onReload: () => void;
   onSave: (agent: AgentSaveParams) => Promise<AgentView | null>;
   onDelete: (agentID: string) => Promise<boolean>;
+  approvalSettings: ReactNode;
 }) {
   const [selectedID, setSelectedID] = useState<string | null>(null);
   const [draft, setDraft] = useState<AgentDraft | null>(null);
@@ -119,8 +121,10 @@ export function SettingsPage({
             <Bot />
             Agent
           </TabsTrigger>
+          <TabsTrigger value="approvals"><SlidersHorizontal />智能审批</TabsTrigger>
         </TabsList>
         <div className="settings-content">
+          <TabsContent value="approvals">{approvalSettings}</TabsContent>
           <TabsContent value="appearance">
             <h2>外观</h2>
             <p className="muted">让工作空间更适合你的习惯。</p>

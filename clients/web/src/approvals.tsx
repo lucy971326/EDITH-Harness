@@ -86,6 +86,7 @@ export function Approvals({ client, children }: {
             {pending.length > 1 && <span className="approval-count">还有 {pending.length - 1} 项待审批</span>}
           </header>
           <div className="approval-body">
+          {current.reviewReason && <p className="metadata">{current.reviewReason}</p>}
           <p>{current.request.reason || "本次操作需要额外权限，是否允许？"}</p>
           <pre>{String(
             current.request.arguments.cmd ?? current.request.arguments.patch ??

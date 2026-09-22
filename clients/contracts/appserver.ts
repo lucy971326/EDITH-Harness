@@ -1,4 +1,4 @@
-import type { PendingApproval, PermissionModeChoice } from "./approvals.ts";
+import type { PendingApproval, PermissionModeChoice, ApprovalSettings, ApprovalSettingsView } from "./approvals.ts";
 export interface InitializeResult { protocolVersion: number }
 
 // 手工对应 kernel/llm.ModelChoice；只有目录数据，没有 Provider 密钥。
@@ -86,6 +86,8 @@ export interface CommandExecOutputDeltaNotification {
 }
 
 export interface ServerMethods {
+  'approval/settings/read': { params: Record<string, never>; result: ApprovalSettingsView };
+  'approval/settings/update': { params: ApprovalSettings; result: ApprovalSettingsView };
   'approval/subscribe': { params: Record<string, never>; result: { subscriptionID: string; pending: PendingApproval[] } };
   'permissions/modes': { params: Record<string, never>; result: { modes: PermissionModeChoice[] } };
   'approval/respond': { params: { requestID: string; decision: { approved: boolean; reason: string } }; result: Record<string, never> };

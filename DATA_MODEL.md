@@ -196,6 +196,9 @@ messages.jsonl
 
 ## 审批与权限说明
 
+- 全局审核方式、模型与思考档位归 approvals，保存到 `~/.harness/approvals/settings.json`；Jev 密钥与 LLM 密钥同在 `~/.harness/config.yaml`，分别解析各自配置段。Client 仅保存设置投影与编辑草稿。
+- Runner 在真实用户消息保存 `userAuthored`；委派输入保存已有的 `sourceSessionID / sourceRunID`，不标记为真实用户。来源字段由进程内调用传入，网络 UserMessage 不接受它们。旧消息不推定可信。审核按未压缩分支追溯真实用户授权，不采信模型摘要和委派文字。
+
 - `approvals.Service` 拥有待审批表（原操作、可信 Session/Run/ToolCall 身份、Context、回答通道）和快照订阅，不持久化；断线只清订阅，取消/回答删除请求，重启不恢复。
 - `runs.json` 的可选 `permissionInstructions` 是该轮给模型的环境说明，沿用 Runner 的保存与分叉复制。缺字段的旧记录不补写；当前新 Run 提供基线。它不是待审批或可复用授权。
 - 模型输入按可见 Run 重建环境说明，普通对话账本和网页聊天正文不增加权限消息；客户端审批卡片仅是服务内存的投影。

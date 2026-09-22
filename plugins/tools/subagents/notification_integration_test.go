@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"harness/kernel/agents"
+	"harness/kernel/approvals"
 	"harness/kernel/commands"
 	"harness/kernel/events"
 	"harness/kernel/host"
@@ -154,7 +155,7 @@ func TestRealReactWaitReceivesCompletionOrUserInput(t *testing.T) {
 					t.Error(err)
 				}
 			}()
-			for _, plugin := range []host.Plugin{&persist.Plugin{Dir: dir}, &session.Plugin{}, &llm.Plugin{}, machinelocal.New(), tools.NewPlugin(), events.NewPlugin(), loops.NewPlugin(), react.New(), skills.NewPlugin(), agents.NewPlugin(), commands.NewPlugin(), runner.NewPlugin(), delegation.NewPlugin(), New(), harnessproduct.NewPlugin()} {
+			for _, plugin := range []host.Plugin{&persist.Plugin{Dir: dir}, &session.Plugin{}, &llm.Plugin{}, approvals.NewPlugin(), machinelocal.New(), tools.NewPlugin(), events.NewPlugin(), loops.NewPlugin(), react.New(), skills.NewPlugin(), agents.NewPlugin(), commands.NewPlugin(), runner.NewPlugin(), delegation.NewPlugin(), New(), harnessproduct.NewPlugin()} {
 				err = h.Install(plugin)
 				if err != nil {
 					t.Fatal(err)

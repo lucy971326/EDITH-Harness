@@ -17,6 +17,7 @@ export interface ExtraPermissions {
   network?: boolean;
 }
 export interface PendingApproval {
+	 reviewReason?: string;
   id: string;
   sessionID: string;
   runID: string;
@@ -29,6 +30,17 @@ export interface PendingApproval {
     current: Policy;
     requested: ExtraPermissions;
   };
+}
+
+export interface ApprovalSettings {
+  engine: "llm" | "jev";
+  model: string;
+  reasoningEffort: string;
+}
+export interface ApprovalSettingsView {
+  settings: ApprovalSettings;
+  jevConfigured: boolean;
+  available: boolean;
 }
 export interface ApprovalNotification {
   subscriptionID: string;

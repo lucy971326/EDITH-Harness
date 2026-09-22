@@ -12,6 +12,12 @@ import (
 
 func TestPluginRegistersBothTools(t *testing.T) {
 	h := host.NewHost()
+	service := approvals.New()
+	t.Cleanup(func() { _ = service.Close() })
+	err := h.RegisterService("approvals", service)
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() {
 		if err := h.Close(); err != nil {
 			t.Error(err)
@@ -20,7 +26,6 @@ func TestPluginRegistersBothTools(t *testing.T) {
 	for _, plugin := range []host.Plugin{
 		machinelocal.New(),
 		tools.NewPlugin(),
-		approvals.NewPlugin(),
 		exectool.New(),
 	} {
 		err := h.Install(plugin)

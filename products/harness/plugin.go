@@ -2,6 +2,7 @@ package harness
 
 import (
 	"harness/kernel/agents"
+	"harness/kernel/approvals"
 	"harness/kernel/commands"
 	"harness/kernel/host"
 	"harness/kernel/llm"
@@ -48,7 +49,11 @@ func (p *Plugin) Start(h *host.Host) error {
 	if err != nil {
 		return err
 	}
-	p.service, err = New(sessions, settingsStore, agentService, modelClient, runService, commandService, subagentService)
+	approvalService, err := host.Resolve[*approvals.Service](h, "approvals")
+	if err != nil {
+		return err
+	}
+	p.service, err = New(sessions, settingsStore, agentService, modelClient, runService, commandService, subagentService, approvalService)
 	if err != nil {
 		return err
 	}

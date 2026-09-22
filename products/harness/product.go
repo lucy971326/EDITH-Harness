@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"harness/kernel/agents"
+	"harness/kernel/approvals"
 	"harness/kernel/commands"
 	"harness/kernel/llm"
 	"harness/kernel/permissions"
@@ -22,10 +23,11 @@ import (
 // 活对象。聊天业务的统一入口；不拥有账本、Run 或事件登记处。
 type Product struct {
 	// 会话数据与运行配置。
-	sessions *session.Store
-	settings settings.SessionSettingsStore
-	agents   *agents.Service
-	models   *llm.Client
+	sessions  *session.Store
+	settings  settings.SessionSettingsStore
+	agents    *agents.Service
+	models    *llm.Client
+	approvals *approvals.Service
 
 	// 执行与产品操作。
 	runner    *runner.Runner
@@ -38,7 +40,7 @@ type Product struct {
 }
 
 // New 组装聊天业务服务。
-func New(sessions *session.Store, settingsStore settings.SessionSettingsStore, agentService *agents.Service, modelClient *llm.Client, runService *runner.Runner, commandService commands.Commands, subagentService *subagents.Subagents) (*Product, error) {
+func New(sessions *session.Store, settingsStore settings.SessionSettingsStore, agentService *agents.Service, modelClient *llm.Client, runService *runner.Runner, commandService commands.Commands, subagentService *subagents.Subagents, approvalService *approvals.Service) (*Product, error) {
 	if sessions == nil {
 		return nil, fmt.Errorf("harness product: nil sessions")
 	}
@@ -60,7 +62,10 @@ func New(sessions *session.Store, settingsStore settings.SessionSettingsStore, a
 	if subagentService == nil {
 		return nil, fmt.Errorf("harness product: nil subagents")
 	}
-	return &Product{sessions: sessions, settings: settingsStore, agents: agentService, models: modelClient, runner: runService, commands: commandService, subagents: subagentService}, nil
+	if approvalService == nil {
+		return nil, fmt.Errorf("harness product: nil approvals")
+	}
+	return &Product{sessions: sessions, settings: settingsStore, agents: agentService, models: modelClient, runner: runService, commands: commandService, subagents: subagentService, approvals: approvalService}, nil
 }
 
 // Send 闲时启动、忙时插话；已接受的运行由 Runner 管理生命周期。
@@ -119,7 +124,7 @@ func (p *Product) UpdateSettings(ctx context.Context, sessionID string, next set
 		next.PermissionMode = info.Settings.PermissionMode
 	}
 	if next.PermissionMode != info.Settings.PermissionMode {
-		for _, mode := range permissions.Modes() {
+		for _, mode := range p.approvals.Modes() {
 			if mode.ID == next.PermissionMode && !mode.Available {
 				return SessionInfo{}, fmt.Errorf("%w: %s暂不可用", ErrInvalidRunSettings, mode.Label)
 			}

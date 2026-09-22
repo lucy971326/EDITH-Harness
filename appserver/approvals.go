@@ -7,7 +7,6 @@ import (
 
 	"harness/appserver/internal/clientconn"
 	"harness/kernel/approvals"
-	"harness/kernel/permissions"
 )
 
 // BindApprovals 接入独立审批服务；连接仅转发快照与回答。
@@ -24,11 +23,31 @@ func (s *Server) BindApprovals(service *approvals.Service) error {
 	if err != nil {
 		return err
 	}
+	err = Register(s, "approval/settings/read", s.handleApprovalSettingsRead)
+	if err != nil {
+		return err
+	}
+	err = Register(s, "approval/settings/update", s.handleApprovalSettingsUpdate)
+	if err != nil {
+		return err
+	}
 	return Register(s, "permissions/modes", s.handlePermissionModes)
 }
 
 func (s *Server) handlePermissionModes(_ context.Context, _ PermissionModesParams) (PermissionModesResult, error) {
-	return PermissionModesResult{Modes: permissions.Modes()}, nil
+	return PermissionModesResult{Modes: s.approvals.Modes()}, nil
+}
+
+func (s *Server) handleApprovalSettingsRead(_ context.Context, _ ApprovalSettingsParams) (approvals.SettingsView, error) {
+	return s.approvals.Settings(), nil
+}
+
+func (s *Server) handleApprovalSettingsUpdate(_ context.Context, input approvals.Settings) (approvals.SettingsView, error) {
+	view, err := s.approvals.SaveSettings(input)
+	if errors.Is(err, approvals.ErrSettings) {
+		return view, &Error{Code: CodeInvalidParams, Message: err.Error()}
+	}
+	return view, err
 }
 
 func (s *Server) handleApprovalSubscribe(ctx context.Context, _ ApprovalSubscribeParams) (ApprovalSubscribeResult, error) {
