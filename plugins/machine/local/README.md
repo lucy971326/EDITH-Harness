@@ -6,13 +6,16 @@
 
 ```text
 AgentExec / AgentApplyChanges → 启动方案 → Linux bwrap + seccomp
+                                       → macOS Seatbelt
 AgentInteract                → 已有进程（权限保持不变）
 用户编辑器 / 终端            → 直接操作本机
 ```
 
-【代码入口】`agent.go` 准备启动方案，`sandbox_linux.go` 构造 Linux 限制，`agent_files.go` 批量提交与内部写入助手；`process.go` 管理进程，原文件/搜索/监听代码供各入口共用。
+【代码入口】`agent.go` 准备启动方案，`sandbox_linux.go` / `sandbox_darwin.go` 翻译平台限制，`agent_files.go` 批量提交与内部写入助手；`process.go` 管理进程，原文件/搜索/监听代码供各入口共用。
 
-【运行依赖】受限 Linux 执行需要 `/usr/bin/bwrap`，支持描述符挂载与 seccomp，并允许 user namespace。只支持 amd64 / arm64 的 seccomp ABI；失败不自动降级。Mac / Windows 受限执行明确报未支持，Full Access 直接执行。
+【运行依赖】受限 Linux 执行需要 `/usr/bin/bwrap`，支持描述符挂载与 seccomp，并允许 user namespace。只支持 amd64 / arm64 的 seccomp ABI；失败不自动降级。macOS 使用系统 `/usr/bin/sandbox-exec`，SBPL 规则经 `-p`、路径经 `-D` 参数传入，不生成临时配置。Windows 受限执行明确报未支持，Full Access 直接执行。
+
+【Mac 边界】默认拒绝，仅开放读取、进程运行、PTY 与授权写入；联网开启时增加网络及 DNS/TLS 所需系统服务规则。系统顶层路径别名会解析，内部符号链接可写根拒绝；保护目录无需创建占位。禁止替换授权根及祖先，避免移动目录绕过保护；额外禁止特殊 fcntl 写入。Mac 实机验证命令：`go test ./plugins/machine/local -run TestDarwinAgentSandbox -v`，随后 `make run` 验收 HTTPS、本次审批授权及终端交互。实际验证状态见 STATUS.md。
 
 【限制】根文件系统只读，可写根覆盖为可写；根下 `.git`、`.agents`、`.harness` 受保护。禁网模式阻断 TCP、UDP 与宿主 Unix socket，包括 datagram 发送绕行；流式 socketpair 保留。受限程序不能重新挂载、注入其他进程或用 io_uring 绕过过滤。复杂的保护目录内部子路径授权暂时拒绝；沙箱不是硬链接别名或宿主同权限恶意进程的完整隔离。
 

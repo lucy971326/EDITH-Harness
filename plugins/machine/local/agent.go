@@ -9,7 +9,7 @@ import (
 	"harness/kernel/permissions"
 )
 
-// 启动方案拥有挂载源、过滤器和临时占位，进程退出后统一释放。
+// 启动方案保存命令及平台资源；Linux 的挂载源、过滤器和临时占位在退出后释放。
 type agentLaunch struct {
 	cmd     *exec.Cmd
 	files   []*os.File

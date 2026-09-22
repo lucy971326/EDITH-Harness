@@ -23,7 +23,7 @@ appserver.Server
 
 - 权限规则与接口：新增纯计算包 `kernel/permissions`，支持四档模式翻译、额外权限判断、受保护元数据目录和本次批准合并，并定义人／模型共用的 Reviewer 契约。Policy 仅保存无限制标记、可写根、联网标记。SessionSettings 持久保存 `permissionMode`，旧文件缺字段默认 Ask for approval，未知模式报错；设置更新省略模式时保留，分叉复制，子会话继承父 Run 快照。Go／TS 契约同步；模式菜单和审批服务见下一项。
 - 人审批：新增独立 `kernel/approvals` 服务，命令附带额外权限申请、补丁自动计算目录申请，批准仅影响本次操作并继续使用沙箱。待审批内存保存，停止取消、重复回答拒绝、WebSocket 重连恢复；网页新增全会话/子 Agent 审批卡片与空闲模式菜单。模型审核仍未接入，额外申请明确失败。Runner 在运行记录保存权限说明，重建模型历史时按变化追加，不写对话账本。网页尚待用户运行截图验收。
-- Linux Agent 沙箱：Runner 将本轮 Policy 经 Loop 传给 Tool；命令走 AgentExec，补丁走 AgentApplyChanges 的内部写入助手，共用 bwrap + seccomp。根只读、授权根可写、元数据保护、禁网与宿主 socket 阻断已接通；旧进程不接受权限更新。用户文件和终端保留直接入口。缺少系统 bwrap 或不支持的策略明确失败；macOS / Windows 受限执行暂未实现，Full Access 可用。MCP 不在此沙箱覆盖范围。
+- Agent 沙箱：Runner 将本轮 Policy 经 Loop 传给 Tool；命令走 AgentExec，补丁走 AgentApplyChanges 的内部写入助手。Linux 共用 bwrap + seccomp，根只读、授权根可写、元数据保护、禁网与宿主 socket 阻断已接通；旧进程不接受权限更新。macOS 新增 Seatbelt 翻译与启动实现，尚待 Mac 实机验收。用户文件和终端保留直接入口。缺少系统启动器或不支持的策略明确失败；Windows 受限执行暂未实现，Full Access 可用。MCP 不在此沙箱覆盖范围。
 - 项目与会话：原生目录选择、按工作区分组、新建或复用空会话、切换及自动命名。
 - 聊天：文字与图片、实时输出、直接 Steer、停止父子任务、历史、刷新、重连与后台重启恢复。
 - 上下文引用：主聊天 `@` 搜文件／目录、文件树右键、Monaco 选区右键及完整助手回答文字选区添加。助手片段通过选区旁的紧凑框添加可选评论，确认后独立编号，编号在删除引用或下一条消息发送成功前持续锚定原选区，悬停先显示评论、再以分隔线显示原文。其他标签可整块删除，代码选区可展开预览并保留添加时未保存内容。引用随会话草稿保留，允许仅带引用发送，失败保留，确认只清本次提交的附件；用 v1／v2 版本标记的普通文本落账，用户历史、Steer、刷新和分叉共用还原逻辑。
@@ -99,7 +99,7 @@ Windows 启动继续要求 Git Bash；Agent 长期进程与 UI 终端 PTY 均使
 
 ## 已知未验证
 
-- Linux 沙箱不提供硬链接别名隔离；保护目录内部的细粒度子路径授权暂时拒绝。临时占位在正常退出时清理，宿主被强杀或断电可能留下空目录；不自动删除来源不明的目录。macOS / Windows 沙箱、模型审核与 MCP 执行边界仍待后续实现。
+- 沙箱不提供硬链接别名隔离；保护目录内部的细粒度子路径授权暂时拒绝。Linux 临时占位在正常退出时清理，宿主被强杀或断电可能留下空目录；不自动删除来源不明的目录。macOS Seatbelt 已编写，真实文件限制、PTY、DNS/TLS 与 macOS 版本兼容性待实机验证。Windows 沙箱、模型审核与 MCP 执行边界仍待后续实现。
 
 - 上下文引用各入口、助手选区浮层／悬停预览、中文输入法和亮暗／窄屏布局待用户 `make run` 截图验收；按最新要求不新增 UI 自动化测试。
 - Windows 原生目录选择器仍需在交互式 Windows 桌面验收。
@@ -146,3 +146,9 @@ Windows 启动继续要求 Git Bash；Agent 长期进程与 UI 终端 PTY 均使
 - 审批框收紧间距与按钮尺寸，理由和命令限高滚动，权限摘要保留在标题；完整目录范围与来源折叠到详情，详情入口与操作按钮同排。`make agent-check` 通过，视觉效果待用户截图验收。
 
 - 输入框的权限、Agent、模型三个菜单入口移除向下箭头，保留原点击交互。`make agent-check` 通过。
+
+### macOS 沙箱实现（2026-09-22）
+
+- 新增 Darwin 平台的 Seatbelt 启动方案，使用固定系统 sandbox-exec、内存 SBPL 与独立路径参数；命令与文件修改助手复用同一入口。处理系统顶层路径别名、授权根及祖先保护、元数据目录保护、网络开关与特殊 fcntl 限制；失败不降级。
+- `make agent-check` 通过；macOS arm64 / amd64 的 machine-local 测试可执行文件与完整 Harness 可执行文件交叉编译通过。未在 Linux 上执行 Mac 二进制，不能视为实机限制验证通过。
+- 已编写一组 Mac 核心集成测试：目录写入与保护、符号链接、只读与本次授权、文件助手、PTY、取消及 TCP / Unix socket。换到 Mac 后执行 `go test ./plugins/machine/local -run TestDarwinAgentSandbox -v`；再用 `make run` 验收实际 HTTPS 与审批授权。测试不访问外网。
