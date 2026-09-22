@@ -5,7 +5,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Check, ChevronDown } from "./icons";
+import { Check } from "./icons";
 import type { ModelChoice } from "../../contracts/appserver.ts";
 
 export interface ModelSelection {
@@ -52,7 +52,6 @@ export function ModelMenu({
         >
           <span className="model-name">{value.model || "选择模型"}</span>
           <span className="muted">· {value.reasoningEffort || "思考"}</span>
-          <ChevronDown />
         </Button>
       </PopoverTrigger>
       <PopoverContent className="model-popover" align="end" side="top">

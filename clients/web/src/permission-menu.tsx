@@ -5,7 +5,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
-import { Check, ChevronDown, Shield } from "./icons";
+import { Check, Shield } from "./icons";
 import type { PermissionMode } from "../../contracts/harness.ts";
 import type { PermissionModeChoice } from "../../contracts/approvals.ts";
 
@@ -23,7 +23,6 @@ export function PermissionMenu({ modes, value, disabled, onChange }: {
           aria-label={`权限模式：${label}`} title={label}>
           <Shield />
           <span className="permission-label">{label}</span>
-          <ChevronDown />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="top">

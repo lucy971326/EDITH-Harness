@@ -5,7 +5,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Bot, Check, ChevronDown } from "./icons";
+import { Bot, Check } from "./icons";
 import type { AgentView } from "../../contracts/appserver.ts";
 
 export function AgentMenu({
@@ -32,7 +32,6 @@ export function AgentMenu({
         >
           <Bot />
           <span className="agent-label">{selected?.name ?? (value || "选择 Agent")}</span>
-          <ChevronDown />
         </Button>
       </PopoverTrigger>
       <PopoverContent className="agent-popover" align="start" side="top">
