@@ -12,6 +12,7 @@ import (
 	"harness/kernel/agents"
 	"harness/kernel/commands"
 	"harness/kernel/llm"
+	"harness/kernel/permissions"
 	"harness/kernel/runner"
 	"harness/kernel/session"
 	"harness/kernel/session/settings"
@@ -63,6 +64,7 @@ func New(sessions *session.Store, settingsStore settings.SessionSettingsStore, a
 }
 
 // Send 闲时启动、忙时插话；已接受的运行由 Runner 管理生命周期。
+
 func (p *Product) Send(ctx context.Context, input RunInput) (string, error) {
 	p.sendMu.Lock()
 	err := ctx.Err()
@@ -95,7 +97,7 @@ func (p *Product) Send(ctx context.Context, input RunInput) (string, error) {
 	return "started", nil
 }
 
-// UpdateSettings 在会话空闲时保存下一轮使用的 Agent、模型和思考档位。
+// UpdateSettings 在会话空闲时保存下一轮设置；省略权限模式时保留原值。
 func (p *Product) UpdateSettings(ctx context.Context, sessionID string, next settings.SessionSettings) (SessionInfo, error) {
 	p.sendMu.Lock()
 	defer p.sendMu.Unlock()
@@ -113,6 +115,9 @@ func (p *Product) UpdateSettings(ctx context.Context, sessionID string, next set
 	}
 
 	next.Workspace = info.Settings.Workspace
+	if next.PermissionMode == "" {
+		next.PermissionMode = info.Settings.PermissionMode
+	}
 	err = p.validateRunSettings(next, false)
 	if err != nil {
 		return SessionInfo{}, fmt.Errorf("%w: %w", ErrInvalidRunSettings, err)
@@ -418,10 +423,14 @@ func (s *Product) selectRunSettings(setup *settings.SessionSettings, input RunIn
 }
 
 func (s *Product) validateRunSettings(setup settings.SessionSettings, requireModel bool) error {
+	_, err := permissions.NormalizeMode(setup.PermissionMode)
+	if err != nil {
+		return err
+	}
 	if strings.TrimSpace(setup.AgentID) == "" {
 		return fmt.Errorf("请先选择 Agent")
 	}
-	_, err := s.agents.Get(setup.AgentID)
+	_, err = s.agents.Get(setup.AgentID)
 	if err != nil {
 		return fmt.Errorf("Agent 不可用：%w", err)
 	}

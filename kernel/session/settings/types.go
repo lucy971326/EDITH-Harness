@@ -1,12 +1,15 @@
 // Package settings 定义会话旁路设置。
 package settings
 
+import "harness/kernel/permissions"
+
 // 数据。一本会话的旁路设置，不进账本。
 type SessionSettings struct {
-	AgentID         string `json:"agentID"`
-	Model           string `json:"model"`
-	ReasoningEffort string `json:"reasoningEffort"`
-	Workspace       string `json:"workspace"`
+	AgentID         string           `json:"agentID"`
+	Model           string           `json:"model"`
+	ReasoningEffort string           `json:"reasoningEffort"`
+	Workspace       string           `json:"workspace"`
+	PermissionMode  permissions.Mode `json:"permissionMode"`
 }
 
 // 契约。按 session 读写 SessionSettings。

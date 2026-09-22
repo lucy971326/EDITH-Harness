@@ -3,6 +3,7 @@ package appserver
 import (
 	"time"
 
+	"harness/kernel/permissions"
 	"harness/kernel/runner"
 	"harness/kernel/session/settings"
 	"harness/products/harness"
@@ -72,10 +73,11 @@ type SessionView struct {
 
 // 数据。只更新运行设置，工作区始终沿用当前会话。
 type UpdateSettingsParams struct {
-	SessionID       string `json:"sessionID" jsonschema:"minLength=1"`
-	AgentID         string `json:"agentID" jsonschema:"minLength=1"`
-	Model           string `json:"model"`
-	ReasoningEffort string `json:"reasoningEffort"`
+	SessionID       string           `json:"sessionID" jsonschema:"minLength=1"`
+	AgentID         string           `json:"agentID" jsonschema:"minLength=1"`
+	Model           string           `json:"model"`
+	ReasoningEffort string           `json:"reasoningEffort"`
+	PermissionMode  permissions.Mode `json:"permissionMode,omitempty" jsonschema:"enum=read_only,enum=ask_for_approval,enum=approve_for_me,enum=full_access"`
 }
 
 // 对外会话接口：从完整回答分叉

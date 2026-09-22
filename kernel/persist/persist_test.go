@@ -12,6 +12,7 @@ import (
 
 	"harness/kernel/agents/config"
 	"harness/kernel/host"
+	"harness/kernel/permissions"
 	"harness/kernel/session/settings"
 )
 
@@ -324,6 +325,7 @@ func TestSessionSettings_putFor(t *testing.T) {
 		Model:           "deepseek-v4",
 		ReasoningEffort: "high",
 		Workspace:       "/workspace",
+		PermissionMode:  permissions.ReadOnly,
 	}
 	err = s.Put("chat1", in)
 	if err != nil {
@@ -346,6 +348,24 @@ func TestSessionSettings_putFor(t *testing.T) {
 	}
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("session settings file: %v", err)
+	}
+	// 旧文件只在读取结果补默认值，不批量改写磁盘。
+	legacy := []byte(`{"agentID":"default","workspace":"/workspace"}`)
+	err = files.Write("settings.json", legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.For("chat1")
+	if err != nil || got.PermissionMode != permissions.AskForApproval {
+		t.Fatalf("legacy mode: %+v, %v", got, err)
+	}
+	stored, err := files.Read("settings.json")
+	if err != nil || string(stored) != string(legacy) {
+		t.Fatalf("legacy file rewritten: %s, %v", stored, err)
+	}
+	in.PermissionMode = "unknown"
+	if err = s.Put("chat1", in); err == nil {
+		t.Fatal("unknown mode saved")
 	}
 }
 

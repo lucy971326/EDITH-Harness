@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 
+	"harness/kernel/permissions"
 	"harness/kernel/session/settings"
 )
 
@@ -32,6 +33,10 @@ func (s *jsonl) For(sessionID string) (settings.SessionSettings, error) {
 	if err != nil {
 		return settings.SessionSettings{}, fmt.Errorf("persist: session settings %q: %w", sessionID, err)
 	}
+	out.PermissionMode, err = permissions.NormalizeMode(out.PermissionMode)
+	if err != nil {
+		return settings.SessionSettings{}, fmt.Errorf("persist: session settings %q: %w", sessionID, err)
+	}
 	return out, nil
 }
 
@@ -41,6 +46,10 @@ func (s *jsonl) Put(sessionID string, in settings.SessionSettings) error {
 		return err
 	}
 
+	in.PermissionMode, err = permissions.NormalizeMode(in.PermissionMode)
+	if err != nil {
+		return fmt.Errorf("persist: session settings %q: %w", sessionID, err)
+	}
 	b, err := json.Marshal(in)
 	if err != nil {
 		return err

@@ -132,12 +132,14 @@ func TestSettingsUpdateRejectsInvalidChoicesWithoutStartingOrSaving(t *testing.T
 	}
 	for _, input := range []appserver.UpdateSettingsParams{
 		{SessionID: created.Meta.ID, AgentID: ""},
+		{SessionID: created.Meta.ID, AgentID: "default", PermissionMode: "unknown"},
 		{SessionID: created.Meta.ID, AgentID: "default", Model: "missing", ReasoningEffort: "high"},
 		{SessionID: created.Meta.ID, AgentID: "default", Model: "deepseek/deepseek-flash", ReasoningEffort: "missing"},
 		{SessionID: created.Meta.ID, AgentID: "missing", Model: "deepseek/deepseek-flash", ReasoningEffort: "high"},
 	} {
 		_, err = fixture.service.UpdateSettings(t.Context(), input.SessionID, settings.SessionSettings{
 			AgentID: input.AgentID, Model: input.Model, ReasoningEffort: input.ReasoningEffort,
+			PermissionMode: input.PermissionMode,
 		})
 		if !errors.Is(err, harness.ErrInvalidRunSettings) {
 			t.Fatalf("settings error classification lost: %v", err)
@@ -167,7 +169,7 @@ func TestSettingsUpdatePersistsAndRejectsWhileRunning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	params := json.RawMessage(`{"sessionID":"` + created.Meta.ID + `","agentID":"default","model":"deepseek/deepseek-flash","reasoningEffort":"high"}`)
+	params := json.RawMessage(`{"sessionID":"` + created.Meta.ID + `","agentID":"default","model":"deepseek/deepseek-flash","reasoningEffort":"high","permissionMode":"read_only"}`)
 	raw, err := server.Call(t.Context(), "harness/session/settings/update", params)
 	if err != nil {
 		t.Fatal(err)
@@ -178,6 +180,16 @@ func TestSettingsUpdatePersistsAndRejectsWhileRunning(t *testing.T) {
 	}
 	if result.Session.Settings.Workspace != created.Settings.Workspace || result.Session.Settings.Model != "deepseek/deepseek-flash" {
 		t.Fatalf("updated session = %#v", result.Session)
+	}
+	// 旧 Client 或只切换模型的请求省略模式时，必须保留已经保存的选择。
+	params = json.RawMessage(`{"sessionID":"` + created.Meta.ID + `","agentID":"default","model":"deepseek/deepseek-flash","reasoningEffort":"high"}`)
+	_, err = server.Call(t.Context(), "harness/session/settings/update", params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, err := fixture.settings.For(created.Meta.ID)
+	if err != nil || saved.PermissionMode != "read_only" {
+		t.Fatalf("permission mode lost: %+v, %v", saved, err)
 	}
 
 	handle, err := fixture.runner.Start(t.Context(), created.Meta.ID, session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "hold"}}})

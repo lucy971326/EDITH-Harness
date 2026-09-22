@@ -153,6 +153,7 @@ func (s *Server) handleUpdateSettings(ctx context.Context, input UpdateSettingsP
 		AgentID:         input.AgentID,
 		Model:           input.Model,
 		ReasoningEffort: input.ReasoningEffort,
+		PermissionMode:  input.PermissionMode,
 	})
 	return SessionResult{Session: sessionView(info)}, methodError(err)
 }

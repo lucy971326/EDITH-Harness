@@ -51,6 +51,7 @@ func TestInheritedIncompatibleEffortIsNotSilentlyReplaced(t *testing.T) {
 	err = f.settings.Put("parent-session", settings.SessionSettings{
 		AgentID: agents.DefaultID, Model: "deepseek/deepseek-flash",
 		ReasoningEffort: "unsupported", Workspace: t.TempDir(),
+		PermissionMode: "read_only",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -74,9 +75,23 @@ func TestInheritedIncompatibleEffortIsNotSilentlyReplaced(t *testing.T) {
 		t.Fatalf("invalid settings created a child: %+v, %v", tasks, err)
 	}
 	input.ReasoningEffort = "high"
-	_, err = f.subagents.Spawn(context.Background(), input)
+	// 父设置之后变化也不能改变本轮的继承来源。
+	changed, err := f.settings.For("parent-session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed.PermissionMode = "full_access"
+	err = f.settings.Put("parent-session", changed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := f.subagents.Spawn(context.Background(), input)
 	if err != nil {
 		t.Fatalf("explicit compatible effort rejected: %v", err)
+	}
+	childSettings, err := f.settings.For(child.ChildSessionID)
+	if err != nil || childSettings.PermissionMode != "read_only" {
+		t.Fatalf("parent run mode not inherited: %+v, %v", childSettings, err)
 	}
 }
 

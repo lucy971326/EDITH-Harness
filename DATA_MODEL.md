@@ -59,7 +59,9 @@ Session
 
 SessionSettings
 └─ 这场会话怎样运行
-   Agent、模型、思考档位、工作区
+   Agent、模型、思考档位、工作区、权限模式（permissionMode）
+   模式随 settings.json 保存；分叉复制，子会话继承父 Run 快照
+   本次额外授权不写入设置；待审批归审批服务内存，不进入账本
 
 Agent 设置
 └─ 一个 Agent 怎样工作

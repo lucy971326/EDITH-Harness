@@ -31,11 +31,14 @@ export interface SessionView {
   settings: SessionSettings;
 }
 
+export type PermissionMode = "read_only" | "ask_for_approval" | "approve_for_me" | "full_access";
+
 export interface SessionSettings {
   agentID: string;
   model: string;
   reasoningEffort: string;
   workspace: string;
+  permissionMode: PermissionMode;
 }
 
 export interface UpdateSettingsParams {
@@ -43,6 +46,7 @@ export interface UpdateSettingsParams {
   agentID: string;
   model: string;
   reasoningEffort: string;
+  permissionMode?: PermissionMode;
 }
 
 export interface ForkParams {

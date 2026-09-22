@@ -18,6 +18,7 @@ const session: Get["result"] = {
       model: "",
       reasoningEffort: "",
       workspace: "/work",
+      permissionMode: "ask_for_approval",
     },
   },
 };

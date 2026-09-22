@@ -46,6 +46,11 @@ func TestProductRunsWithoutWebAndForksCompletedSegment(t *testing.T) {
 	if reused.Meta.ID != created.Meta.ID {
 		t.Fatalf("empty session was not reused: %q != %q", reused.Meta.ID, created.Meta.ID)
 	}
+	created.Settings.PermissionMode = "read_only"
+	_, err = fixture.service.UpdateSettings(t.Context(), created.Meta.ID, created.Settings)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	eventsSeen := make(chan runner.RunEvent, 16)
 	unsubscribe, err := events.Subscribe(fixture.events, func(_ context.Context, event runner.RunEvent) error {
@@ -110,7 +115,7 @@ func TestProductRunsWithoutWebAndForksCompletedSegment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if setup.Workspace != workspace || setup.Model != "deepseek/deepseek-flash" || setup.ReasoningEffort != "high" {
+	if setup.Workspace != workspace || setup.Model != "deepseek/deepseek-flash" || setup.ReasoningEffort != "high" || setup.PermissionMode != "read_only" {
 		t.Fatalf("fork settings = %#v", setup)
 	}
 

@@ -164,6 +164,7 @@ func (s *Subagents) Spawn(ctx context.Context, input SpawnInput) (SpawnResult, e
 		Model:           chosenModel,
 		ReasoningEffort: chosenEffort,
 		Workspace:       workspace,
+		PermissionMode:  parentSettings.PermissionMode,
 	})
 	if err != nil {
 		return SpawnResult{}, fmt.Errorf("save child settings: %w", err)
