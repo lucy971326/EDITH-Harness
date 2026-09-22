@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -14,32 +16,60 @@ import (
 
 func TestProcessOutputIsIncremental(t *testing.T) {
 	m := newTestLocal(t)
-	first, err := m.AgentExec(context.Background(), permissions.Policy{Unrestricted: true}, machine.ProcessRequest{
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	dir := t.TempDir()
+	// 普通管道不接收标准输入；创建信号文件后才允许输出第二段。
+	first, err := m.AgentExec(ctx, permissions.Policy{Unrestricted: true}, machine.ProcessRequest{
 		OwnerID: "session-a",
-		Dir:     t.TempDir(),
-		Argv:    []string{"bash", "-lc", "printf first; sleep 1; printf second"},
-		Wait:    500 * time.Millisecond,
+		Dir:     dir,
+		Argv:    []string{"bash", "--noprofile", "--norc", "-c", "printf first; while [ ! -f continue ]; do sleep 0.05; done; printf second"},
+		Wait:    50 * time.Millisecond,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.Exited || !strings.Contains(string(first.Output), "first") {
+	initial := string(first.Output)
+	for !first.Exited && len(initial) < len("first") {
+		first, err = m.AgentInteract(ctx, machine.ProcessInteraction{
+			OwnerID: "session-a", ProcessID: first.ProcessID, Wait: 50 * time.Millisecond,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		initial += string(first.Output)
+	}
+	if first.Exited || initial != "first" {
 		t.Fatalf("first output = %#v", first)
 	}
+	err = os.WriteFile(filepath.Join(dir, "continue"), nil, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	last, err := m.AgentInteract(context.Background(), machine.ProcessInteraction{
+	last, err := m.AgentInteract(ctx, machine.ProcessInteraction{
 		OwnerID:   "session-a",
 		ProcessID: first.ProcessID,
-		Wait:      2 * time.Second,
+		Wait:      50 * time.Millisecond,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !last.Exited || last.ExitCode != 0 {
+	remaining := string(last.Output)
+	for !last.Exited {
+		last, err = m.AgentInteract(ctx, machine.ProcessInteraction{
+			OwnerID: "session-a", ProcessID: last.ProcessID, Wait: 50 * time.Millisecond,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		remaining += string(last.Output)
+	}
+	if last.ExitCode != 0 {
 		t.Fatalf("last output = %#v", last)
 	}
-	if strings.Contains(string(last.Output), "first") || !strings.Contains(string(last.Output), "second") {
-		t.Fatalf("last output = %q, want only new output", last.Output)
+	if remaining != "second" {
+		t.Fatalf("last output = %q, want only new output", remaining)
 	}
 }
 

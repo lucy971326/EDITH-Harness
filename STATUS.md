@@ -106,7 +106,7 @@ Windows 启动继续要求 Git Bash；Agent 长期进程与 UI 终端 PTY 均使
 - Subagent 工作页的窄面板布局、嵌套打开 `主会话 › 孩子 › 孙子`、点击去重、关闭父标签后孙子保持订阅及实机流式交互仍需浏览器验收。
 - 前端主包与延迟加载的 Monaco 包超过 Vite 默认 500KB 提示；编辑器及 Worker 均为本地资源并按需加载，当前不影响启动和离线运行。
 - Windows 管理员环境下 `TestSpawnInitialPersistFailureConsistency` 不能用目录只读位制造写入失败，导致 `make agent-check` 的既有 subagents 测试失败。
-- `TestProcessOutputIsIncremental` 的 80ms 首次等待可能早于 Git Bash 首包输出结束；普通或 race 检查都可能因此失败，属于阶段 A 既有时序测试不稳定。
+- `TestProcessOutputIsIncremental` 已改为信号文件同步两段输出，不再要求首包在固定等待窗口内到达；此前 Mac / Windows 的时序失败记录保留在下方，改后的测试尚待这两个平台重跑。
 
 ## 本次验证
 
@@ -156,3 +156,5 @@ Windows 启动继续要求 Git Bash；Agent 长期进程与 UI 终端 PTY 均使
 - 本机 `make agent-check` 的前端生产构建、71 项前端测试、TS 契约与 RPC 检查及其余 Go 包通过；普通和 race 检查均命中已记录的 `TestProcessOutputIsIncremental` 首包为空时序问题，因此全量目标退出失败。
 - 用户手工验收通过项目内免审批写入、项目外拒绝与单次授权、真实 HTTPS 单次联网、只读、完全访问和交互式 PTY。单次授权不会延续到下一次操作；未申请额外权限的联网直接由规则拒绝。停止和刷新审批本轮未重复验证，属于平台无关的审批生命周期与界面行为。
 - Agent PTY 的 Tool 结果在进入模型与聊天卡片前转换为稳定纯文本，处理回车覆盖、退格、清行和 ANSI 控制序列；machine 仍保存原始增量字节，右侧 xterm 终端不受影响。回归用例覆盖 SSH 密码提示的同一行重复重绘，exec Tool 测试通过；`make agent-check` 的前端、契约和其余 Go 检查通过，普通与 race 仍只命中已记录的 `TestProcessOutputIsIncremental` 首包时序问题。
+
+- 增量输出测试改为读取第一段后创建临时信号文件，再输出第二段；关闭 Bash 启动配置加载，允许输出分片与空轮询，并用整体超时兜底。只修改测试，不改变进程等待语义。本次 Linux 上该用例连续 10 次 race 通过，`make agent-check` 全部通过；Mac / Windows 尚待重跑。
