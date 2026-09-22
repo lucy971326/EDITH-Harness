@@ -1,6 +1,7 @@
 package machinelocal
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -16,7 +17,7 @@ import (
 )
 
 type pathLock struct {
-	mu   sync.Mutex
+	gate chan struct{}
 	refs int
 }
 
@@ -26,29 +27,38 @@ type pathLockSet struct {
 }
 
 func (s *pathLockSet) lock(path string) func() {
-	key := canonicalPath(path)
+	unlock, _ := s.lockKey(context.Background(), canonicalPath(path))
+	return unlock
+}
 
+// 批量调用者先固定、排序规范化 key；等待期间不再解析可能变化的路径。
+func (s *pathLockSet) lockKey(ctx context.Context, key string) (func(), error) {
 	s.mu.Lock()
 	if s.items == nil {
 		s.items = make(map[string]*pathLock)
 	}
 	item := s.items[key]
 	if item == nil {
-		item = &pathLock{}
+		item = &pathLock{gate: make(chan struct{}, 1)}
 		s.items[key] = item
 	}
 	item.refs++
 	s.mu.Unlock()
 
-	item.mu.Lock()
-	return func() {
-		item.mu.Unlock()
+	release := func() {
 		s.mu.Lock()
 		item.refs--
 		if item.refs == 0 {
 			delete(s.items, key)
 		}
 		s.mu.Unlock()
+	}
+	select {
+	case item.gate <- struct{}{}:
+		return func() { <-item.gate; release() }, nil
+	case <-ctx.Done():
+		release()
+		return nil, ctx.Err()
 	}
 }
 

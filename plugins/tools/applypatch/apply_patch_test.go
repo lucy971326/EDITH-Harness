@@ -5,11 +5,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
 
 	"harness/kernel/machine"
+	"harness/kernel/permissions"
 	"harness/kernel/tools"
 )
 
@@ -114,7 +116,7 @@ func TestApplyPatchValidatesEverythingBeforeWriting(t *testing.T) {
 +changed
 *** End Patch`
 
-	delta, _, err := applyPatch(context.Background(), m, "/work", patch)
+	delta, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, permissions.Policy{}, "/work", patch)
 	if err == nil || !strings.Contains(err.Error(), "failed to find expected lines") {
 		t.Fatalf("error = %v", err)
 	}
@@ -132,7 +134,7 @@ func TestApplyPatchRejectsConcurrentChange(t *testing.T) {
 +after
 *** End Patch`
 
-	delta, _, err := applyPatch(context.Background(), m, "/work", patch)
+	delta, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, permissions.Policy{}, "/work", patch)
 	if !errors.Is(err, machine.ErrFileConflict) || len(delta.Changes) != 0 {
 		t.Fatalf("delta = %#v, error = %v", delta, err)
 	}
@@ -154,7 +156,7 @@ func TestApplyPatchKeepsMarkerLikeContextInCurrentFile(t *testing.T) {
 +new
 *** End Patch`
 
-	_, _, err := applyPatch(context.Background(), m, "/work", patch)
+	_, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, permissions.Policy{}, "/work", patch)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +176,7 @@ func TestApplyPatchPreservesLineEndingsAndMatchesUnicodePunctuation(t *testing.T
 +changed
 *** End Patch`
 
-	_, _, err := applyPatch(context.Background(), m, "/work", patch)
+	_, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, permissions.Policy{}, "/work", patch)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +201,7 @@ func TestApplyPatchSupportsOrderedChunksAndEndOfFile(t *testing.T) {
 *** End of File
 *** End Patch`
 
-	_, _, err := applyPatch(context.Background(), m, "/work", patch)
+	_, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, permissions.Policy{}, "/work", patch)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +219,7 @@ func TestApplyPatchReportsCommittedPrefix(t *testing.T) {
 +second
 *** End Patch`
 
-	delta, _, err := applyPatch(context.Background(), m, "/work", patch)
+	delta, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, permissions.Policy{}, "/work", patch)
 	if err == nil || len(delta.Changes) != 1 || delta.Changes[0].Path != "/work/first.txt" || delta.Exact {
 		t.Fatalf("delta = %#v, error = %v", delta, err)
 	}
@@ -229,7 +231,7 @@ func TestApplyPatchReportsCommittedPrefix(t *testing.T) {
 func TestApplyPatchToolReturnsAppliedFileDelta(t *testing.T) {
 	m := &memoryMachine{files: map[string][]byte{"/work/text.txt": []byte("before\n")}}
 	registry := tools.NewRegistry()
-	if err := registry.Register(newTool(m)); err != nil {
+	if err := registry.Register(newTool(m, testAgentFiles{m})); err != nil {
 		t.Fatal(err)
 	}
 	result, err := registry.Call(t.Context(), tools.Call{
@@ -254,7 +256,7 @@ func TestApplyPatchToolReturnsCommittedDeltaWhenCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	m := &memoryMachine{files: make(map[string][]byte), afterWrite: cancel}
 	registry := tools.NewRegistry()
-	if err := registry.Register(newTool(m)); err != nil {
+	if err := registry.Register(newTool(m, testAgentFiles{m})); err != nil {
 		t.Fatal(err)
 	}
 	result, err := registry.Call(ctx, tools.Call{
@@ -278,7 +280,7 @@ func TestApplyPatchRejectsInvalidUTF8BeforeWriting(t *testing.T) {
 	}}
 	patch := "*** Begin Patch\n*** Update File: good.txt\n@@\n-before\n+after\n*** Delete File: bad.txt\n*** End Patch"
 
-	delta, _, err := applyPatch(context.Background(), m, "/work", patch)
+	delta, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, permissions.Policy{}, "/work", patch)
 	if err == nil || !strings.Contains(err.Error(), "not valid UTF-8") {
 		t.Fatalf("delta = %#v, error = %v", delta, err)
 	}
@@ -297,4 +299,60 @@ func TestParsePatchRejectsMoveAndMalformedInput(t *testing.T) {
 			t.Fatalf("parsePatch(%q) error = nil", patch)
 		}
 	}
+}
+
+func commitChanges(ctx context.Context, files machine.FileSystem, changes []preparedChange) (tools.AppliedFileDelta, error) {
+	delta := tools.AppliedFileDelta{Exact: true}
+	for _, change := range changes {
+		if err := ctx.Err(); err != nil {
+			return delta, err
+		}
+
+		switch change.operation {
+		case tools.FileOperationAdd, tools.FileOperationUpdate:
+			_, err := files.WriteFileIfUnchanged(change.path, []byte(*change.newContent), change.expectedHash)
+			if err != nil {
+				delta.Exact = false
+				return delta, fmt.Errorf("failed to write file %s: %w", change.path, err)
+			}
+		case tools.FileOperationDelete:
+			err := files.RemoveFileIfUnchanged(change.path, change.expectedHash)
+			if err != nil {
+				current, readErr := files.ReadFile(change.path)
+				if readErr != nil || change.oldContent == nil || string(current) != *change.oldContent {
+					delta.Exact = false
+				}
+				return delta, fmt.Errorf("failed to delete file %s: %w", change.path, err)
+			}
+		}
+
+		delta.Changes = append(delta.Changes, tools.AppliedFileChange{
+			Path:       change.path,
+			Operation:  change.operation,
+			OldContent: copyString(change.oldContent),
+			NewContent: copyString(change.newContent),
+		})
+	}
+	return delta, nil
+}
+
+type testAgentFiles struct{ machine.FileSystem }
+
+func (m testAgentFiles) AgentApplyChanges(ctx context.Context, _ permissions.Policy, changes []machine.FileChange) (machine.FileCommit, error) {
+	prepared := make([]preparedChange, 0, len(changes))
+	for _, change := range changes {
+		op := tools.FileOperationUpdate
+		if change.Content == nil {
+			op = tools.FileOperationDelete
+		}
+		var old *string
+		data, err := m.ReadFile(change.Path)
+		if err == nil {
+			value := string(data)
+			old = &value
+		}
+		prepared = append(prepared, preparedChange{path: change.Path, expectedHash: change.ExpectedHash, newContent: change.Content, oldContent: old, operation: op})
+	}
+	delta, err := commitChanges(ctx, m.FileSystem, prepared)
+	return machine.FileCommit{Completed: len(delta.Changes), Exact: delta.Exact}, err
 }

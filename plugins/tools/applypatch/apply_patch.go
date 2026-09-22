@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"harness/kernel/machine"
+	"harness/kernel/permissions"
 	"harness/kernel/tools"
 )
 
@@ -18,10 +19,10 @@ type Args struct {
 	Patch string `json:"patch" jsonschema:"minLength=1,description=Complete patch text using the *** Begin Patch and *** End Patch format."`
 }
 
-func newTool(files machine.FileSystem) tools.Tool {
+func newTool(files machine.FileSystem, agent machine.AgentFiles) tools.Tool {
 	description := "Create, edit, or delete files with a Codex-format patch. Always use this tool for deliberate file changes so Harness can track and safely revert them; do not edit files through exec_command. Begin with '*** Begin Patch' and end with '*** End Patch'. Use '*** Add File:', '*** Update File:', or '*** Delete File:' headers; update lines start with space, '+', or '-'. File moves are unsupported."
 	return tools.New("apply_patch", description, func(ctx context.Context, call tools.Call, args Args) (tools.Result, error) {
-		delta, summary, err := applyPatch(ctx, files, call.Workspace, args.Patch)
+		delta, summary, err := applyPatch(ctx, files, agent, call.Policy, call.Workspace, args.Patch)
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			if len(delta.Changes) > 0 || !delta.Exact {
 				content := ctxErr.Error()
@@ -46,7 +47,7 @@ func newTool(files machine.FileSystem) tools.Tool {
 	})
 }
 
-func applyPatch(ctx context.Context, files machine.FileSystem, workspace, patch string) (tools.AppliedFileDelta, string, error) {
+func applyPatch(ctx context.Context, files machine.FileSystem, agent machine.AgentFiles, policy permissions.Policy, workspace, patch string) (tools.AppliedFileDelta, string, error) {
 	if !utf8.ValidString(patch) {
 		return tools.AppliedFileDelta{Exact: true}, "", fmt.Errorf("invalid patch: content is not valid UTF-8")
 	}
@@ -58,7 +59,7 @@ func applyPatch(ctx context.Context, files machine.FileSystem, workspace, patch 
 	if err != nil {
 		return tools.AppliedFileDelta{Exact: true}, "", err
 	}
-	delta, err := commitChanges(ctx, files, changes)
+	delta, err := commitAgentChanges(ctx, agent, policy, changes)
 	if err != nil {
 		return delta, "", err
 	}
@@ -135,31 +136,14 @@ func prepareChanges(files machine.FileSystem, workspace string, hunks []hunk) ([
 	return changes, nil
 }
 
-func commitChanges(ctx context.Context, files machine.FileSystem, changes []preparedChange) (tools.AppliedFileDelta, error) {
-	delta := tools.AppliedFileDelta{Exact: true}
+func commitAgentChanges(ctx context.Context, agent machine.AgentFiles, policy permissions.Policy, changes []preparedChange) (tools.AppliedFileDelta, error) {
+	batch := make([]machine.FileChange, 0, len(changes))
 	for _, change := range changes {
-		if err := ctx.Err(); err != nil {
-			return delta, err
-		}
-
-		switch change.operation {
-		case tools.FileOperationAdd, tools.FileOperationUpdate:
-			_, err := files.WriteFileIfUnchanged(change.path, []byte(*change.newContent), change.expectedHash)
-			if err != nil {
-				delta.Exact = false
-				return delta, fmt.Errorf("failed to write file %s: %w", change.path, err)
-			}
-		case tools.FileOperationDelete:
-			err := files.RemoveFileIfUnchanged(change.path, change.expectedHash)
-			if err != nil {
-				current, readErr := files.ReadFile(change.path)
-				if readErr != nil || change.oldContent == nil || string(current) != *change.oldContent {
-					delta.Exact = false
-				}
-				return delta, fmt.Errorf("failed to delete file %s: %w", change.path, err)
-			}
-		}
-
+		batch = append(batch, machine.FileChange{Path: change.path, ExpectedHash: change.expectedHash, Content: change.newContent})
+	}
+	result, err := agent.AgentApplyChanges(ctx, policy, batch)
+	delta := tools.AppliedFileDelta{Exact: result.Exact}
+	for _, change := range changes[:result.Completed] {
 		delta.Changes = append(delta.Changes, tools.AppliedFileChange{
 			Path:       change.path,
 			Operation:  change.operation,
@@ -167,7 +151,7 @@ func commitChanges(ctx context.Context, files machine.FileSystem, changes []prep
 			NewContent: copyString(change.newContent),
 		})
 	}
-	return delta, nil
+	return delta, err
 }
 
 func copyString(value *string) *string {

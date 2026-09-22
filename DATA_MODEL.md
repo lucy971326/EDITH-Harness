@@ -103,6 +103,8 @@ app-server 瞬时状态
    不保存 Session、Run、设置或产品状态，也不参与任何业务判断
 ```
 
+Agent 执行权限由 Runner 的本轮 SessionSettings 快照计算，经 Loop / Tool 传递；Policy 与启动方案只在内存中存在，不写入对话账本。machine-local 拥有执行进程、沙箱资源和临时占位引用，进程退出后释放；交付后的长期进程保持启动权限。批量文件助手的提交进度用于已有 FileDelta，不另建持久化记录。
+
 ## 不可跨越的边界
 
 ```text

@@ -410,6 +410,9 @@ func TestRunBuildsInvocationPersistsMessagesAndPublishesInOrder(t *testing.T) {
 	if gotInvocation.LLMConfig.Model != "model-a" || gotInvocation.LLMConfig.ReasoningEffort != "high" {
 		t.Fatalf("llm config = %#v", gotInvocation.LLMConfig)
 	}
+	if gotInvocation.Policy.Unrestricted || gotInvocation.Policy.Network || len(gotInvocation.Policy.WriteRoots) == 0 || gotInvocation.Policy.WriteRoots[0] != "/workspace/a" {
+		t.Fatalf("unexpected run policy: %+v", gotInvocation.Policy)
+	}
 	if gotInvocation.Workspace != "/workspace/a" {
 		t.Fatalf("workspace = %q", gotInvocation.Workspace)
 	}

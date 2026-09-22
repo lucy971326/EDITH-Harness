@@ -26,7 +26,7 @@ type WriteStdinArgs struct {
 	MaxOutputTokens *int   `json:"max_output_tokens,omitempty" jsonschema:"minimum=64,description=Output token budget. Defaults to 10000 tokens."`
 }
 
-func newWriteStdinTool(processes machine.ProcessSystem) tools.Tool {
+func newWriteStdinTool(processes machine.AgentProcesses) tools.Tool {
 	return tools.New(
 		"write_stdin",
 		"Write characters to an existing exec process and return recent output.",
@@ -50,7 +50,7 @@ func newWriteStdinTool(processes machine.ProcessSystem) tools.Tool {
 			yieldMS = clamp(yieldMS, minimum, maximum)
 
 			started := time.Now()
-			output, err := processes.Interact(ctx, machine.ProcessInteraction{
+			output, err := processes.AgentInteract(ctx, machine.ProcessInteraction{
 				OwnerID:   call.SessionID,
 				ProcessID: args.ProcessID,
 				Chars:     []byte(args.Chars),

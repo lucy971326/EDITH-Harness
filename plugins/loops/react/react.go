@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/zendev-sh/goai/provider"
@@ -220,10 +221,13 @@ func (l *reactLoop) execute(
 	if invocation.InputSignal != nil {
 		inputSignal = invocation.InputSignal()
 	}
+	policy := invocation.Policy
+	policy.WriteRoots = slices.Clone(policy.WriteRoots)
 	result, err := l.tools.Call(ctx, tools.Call{
 		Name:        call.Name,
 		Arguments:   json.RawMessage(call.Args),
 		Workspace:   invocation.Workspace,
+		Policy:      policy,
 		Allow:       invocation.ToolNames,
 		SessionID:   invocation.SessionID,
 		RunID:       invocation.RunID,

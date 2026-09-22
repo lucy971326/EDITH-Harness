@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"harness/kernel/permissions"
 )
 
 // AbsentFileHash 表示调用方读取时文件不存在；SHA-256 不会产生空字符串。
@@ -114,11 +116,29 @@ type TerminalSystem interface {
 	StartTerminal(request TerminalRequest) (TerminalProcess, error)
 }
 
-// 契约。同一份 machine 服务提供的长期进程能力。
-type ProcessSystem interface {
-	// 进程启动与后续交互
-	Exec(ctx context.Context, request ProcessRequest) (ProcessOutput, error)
-	Interact(ctx context.Context, interaction ProcessInteraction) (ProcessOutput, error)
+// 契约。Agent 专用进程入口；启动必须显式提供可信权限。
+type AgentProcesses interface {
+	AgentExec(context.Context, permissions.Policy, ProcessRequest) (ProcessOutput, error)
+	AgentInteract(context.Context, ProcessInteraction) (ProcessOutput, error)
+}
+
+// 数据。一项版本受保护的修改；Content 为 nil 表示删除。
+type FileChange struct {
+	Path         string
+	ExpectedHash string
+	Content      *string
+}
+
+// 数据。批量提交结果；Completed 是按输入顺序完成的数量。
+// Exact 为 false 时，失败的那项可能也已发生部分修改。
+type FileCommit struct {
+	Completed int
+	Exact     bool
+}
+
+// 契约。Agent 文件修改入口；权限和全部目标在实际写入前校验。
+type AgentFiles interface {
+	AgentApplyChanges(context.Context, permissions.Policy, []FileChange) (FileCommit, error)
 }
 
 // 契约。文件和进程所在机器提供的操作。

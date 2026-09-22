@@ -16,7 +16,7 @@ const (
 	maxOutputTokens     = 1024 * 1024 / 4
 )
 
-func toolEntries(processes machine.ProcessSystem, paths machine.Machine) []tools.Tool {
+func toolEntries(processes machine.AgentProcesses, paths machine.Machine) []tools.Tool {
 	return []tools.Tool{
 		newExecCommandTool(processes, paths),
 		newWriteStdinTool(processes),

@@ -4,6 +4,8 @@ package tools
 import (
 	"context"
 	"encoding/json"
+
+	"harness/kernel/permissions"
 )
 
 // 数据。一条工具给模型看的定义。
@@ -18,6 +20,7 @@ type Call struct {
 	Name      string
 	Arguments json.RawMessage
 	Workspace string
+	Policy    permissions.Policy
 	Allow     []string
 	// 由 Runner / Loop 提供的调用身份，不从 Arguments 读取。
 	SessionID  string

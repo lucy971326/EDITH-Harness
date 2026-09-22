@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"harness/kernel/machine"
+	"harness/kernel/permissions"
 
 	"github.com/charmbracelet/x/xpty"
 )
@@ -43,6 +44,7 @@ type localProcess struct {
 
 	terminateMu     sync.Mutex
 	terminationSent bool
+	cleanup         func()
 }
 
 func (m *local) StartTerminal(request machine.TerminalRequest) (machine.TerminalProcess, error) {
@@ -76,7 +78,11 @@ func (m *local) StartTerminal(request machine.TerminalRequest) (machine.Terminal
 	return process, nil
 }
 
-func (m *local) Exec(ctx context.Context, request machine.ProcessRequest) (machine.ProcessOutput, error) {
+func (m *local) AgentExec(ctx context.Context, policy permissions.Policy, request machine.ProcessRequest) (machine.ProcessOutput, error) {
+	err := ctx.Err()
+	if err != nil {
+		return machine.ProcessOutput{}, err
+	}
 	if request.OwnerID == "" || len(request.Argv) == 0 || request.Wait < 0 {
 		return machine.ProcessOutput{}, fmt.Errorf("machine-local: process owner, argv and non-negative wait required")
 	}
@@ -98,8 +104,20 @@ func (m *local) Exec(ctx context.Context, request machine.ProcessRequest) (machi
 		m.mu.Unlock()
 		return machine.ProcessOutput{}, err
 	}
-	process, err := m.startProcess(request, 80, 24, false)
+	launch, err := m.prepareAgentLaunch(policy, request)
 	if err != nil {
+		m.mu.Unlock()
+		return machine.ProcessOutput{}, err
+	}
+	err = ctx.Err()
+	if err != nil {
+		launch.close()
+		m.mu.Unlock()
+		return machine.ProcessOutput{}, err
+	}
+	process, err := m.startPreparedProcess(request, launch.cmd, 80, 24, false, launch.close)
+	if err != nil {
+		launch.close()
 		m.mu.Unlock()
 		return machine.ProcessOutput{}, err
 	}
@@ -124,7 +142,11 @@ func (m *local) Exec(ctx context.Context, request machine.ProcessRequest) (machi
 	return output, nil
 }
 
-func (m *local) Interact(ctx context.Context, interaction machine.ProcessInteraction) (machine.ProcessOutput, error) {
+func (m *local) AgentInteract(ctx context.Context, interaction machine.ProcessInteraction) (machine.ProcessOutput, error) {
+	err := ctx.Err()
+	if err != nil {
+		return machine.ProcessOutput{}, err
+	}
 	if interaction.OwnerID == "" || interaction.ProcessID <= 0 || interaction.Wait < 0 {
 		return machine.ProcessOutput{}, fmt.Errorf("machine-local: process owner, ID and non-negative wait required")
 	}
@@ -179,6 +201,10 @@ func (m *local) startProcess(request machine.ProcessRequest, cols int, rows int,
 		cmd.Env = append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor")
 	}
 
+	return m.startPreparedProcess(request, cmd, cols, rows, streamOutput, nil)
+}
+
+func (m *local) startPreparedProcess(request machine.ProcessRequest, cmd *exec.Cmd, cols, rows int, streamOutput bool, cleanup func()) (*localProcess, error) {
 	platform, err := newPlatformProcess()
 	if err != nil {
 		return nil, fmt.Errorf("machine-local: prepare process: %w", err)
@@ -187,6 +213,7 @@ func (m *local) startProcess(request machine.ProcessRequest, cols int, rows int,
 
 	process := &localProcess{
 		ownerID:    request.OwnerID,
+		cleanup:    cleanup,
 		cmd:        cmd,
 		process:    platform,
 		done:       make(chan struct{}),
@@ -322,6 +349,9 @@ func (p *localProcess) waitForExit() {
 		_ = p.pty.Close()
 	}
 	<-p.readerDone
+	if p.cleanup != nil {
+		p.cleanup()
+	}
 
 	exitCode := -1
 	if p.cmd.ProcessState != nil {

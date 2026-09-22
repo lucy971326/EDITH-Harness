@@ -20,11 +20,15 @@ func (p *Plugin) Start(h *host.Host) error {
 	if err != nil {
 		return err
 	}
+	agent, err := host.Resolve[machine.AgentFiles](h, "machine")
+	if err != nil {
+		return err
+	}
 	registry, err := host.Resolve[tools.Tools](h, "tools")
 	if err != nil {
 		return err
 	}
-	err = registry.Register(newTool(files))
+	err = registry.Register(newTool(files, agent))
 	if err != nil {
 		return err
 	}

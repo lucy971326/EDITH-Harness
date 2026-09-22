@@ -18,7 +18,7 @@ func New() *Plugin {
 func (p *Plugin) Name() string { return "exec-tools" }
 
 func (p *Plugin) Start(h *host.Host) error {
-	processes, err := host.Resolve[machine.ProcessSystem](h, "machine")
+	processes, err := host.Resolve[machine.AgentProcesses](h, "machine")
 	if err != nil {
 		return err
 	}

@@ -21,7 +21,8 @@ appserver.Server
 
 ## 已完成能力
 
-- 权限规则与接口：新增纯计算包 `kernel/permissions`，支持四档模式翻译、额外权限判断、受保护元数据目录和本次批准合并，并定义人／模型共用的 Reviewer 契约。Policy 仅保存无限制标记、可写根、联网标记。SessionSettings 持久保存 `permissionMode`，旧文件缺字段默认 Ask for approval，未知模式报错；设置更新省略模式时保留，分叉复制，子会话继承父 Run 快照。Go／TS 契约同步；尚未增加模式菜单、审批服务或执行沙箱，现有 Tool 仍直接访问机器。
+- 权限规则与接口：新增纯计算包 `kernel/permissions`，支持四档模式翻译、额外权限判断、受保护元数据目录和本次批准合并，并定义人／模型共用的 Reviewer 契约。Policy 仅保存无限制标记、可写根、联网标记。SessionSettings 持久保存 `permissionMode`，旧文件缺字段默认 Ask for approval，未知模式报错；设置更新省略模式时保留，分叉复制，子会话继承父 Run 快照。Go／TS 契约同步；尚未增加模式菜单和审批服务。
+- Linux Agent 沙箱：Runner 将本轮 Policy 经 Loop 传给 Tool；命令走 AgentExec，补丁走 AgentApplyChanges 的内部写入助手，共用 bwrap + seccomp。根只读、授权根可写、元数据保护、禁网与宿主 socket 阻断已接通；旧进程不接受权限更新。用户文件和终端保留直接入口。缺少系统 bwrap 或不支持的策略明确失败；macOS / Windows 受限执行暂未实现，Full Access 可用。MCP 不在此沙箱覆盖范围。
 - 项目与会话：原生目录选择、按工作区分组、新建或复用空会话、切换及自动命名。
 - 聊天：文字与图片、实时输出、直接 Steer、停止父子任务、历史、刷新、重连与后台重启恢复。
 - 上下文引用：主聊天 `@` 搜文件／目录、文件树右键、Monaco 选区右键及完整助手回答文字选区添加。助手片段通过选区旁的紧凑框添加可选评论，确认后独立编号，编号在删除引用或下一条消息发送成功前持续锚定原选区，悬停先显示评论、再以分隔线显示原文。其他标签可整块删除，代码选区可展开预览并保留添加时未保存内容。引用随会话草稿保留，允许仅带引用发送，失败保留，确认只清本次提交的附件；用 v1／v2 版本标记的普通文本落账，用户历史、Steer、刷新和分叉共用还原逻辑。
@@ -82,7 +83,7 @@ Vite 构建产物位于 `clients/web/dist/`，由 Go embed 进入二进制但不
 └─ mcp.json
 ```
 
-本机模型 Provider 仍在 `~/.harness/config.yaml` 配置。machine-local 直接操作本机文件和进程，没有沙箱与路径限制；编辑器 RPC 单文件限制 2 MiB，保存使用 SHA-256 版本避免覆盖已变化内容。
+本机模型 Provider 仍在 `~/.harness/config.yaml` 配置。machine-local 的用户入口直接操作本机；Linux Agent 受限入口使用 `/usr/bin/bwrap`（需描述符挂载、seccomp 与 user namespace 支持）；编辑器 RPC 单文件限制 2 MiB，保存使用 SHA-256 版本避免覆盖已变化内容。
 Windows 启动继续要求 Git Bash；Agent 长期进程与 UI 终端 PTY 均使用 `charmbracelet/x/xpty`，共享 machine-local 的进程树清理能力，但各自管理身份与生命周期。它们只存在当前 Harness 进程内存，重启后失效。
 `~/.harness` 固定使用本机文件存储；Session、Runner、Agent、LLM、MCP 用户配置、Skill 用户目录与内置 Skill、Subagents 共用 `persist` 的可靠文件读写，不提供 SQLite 切换。
 
@@ -97,6 +98,8 @@ Windows 启动继续要求 Git Bash；Agent 长期进程与 UI 终端 PTY 均使
 
 ## 已知未验证
 
+- Linux 沙箱不提供硬链接别名隔离；保护目录内部的细粒度子路径授权暂时拒绝。临时占位在正常退出时清理，宿主被强杀或断电可能留下空目录；不自动删除来源不明的目录。macOS / Windows 沙箱、审批与 MCP 执行边界仍待后续实现。
+
 - 上下文引用各入口、助手选区浮层／悬停预览、中文输入法和亮暗／窄屏布局待用户 `make run` 截图验收；按最新要求不新增 UI 自动化测试。
 - Windows 原生目录选择器仍需在交互式 Windows 桌面验收。
 - Subagent 工作页的窄面板布局、嵌套打开 `主会话 › 孩子 › 孙子`、点击去重、关闭父标签后孙子保持订阅及实机流式交互仍需浏览器验收。
@@ -105,6 +108,11 @@ Windows 启动继续要求 Git Bash；Agent 长期进程与 UI 终端 PTY 均使
 - `TestProcessOutputIsIncremental` 的 80ms 首次等待可能早于 Git Bash 首包输出结束；普通或 race 检查都可能因此失败，属于阶段 A 既有时序测试不稳定。
 
 ## 本次验证
+
+- 修复 Agent 批量写入的两个锁问题：路径 key 只规范化一次，获取锁时不再解析且等待可取消；Full Access 也通过可终止的文件助手写入，不持有 machine 服务锁做文件 I/O。新增一组回归用例覆盖等待期间符号链接变化、取消路径锁等待，以及 FIFO 阻塞时其他命令仍可启动、文件助手可取消。machine-local、applypatch、appserver、Runner 的 race 与相关包 vet 通过；本次 `make agent-check` 仍因 npm `EALLOWREMOTE` 退出。
+
+- Linux Agent 沙箱：真实 bwrap 集成验证项目内写入、项目外/符号链接/保护目录拒绝、Read Only 与 Full Access、TCP/Unix stream/Unix datagram 阻断、补丁整批权限预检与部分提交、Session 归属和 PTY 后续交互。`go test ./kernel/... ./plugins/... ./products/... ./appserver/...` 与对应 vet 通过；machine-local、补丁/命令 Tool、Runner、ReAct 的相关 race 通过。后台包在 macOS arm64、Windows amd64 交叉编译通过；Linux arm64 machine-local 编译通过，非 Linux 未做运行验收。
+- 本次 `make agent-check` 在前端 npm ci 阶段因 `EALLOWREMOTE`（禁止下载锁文件中的远程包）退出；没有改动依赖配置。`go build ./cmd/harness` 因缺少 `clients/web/dist` 无法完成，因此前端和完整可执行文件构建未验收；写入助手已通过同样内部入口的测试可执行文件实际运行验证。
 
 - 权限规则、设置持久化与更新、分叉与子会话模式继承测试通过；permissions、persist、appserver、harness Product、subagents 的 race 与相关包 vet 通过。`make agent-check` 在前端依赖阶段因环境缺少 npm 退出；补跑 `make agent-go` 时其余 Go 包测试通过，只有 `clients/web` 与 `cmd/harness` 因缺少前端 `dist` 嵌入产物无法编译，因此该目标后续的全量 vet 未执行。前端构建与 TS 检查未执行，不能视为全量验收通过。
 - 助手消息片段引用扩充了现有核心用例：7 项覆盖 v1／v2 往返、特殊字符、坏段回退、去重与确认清理，全部通过；前端生产构建通过，只有既有 Vite 大包提示。未新增 UI 自动化测试，实机视觉交互留给用户验收。

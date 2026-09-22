@@ -26,7 +26,7 @@ type ExecCommandArgs struct {
 	MaxOutputTokens *int   `json:"max_output_tokens,omitempty" jsonschema:"minimum=64,description=Output token budget. Defaults to 10000 tokens."`
 }
 
-func newExecCommandTool(processes machine.ProcessSystem, paths machine.Machine) tools.Tool {
+func newExecCommandTool(processes machine.AgentProcesses, paths machine.Machine) tools.Tool {
 	return tools.New(
 		"exec_command",
 		"Run a Bash command, returning output or a process ID for ongoing interaction.",
@@ -55,7 +55,7 @@ func newExecCommandTool(processes machine.ProcessSystem, paths machine.Machine) 
 			yieldMS = clamp(yieldMS, minimum, maxExecYieldMS)
 
 			started := time.Now()
-			output, err := processes.Exec(ctx, machine.ProcessRequest{
+			output, err := processes.AgentExec(ctx, call.Policy, machine.ProcessRequest{
 				OwnerID: call.SessionID,
 				Dir:     workdir,
 				Argv:    []string{"bash", shellFlag, args.Cmd},

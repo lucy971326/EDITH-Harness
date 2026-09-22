@@ -9,11 +9,12 @@ import (
 	"time"
 
 	"harness/kernel/machine"
+	"harness/kernel/permissions"
 )
 
 func TestProcessOutputIsIncremental(t *testing.T) {
 	m := newTestLocal(t)
-	first, err := m.Exec(context.Background(), machine.ProcessRequest{
+	first, err := m.AgentExec(context.Background(), permissions.Policy{Unrestricted: true}, machine.ProcessRequest{
 		OwnerID: "session-a",
 		Dir:     t.TempDir(),
 		Argv:    []string{"bash", "-lc", "printf first; sleep 1; printf second"},
@@ -26,7 +27,7 @@ func TestProcessOutputIsIncremental(t *testing.T) {
 		t.Fatalf("first output = %#v", first)
 	}
 
-	last, err := m.Interact(context.Background(), machine.ProcessInteraction{
+	last, err := m.AgentInteract(context.Background(), machine.ProcessInteraction{
 		OwnerID:   "session-a",
 		ProcessID: first.ProcessID,
 		Wait:      2 * time.Second,
@@ -44,7 +45,7 @@ func TestProcessOutputIsIncremental(t *testing.T) {
 
 func TestProcessTTYAcceptsInput(t *testing.T) {
 	m := newTestLocal(t)
-	started, err := m.Exec(context.Background(), machine.ProcessRequest{
+	started, err := m.AgentExec(context.Background(), permissions.Policy{Unrestricted: true}, machine.ProcessRequest{
 		OwnerID: "session-a",
 		Dir:     t.TempDir(),
 		Argv:    []string{"bash", "-lic", `read value; printf 'got:%s\n' "$value"`},
@@ -58,7 +59,7 @@ func TestProcessTTYAcceptsInput(t *testing.T) {
 		t.Fatalf("process exited before input: %#v", started)
 	}
 
-	finished, err := m.Interact(context.Background(), machine.ProcessInteraction{
+	finished, err := m.AgentInteract(context.Background(), machine.ProcessInteraction{
 		OwnerID:   "session-a",
 		ProcessID: started.ProcessID,
 		Chars:     []byte("hello\n"),
@@ -103,7 +104,7 @@ func TestTerminalHandleStreamsInputAndResizes(t *testing.T) {
 func TestProcessOwnerIsPrivate(t *testing.T) {
 	dir := t.TempDir()
 	m := newTestLocal(t)
-	started, err := m.Exec(context.Background(), machine.ProcessRequest{
+	started, err := m.AgentExec(context.Background(), permissions.Policy{Unrestricted: true}, machine.ProcessRequest{
 		OwnerID: "session-a",
 		Dir:     dir,
 		Argv:    []string{"bash", "-lc", "sleep 2"},
@@ -113,7 +114,7 @@ func TestProcessOwnerIsPrivate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = m.Interact(context.Background(), machine.ProcessInteraction{
+	_, err = m.AgentInteract(context.Background(), machine.ProcessInteraction{
 		OwnerID:   "session-b",
 		ProcessID: started.ProcessID,
 	})
@@ -127,7 +128,7 @@ func TestCanceledInitialExecRemovesProcess(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := m.Exec(ctx, machine.ProcessRequest{
+	_, err := m.AgentExec(ctx, permissions.Policy{Unrestricted: true}, machine.ProcessRequest{
 		OwnerID: "session-a",
 		Dir:     t.TempDir(),
 		Argv:    []string{"bash", "-lc", "sleep 10"},
@@ -147,7 +148,7 @@ func TestCanceledInitialExecRemovesProcess(t *testing.T) {
 func TestCloseStopsRunningProcess(t *testing.T) {
 	dir := t.TempDir()
 	m := newTestLocal(t)
-	started, err := m.Exec(context.Background(), machine.ProcessRequest{
+	started, err := m.AgentExec(context.Background(), permissions.Policy{Unrestricted: true}, machine.ProcessRequest{
 		OwnerID: "session-a",
 		Dir:     dir,
 		Argv:    []string{"bash", "-lc", "sleep 30"},

@@ -6,6 +6,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
 	"sync"
 
 	"harness/kernel/agents"
@@ -13,6 +16,7 @@ import (
 	"harness/kernel/llm"
 	"harness/kernel/loops"
 	"harness/kernel/machine"
+	"harness/kernel/permissions"
 	"harness/kernel/persist"
 	"harness/kernel/session"
 	"harness/kernel/session/settings"
@@ -432,7 +436,24 @@ func (r *Runner) executePrepared(runCtx context.Context, sessionID, runID string
 		return err
 	}
 
+	// 临时目录来自宿主运行时，不从模型参数读取。
+	var tempDirs []string
+	if runtime.GOOS == "linux" {
+		tempDirs = append(tempDirs, "/tmp")
+	}
+	temp := os.TempDir()
+	if filepath.IsAbs(temp) {
+		info, statErr := os.Stat(temp)
+		if statErr == nil && info.IsDir() {
+			tempDirs = append(tempDirs, filepath.Clean(temp))
+		}
+	}
+	policy, _, err := permissions.BuildPolicy(runSettings.PermissionMode, runSettings.Workspace, tempDirs)
+	if err != nil {
+		return err
+	}
 	invocation := loops.Invocation{
+		Policy:       policy,
 		SessionID:    sessionID,
 		RunID:        runID,
 		History:      history,

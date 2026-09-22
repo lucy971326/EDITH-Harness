@@ -47,6 +47,11 @@ func main() {
 }
 
 func run() (result error) {
+	handled, workerErr := machinelocal.RunFileWorker(os.Args[1:], os.Stdin, os.Stdout)
+	if handled {
+		return workerErr
+	}
+
 	dataDir, err := userDataDir()
 	if err != nil {
 		return err

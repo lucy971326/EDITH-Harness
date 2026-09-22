@@ -5,6 +5,7 @@ import (
 	"context"
 
 	"harness/kernel/llm"
+	"harness/kernel/permissions"
 	"harness/kernel/session"
 	"harness/kernel/tools"
 )
@@ -72,6 +73,7 @@ type Invocation struct {
 	LLMConfig    llm.RunConfig
 	ToolNames    []string
 	Workspace    string
+	Policy       permissions.Policy
 	// 外部输入到达时唤醒等待者；调用时取得当前代次，消息由 Checkpoint 落账并消费。
 	InputSignal func() <-chan struct{}
 	Emit        func(context.Context, Event) error

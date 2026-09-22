@@ -12,6 +12,7 @@ import (
 
 	"harness/kernel/host"
 	"harness/kernel/machine"
+	"harness/kernel/permissions"
 	kerneltools "harness/kernel/tools"
 	"harness/plugins/tools/applypatch"
 )
@@ -153,4 +154,21 @@ func mustJSON(t *testing.T, value string) string {
 		t.Fatal(err)
 	}
 	return string(data)
+}
+
+func (m *fakeMachine) AgentApplyChanges(_ context.Context, _ permissions.Policy, changes []machine.FileChange) (machine.FileCommit, error) {
+	result := machine.FileCommit{Exact: true}
+	for _, change := range changes {
+		var err error
+		if change.Content == nil {
+			err = m.RemoveFileIfUnchanged(change.Path, change.ExpectedHash)
+		} else {
+			_, err = m.WriteFileIfUnchanged(change.Path, []byte(*change.Content), change.ExpectedHash)
+		}
+		if err != nil {
+			return result, err
+		}
+		result.Completed++
+	}
+	return result, nil
 }

@@ -20,6 +20,7 @@ import (
 	"harness/kernel/host"
 	"harness/kernel/llm"
 	"harness/kernel/loops"
+	"harness/kernel/permissions"
 	"harness/kernel/persist"
 	"harness/kernel/runner"
 	"harness/kernel/session"
@@ -65,10 +66,12 @@ func TestReactRunsToolRoundTrip(t *testing.T) {
 
 	loop, toolRegistry := installReact(t, server.URL)
 	var gotWorkspace string
+	var gotPolicy permissions.Policy
 	oldContent := "before\n"
 	newContent := "after\n"
 	err := toolRegistry.Register(tools.New("echo", "Echo a value.", func(_ context.Context, call tools.Call, args echoArgs) (tools.Result, error) {
 		gotWorkspace = call.Workspace
+		gotPolicy = call.Policy
 		return tools.Result{Content: args.Value, FileDelta: &tools.AppliedFileDelta{
 			Exact: true,
 			Changes: []tools.AppliedFileChange{{
@@ -94,6 +97,7 @@ func TestReactRunsToolRoundTrip(t *testing.T) {
 		},
 		ToolNames: []string{"echo"},
 		Workspace: "/workspace",
+		Policy:    permissions.Policy{WriteRoots: []string{"/workspace"}},
 		Emit: func(_ context.Context, event loops.Event) error {
 			events = append(events, event)
 			return nil
@@ -105,6 +109,9 @@ func TestReactRunsToolRoundTrip(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(gotPolicy.WriteRoots) != 1 || gotPolicy.WriteRoots[0] != "/workspace" || gotPolicy.Unrestricted || gotPolicy.Network {
+		t.Fatalf("lost trusted policy: %+v", gotPolicy)
 	}
 	if gotWorkspace != "/workspace" {
 		t.Fatalf("workspace = %q", gotWorkspace)
