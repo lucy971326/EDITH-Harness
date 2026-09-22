@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#08111f">
+  <title>Linux 沙箱：bwrap 如何搭好运行环境</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: #08111f;
+      color: #eff6ff;
+      --muted: #a7bad0;
+      --line: #243750;
+      --blue: #59d8ff;
+      --gold: #ffd36e;
+      --pink: #ff849f;
+      --green: #80efbc;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 320px; }
+    button { font: inherit; }
+    .page { max-width: 1500px; margin: auto; padding: 28px clamp(18px, 4vw, 64px) 54px; }
+    .eyebrow { color: #84a5ca; font-size: 12px; font-weight: 800; letter-spacing: .22em; }
+    h1 { margin: 12px 0 8px; font-size: clamp(30px, 4.5vw, 64px); line-height: 1.08; letter-spacing: -.045em; }
+    .intro { margin: 0; max-width: 750px; color: var(--muted); font-size: clamp(15px, 1.5vw, 19px); line-height: 1.7; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(310px, .8fr); gap: 18px; margin-top: 28px; align-items: stretch; }
+    .stage, .inspector, .takeaway { border: 1px solid var(--line); border-radius: 24px; background: #0c192b; box-shadow: 0 25px 60px #0003; }
+    .stage { position: relative; min-height: 570px; overflow: hidden; background: radial-gradient(circle at 52% 38%, #173252 0, #0b1a2e 48%, #07111f 100%); }
+    #scene { position: absolute; inset: 0; display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+    #scene:active { cursor: grabbing; }
+    .stage-top { position: absolute; top: 20px; left: 22px; right: 22px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; pointer-events: none; }
+    .stage-title { padding: 9px 12px; background: #081522c9; border: 1px solid #45617a77; border-radius: 10px; color: #d8eafa; font-size: 13px; font-weight: 700; }
+    .stage-hint { color: #a7c1d8; background: #081522b8; border-radius: 9px; padding: 9px 12px; font-size: 12px; }
+    .node-label { position: absolute; z-index: 2; transform: translate(-50%, -50%); padding: 7px 11px; border: 1px solid currentColor; border-radius: 9px; background: #071523df; box-shadow: 0 8px 25px #0006; font-size: 12px; font-weight: 800; letter-spacing: .04em; pointer-events: none; white-space: nowrap; }
+    .node-label[data-node="agent"] { color: #eef8ff; }
+    .node-label[data-node="namespace"] { color: var(--blue); }
+    .node-label[data-node="cgroup"] { color: var(--gold); }
+    .node-label[data-node="seccomp"] { color: var(--pink); }
+    .node-label[data-node="bwrap"] { color: var(--green); }
+    .stage-status { position: absolute; inset: 0; display: grid; place-items: center; padding: 30px; text-align: center; color: #d6e6f5; background: #0b1a2ee8; line-height: 1.7; }
+    .stage-status[hidden] { display: none; }
+    .stage-bottom { position: absolute; left: 20px; right: 20px; bottom: 17px; display: flex; justify-content: space-between; gap: 12px; align-items: end; pointer-events: none; }
+    .stage-bottom span { padding: 8px 11px; background: #081522c9; border-radius: 9px; color: #adc4d8; font-size: 12px; }
+    .inspector { padding: clamp(20px, 2.3vw, 34px); display: flex; flex-direction: column; }
+    .inspector .caption { font-size: 12px; color: #84a5ca; font-weight: 800; letter-spacing: .16em; }
+    .inspector h2 { margin: 14px 0 4px; font-size: clamp(26px, 2.8vw, 38px); letter-spacing: -.03em; }
+    .translation { color: #a8bfd4; font-size: 14px; }
+    .one-line { margin: 32px 0 22px; font-size: clamp(20px, 2vw, 25px); line-height: 1.45; font-weight: 750; }
+    .example { padding: 19px; border-radius: 15px; border: 1px solid #314c68; background: #0e2339; }
+    .example strong { display: block; margin-bottom: 9px; color: #99c0df; font-size: 12px; letter-spacing: .1em; }
+    .example p { margin: 0; font-size: 15px; line-height: 1.7; }
+    .removed { margin: 24px 0 0; padding-top: 20px; border-top: 1px solid #29405a; color: #bdccdc; line-height: 1.65; font-size: 14px; }
+    .removed b { color: #fff; }
+    .pickers { display: grid; grid-template-columns: repeat(4, 1fr); gap: 11px; margin-top: 18px; }
+    .picker { min-height: 83px; padding: 15px 16px; text-align: left; border: 1px solid #31465d; border-radius: 16px; color: #e8f2ff; background: #0e1e32; cursor: pointer; transition: transform .2s, border-color .2s, background .2s; }
+    .picker:hover { transform: translateY(-3px); background: #152b43; }
+    .picker[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, #0e1e32); box-shadow: inset 0 0 0 1px var(--accent); }
+    .picker .dot { display: inline-block; width: 9px; height: 9px; margin-right: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 12px var(--accent); }
+    .picker strong { font-size: 16px; }
+    .picker small { display: block; margin-top: 7px; color: #adc2d5; font-size: 12px; }
+    .takeaway { margin-top: 18px; padding: 22px 26px; display: flex; gap: 22px; align-items: center; }
+    .takeaway b { flex: 0 0 auto; color: #e9f5ff; font-size: 13px; letter-spacing: .12em; }
+    .takeaway p { margin: 0; color: #bbccdc; line-height: 1.7; }
+    .takeaway em { color: #fff; font-style: normal; font-weight: 700; }
+    @media (max-width: 920px) {
+      .layout { grid-template-columns: 1fr; }
+      .stage { min-height: 520px; }
+      .inspector { min-height: 350px; }
+      .one-line { margin-top: 22px; }
+      .pickers { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 600px) {
+      .page { padding-top: 22px; }
+      .stage { min-height: 420px; }
+      .stage-hint { display: none; }
+      .stage-bottom span { max-width: 100%; }
+      .stage-bottom span:last-child { display: none; }
+      .pickers { grid-template-columns: repeat(2, 1fr); }
+      .picker { min-height: 65px; }
+      .picker small { display: block; margin-left: 0; }
+      .takeaway { display: block; }
+      .takeaway p { margin-top: 10px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .picker { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <div class="eyebrow">LINUX SANDBOX · 交互心智模型</div>
+    <h1>先搭环境，再运行命令。</h1>
+    <p class="intro">绿色的 bwrap 是“施工员”：它先安排文件视图和 namespace，再启动中间的 Agent 进程。彩色装置表示运行时作用在进程上的内核机制。拖动场景、点击装置看看它们的分工。</p>
+
+    <div class="layout">
+      <section class="stage" aria-label="Linux 沙箱三维模型">
+        <canvas id="scene" aria-label="bwrap 启动器指向中央 Agent 进程；Namespace、cgroup 和 seccomp 三种内核机制连接到进程"></canvas>
+        <div class="stage-top">
+          <div class="stage-title">● 绿色箭头：搭环境 → 启动进程</div>
+          <div class="stage-hint">拖动旋转 · 滚轮缩放 · 点击装置</div>
+        </div>
+        <div class="node-label" data-node="agent">Agent 进程</div>
+        <div class="node-label" data-node="namespace">Namespace</div>
+        <div class="node-label" data-node="cgroup">cgroup</div>
+        <div class="node-label" data-node="seccomp">seccomp</div>
+        <div class="node-label" data-node="bwrap">bwrap · 启动器</div>
+        <div class="stage-status" id="stage-status">正在加载 Three.js…<br>下面的文字仍可直接阅读。首次打开需要网络连接。</div>
+        <div class="stage-bottom"><span>bwrap 是工具；彩色装置是内核机制</span><span>彩色连线表示规则生效，不表示执行先后</span></div>
+      </section>
+
+      <aside class="inspector" aria-live="polite">
+        <div class="caption">SELECTED OBJECT / 当前选中</div>
+        <h2 id="detail-title">bubblewrap</h2>
+        <div class="translation" id="detail-translation">bwrap · Linux 沙箱启动工具</div>
+        <p class="one-line" id="detail-summary">它先搭好环境，再启动 Agent 命令。</p>
+        <div class="example"><strong>具体例子</strong><p id="detail-example">Codex 告诉 bwrap：系统文件只读、项目目录可写、网络隔离。bwrap 调用 Linux 内核完成这些设置，然后运行命令。项目文件没有被复制。</p></div>
+        <p class="removed" id="detail-removed"><b>如果拿掉它：</b>仍可自己写代码调用 namespace 和挂载接口，或使用别的工具；内核能力本身还在。</p>
+      </aside>
+    </div>
+
+    <div class="pickers" role="group" aria-label="选择启动器或内核机制">
+      <button class="picker" type="button" data-select="bwrap" aria-pressed="true" style="--accent: var(--green)"><span class="dot"></span><strong>bwrap</strong><small>搭环境、启动命令</small></button>
+      <button class="picker" type="button" data-select="namespace" aria-pressed="false" style="--accent: var(--blue)"><span class="dot"></span><strong>Namespace</strong><small>看见什么</small></button>
+      <button class="picker" type="button" data-select="cgroup" aria-pressed="false" style="--accent: var(--gold)"><span class="dot"></span><strong>cgroup</strong><small>能用多少</small></button>
+      <button class="picker" type="button" data-select="seccomp" aria-pressed="false" style="--accent: var(--pink)"><span class="dot"></span><strong>seccomp</strong><small>能调用什么</small></button>
+    </div>
+
+    <div class="takeaway">
+      <b>记住这个形状</b>
+      <p><em>bwrap 是调用内核能力的工具；namespace、cgroup、seccomp 是内核机制。</em> bwrap 擅长搭 namespace 和挂载，也能加载现成 seccomp 过滤器；cgroup 的 CPU、内存配额需要另外设置。挂进去的可写项目目录仍是宿主机的真实文件。</p>
+    </div>
+  </main>
+
+  <script type="module">
+    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
+
+    const details = {
+      bwrap: {
+        title: 'bubblewrap', translation: 'bwrap · Linux 沙箱启动工具',
+        summary: '它先搭好环境，再启动 Agent 命令。',
+        example: 'Codex 告诉 bwrap：系统文件只读、项目目录可写、网络隔离。bwrap 调用 Linux 内核完成这些设置，然后运行命令。项目文件没有被复制。',
+        removed: '仍可自己写代码调用 namespace 和挂载接口，或使用别的工具；内核能力本身还在。'
+      },
+      namespace: {
+        title: 'Namespace', translation: '命名空间 · 给进程一套自己的“视野”',
+        summary: '它决定：这个进程能看见什么。',
+        example: '用 mount namespace 配合挂载设置，让进程只看到安排给它的目录。进程、网络、身份也可以各有自己的视图。',
+        removed: '进程会看到更多宿主机资源；能否实际读写，仍由权限等规则决定。'
+      },
+      cgroup: {
+        title: 'cgroup', translation: 'control group · 控制组',
+        summary: '它决定：这组进程最多能用多少资源。',
+        example: '给 Agent 及其子进程设内存上限、CPU 配额和进程数上限。到达限制时，就不能继续无限占用。',
+        removed: '这些资源上限消失，进程可能耗尽宿主机的内存或进程数。'
+      },
+      seccomp: {
+        title: 'seccomp', translation: 'secure computing · 安全计算模式',
+        summary: '它决定：哪些系统调用可以通过。',
+        example: '进程请求内核执行 mount（挂载）时，过滤规则可以拒绝这个系统调用；普通读写调用可以按规则放行。',
+        removed: '这层系统调用过滤消失；调用是否成功仍受权限和其他内核规则约束。'
+      }
+    };
+
+    const canvas = document.querySelector('#scene');
+    const stage = canvas.parentElement;
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(41, 1, 0.1, 100);
+    scene.add(new THREE.AmbientLight(0xaed5ff, 1.8));
+    const keyLight = new THREE.PointLight(0x75cfff, 90, 25);
+    keyLight.position.set(1, 8, 6);
+    scene.add(keyLight);
+    const warmLight = new THREE.PointLight(0xffb877, 35, 20);
+    warmLight.position.set(-6, 3, -6);
+    scene.add(warmLight);
+
+    const colors = { bwrap: 0x80efbc, namespace: 0x59d8ff, cgroup: 0xffd36e, seccomp: 0xff849f };
+    const positions = {
+      agent: new THREE.Vector3(0, 1.65, 0),
+      namespace: new THREE.Vector3(-4.2, 1.35, 1.7),
+      cgroup: new THREE.Vector3(4.2, 1.35, 1.7),
+      seccomp: new THREE.Vector3(0, 1.35, -4.3),
+      bwrap: new THREE.Vector3(0, 1.35, 5.2)
+    };
+    const groups = {};
+    const animated = [];
+    const clickTargets = [];
+
+    function material(color, opacity = 1) {
+      return new THREE.MeshStandardMaterial({ color, metalness: .38, roughness: .27, transparent: opacity < 1, opacity, emissive: color, emissiveIntensity: .16, side: THREE.DoubleSide });
+    }
+    function addMesh(parent, geometry, mat, x = 0, y = 0, z = 0) {
+      const mesh = new THREE.Mesh(geometry, mat);
+      mesh.position.set(x, y, z);
+      parent.add(mesh);
+      return mesh;
+    }
+    function ring(parent, radius, color, y = 0, width = .045) {
+      const mesh = addMesh(parent, new THREE.TorusGeometry(radius, width, 10, 96), material(color, .75), 0, y, 0);
+      mesh.rotation.x = Math.PI / 2;
+      return mesh;
+    }
+    function platform(name, color) {
+      const group = new THREE.Group();
+      group.position.copy(positions[name]);
+      group.userData.layer = name;
+      scene.add(group);
+      addMesh(group, new THREE.CylinderGeometry(1.55, 1.65, .12, 64), material(0x18334b), 0, -1.28, 0);
+      ring(group, 1.52, color, -1.2, .035);
+      ring(group, 1.16, color, -1.19, .014);
+      groups[name] = group;
+      clickTargets.push(group);
+      return group;
+    }
+
+    const grid = new THREE.GridHelper(18, 18, 0x416080, 0x25415d);
+    grid.position.y = -.05;
+    grid.material.transparent = true;
+    grid.material.opacity = .19;
+    scene.add(grid);
+    const floor = addMesh(scene, new THREE.CircleGeometry(11, 96), new THREE.MeshBasicMaterial({ color: 0x10243c, transparent: true, opacity: .22 }), 0, -.08, 0);
+    floor.rotation.x = -Math.PI / 2;
+
+    const agent = platform('agent', 0xd9f4ff);
+    const core = addMesh(agent, new THREE.IcosahedronGeometry(.78, 1), material(0xe4f7ff), 0, .15, 0);
+    addMesh(agent, new THREE.IcosahedronGeometry(.99, 1), new THREE.MeshBasicMaterial({ color: 0x6bd3ff, wireframe: true, transparent: true, opacity: .35 }), 0, .15, 0);
+    const halo = ring(agent, 1.04, 0xb9eaff, .12, .032);
+    animated.push({ object: core, kind: 'spin', speed: .003 });
+    animated.push({ object: halo, kind: 'spin', speed: -.005 });
+
+    // bwrap 用不同的方形工作台表示“搭建者”，不作为第四种内核规则。
+    const builder = new THREE.Group();
+    builder.position.copy(positions.bwrap);
+    builder.userData.layer = 'bwrap';
+    scene.add(builder);
+    groups.bwrap = builder;
+    clickTargets.push(builder);
+    addMesh(builder, new THREE.BoxGeometry(2.2, .14, 1.55), material(0x1d4b49), 0, -1.28, 0);
+    addMesh(builder, new THREE.BoxGeometry(1.8, 1.12, .2), material(colors.bwrap), 0, .03, 0);
+    addMesh(builder, new THREE.BoxGeometry(1.55, .86, .04), material(0x092932), 0, .03, .13);
+    for (let i = 0; i < 3; i++) {
+      addMesh(builder, new THREE.BoxGeometry(.95 - i * .16, .06, .025), material(colors.bwrap), -.18 + i * .05, .28 - i * .23, .16);
+    }
+    const launchStart = new THREE.Vector3(0, .22, 3.84);
+    const launchEnd = new THREE.Vector3(0, .22, 1.12);
+    const launchDirection = launchEnd.clone().sub(launchStart);
+    scene.add(new THREE.ArrowHelper(launchDirection.clone().normalize(), launchStart, launchDirection.length(), colors.bwrap, .45, .23));
+    const launchPulse = addMesh(scene, new THREE.SphereGeometry(.1, 12, 12), new THREE.MeshBasicMaterial({ color: colors.bwrap }));
+    animated.push({ object: launchPulse, kind: 'pulse', start: launchStart, end: launchEnd, offset: 0 });
+
+    const namespace = platform('namespace', colors.namespace);
+    const viewCube = addMesh(namespace, new THREE.BoxGeometry(1.65, 1.65, 1.65), material(colors.namespace, .14), 0, .12, 0);
+    const cubeEdges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1.65, 1.65, 1.65)), new THREE.LineBasicMaterial({ color: colors.namespace, transparent: true, opacity: .85 }));
+    cubeEdges.position.y = .12;
+    namespace.add(cubeEdges);
+    for (const [x, y, z] of [[-.39,.36,-.35],[.4,.36,-.35],[-.39,-.27,.35],[.4,-.27,.35]]) {
+      addMesh(namespace, new THREE.BoxGeometry(.34, .34, .34), material(0x9beaff), x, y, z);
+    }
+    animated.push({ object: viewCube, kind: 'breathe' });
+
+    const cgroup = platform('cgroup', colors.cgroup);
+    const gauge = addMesh(cgroup, new THREE.TorusGeometry(.82, .11, 16, 96), material(colors.cgroup), 0, .1, 0);
+    gauge.rotation.y = -.24;
+    addMesh(cgroup, new THREE.CylinderGeometry(.18, .18, .2, 32), material(0xffeab4), 0, .1, 0);
+    for (let i = 0; i < 5; i++) {
+      const bar = addMesh(cgroup, new THREE.BoxGeometry(.17, .3 + i * .15, .17), material(i < 4 ? 0xffd36e : 0xff9a73), -.66 + i * .32, -.52 + i * .075, .55);
+      bar.rotation.y = -.2;
+    }
+    animated.push({ object: gauge, kind: 'rock' });
+
+    const seccomp = platform('seccomp', colors.seccomp);
+    const gate = addMesh(seccomp, new THREE.TorusGeometry(.83, .1, 12, 6), material(colors.seccomp), 0, .13, 0);
+    gate.rotation.z = Math.PI / 6;
+    addMesh(seccomp, new THREE.CircleGeometry(.68, 6), material(0xff849f, .13), 0, .13, -.025).rotation.z = Math.PI / 6;
+    const blocked = addMesh(seccomp, new THREE.BoxGeometry(1.2, .09, .09), material(0xffb4c4), 0, .13, .13);
+    blocked.rotation.z = -.57;
+    animated.push({ object: gate, kind: 'rock' });
+
+    for (const name of ['namespace', 'cgroup', 'seccomp']) {
+      const start = positions.agent.clone();
+      const end = positions[name].clone();
+      start.y = end.y = .1;
+      const direction = end.clone().sub(start);
+      const connector = addMesh(scene, new THREE.CylinderGeometry(.025, .025, direction.length(), 10), new THREE.MeshBasicMaterial({ color: colors[name], transparent: true, opacity: .55 }), ...start.clone().add(end).multiplyScalar(.5).toArray());
+      connector.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
+      const pulse = addMesh(scene, new THREE.SphereGeometry(.105, 12, 12), new THREE.MeshBasicMaterial({ color: colors[name] }));
+      animated.push({ object: pulse, kind: 'pulse', start, end, offset: Math.random() });
+    }
+
+    const labels = Object.fromEntries([...document.querySelectorAll('.node-label')].map(el => [el.dataset.node, el]));
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    let selected = 'bwrap';
+    let azimuth = .54;
+    let polar = .93;
+    let distance = 19.5;
+    let drag = null;
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+    function select(name) {
+      selected = name;
+      const data = details[name];
+      document.querySelector('#detail-title').textContent = data.title;
+      document.querySelector('#detail-translation').textContent = data.translation;
+      document.querySelector('#detail-summary').textContent = data.summary;
+      document.querySelector('#detail-example').textContent = data.example;
+      document.querySelector('#detail-removed').innerHTML = '<b>如果拿掉它：</b>' + data.removed;
+      for (const button of document.querySelectorAll('[data-select]')) button.setAttribute('aria-pressed', String(button.dataset.select === name));
+    }
+    for (const button of document.querySelectorAll('[data-select]')) button.addEventListener('click', () => select(button.dataset.select));
+
+    function updateCamera() {
+      const target = new THREE.Vector3(0, .45, 0);
+      camera.position.set(
+        target.x + distance * Math.sin(polar) * Math.sin(azimuth),
+        target.y + distance * Math.cos(polar),
+        target.z + distance * Math.sin(polar) * Math.cos(azimuth)
+      );
+      camera.lookAt(target);
+    }
+    function resize() {
+      const width = stage.clientWidth;
+      const height = stage.clientHeight;
+      renderer.setSize(width, height, false);
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+    }
+    function hit(clientX, clientY) {
+      const rect = canvas.getBoundingClientRect();
+      pointer.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+      raycaster.setFromCamera(pointer, camera);
+      for (const result of raycaster.intersectObjects(clickTargets, true)) {
+        let object = result.object;
+        while (object && !object.userData.layer) object = object.parent;
+        if (object?.userData.layer && object.userData.layer !== 'agent') return object.userData.layer;
+      }
+      return null;
+    }
+    canvas.addEventListener('pointerdown', event => {
+      drag = { x: event.clientX, y: event.clientY, moved: false };
+      canvas.setPointerCapture(event.pointerId);
+    });
+    canvas.addEventListener('pointermove', event => {
+      if (!drag) { canvas.style.cursor = hit(event.clientX, event.clientY) ? 'pointer' : 'grab'; return; }
+      const dx = event.clientX - drag.x;
+      const dy = event.clientY - drag.y;
+      if (Math.abs(dx) + Math.abs(dy) > 2) drag.moved = true;
+      azimuth -= dx * .007;
+      polar = THREE.MathUtils.clamp(polar + dy * .007, .28, 1.38);
+      drag.x = event.clientX;
+      drag.y = event.clientY;
+    });
+    canvas.addEventListener('pointerup', event => {
+      if (drag && !drag.moved) {
+        const name = hit(event.clientX, event.clientY);
+        if (name) select(name);
+      }
+      drag = null;
+    });
+    canvas.addEventListener('pointercancel', () => { drag = null; });
+    canvas.addEventListener('wheel', event => {
+      event.preventDefault();
+      distance = THREE.MathUtils.clamp(distance + Math.sign(event.deltaY) * 1.1, 11, 26);
+    }, { passive: false });
+
+    const projected = new THREE.Vector3();
+    function frame(time) {
+      updateCamera();
+      if (!reduceMotion.matches) {
+        for (const item of animated) {
+          if (item.kind === 'spin') item.object.rotation.y += item.speed;
+          if (item.kind === 'rock') item.object.rotation.y = Math.sin(time * .0007) * .16;
+          if (item.kind === 'breathe') item.object.material.opacity = .12 + Math.sin(time * .002) * .035;
+          if (item.kind === 'pulse') item.object.position.lerpVectors(item.start, item.end, (time * .00022 + item.offset) % 1);
+        }
+      }
+      for (const [name, group] of Object.entries(groups)) {
+        group.scale.setScalar(name === selected ? 1.09 : 1);
+        projected.copy(group.position).add(new THREE.Vector3(0, 1.65, 0)).project(camera);
+        const label = labels[name];
+        label.style.left = `${(projected.x * .5 + .5) * stage.clientWidth}px`;
+        label.style.top = `${(-projected.y * .5 + .5) * stage.clientHeight}px`;
+        label.style.opacity = projected.z > 1 ? '0' : '1';
+      }
+      renderer.render(scene, camera);
+      requestAnimationFrame(frame);
+    }
+    new ResizeObserver(resize).observe(stage);
+    resize();
+    document.querySelector('#stage-status').hidden = true;
+    requestAnimationFrame(frame);
+  </script>
+</body>
+</html>

@@ -38,25 +38,27 @@ Docker / Podman / bubblewrap
 
 本计划学习这些底层机制；Docker 用于反向验证理解，Harness 最终按需要组合 bubblewrap、seccomp 与进程监管。
 
-## 一、进程与继承
+## 一、进程与继承 ✅ 已学习
 
 - [x] PID、PPID、进程树与孤儿进程
 - [x] `fork`、`exec` 与权限继承
-- 进程组、Session、信号、退出码与 `wait`
-- 文件描述符和环境变量的继承
+- [x] 进程组、Session、信号、退出码与 `wait`
+- [x] 文件描述符和环境变量的继承
+
+动手实验：`go run .forward/linux/process_group.go`，先观察一个子进程的新 Session、进程组信号与 `Wait`。
 
 **验收：**能解释超时、父进程退出和后台派生时，如何停止并回收整棵进程树。
 
-## 二、身份与文件权限
+## 二、身份与文件权限 ✅ 已学习
 
 - [x] UID、GID 与补充组
 - 文件和目录的 `rwx`、`umask`、sticky、setuid / setgid
 - inode、硬链接、符号链接与路径逐段解析
-- ACL、capabilities 与 `no_new_privs`
+- ACL、capabilities 与 `no_new_privs`（已接触，后续按需回顾）
 
 **验收：**能解释常见读写删除实验、链接越界风险，以及为什么路径字符串检查不能构成沙箱。
 
-## 三、隔离与资源限制
+## 三、隔离与资源限制 ✅ 已学习
 
 - user / mount / PID / network namespace：分别隔离身份、文件视图、进程和网络
 - cgroup v2 与 rlimit：限制 CPU、内存、进程数和文件描述符
