@@ -21,8 +21,8 @@ func NormalizeMode(mode Mode) (Mode, error) {
 	}
 }
 
-// Resolve 将模式和可信运行位置翻译为权限，不读取环境变量或访问文件系统。
-func Resolve(mode Mode, workspace string, tempDirs []string) (Policy, ReviewerKind, error) {
+// BuildPolicy 将模式和可信运行位置翻译为权限，不读取环境变量或访问文件系统。
+func BuildPolicy(mode Mode, workspace string, tempDirs []string) (Policy, ReviewerKind, error) {
 	mode, err := NormalizeMode(mode)
 	if err != nil {
 		return Policy{}, NoReviewer, err

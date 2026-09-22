@@ -7,14 +7,14 @@
 【提供能力】
 
 - `NormalizeMode`：空模式补为 `ask_for_approval`，未知模式报错。
-- `Resolve`：模式与运行位置 → 基础 `Policy`，同时选出人、模型或无需审核。
+- `BuildPolicy`：模式与运行位置 → 基础 `Policy`，同时选出人、模型或无需审核。
 - `Evaluate`：比较额外申请与已有权限，返回 `Allow`、`Ask`；非法路径返回 `Deny` 和错误。
 - `ApplyDecision`：批准后生成本次权限副本；拒绝返回错误，不修改基础权限。
 - `Reviewer`：人审批与模型审批共用的接口，只返回批准或拒绝及理由。
 
 ```text
 SessionSettings.PermissionMode + 工作区 + 临时目录
-                         ↓ Resolve
+                         ↓ BuildPolicy
                       基础权限
                          ↓ Evaluate（额外申请）
           ┌──────────────┼──────────────┐

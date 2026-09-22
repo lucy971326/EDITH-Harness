@@ -24,7 +24,7 @@ func TestPermissionRules(t *testing.T) {
 		{FullAccess, NoReviewer, Allow, Allow},
 	} {
 		t.Run(string(test.mode), func(t *testing.T) {
-			policy, reviewer, err := Resolve(test.mode, workspace, []string{temp})
+			policy, reviewer, err := BuildPolicy(test.mode, workspace, []string{temp})
 			if err != nil || reviewer != test.reviewer {
 				t.Fatalf("resolve: %+v, %s, %v", policy, reviewer, err)
 			}
@@ -40,12 +40,12 @@ func TestPermissionRules(t *testing.T) {
 			}
 		})
 	}
-	_, _, err := Resolve("unknown", workspace, nil)
+	_, _, err := BuildPolicy("unknown", workspace, nil)
 	if err == nil {
 		t.Fatal("unknown mode accepted")
 	}
 
-	base, _, err := Resolve(AskForApproval, workspace, nil)
+	base, _, err := BuildPolicy(AskForApproval, workspace, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
