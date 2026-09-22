@@ -21,7 +21,8 @@ appserver.Server
 
 ## 已完成能力
 
-- 权限规则与接口：新增纯计算包 `kernel/permissions`，支持四档模式翻译、额外权限判断、受保护元数据目录和本次批准合并，并定义人／模型共用的 Reviewer 契约。Policy 仅保存无限制标记、可写根、联网标记。SessionSettings 持久保存 `permissionMode`，旧文件缺字段默认 Ask for approval，未知模式报错；设置更新省略模式时保留，分叉复制，子会话继承父 Run 快照。Go／TS 契约同步；尚未增加模式菜单和审批服务。
+- 权限规则与接口：新增纯计算包 `kernel/permissions`，支持四档模式翻译、额外权限判断、受保护元数据目录和本次批准合并，并定义人／模型共用的 Reviewer 契约。Policy 仅保存无限制标记、可写根、联网标记。SessionSettings 持久保存 `permissionMode`，旧文件缺字段默认 Ask for approval，未知模式报错；设置更新省略模式时保留，分叉复制，子会话继承父 Run 快照。Go／TS 契约同步；模式菜单和审批服务见下一项。
+- 人审批：新增独立 `kernel/approvals` 服务，命令附带额外权限申请、补丁自动计算目录申请，批准仅影响本次操作并继续使用沙箱。待审批内存保存，停止取消、重复回答拒绝、WebSocket 重连恢复；网页新增全会话/子 Agent 审批卡片与空闲模式菜单。模型审核仍未接入，额外申请明确失败。Runner 在运行记录保存权限说明，重建模型历史时按变化追加，不写对话账本。网页尚待用户运行截图验收。
 - Linux Agent 沙箱：Runner 将本轮 Policy 经 Loop 传给 Tool；命令走 AgentExec，补丁走 AgentApplyChanges 的内部写入助手，共用 bwrap + seccomp。根只读、授权根可写、元数据保护、禁网与宿主 socket 阻断已接通；旧进程不接受权限更新。用户文件和终端保留直接入口。缺少系统 bwrap 或不支持的策略明确失败；macOS / Windows 受限执行暂未实现，Full Access 可用。MCP 不在此沙箱覆盖范围。
 - 项目与会话：原生目录选择、按工作区分组、新建或复用空会话、切换及自动命名。
 - 聊天：文字与图片、实时输出、直接 Steer、停止父子任务、历史、刷新、重连与后台重启恢复。
@@ -90,7 +91,7 @@ Windows 启动继续要求 Git Bash；Agent 长期进程与 UI 终端 PTY 均使
 ## 后续范围
 
 - Wails 包装正式 React 页面与唯一后台的启动／退出。
-- 服务端反向请求与待回答恢复。
+- 通用服务端反向请求；人审批通过专用订阅与回答接口恢复。
 - 有副作用操作的业务 ID 防重及完整多 Client 协调。
 - 辅助工作区中的浏览器。
 
@@ -98,7 +99,7 @@ Windows 启动继续要求 Git Bash；Agent 长期进程与 UI 终端 PTY 均使
 
 ## 已知未验证
 
-- Linux 沙箱不提供硬链接别名隔离；保护目录内部的细粒度子路径授权暂时拒绝。临时占位在正常退出时清理，宿主被强杀或断电可能留下空目录；不自动删除来源不明的目录。macOS / Windows 沙箱、审批与 MCP 执行边界仍待后续实现。
+- Linux 沙箱不提供硬链接别名隔离；保护目录内部的细粒度子路径授权暂时拒绝。临时占位在正常退出时清理，宿主被强杀或断电可能留下空目录；不自动删除来源不明的目录。macOS / Windows 沙箱、模型审核与 MCP 执行边界仍待后续实现。
 
 - 上下文引用各入口、助手选区浮层／悬停预览、中文输入法和亮暗／窄屏布局待用户 `make run` 截图验收；按最新要求不新增 UI 自动化测试。
 - Windows 原生目录选择器仍需在交互式 Windows 桌面验收。
@@ -127,3 +128,19 @@ Windows 启动继续要求 Git Bash；Agent 长期进程与 UI 终端 PTY 均使
 - 浏览器终端的 appserver、machine-local、TypeScript 契约、前端 RPC 与 60 项前端测试通过；`make agent-check` 仍只剩上述既有 Windows 管理员权限测试失败。
 - Subagent 工作页的归属隔离、旧任务兼容、父会话结束后续聊、运行中 Steer、单独停止、空闲设置、稳定点击身份、共享连接独立订阅和 Diff 接口检查通过；`make agent-check` 仍只剩上述既有 Windows 管理员权限测试失败。
 - 未调用付费模型或修改用户会话。
+
+### 第 3 阶段验证（2026-09-22）
+
+- `go test ./kernel/... ./plugins/... ./products/... ./appserver/...` 与对应 `go vet` 通过。核心验证覆盖审批批准/拒绝/取消/关闭、重复回答、真实 WebSocket 重连、Linux 本次目录及联网授权与其他目录继续只读、权限说明前缀保留及截断后的基线。
+- approvals、Runner、appserver、exec、applypatch 的 race 通过；machine-local 的 race 首次仅新增网络用例因测试助手退出超过 1 秒而失败，延长该用例等待后单独 race 通过，其余用例在首次检查中通过。
+- `make agent-check` 在 npm ci 阶段因 `EALLOWREMOTE`（远程依赖下载被禁用）退出。未修改依赖限制；前端类型检查、构建与完整 CLI 构建未验收。网页不做自动化操作，由用户运行 `make run` 截图验收。
+
+- 第 3 阶段补验收：修正前端两个 SessionView 测试样本缺少 permissionMode 的类型错误。npm 仓库配置修正后，`make agent-check` 全部通过：前端生产构建、71 项前端测试、TS 契约与 RPC 类型检查、全量 Go 测试/vet 及目标 race。此前 EALLOWREMOTE 与缺少 dist 的构建阻塞已解除；实际网页交互仍由用户截图验收。
+
+- 输入框工具栏调整为添加图片 → 权限模式 → Agent；权限菜单复用公共按钮与上弹菜单，窄布局保留图标入口，顶栏移除原选择框。`make agent-check` 通过；视觉效果由用户运行 `make run` 截图验收。
+
+- 待审批界面改为替换主聊天底部输入框，复用输入框外观；直接展示命令和申请权限，右下角拒绝或允许一次，多项申请逐条处理，结束后恢复原草稿。`make agent-check` 通过；未操作浏览器，视觉交互由用户截图验收。
+
+- 权限菜单通过 `permissions/modes` 获取后端模式清单，名称统一为只读、请求批准、智能审批、完全访问。智能审批暂不可用，前端禁选且后端拒绝切入；已有权限模式 ID 与持久化格式不变。补充现有设置校验测试，`make agent-check` 通过；视觉交互由用户验收。
+
+- 审批框收紧间距与按钮尺寸，理由和命令限高滚动，权限摘要保留在标题；完整目录范围与来源折叠到详情，详情入口与操作按钮同排。`make agent-check` 通过，视觉效果待用户截图验收。

@@ -974,6 +974,13 @@
 .composer-model .model-trigger > .muted {
   flex: 0 0 auto;
 }
+.permission-trigger {
+  font-size: var(--font-size-label);
+}
+.agent-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .agent-select {
   border: 0;
   box-shadow: none;
@@ -2019,6 +2026,10 @@
 }
 
 @container chat-pane (max-width: 440px) {
+  .permission-label,
+  .agent-label {
+    display: none;
+  }
   .composer-model {
     display: none;
   }
@@ -2040,4 +2051,73 @@
     width: 88px;
     height: 88px;
   }
+}
+
+/* 审批属于实时投影；与聊天正文分开，长命令和补丁可展开。 */
+.approval-card {
+  display: grid;
+  gap: calc(var(--space) * 2);
+  padding: calc(var(--space) * 3);
+}
+.approval-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted-foreground);
+  font-size: var(--font-size-label);
+}
+.approval-count {
+  margin-left: auto;
+}
+.approval-body {
+  display: grid;
+  gap: var(--space);
+  max-height: 25vh;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  font-size: var(--font-size-label);
+}
+.approval-body p {
+  margin: 0;
+  max-height: 3.5em;
+  overflow: auto;
+}
+.approval-body pre {
+  margin: 0;
+  max-height: 4.5em;
+  overflow: auto;
+  font-family: var(--font-code);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--muted-foreground);
+}
+.approval-details {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-size-caption);
+  color: var(--muted-foreground);
+}
+.approval-details summary {
+  cursor: pointer;
+}
+.approval-detail-content {
+  max-height: 20vh;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  padding-top: var(--space);
+}
+.approval-detail-content p {
+  margin: var(--space) 0 0;
+}
+.approval-footer {
+  display: flex;
+  align-items: flex-start;
+  gap: calc(var(--space) * 2);
+}
+.approval-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }

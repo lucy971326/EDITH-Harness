@@ -74,6 +74,7 @@ type Invocation struct {
 	ToolNames    []string
 	Workspace    string
 	Policy       permissions.Policy
+	Reviewer     permissions.ReviewerKind
 	// 外部输入到达时唤醒等待者；调用时取得当前代次，消息由 Checkpoint 落账并消费。
 	InputSignal func() <-chan struct{}
 	Emit        func(context.Context, Event) error

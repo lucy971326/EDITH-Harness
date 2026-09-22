@@ -3,6 +3,7 @@ package exec_test
 import (
 	"testing"
 
+	"harness/kernel/approvals"
 	"harness/kernel/host"
 	"harness/kernel/tools"
 	machinelocal "harness/plugins/machine/local"
@@ -19,6 +20,7 @@ func TestPluginRegistersBothTools(t *testing.T) {
 	for _, plugin := range []host.Plugin{
 		machinelocal.New(),
 		tools.NewPlugin(),
+		approvals.NewPlugin(),
 		exectool.New(),
 	} {
 		err := h.Install(plugin)

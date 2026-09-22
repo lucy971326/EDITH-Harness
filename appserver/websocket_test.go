@@ -3,6 +3,8 @@ package appserver
 import (
 	"context"
 	"encoding/json"
+	"harness/kernel/approvals"
+	"harness/kernel/permissions"
 	"net/http"
 	"strings"
 	"testing"
@@ -284,5 +286,62 @@ func TestCloseCancelsConnectionCallsAndWaits(t *testing.T) {
 				t.Fatal("close returned before handler exited")
 			}
 		})
+	}
+}
+
+// 验证真实协议中的待审批恢复和输出 Schema，避免页面收到不可用的快照。
+func TestApprovalReconnect(t *testing.T) {
+	service := approvals.New()
+	defer service.Close()
+	server := New()
+	err := server.BindApprovals(service)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, url := startTestSocket(t, server)
+	_, updates, unsubscribe := service.Subscribe()
+	defer unsubscribe()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	finished := make(chan error, 1)
+	go func() {
+		_, err := service.Authorize(ctx, approvals.Identity{SessionID: "s", RunID: "r", ToolCallID: "c"}, permissions.HumanReviewer, permissions.ApprovalRequest{ToolName: "exec_command", Arguments: []byte(`{"cmd":"curl example.com"}`), Requested: permissions.ExtraPermissions{Network: true}})
+		finished <- err
+	}()
+	select {
+	case <-updates:
+	case <-time.After(time.Second):
+		t.Fatal("request missing")
+	}
+	var id string
+	for i := 0; i < 2; i++ {
+		ws := dialTestSocket(t, url)
+		initializeSocket(t, ws)
+		response := socketRequest(t, ws, `{"jsonrpc":"2.0","id":2,"method":"approval/subscribe","params":{}}`)
+		if response.Error != nil {
+			t.Fatal(response.Error)
+		}
+		var snapshot ApprovalSubscribeResult
+		err = json.Unmarshal(response.Result, &snapshot)
+		if err != nil || len(snapshot.Pending) != 1 {
+			t.Fatalf("snapshot %s: %v", response.Result, err)
+		}
+		if id != "" && id != snapshot.Pending[0].ID {
+			t.Fatal("reconnect replaced approval")
+		}
+		id = snapshot.Pending[0].ID
+		ws.CloseNow()
+	}
+	_, err = server.Call(t.Context(), "approval/respond", mustJSON(t, ApprovalRespondParams{RequestID: id, Decision: permissions.Decision{Approved: true}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err = <-finished:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("answer did not resume tool")
 	}
 }

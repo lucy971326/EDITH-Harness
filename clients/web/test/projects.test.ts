@@ -8,7 +8,7 @@ function session(id: string, workspace: string, createdAt: string, title = id): 
     sessionID: id,
     title,
     createdAt,
-    settings: { agentID: "default", model: "", reasoningEffort: "", workspace },
+    settings: { agentID: "default", model: "", reasoningEffort: "", workspace, permissionMode: "ask_for_approval" },
   };
 }
 

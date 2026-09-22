@@ -19,6 +19,7 @@ export {
   LoaderCircle,
   CircleAlert,
   Bot,
+  Shield,
   Monitor,
   Sun,
   Moon,

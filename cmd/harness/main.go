@@ -14,6 +14,7 @@ import (
 	"harness/appserver"
 	webclient "harness/clients/web"
 	"harness/kernel/agents"
+	"harness/kernel/approvals"
 	"harness/kernel/commands"
 	"harness/kernel/events"
 	"harness/kernel/host"
@@ -80,6 +81,10 @@ func run() (result error) {
 		return err
 	}
 	err = h.Install(tools.NewPlugin())
+	if err != nil {
+		return err
+	}
+	err = h.Install(approvals.NewPlugin())
 	if err != nil {
 		return err
 	}
@@ -160,6 +165,14 @@ func run() (result error) {
 		return err
 	}
 	err = server.BindHarness(product, runService, registry)
+	if err != nil {
+		return err
+	}
+	approvalService, err := host.Resolve[*approvals.Service](h, "approvals")
+	if err != nil {
+		return err
+	}
+	err = server.BindApprovals(approvalService)
 	if err != nil {
 		return err
 	}

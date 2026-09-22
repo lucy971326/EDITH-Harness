@@ -83,7 +83,7 @@ func TestRealReactWaitReceivesCompletionOrUserInput(t *testing.T) {
 				}
 				isChild := false
 				for _, message := range request.Messages {
-					if message.Role == "user" {
+					if message.Role == "user" && !strings.Contains(string(message.Content), "[Harness 运行环境更新：") {
 						isChild = string(message.Content) == `"child request"`
 						break
 					}

@@ -9,6 +9,7 @@ import (
 	internalrpc "harness/appserver/internal/rpc"
 	"harness/appserver/internal/workspacepicker"
 	"harness/kernel/agents"
+	"harness/kernel/approvals"
 	"harness/kernel/commands"
 	"harness/kernel/events"
 	"harness/kernel/llm"
@@ -22,6 +23,7 @@ import (
 type Server struct {
 	// 产品入口与公共能力；业务状态由产品和内核管理。
 	harnessProduct  *harness.Product
+	approvals       *approvals.Service
 	runner          *runner.Runner
 	events          *events.Registry
 	models          *llm.Client

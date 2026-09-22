@@ -57,7 +57,7 @@ func (m *local) AgentApplyChanges(ctx context.Context, policy permissions.Policy
 		return empty, err
 	}
 	if requirement != permissions.Allow {
-		return empty, fmt.Errorf("machine: file changes require additional permission; approval is not connected yet")
+		return empty, fmt.Errorf("machine: file changes exceed the granted permissions")
 	}
 	if len(changes) == 0 {
 		return empty, nil

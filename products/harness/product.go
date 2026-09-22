@@ -118,6 +118,13 @@ func (p *Product) UpdateSettings(ctx context.Context, sessionID string, next set
 	if next.PermissionMode == "" {
 		next.PermissionMode = info.Settings.PermissionMode
 	}
+	if next.PermissionMode != info.Settings.PermissionMode {
+		for _, mode := range permissions.Modes() {
+			if mode.ID == next.PermissionMode && !mode.Available {
+				return SessionInfo{}, fmt.Errorf("%w: %s暂不可用", ErrInvalidRunSettings, mode.Label)
+			}
+		}
+	}
 	err = p.validateRunSettings(next, false)
 	if err != nil {
 		return SessionInfo{}, fmt.Errorf("%w: %w", ErrInvalidRunSettings, err)

@@ -13,6 +13,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"harness/kernel/approvals"
 	"harness/kernel/machine"
 	"harness/kernel/permissions"
 )
@@ -341,4 +342,70 @@ func TestAgentFileLocking(t *testing.T) {
 			t.Fatal("file worker did not stop")
 		}
 	})
+}
+
+func TestApprovedPermissionsStaySandboxed(t *testing.T) {
+	if _, err := os.Stat("/usr/bin/bwrap"); err != nil {
+		t.Skip("requires bubblewrap")
+	}
+	m, err := newLocal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.close()
+	service := approvals.New()
+	defer service.Close()
+	_, updates, unsubscribe := service.Subscribe()
+	defer unsubscribe()
+	grantedDir := t.TempDir()
+	deniedDir := t.TempDir()
+	baseline := permissions.Policy{}
+	policies := make(chan permissions.Policy, 1)
+	failures := make(chan error, 1)
+	go func() {
+		policy, err := service.Authorize(t.Context(), approvals.Identity{SessionID: "session", RunID: "run", ToolCallID: "call"}, permissions.HumanReviewer, permissions.ApprovalRequest{Current: baseline, Requested: permissions.ExtraPermissions{WriteRoots: []string{grantedDir}, Network: true}})
+		if err != nil {
+			failures <- err
+			return
+		}
+		policies <- policy
+	}()
+	var pending []approvals.Pending
+	select {
+	case pending = <-updates:
+	case <-time.After(time.Second):
+		t.Fatal("missing approval")
+	}
+	err = service.Respond(pending[0].ID, permissions.Decision{Approved: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var policy permissions.Policy
+	select {
+	case policy = <-policies:
+	case err = <-failures:
+		t.Fatal(err)
+	case <-time.After(time.Second):
+		t.Fatal("approval stuck")
+	}
+	output, err := m.AgentExec(t.Context(), policy, machine.ProcessRequest{OwnerID: "session", Argv: []string{"bash", "-c", `touch "$1/allowed" && ! touch "$2/denied"`, "test", grantedDir, deniedDir}, Wait: 3 * time.Second})
+	if err != nil || !output.Exited || output.ExitCode != 0 {
+		t.Fatalf("approved exec: %+v %v", output, err)
+	}
+	if baseline.Network || len(baseline.WriteRoots) != 0 {
+		t.Fatal("baseline changed")
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err = m.AgentExec(t.Context(), policy, machine.ProcessRequest{OwnerID: "session", Argv: []string{executable, "--sandbox-probe", "tcp", listener.Addr().String()}, Wait: 3 * time.Second})
+	if err != nil || !output.Exited || output.ExitCode != 0 {
+		t.Fatalf("approved network: %+v %v", output, err)
+	}
 }

@@ -2,6 +2,7 @@
 package applypatch
 
 import (
+	"harness/kernel/approvals"
 	"harness/kernel/host"
 	"harness/kernel/machine"
 	"harness/kernel/tools"
@@ -24,11 +25,15 @@ func (p *Plugin) Start(h *host.Host) error {
 	if err != nil {
 		return err
 	}
+	approvalService, err := host.Resolve[*approvals.Service](h, "approvals")
+	if err != nil {
+		return err
+	}
 	registry, err := host.Resolve[tools.Tools](h, "tools")
 	if err != nil {
 		return err
 	}
-	err = registry.Register(newTool(files, agent))
+	err = registry.Register(newTool(files, agent, approvalService))
 	if err != nil {
 		return err
 	}

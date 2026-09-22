@@ -286,7 +286,7 @@ func TestToolLifecycleAndIsolation(t *testing.T) {
 	child := decode[delegation.SpawnResult](t, f.call(t, "subagent_spawn", `{"taskName":"test","description":"child job"}`))
 	invocation := f.nextRun(t)
 	if invocation.Workspace != f.parent.Workspace || invocation.LLMConfig != f.parent.LLMConfig ||
-		len(invocation.History) != 1 || invocation.History[0].Blocks[0].Text != "child job" {
+		len(invocation.History) != 2 || invocation.History[1].Blocks[0].Text != "child job" {
 		t.Fatalf("wrong inheritance or copied parent history: %+v", invocation)
 	}
 	taskArgs := `{"taskID":"` + child.TaskID + `"}`

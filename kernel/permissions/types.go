@@ -9,6 +9,13 @@ import (
 // 数据。会话选择的权限模式。
 type Mode string
 
+// 数据。可供用户选择的权限模式；可用性由后端决定。
+type ModeChoice struct {
+	ID        Mode   `json:"id"`
+	Label     string `json:"label"`
+	Available bool   `json:"available"`
+}
+
 const (
 	ReadOnly       Mode = "read_only"
 	AskForApproval Mode = "ask_for_approval"
@@ -20,15 +27,15 @@ const (
 // WriteRoots 中每个根的 .git、.agents、.harness 默认只读，显式的内部可写根除外。
 // 路径只是词法规则，执行层仍须处理符号链接和实际访问隔离。
 type Policy struct {
-	Unrestricted bool
-	WriteRoots   []string
-	Network      bool
+	Unrestricted bool     `json:"unrestricted"`
+	WriteRoots   []string `json:"writeRoots"`
+	Network      bool     `json:"network"`
 }
 
 // 数据。一次操作申请增加的权限，本身不代表授权。
 type ExtraPermissions struct {
-	WriteRoots []string
-	Network    bool
+	WriteRoots []string `json:"writeRoots,omitempty"`
+	Network    bool     `json:"network,omitempty"`
 }
 
 // 数据。模式选择的审核者；不放进文件与网络权限里。
@@ -52,19 +59,19 @@ const (
 // 数据。交给审核者的操作与权限；请求归属和等待状态由审批服务管理。
 type ApprovalRequest struct {
 	// 待执行操作，不是审核者可以改写的命令。
-	ToolName  string
-	Arguments json.RawMessage
-	Workdir   string
-	Reason    string
+	ToolName  string          `json:"toolName"`
+	Arguments json.RawMessage `json:"arguments"`
+	Workdir   string          `json:"workdir"`
+	Reason    string          `json:"reason"`
 
-	Current   Policy
-	Requested ExtraPermissions
+	Current   Policy           `json:"current"`
+	Requested ExtraPermissions `json:"requested"`
 }
 
 // 数据。对原申请的批准或拒绝，不携带审核者自行扩大的权限。
 type Decision struct {
-	Approved bool
-	Reason   string
+	Approved bool   `json:"approved"`
+	Reason   string `json:"reason"`
 }
 
 // 契约。人审核与模型审核共用的入口；取消或审核故障返回错误。

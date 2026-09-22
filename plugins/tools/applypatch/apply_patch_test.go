@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"harness/kernel/approvals"
 	"harness/kernel/machine"
 	"harness/kernel/permissions"
 	"harness/kernel/tools"
@@ -116,7 +117,7 @@ func TestApplyPatchValidatesEverythingBeforeWriting(t *testing.T) {
 +changed
 *** End Patch`
 
-	delta, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, permissions.Policy{}, "/work", patch)
+	delta, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, approvals.New(), tools.Call{Policy: permissions.Policy{Unrestricted: true}, Workspace: "/work"}, patch)
 	if err == nil || !strings.Contains(err.Error(), "failed to find expected lines") {
 		t.Fatalf("error = %v", err)
 	}
@@ -134,7 +135,7 @@ func TestApplyPatchRejectsConcurrentChange(t *testing.T) {
 +after
 *** End Patch`
 
-	delta, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, permissions.Policy{}, "/work", patch)
+	delta, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, approvals.New(), tools.Call{Policy: permissions.Policy{Unrestricted: true}, Workspace: "/work"}, patch)
 	if !errors.Is(err, machine.ErrFileConflict) || len(delta.Changes) != 0 {
 		t.Fatalf("delta = %#v, error = %v", delta, err)
 	}
@@ -156,7 +157,7 @@ func TestApplyPatchKeepsMarkerLikeContextInCurrentFile(t *testing.T) {
 +new
 *** End Patch`
 
-	_, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, permissions.Policy{}, "/work", patch)
+	_, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, approvals.New(), tools.Call{Policy: permissions.Policy{Unrestricted: true}, Workspace: "/work"}, patch)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +177,7 @@ func TestApplyPatchPreservesLineEndingsAndMatchesUnicodePunctuation(t *testing.T
 +changed
 *** End Patch`
 
-	_, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, permissions.Policy{}, "/work", patch)
+	_, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, approvals.New(), tools.Call{Policy: permissions.Policy{Unrestricted: true}, Workspace: "/work"}, patch)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +202,7 @@ func TestApplyPatchSupportsOrderedChunksAndEndOfFile(t *testing.T) {
 *** End of File
 *** End Patch`
 
-	_, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, permissions.Policy{}, "/work", patch)
+	_, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, approvals.New(), tools.Call{Policy: permissions.Policy{Unrestricted: true}, Workspace: "/work"}, patch)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +220,7 @@ func TestApplyPatchReportsCommittedPrefix(t *testing.T) {
 +second
 *** End Patch`
 
-	delta, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, permissions.Policy{}, "/work", patch)
+	delta, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, approvals.New(), tools.Call{Policy: permissions.Policy{Unrestricted: true}, Workspace: "/work"}, patch)
 	if err == nil || len(delta.Changes) != 1 || delta.Changes[0].Path != "/work/first.txt" || delta.Exact {
 		t.Fatalf("delta = %#v, error = %v", delta, err)
 	}
@@ -231,11 +232,12 @@ func TestApplyPatchReportsCommittedPrefix(t *testing.T) {
 func TestApplyPatchToolReturnsAppliedFileDelta(t *testing.T) {
 	m := &memoryMachine{files: map[string][]byte{"/work/text.txt": []byte("before\n")}}
 	registry := tools.NewRegistry()
-	if err := registry.Register(newTool(m, testAgentFiles{m})); err != nil {
+	if err := registry.Register(newTool(m, testAgentFiles{m}, approvals.New())); err != nil {
 		t.Fatal(err)
 	}
 	result, err := registry.Call(t.Context(), tools.Call{
 		Name:      "apply_patch",
+		Policy:    permissions.Policy{Unrestricted: true},
 		Workspace: "/work",
 		Allow:     []string{"apply_patch"},
 		Arguments: []byte(`{"patch":"*** Begin Patch\n*** Update File: text.txt\n@@\n-before\n+after\n*** End Patch"}`),
@@ -256,11 +258,12 @@ func TestApplyPatchToolReturnsCommittedDeltaWhenCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	m := &memoryMachine{files: make(map[string][]byte), afterWrite: cancel}
 	registry := tools.NewRegistry()
-	if err := registry.Register(newTool(m, testAgentFiles{m})); err != nil {
+	if err := registry.Register(newTool(m, testAgentFiles{m}, approvals.New())); err != nil {
 		t.Fatal(err)
 	}
 	result, err := registry.Call(ctx, tools.Call{
 		Name:      "apply_patch",
+		Policy:    permissions.Policy{Unrestricted: true},
 		Workspace: "/work",
 		Allow:     []string{"apply_patch"},
 		Arguments: []byte(`{"patch":"*** Begin Patch\n*** Add File: first.txt\n+first\n*** Add File: second.txt\n+second\n*** End Patch"}`),
@@ -280,7 +283,7 @@ func TestApplyPatchRejectsInvalidUTF8BeforeWriting(t *testing.T) {
 	}}
 	patch := "*** Begin Patch\n*** Update File: good.txt\n@@\n-before\n+after\n*** Delete File: bad.txt\n*** End Patch"
 
-	delta, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, permissions.Policy{}, "/work", patch)
+	delta, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, approvals.New(), tools.Call{Policy: permissions.Policy{Unrestricted: true}, Workspace: "/work"}, patch)
 	if err == nil || !strings.Contains(err.Error(), "not valid UTF-8") {
 		t.Fatalf("delta = %#v, error = %v", delta, err)
 	}

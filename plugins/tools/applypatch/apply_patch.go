@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"harness/kernel/approvals"
 	"os"
+	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -19,10 +22,10 @@ type Args struct {
 	Patch string `json:"patch" jsonschema:"minLength=1,description=Complete patch text using the *** Begin Patch and *** End Patch format."`
 }
 
-func newTool(files machine.FileSystem, agent machine.AgentFiles) tools.Tool {
+func newTool(files machine.FileSystem, agent machine.AgentFiles, approvalService *approvals.Service) tools.Tool {
 	description := "Create, edit, or delete files with a Codex-format patch. Always use this tool for deliberate file changes so Harness can track and safely revert them; do not edit files through exec_command. Begin with '*** Begin Patch' and end with '*** End Patch'. Use '*** Add File:', '*** Update File:', or '*** Delete File:' headers; update lines start with space, '+', or '-'. File moves are unsupported."
 	return tools.New("apply_patch", description, func(ctx context.Context, call tools.Call, args Args) (tools.Result, error) {
-		delta, summary, err := applyPatch(ctx, files, agent, call.Policy, call.Workspace, args.Patch)
+		delta, summary, err := applyPatch(ctx, files, agent, approvalService, call, args.Patch)
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			if len(delta.Changes) > 0 || !delta.Exact {
 				content := ctxErr.Error()
@@ -47,7 +50,7 @@ func newTool(files machine.FileSystem, agent machine.AgentFiles) tools.Tool {
 	})
 }
 
-func applyPatch(ctx context.Context, files machine.FileSystem, agent machine.AgentFiles, policy permissions.Policy, workspace, patch string) (tools.AppliedFileDelta, string, error) {
+func applyPatch(ctx context.Context, files machine.FileSystem, agent machine.AgentFiles, approvalService *approvals.Service, call tools.Call, patch string) (tools.AppliedFileDelta, string, error) {
 	if !utf8.ValidString(patch) {
 		return tools.AppliedFileDelta{Exact: true}, "", fmt.Errorf("invalid patch: content is not valid UTF-8")
 	}
@@ -55,7 +58,42 @@ func applyPatch(ctx context.Context, files machine.FileSystem, agent machine.Age
 	if err != nil {
 		return tools.AppliedFileDelta{Exact: true}, "", err
 	}
-	changes, err := prepareChanges(files, workspace, hunks)
+	changes, err := prepareChanges(files, call.Workspace, hunks)
+	if err != nil {
+		return tools.AppliedFileDelta{Exact: true}, "", err
+	}
+
+	requested := permissions.ExtraPermissions{}
+	for _, change := range changes {
+		requirement, checkErr := permissions.Evaluate(call.Policy, permissions.ExtraPermissions{WriteRoots: []string{change.path}})
+		if checkErr != nil {
+			return tools.AppliedFileDelta{Exact: true}, "", checkErr
+		}
+		if requirement == permissions.Allow {
+			continue
+		}
+		// 文件新增、替换和删除需要父目录写权限；卡片必须展示实际开放范围。
+		root := filepath.Dir(change.path)
+		for {
+			metadata, statErr := files.Metadata(root)
+			if statErr == nil {
+				if !metadata.IsDir || metadata.IsSymlink {
+					return tools.AppliedFileDelta{Exact: true}, "", fmt.Errorf("invalid writable directory: %s", root)
+				}
+				break
+			}
+			if !errors.Is(statErr, os.ErrNotExist) || filepath.Dir(root) == root {
+				return tools.AppliedFileDelta{Exact: true}, "", statErr
+			}
+			root = filepath.Dir(root)
+		}
+		if !slices.Contains(requested.WriteRoots, root) {
+			requested.WriteRoots = append(requested.WriteRoots, root)
+		}
+	}
+	policy, err := approvalService.Authorize(ctx, approvals.Identity{SessionID: call.SessionID, RunID: call.RunID, ToolCallID: call.ToolCallID}, call.Reviewer, permissions.ApprovalRequest{
+		ToolName: call.Name, Arguments: call.Arguments, Workdir: call.Workspace, Reason: "修改补丁目标需要额外目录写权限，仅用于本次补丁", Current: call.Policy, Requested: requested,
+	})
 	if err != nil {
 		return tools.AppliedFileDelta{Exact: true}, "", err
 	}

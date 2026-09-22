@@ -68,6 +68,7 @@ function session(id: string, workspace: string, title = id): SessionView {
       agentID: "default",
       model: "",
       reasoningEffort: "",
+      permissionMode: "ask_for_approval",
       workspace,
     },
   };

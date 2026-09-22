@@ -1,3 +1,4 @@
+import type { ApprovalNotification } from "../../../contracts/approvals.ts";
 import type {
   Methods,
   SendParams,
@@ -65,6 +66,7 @@ export interface CallOptions<Result = unknown> {
 
 // 浏览器 JSON-RPC 连接。请求 ID 只配对响应；有副作用的调用超时或断线后不自动重发。
 export class RPCClient {
+  onApprovals: ((notification: ApprovalNotification) => void) | null = null;
   onRun: ((notification: RunNotification) => void) | null = null;
 
   private readonly runListeners = new Set<
@@ -452,6 +454,12 @@ export class RPCClient {
           const notification = envelope.params as RunNotification;
           this.onRun?.(notification);
           for (const listener of this.runListeners) listener(notification);
+        } else if (
+          envelope.method === "approval/changed" &&
+          typeof envelope.params?.subscriptionID === "string" &&
+          Array.isArray(envelope.params?.event)
+        ) {
+          this.onApprovals?.(envelope.params as ApprovalNotification);
         } else if (
           envelope.method === "fs/changed" &&
           typeof envelope.params?.subscriptionID === "string" &&

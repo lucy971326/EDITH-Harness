@@ -228,6 +228,7 @@ func (l *reactLoop) execute(
 		Arguments:   json.RawMessage(call.Args),
 		Workspace:   invocation.Workspace,
 		Policy:      policy,
+		Reviewer:    invocation.Reviewer,
 		Allow:       invocation.ToolNames,
 		SessionID:   invocation.SessionID,
 		RunID:       invocation.RunID,

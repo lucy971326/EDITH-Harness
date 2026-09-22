@@ -448,12 +448,26 @@ func (r *Runner) executePrepared(runCtx context.Context, sessionID, runID string
 			tempDirs = append(tempDirs, filepath.Clean(temp))
 		}
 	}
-	policy, _, err := permissions.BuildPolicy(runSettings.PermissionMode, runSettings.Workspace, tempDirs)
+	policy, reviewer, err := permissions.BuildPolicy(runSettings.PermissionMode, runSettings.Workspace, tempDirs)
 	if err != nil {
 		return err
 	}
+
+	// 说明归运行记录，审批状态不落盘；重启和分叉复用同一历史插入位置。
+	err = r.upsertRecord(sessionID, runRecord{RunID: runID, Status: RunRunning, AfterEntrySeq: entry.Seq, PermissionInstructions: permissions.Instructions(policy, reviewer)})
+	if err != nil {
+		return err
+	}
+	r.recordsMu.Lock()
+	records, loadErr := r.loadRecords(sessionID)
+	r.recordsMu.Unlock()
+	if loadErr != nil {
+		return loadErr
+	}
+	history = permissionHistory(history, records)
 	invocation := loops.Invocation{
 		Policy:       policy,
+		Reviewer:     reviewer,
 		SessionID:    sessionID,
 		RunID:        runID,
 		History:      history,

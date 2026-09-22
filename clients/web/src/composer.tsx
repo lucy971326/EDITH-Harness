@@ -18,6 +18,9 @@ import { ArrowUp, BookOpen, Command, Square, X, Plus, FileText, Folder } from ".
 import type { ContextReference, ReferenceAttachment } from "./context-references";
 import { ContextReferenceTag } from "./context-reference-tags";
 import { ModelMenu, type ModelSelection } from "./model-menu";
+import { PermissionMenu } from "./permission-menu";
+import type { PermissionModeChoice } from "../../contracts/approvals.ts";
+import type { PermissionMode } from "../../contracts/harness.ts";
 import { AgentMenu } from "./agent-menu";
 import type { ModelChoice, PathSearchResult } from "../../contracts/appserver.ts";
 import type {
@@ -97,6 +100,9 @@ export function Composer({
   agents,
   agentID,
   settingsDisabled,
+  permissionMode,
+  permissionModes = [],
+  onPermissionChange,
   usage,
   running,
   stopping,
@@ -135,6 +141,9 @@ export function Composer({
   agents: AgentView[] | null;
   agentID: string;
   settingsDisabled: boolean;
+  permissionMode?: PermissionMode;
+  permissionModes?: PermissionModeChoice[];
+  onPermissionChange?: (mode: PermissionMode) => void;
   usage?: {
     inputTokens: number;
     cacheReadTokens: number;
@@ -450,6 +459,10 @@ export function Composer({
                     : "添加图片，也可以粘贴"}
                 </TooltipContent>
               </Tooltip>
+              {permissionMode && onPermissionChange && (
+                <PermissionMenu modes={permissionModes} value={permissionMode} disabled={settingsDisabled}
+                  onChange={onPermissionChange} />
+              )}
               <AgentMenu
                 agents={agents}
                 value={agentID}

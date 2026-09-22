@@ -193,3 +193,9 @@ messages.jsonl
 ```
 
 答案明确后再选 Store、事件或 Client 状态；不要为了页面方便，把数据写进错误的主人。
+
+## 审批与权限说明
+
+- `approvals.Service` 拥有待审批表（原操作、可信 Session/Run/ToolCall 身份、Context、回答通道）和快照订阅，不持久化；断线只清订阅，取消/回答删除请求，重启不恢复。
+- `runs.json` 的可选 `permissionInstructions` 是该轮给模型的环境说明，沿用 Runner 的保存与分叉复制。缺字段的旧记录不补写；当前新 Run 提供基线。它不是待审批或可复用授权。
+- 模型输入按可见 Run 重建环境说明，普通对话账本和网页聊天正文不增加权限消息；客户端审批卡片仅是服务内存的投影。

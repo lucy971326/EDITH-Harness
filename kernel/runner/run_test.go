@@ -404,7 +404,7 @@ func TestRunBuildsInvocationPersistsMessagesAndPublishesInOrder(t *testing.T) {
 	if fixture.settings.readCount() != 1 {
 		t.Fatalf("settings reads = %d", fixture.settings.readCount())
 	}
-	if len(gotInvocation.History) != 1 || gotInvocation.History[0].Role != session.RoleUser {
+	if len(gotInvocation.History) != 2 || gotInvocation.History[1].Role != session.RoleUser {
 		t.Fatalf("initial history = %#v", gotInvocation.History)
 	}
 	if gotInvocation.LLMConfig.Model != "model-a" || gotInvocation.LLMConfig.ReasoningEffort != "high" {
@@ -1188,7 +1188,7 @@ func TestRunInitialHistoryPrecedesAcceptedSteer(t *testing.T) {
 	}
 	select {
 	case invocation := <-invocationSeen:
-		if len(invocation.History) != 2 || invocation.History[0].Blocks[0].Text != "initial" || invocation.History[1].Blocks[0].Text != "steer after start" {
+		if len(invocation.History) != 3 || invocation.History[1].Blocks[0].Text != "initial" || invocation.History[2].Blocks[0].Text != "steer after start" {
 			t.Fatalf("initial history = %#v", invocation.History)
 		}
 	case <-time.After(time.Second):
@@ -1318,5 +1318,28 @@ func TestRunReadsNewSettingsOnlyOnTheNextRun(t *testing.T) {
 	}
 	if invocations[1].LLMConfig.Model != "model-b" || invocations[1].Workspace != "/workspace/b" {
 		t.Fatalf("second invocation = %#v", invocations[1])
+	}
+}
+
+// 权限说明只进入模型输入；重新加载、分叉及压缩后的历史都按可见 Run 重建。
+func TestPermissionHistoryPreservesPrefix(t *testing.T) {
+	records := []runRecord{{RunID: "a", PermissionInstructions: "restricted"}, {RunID: "b", PermissionInstructions: "restricted"}, {RunID: "c", PermissionInstructions: "full"}}
+	history := []session.Message{{RunID: "a", Role: session.RoleUser}, {RunID: "a", Role: session.RoleAssistant}, {RunID: "b", Role: session.RoleUser}, {RunID: "c", Role: session.RoleUser}}
+	result := permissionHistory(history, records)
+	if len(result) != 6 || result[0].Blocks[0].Text != "restricted" || result[4].Blocks[0].Text != "full" {
+		t.Fatalf("history = %#v", result)
+	}
+	prefix := permissionHistory(history[:3], records[:2])
+	if len(prefix) != 4 {
+		t.Fatal("unchanged mode appended another instruction")
+	}
+	for i := range prefix {
+		if !reflect.DeepEqual(prefix[i], result[i]) {
+			t.Fatal("mode change rewrote prefix")
+		}
+	}
+	restored := permissionHistory(history[3:], records)
+	if len(restored) != 2 || restored[0].Blocks[0].Text != "full" {
+		t.Fatal("missing baseline after truncation")
 	}
 }

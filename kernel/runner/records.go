@@ -9,12 +9,13 @@ import (
 
 // 数据。磁盘上的一轮运行结果；不重复保存消息正文。
 type runRecord struct {
-	RunID         string          `json:"runID"`
-	Status        RunStatus       `json:"status"`
-	AfterEntrySeq uint64          `json:"afterEntrySeq"`
-	Error         string          `json:"error,omitempty"`
-	Usage         *Usage          `json:"usage,omitempty"`
-	Diff          *RunDiffSummary `json:"diff,omitempty"`
+	PermissionInstructions string          `json:"permissionInstructions,omitempty"`
+	RunID                  string          `json:"runID"`
+	Status                 RunStatus       `json:"status"`
+	AfterEntrySeq          uint64          `json:"afterEntrySeq"`
+	Error                  string          `json:"error,omitempty"`
+	Usage                  *Usage          `json:"usage,omitempty"`
+	Diff                   *RunDiffSummary `json:"diff,omitempty"`
 }
 
 func (r *Runner) loadRecords(sessionID string) ([]runRecord, error) {
@@ -62,6 +63,9 @@ func (r *Runner) upsertRecord(sessionID string, rec runRecord) error {
 	for i, existing := range records {
 		if existing.RunID != rec.RunID {
 			continue
+		}
+		if rec.PermissionInstructions == "" {
+			rec.PermissionInstructions = existing.PermissionInstructions
 		}
 		if rec.Diff == nil {
 			rec.Diff = cloneDiffSummary(existing.Diff)

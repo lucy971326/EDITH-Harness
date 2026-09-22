@@ -31,7 +31,7 @@ export function AgentMenu({
           aria-label="选择 Agent"
         >
           <Bot />
-          {selected?.name ?? (value || "选择 Agent")}
+          <span className="agent-label">{selected?.name ?? (value || "选择 Agent")}</span>
           <ChevronDown />
         </Button>
       </PopoverTrigger>

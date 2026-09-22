@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"harness/kernel/approvals"
 	"harness/kernel/host"
 	"harness/kernel/machine"
 	"harness/kernel/permissions"
@@ -103,7 +104,7 @@ func TestApplyPatchToolRegistrationAndCall(t *testing.T) {
 	if err := h.RegisterService("machine", m); err != nil {
 		t.Fatal(err)
 	}
-	for _, plugin := range []host.Plugin{kerneltools.NewPlugin(), applypatch.New()} {
+	for _, plugin := range []host.Plugin{kerneltools.NewPlugin(), approvals.NewPlugin(), applypatch.New()} {
 		if err := h.Install(plugin); err != nil {
 			t.Fatal(err)
 		}
@@ -127,7 +128,7 @@ func TestApplyPatchToolRegistrationAndCall(t *testing.T) {
 +after
 *** Delete File: delete.txt
 *** End Patch`
-	result, err := registry.Call(context.Background(), kerneltools.Call{
+	result, err := registry.Call(context.Background(), kerneltools.Call{Policy: permissions.Policy{Unrestricted: true},
 		Name:      "apply_patch",
 		Arguments: json.RawMessage(`{"patch":` + mustJSON(t, patch) + `}`),
 		Workspace: "/work",

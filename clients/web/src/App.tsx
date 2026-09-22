@@ -1,3 +1,6 @@
+import { Approvals } from "./approvals";
+import type { PermissionModeChoice } from "../../contracts/approvals.ts";
+import type { PermissionMode } from "../../contracts/harness.ts";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import {
   addReference,
@@ -151,6 +154,8 @@ export default function App() {
   const [images, setImages] = useState<Attachment[]>([]);
   const [references, setReferences] = useState<ReferenceAttachment[]>([]);
   const [notice, setNotice] = useState("");
+  const [approvalClient, setApprovalClient] = useState<RPCClient | null>(null);
+  const [permissionModes, setPermissionModes] = useState<PermissionModeChoice[]>([]);
   const [chatState, setChatState] = useState(initialChatState);
   const { connection, detail: connectionDetail } = chatState;
   const [models, setModels] = useState<ModelChoice[] | null>(null);
@@ -524,6 +529,18 @@ export default function App() {
     chatRef.current?.connect();
   }
 
+  async function loadPermissionModes(client: RPCClient) {
+    setPermissionModes([]);
+    try {
+      const result = await client.call("permissions/modes", {});
+      if (client !== clientRef.current || !client.connected) return;
+      setPermissionModes(result.modes);
+    } catch (cause) {
+      if (client !== clientRef.current || !client.connected) return;
+      setNotice(formatRPCError(cause, "权限模式加载失败，请重新连接"));
+    }
+  }
+
   async function loadModels(client: RPCClient) {
     setModelError("");
     try {
@@ -594,6 +611,7 @@ export default function App() {
   }
 
   async function updateSessionSettings(value: {
+    permissionMode?: PermissionMode;
     agentID: string;
     model: string;
     reasoningEffort: string;
@@ -894,8 +912,10 @@ export default function App() {
       setChatState,
       (client) => {
         clientRef.current = client;
+        setApprovalClient(client);
         void loadSessions(client);
         void loadModels(client);
+        void loadPermissionModes(client);
         void loadAgents(client);
         void loadCommands(client);
       },
@@ -1173,6 +1193,7 @@ export default function App() {
                     )}
                   </div>
                 </ChatMessages>
+                <Approvals client={connected ? approvalClient : null}>
                 <Composer
                   key={selectedID ?? ""}
                   references={references}
@@ -1186,6 +1207,16 @@ export default function App() {
                   agents={agentCatalog?.agents ?? null}
                   agentID={selected?.settings.agentID ?? ""}
                   settingsDisabled={settingsDisabled}
+                  permissionMode={selected?.settings.permissionMode}
+                  permissionModes={permissionModes}
+                  onPermissionChange={(permissionMode) =>
+                    void updateSessionSettings({
+                      agentID: selected?.settings.agentID ?? "",
+                      model: selected?.settings.model ?? "",
+                      reasoningEffort: selected?.settings.reasoningEffort ?? "",
+                      permissionMode,
+                    })
+                  }
                   usage={sessionUsage}
                   running={!!currentRun}
                   stopping={stoppingCurrent}
@@ -1228,6 +1259,7 @@ export default function App() {
                   onDismissNotice={() => setNotice("")}
                   composerRef={composer}
                 />
+                </Approvals>
               </section>
             )}
           </div>

@@ -21,6 +21,7 @@ type Call struct {
 	Arguments json.RawMessage
 	Workspace string
 	Policy    permissions.Policy
+	Reviewer  permissions.ReviewerKind
 	Allow     []string
 	// 由 Runner / Loop 提供的调用身份，不从 Arguments 读取。
 	SessionID  string

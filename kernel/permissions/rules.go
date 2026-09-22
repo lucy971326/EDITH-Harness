@@ -9,6 +9,16 @@ import (
 
 var protectedNames = [...]string{".git", ".agents", ".harness"}
 
+// Modes 返回独立的模式清单，智能审批等待模型审核接入。
+func Modes() []ModeChoice {
+	return []ModeChoice{
+		{ID: ReadOnly, Label: "只读", Available: true},
+		{ID: AskForApproval, Label: "请求批准", Available: true},
+		{ID: ApproveForMe, Label: "智能审批", Available: false},
+		{ID: FullAccess, Label: "完全访问", Available: true},
+	}
+}
+
 // NormalizeMode 为旧设置补默认值，拒绝未知模式。
 func NormalizeMode(mode Mode) (Mode, error) {
 	switch mode {

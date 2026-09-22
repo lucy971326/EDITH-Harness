@@ -133,6 +133,7 @@ func TestSettingsUpdateRejectsInvalidChoicesWithoutStartingOrSaving(t *testing.T
 	for _, input := range []appserver.UpdateSettingsParams{
 		{SessionID: created.Meta.ID, AgentID: ""},
 		{SessionID: created.Meta.ID, AgentID: "default", PermissionMode: "unknown"},
+		{SessionID: created.Meta.ID, AgentID: "default", PermissionMode: "approve_for_me"},
 		{SessionID: created.Meta.ID, AgentID: "default", Model: "missing", ReasoningEffort: "high"},
 		{SessionID: created.Meta.ID, AgentID: "default", Model: "deepseek/deepseek-flash", ReasoningEffort: "missing"},
 		{SessionID: created.Meta.ID, AgentID: "missing", Model: "deepseek/deepseek-flash", ReasoningEffort: "high"},

@@ -6,6 +6,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"harness/kernel/approvals"
 	"harness/kernel/machine"
 	"harness/kernel/tools"
 )
@@ -16,9 +17,9 @@ const (
 	maxOutputTokens     = 1024 * 1024 / 4
 )
 
-func toolEntries(processes machine.AgentProcesses, paths machine.Machine) []tools.Tool {
+func toolEntries(processes machine.AgentProcesses, paths machine.Machine, approvalService *approvals.Service) []tools.Tool {
 	return []tools.Tool{
-		newExecCommandTool(processes, paths),
+		newExecCommandTool(processes, paths, approvalService),
 		newWriteStdinTool(processes),
 	}
 }
