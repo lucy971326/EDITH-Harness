@@ -1,6 +1,6 @@
-# Hooks 机制对照（调研记录）
+# Agent Harness Hooks Survey
 
-查阅日期：2026-09-23。本篇记录其他产品的 Hook 触发点与处理方式，供后续调研使用；不代表 Harness 已决定实现这些能力。Harness 当前方向见 [overview.md](overview.md)。
+查阅日期：2026-09-23。本篇记录其他产品的 Hook 触发点与处理方式，供后续调研使用；不代表 Harness 已决定实现这些能力。Harness 当前方向见 [overview.md](../../.forward/plan/overview.md)。
 
 | 产品 | 触发点 | 实际支持的处理方式 | 依据 |
 | --- | ---: | --- | --- |

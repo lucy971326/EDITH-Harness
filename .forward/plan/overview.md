@@ -4,7 +4,7 @@
 
 ## 按需加入 Hook
 
-其他产品的触发点与处理方式见 [Hooks 机制对照](Hooks-机制对照.md)。
+其他产品的触发点与处理方式见 [Agent Harness Hooks Survey](../../docs/codex-docs/agent-harness-hooks-survey.md)。
 
 `PreToolUse` 的现状见 [STATUS.md](../../STATUS.md)。后续只有出现明确需求时，再考虑以下入口：
 
