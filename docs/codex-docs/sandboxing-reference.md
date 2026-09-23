@@ -1,4 +1,6 @@
-# Sandbox
+# Codex Sandboxing 资料摘录
+
+> 外部资料记录，供查阅 Codex 的沙箱和审批概念；不作为 Harness 的当前规范。具体配置以所引官方文档为准。
 
 > 完整的文档索引请参阅 [llms.txt](https://learn.chatgpt.com/llms.txt)。在页面 URL 末尾添加 `.md` 即可获取文档页面的 Markdown 版本。
 

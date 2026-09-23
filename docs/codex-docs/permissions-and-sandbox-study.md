@@ -1,6 +1,6 @@
-# 权限系统方向书：Codex 机制与 Harness 方向
+# Codex 权限与沙箱研究（含历史 Harness 方向）
 
-> 本文把 Codex 的现有机制与 Harness 的设计方向放在一起。标明“Codex 已有”的是源码研究结果；标明“Harness 方向”的尚未实现。参考本地 reference/codex 提交 ce24367。
+> 历史研究记录：Codex 源码研究参考本地 `reference/codex` 提交 ce24367；文中的“Harness 方向”保留当时的讨论，不代表当前实现。Harness 现状见 [STATUS.md](../../STATUS.md)，稳定决策见 [设计书](../设计书.md)。
 
 ## 目标
 

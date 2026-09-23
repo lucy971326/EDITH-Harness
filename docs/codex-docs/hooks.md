@@ -1,4 +1,4 @@
-# Codex Hooks
+# Codex Hooks 源码笔记
 
 本地参考源码定义了 **12 种 Hook 事件**：[事件清单](../../reference/codex/codex-rs/hooks/src/lib.rs#L24)。
 
