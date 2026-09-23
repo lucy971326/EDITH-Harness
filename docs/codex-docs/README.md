@@ -9,4 +9,5 @@
 | 源码研究 | [Client 通信](client-communication.md) | app-server 与多端协作 |
 | 源码研究 | [服务器机制](mcp-server-study.md) | exec-server、MCP Server 与 app-server |
 | 资料摘录 | [Sandboxing](sandboxing-reference.md) | Codex 沙箱与审批的文档摘录 |
+| 交互讲解 | [Linux 沙箱结构图](linux-sandbox-map.html) | bwrap、namespace、cgroup 与 seccomp 的分工 |
 | 横向对照 | [各 Agent Harness 的 Hooks](agent-harness-hooks-survey.md) | Claude Code、Codex、Antigravity 与 Grok Build |
