@@ -17,7 +17,7 @@ export interface ExtraPermissions {
   network?: boolean;
 }
 export interface PendingApproval {
-	 reviewReason?: string;
+  reviewReason?: string;
   id: string;
   sessionID: string;
   runID: string;
@@ -29,6 +29,16 @@ export interface PendingApproval {
     reason: string;
     current: Policy;
     requested: ExtraPermissions;
+  };
+  mcp?: {
+    kind: "config" | "call";
+    workspace: string;
+    source?: string;
+    digest?: string;
+    servers?: { name: string; target: string }[];
+    server?: string;
+    tool?: string;
+    arguments?: Record<string, unknown>;
   };
 }
 

@@ -117,11 +117,15 @@ type humanReviewer struct {
 var _ permissions.Reviewer = humanReviewer{}
 
 func (r humanReviewer) Review(ctx context.Context, request permissions.ApprovalRequest) (permissions.Decision, error) {
-	if r.identity.SessionID == "" || r.identity.RunID == "" || r.identity.ToolCallID == "" {
+	return r.service.waitForHuman(ctx, Pending{Identity: r.identity, Request: cloneRequest(request), ReviewReason: r.reason})
+}
+
+func (s *Service) waitForHuman(ctx context.Context, view Pending) (permissions.Decision, error) {
+	if view.SessionID == "" || view.RunID == "" || view.ToolCallID == "" {
 		return permissions.Decision{}, fmt.Errorf("approvals: missing trusted call identity")
 	}
-	item := &pendingRequest{view: Pending{ID: rand.Text(), Identity: r.identity, Request: cloneRequest(request), ReviewReason: r.reason}, ctx: ctx, answer: make(chan permissions.Decision, 1)}
-	s := r.service
+	view.ID = rand.Text()
+	item := &pendingRequest{view: view, ctx: ctx, answer: make(chan permissions.Decision, 1)}
 	s.mu.Lock()
 	if s.closed || ctx.Err() != nil {
 		s.mu.Unlock()
@@ -223,6 +227,12 @@ func (s *Service) snapshotLocked() []Pending {
 	for _, item := range s.pending {
 		view := item.view
 		view.Request = cloneRequest(view.Request)
+		if view.MCP != nil {
+			copied := *view.MCP
+			copied.Servers = slices.Clone(copied.Servers)
+			copied.Arguments = slices.Clone(copied.Arguments)
+			view.MCP = &copied
+		}
 		result = append(result, view)
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })

@@ -38,7 +38,7 @@ func (l *reactLoop) Run(ctx context.Context, invocation loops.Invocation) error 
 	}
 
 	invocation.ToolNames = append([]string(nil), invocation.ToolNames...)
-	definitions, err := l.tools.Definitions(ctx, invocation.Workspace, invocation.ToolNames)
+	definitions, err := l.tools.Definitions(tools.WithAccess(ctx, tools.Access{Mode: invocation.Mode, SessionID: invocation.SessionID, RunID: invocation.RunID}), invocation.Workspace, invocation.ToolNames)
 	if err != nil {
 		return err
 	}
@@ -229,6 +229,7 @@ func (l *reactLoop) execute(
 		Workspace:   invocation.Workspace,
 		Policy:      policy,
 		Reviewer:    invocation.Reviewer,
+		Mode:        invocation.Mode,
 		Allow:       invocation.ToolNames,
 		SessionID:   invocation.SessionID,
 		RunID:       invocation.RunID,

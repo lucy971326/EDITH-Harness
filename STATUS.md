@@ -172,3 +172,10 @@ Windows 启动继续要求 Git Bash；Agent 长期进程与 UI 终端 PTY 均使
 - 授权来源追溯按原始 Entry ID 全局去重，防止跨轮次跟进时把父会话旧授权重新追加到子会话新限制后；用户后来重复的同文消息仍保留。现有核心测试增加跨轮次顺序与同文新消息回归。
 - 删除临时 TypeSafe 探针脚本和两份测试结果，硬编码测试密钥不进入提交。
 - `go test -race ./kernel/approvals` 与 `make agent-check` 通过。用户报告 Jev 实际批准、拒绝及沙箱对照测试通过；普通 LLM 的真实服务调用仍待手工验收。
+
+### MCP 权限边界（2026-09-23）
+
+- 项目 MCP 在连接前由底部审批框确认；确认记录按项目真实路径及解析后的有效配置摘要保存在 `~/.harness/approvals/mcp-trust.json`。拒绝后本轮只保留全局工具；变更项目配置或其环境变量后，旧快照拒绝后续调用，重启时读取并重新确认。
+- 只读模式不发现或调用 MCP Tool；请求批准逐次人审，智能审批逐次由所选 LLM/Jev 审核并在不确定时转人工，完全访问直接调用。MCP Server 仍在宿主或远端运行，MCP 审批不修改文件与网络沙箱权限。
+- MCP 核心测试覆盖连接前确认、拒绝、逐次批准/拒绝、只读与完全访问，以及配置变更阻断；真实 WebSocket 审批快照通过契约验证。相关 Go 测试和 MCP/approvals race、前端构建与 TS 检查通过。`make agent-check` 的前端测试在本机触发文件监听 `EMFILE`；使用 `CHOKIDAR_USEPOLLING=1 npm --prefix clients/web test` 顺序重跑，71 项通过。网页视觉与真实 MCP Server 交互待用户 `make run` 验收。
+- 审查修复：项目确认展示完整命令参数与工作目录或完整 URL，按钮明确表示按配置版本记住信任；缓存连接复用前核对工作区真实路径，符号链接改指向即拒绝旧连接。定向 MCP race、TypeScript 与轮询模式前端测试通过；本轮并行 `make agent-check` 另有一次 `fs/watch` race 用例失败，单项重跑通过。

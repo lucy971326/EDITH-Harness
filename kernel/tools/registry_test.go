@@ -6,6 +6,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"harness/kernel/permissions"
 )
 
 // 数据。registry 测试工具的参数。
@@ -166,7 +168,7 @@ func TestRegistry_prepareAddsProviderToolsWithoutListingThem(t *testing.T) {
 	if len(list) != 1 || list[0].Name != "bash" {
 		t.Fatalf("List() = %#v", list)
 	}
-	prepared, err := registry.Prepare(context.Background(), "/work", []string{"bash"})
+	prepared, err := registry.Prepare(context.Background(), "/work", []string{"bash"}, Access{Mode: permissions.FullAccess})
 	if err != nil {
 		t.Fatal(err)
 	}

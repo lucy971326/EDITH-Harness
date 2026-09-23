@@ -22,6 +22,7 @@ type Call struct {
 	Workspace string
 	Policy    permissions.Policy
 	Reviewer  permissions.ReviewerKind
+	Mode      permissions.Mode
 	Allow     []string
 	// 由 Runner / Loop 提供的调用身份，不从 Arguments 读取。
 	SessionID  string
@@ -29,6 +30,13 @@ type Call struct {
 	ToolCallID string
 	// 只唤醒等待中的工具，不承载 Steer 消息。
 	InputSignal <-chan struct{}
+}
+
+// 数据。本轮发现动态工具时使用的真实权限模式与运行身份。
+type Access struct {
+	Mode      permissions.Mode
+	SessionID string
+	RunID     string
 }
 
 // 数据。一次文件操作的种类。
@@ -88,7 +96,7 @@ type Tools interface {
 
 	// Agent 设置与本轮准备
 	List() []Definition
-	Prepare(ctx context.Context, workspace string, selected []string) (Prepared, error)
+	Prepare(ctx context.Context, workspace string, selected []string, access ...Access) (Prepared, error)
 
 	// 本轮查询与调用
 	Definitions(ctx context.Context, workspace string, allow []string) ([]Definition, error)

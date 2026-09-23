@@ -10,8 +10,10 @@ import (
 
 	"harness/kernel/llm"
 	"harness/kernel/loops"
+	"harness/kernel/permissions"
 	"harness/kernel/session"
 	"harness/kernel/session/settings"
+	"harness/kernel/tools"
 )
 
 const compactInstruction = "请把到目前为止的对话压缩成一份后续可继续使用的摘要。保留目标、约束、已完成事项、关键结论和未完成工作。不要调用工具。只输出摘要正文。"
@@ -75,7 +77,7 @@ func (r *Runner) prepareCompact(ctx context.Context, sessionID string) (compactP
 	if strings.TrimSpace(runSettings.Model) == "" {
 		return compactPreparation{}, fmt.Errorf("runner: compact needs a model")
 	}
-	prepared, err := r.agents.Prepare(ctx, runSettings.AgentID, runSettings.Workspace)
+	prepared, err := r.agents.Prepare(ctx, runSettings.AgentID, runSettings.Workspace, tools.Access{Mode: permissions.ReadOnly})
 	if err != nil {
 		return compactPreparation{}, err
 	}
@@ -156,7 +158,7 @@ func (r *Runner) runCompact(runCtx context.Context, sessionID, runID string, cur
 		return err
 	}
 
-	definitions, err := r.tools.Definitions(runCtx, prepared.workspace, prepared.toolNames)
+	definitions, err := r.tools.Definitions(tools.WithAccess(runCtx, tools.Access{Mode: permissions.ReadOnly}), prepared.workspace, prepared.toolNames)
 	if err != nil {
 		return err
 	}

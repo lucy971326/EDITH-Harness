@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"harness/kernel/approvals"
 	"harness/kernel/host"
 	"harness/kernel/persist"
 	"harness/kernel/tools"
@@ -36,6 +37,10 @@ func (p *Plugin) Start(h *host.Host) error {
 	if err != nil {
 		return fmt.Errorf("tools-mcp: resolve persist: %w", err)
 	}
+	approvalService, err := host.Resolve[*approvals.Service](h, "approvals")
+	if err != nil {
+		return fmt.Errorf("tools-mcp: resolve approvals: %w", err)
+	}
 	config := configFile{}
 	data, err := files.Read("mcp.json")
 	if err == nil {
@@ -54,6 +59,7 @@ func (p *Plugin) Start(h *host.Host) error {
 	if err != nil {
 		return err
 	}
+	provider.approvals = approvalService
 	err = registry.RegisterProvider(provider)
 	if err != nil {
 		_ = provider.Close()

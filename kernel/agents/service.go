@@ -158,7 +158,7 @@ func (s *Service) AvailableSkills(workspace string) ([]skills.Skill, error) {
 }
 
 // Prepare 按当前登记内容生成一轮 Run 可用的 Agent 设置和系统提示词。
-func (s *Service) Prepare(ctx context.Context, id string, workspace string) (PreparedAgent, error) {
+func (s *Service) Prepare(ctx context.Context, id string, workspace string, access ...tools.Access) (PreparedAgent, error) {
 	agent, err := s.Get(id)
 	if err != nil {
 		return PreparedAgent{}, err
@@ -166,7 +166,7 @@ func (s *Service) Prepare(ctx context.Context, id string, workspace string) (Pre
 	if _, err := s.loops.Get(agent.Kind); err != nil {
 		return PreparedAgent{}, err
 	}
-	preparedTools, err := s.tools.Prepare(ctx, workspace, agent.Tools)
+	preparedTools, err := s.tools.Prepare(ctx, workspace, agent.Tools, access...)
 	if err != nil {
 		return PreparedAgent{}, err
 	}

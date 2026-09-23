@@ -304,7 +304,7 @@ func (r *Runner) openLive(ctx context.Context, sessionID string) (string, *liveR
 
 // prepareActive 在已登记的运行占用内准备设置，停止或关闭能覆盖这段准备期。
 func (r *Runner) prepareActive(ctx context.Context, sessionID string, current *liveRun, handle *RunHandle) (runPreparation, error) {
-	prepared, err := r.prepare(ctx, sessionID)
+	prepared, err := r.prepare(ctx, sessionID, handle.runID)
 	if err != nil {
 		return runPreparation{}, err
 	}
@@ -319,7 +319,7 @@ func (r *Runner) prepareActive(ctx context.Context, sessionID string, current *l
 	return prepared, nil
 }
 
-func (r *Runner) prepare(ctx context.Context, sessionID string) (runPreparation, error) {
+func (r *Runner) prepare(ctx context.Context, sessionID, runID string) (runPreparation, error) {
 	sess, err := r.sessions.Get(sessionID)
 	if err != nil {
 		return runPreparation{}, err
@@ -328,7 +328,9 @@ func (r *Runner) prepare(ctx context.Context, sessionID string) (runPreparation,
 	if err != nil {
 		return runPreparation{}, err
 	}
-	prepared, err := r.agents.Prepare(ctx, runSettings.AgentID, runSettings.Workspace)
+	prepared, err := r.agents.Prepare(ctx, runSettings.AgentID, runSettings.Workspace, tools.Access{
+		Mode: runSettings.PermissionMode, SessionID: sessionID, RunID: runID,
+	})
 	if err != nil {
 		return runPreparation{}, err
 	}
@@ -468,6 +470,7 @@ func (r *Runner) executePrepared(runCtx context.Context, sessionID, runID string
 	invocation := loops.Invocation{
 		Policy:       policy,
 		Reviewer:     reviewer,
+		Mode:         runSettings.PermissionMode,
 		SessionID:    sessionID,
 		RunID:        runID,
 		History:      history,

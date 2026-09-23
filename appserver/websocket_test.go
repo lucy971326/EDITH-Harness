@@ -344,4 +344,33 @@ func TestApprovalReconnect(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("answer did not resume tool")
 	}
+	go func() {
+		finished <- service.AuthorizeMCPCall(ctx, approvals.Identity{SessionID: "s", RunID: "r", ToolCallID: "mcp"}, permissions.HumanReviewer,
+			approvals.MCPRequest{Kind: "call", Workspace: "/work", Server: "demo", Tool: "ping", Arguments: []byte(`{}`)})
+	}()
+	deadline := time.After(time.Second)
+	var mcpPending []approvals.Pending
+	for len(mcpPending) == 0 {
+		select {
+		case mcpPending = <-updates:
+		case <-deadline:
+			t.Fatal("MCP approval request missing")
+		}
+	}
+	ws := dialTestSocket(t, url)
+	initializeSocket(t, ws)
+	response := socketRequest(t, ws, `{"jsonrpc":"2.0","id":3,"method":"approval/subscribe","params":{}}`)
+	if response.Error != nil {
+		t.Fatalf("MCP approval snapshot failed output validation: %#v", response.Error)
+	}
+	var snapshot ApprovalSubscribeResult
+	if err := json.Unmarshal(response.Result, &snapshot); err != nil || len(snapshot.Pending) != 1 || snapshot.Pending[0].MCP == nil {
+		t.Fatalf("MCP approval snapshot = %s, %v", response.Result, err)
+	}
+	if err := service.Respond(snapshot.Pending[0].ID, permissions.Decision{Approved: false}); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-finished; err == nil {
+		t.Fatal("denied MCP call was approved")
+	}
 }

@@ -68,6 +68,10 @@ export function Approvals({ client, children }: {
   }
 
   const current = pending[0];
+  const mcp = current?.mcp;
+  const title = mcp?.kind === "config" ? "启用项目 MCP"
+    : mcp?.kind === "call" ? `MCP · ${mcp.server}/${mcp.tool}`
+    : current?.request.toolName === "exec_command" ? "终端" : "文件修改";
   return (
     <>
       <div hidden={!!current}>{children}</div>
@@ -76,27 +80,40 @@ export function Approvals({ client, children }: {
           {error && <p className="inline-notice" role="alert">{error}</p>}
           {current && <article className="composer approval-card" key={current.id}>
           <header className="approval-heading">
-            {current.request.toolName === "exec_command" ? <Terminal /> : <FileText />}
-            <span>{current.request.toolName === "exec_command" ? "终端" : "文件修改"}</span>
+            {mcp?.kind === "call" || current.request.toolName === "exec_command" ? <Terminal /> : <FileText />}
+            <span>{title}</span>
             <span>
-              {current.request.requested.network && " · 联网"}
-              {!!current.request.requested.writeRoots?.length &&
+              {!mcp && current.request.requested.network && " · 联网"}
+              {!mcp && !!current.request.requested.writeRoots?.length &&
                 ` · 写入 ${current.request.requested.writeRoots.length} 个目录`}
             </span>
             {pending.length > 1 && <span className="approval-count">还有 {pending.length - 1} 项待审批</span>}
           </header>
           <div className="approval-body">
           {current.reviewReason && <p className="metadata">{current.reviewReason}</p>}
+          {mcp?.kind === "config" ? <>
+            <p>这些 MCP Server 将在宿主环境运行。信任后，同一配置版本以后会自动启用。</p>
+            <pre>{mcp.servers?.map((server) => `${server.name} → ${server.target}`).join("\n")}</pre>
+          </> : mcp?.kind === "call" ? <>
+            <p>允许 Agent 调用此 MCP 工具一次吗？Server 在宿主环境执行。</p>
+            <pre>{JSON.stringify(mcp.arguments ?? {}, null, 2)}</pre>
+          </> : <>
           <p>{current.request.reason || "本次操作需要额外权限，是否允许？"}</p>
           <pre>{String(
             current.request.arguments.cmd ?? current.request.arguments.patch ??
             JSON.stringify(current.request.arguments, null, 2)
           )}</pre>
+          </>}
           </div>
           <footer className="approval-footer">
           <details className="approval-details">
-            <summary>权限与来源详情</summary>
+            <summary>{mcp ? "配置与来源详情" : "权限与来源详情"}</summary>
             <div className="approval-detail-content">
+          {mcp ? <>
+            {mcp.source && <p>配置文件：{mcp.source}</p>}
+            {mcp.digest && <p>配置摘要：{mcp.digest.slice(0, 12)}</p>}
+            <p>工作目录：{mcp.workspace}</p>
+          </> : <>
           <div>
             本次额外开放：
             {current.request.requested.network && <span>联网；</span>}
@@ -104,8 +121,9 @@ export function Approvals({ client, children }: {
               <code key={root}>{root}（目录可写） </code>
             ))}
           </div>
-            <p>来源会话：{current.sessionID}</p>
             <p>工作目录：{current.request.workdir}</p>
+          </>}
+            <p>来源会话：{current.sessionID}</p>
             </div>
           </details>
           <div className="approval-actions">
@@ -119,7 +137,7 @@ export function Approvals({ client, children }: {
               size="sm"
               disabled={!client?.connected || !!answering}
               onClick={() => void respond(current.id, true)}
-            >{answering === current.id ? "正在提交…" : "允许一次"}</Button>
+            >{answering === current.id ? "正在提交…" : mcp?.kind === "config" ? "信任此版本" : "允许一次"}</Button>
           </div>
           </footer>
           </article>}

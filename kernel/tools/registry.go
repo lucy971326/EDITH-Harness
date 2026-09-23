@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
+
+	"harness/kernel/permissions"
 
 	validator "github.com/santhosh-tekuri/jsonschema/v6"
 )
@@ -107,7 +110,10 @@ func (r *Registry) RegisterProvider(provider Provider) error {
 }
 
 // Prepare 合并 Agent 已选普通 Tool 和当前工作区的动态 Tool。
-func (r *Registry) Prepare(ctx context.Context, workspace string, selected []string) (Prepared, error) {
+func (r *Registry) Prepare(ctx context.Context, workspace string, selected []string, access ...Access) (Prepared, error) {
+	if len(access) > 0 {
+		ctx = WithAccess(ctx, access[0])
+	}
 	_, err := r.definitions(ctx, "", selected)
 	if err != nil {
 		return Prepared{}, err
@@ -191,6 +197,14 @@ func (r *Registry) Call(ctx context.Context, call Call) (Result, error) {
 	if !allowed(call.Name, call.Allow) {
 		return toolError(fmt.Errorf("tool %q is not allowed for this run", call.Name)), nil
 	}
+	if strings.HasPrefix(call.Name, "mcp__") {
+		if call.Mode == permissions.ReadOnly {
+			return toolError(fmt.Errorf("MCP tools are disabled in read-only mode")), nil
+		}
+		if call.Mode != permissions.AskForApproval && call.Mode != permissions.ApproveForMe && call.Mode != permissions.FullAccess {
+			return toolError(fmt.Errorf("MCP tool call has no valid permission mode")), nil
+		}
+	}
 
 	r.mu.RLock()
 	staticEntry, static := r.entries[call.Name]
@@ -200,7 +214,7 @@ func (r *Registry) Call(ctx context.Context, call Call) (Result, error) {
 	if static {
 		schema = staticEntry.schema
 	} else {
-		dynamic, _, err := r.dynamic(ctx, call.Workspace)
+		dynamic, _, err := r.dynamic(WithAccess(ctx, Access{Mode: call.Mode, SessionID: call.SessionID, RunID: call.RunID}), call.Workspace)
 		if err != nil {
 			return toolError(err), nil
 		}
@@ -253,6 +267,9 @@ func (r *Registry) dynamic(ctx context.Context, workspace string) (map[string]dy
 	all := make(map[string]dynamicEntry)
 	snapshots := make([]Snapshot, 0, len(providers))
 	for _, provider := range providers {
+		if AccessFromContext(ctx).Mode == permissions.ReadOnly && provider.name == "mcp" {
+			continue
+		}
 		snapshot, err := provider.provider.Snapshot(ctx, workspace)
 		if err != nil {
 			return nil, nil, fmt.Errorf("tools: provider %q: %w", provider.name, err)

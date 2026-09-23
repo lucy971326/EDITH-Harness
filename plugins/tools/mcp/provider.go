@@ -2,6 +2,8 @@ package mcp
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +20,8 @@ import (
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"harness/kernel/approvals"
+	"harness/kernel/permissions"
 	"harness/kernel/tools"
 )
 
@@ -41,15 +46,19 @@ type workspaceState struct {
 	snapshot tools.Snapshot
 	routes   map[string]*serverConnection
 	owned    []*serverConnection
+	realPath string
+	digest   string
 	err      error
 }
 
 // 活对象。按工作区发现并调用 MCP Tool 的动态来源。
 type Provider struct {
-	user *workspaceState
+	user      *workspaceState
+	approvals *approvals.Service
 
 	mu         sync.Mutex
 	workspaces map[string]*workspaceState
+	declined   map[string]string // 工作区 → 本轮拒绝的 Session/Run；下一轮重新询问。
 	closed     bool
 	wg         sync.WaitGroup
 }
@@ -65,6 +74,7 @@ func newProvider(ctx context.Context, config configFile, launchDir string) (*Pro
 	}
 	provider := &Provider{
 		workspaces: make(map[string]*workspaceState),
+		declined:   make(map[string]string),
 	}
 	provider.user = stateFromConnections(connections)
 	provider.user.owned = connections
@@ -75,6 +85,9 @@ func (p *Provider) Name() string { return "mcp" }
 
 // Snapshot 返回用户配置和当前项目配置合成的稳定快照。
 func (p *Provider) Snapshot(ctx context.Context, workspace string) (tools.Snapshot, error) {
+	if tools.AccessFromContext(ctx).Mode == permissions.ReadOnly {
+		return tools.Snapshot{}, nil
+	}
 	state, err := p.state(ctx, workspace)
 	if err != nil {
 		return tools.Snapshot{}, err
@@ -84,6 +97,25 @@ func (p *Provider) Snapshot(ctx context.Context, workspace string) (tools.Snapsh
 
 // Call 把普通 Harness Tool 调用转给所属 MCP Server。
 func (p *Provider) Call(ctx context.Context, call tools.Call) (tools.Result, error) {
+	if call.Mode == permissions.ReadOnly {
+		return tools.Result{}, fmt.Errorf("mcp: tool call is not allowed in this permission mode")
+	}
+	if p.approvals != nil {
+		switch call.Mode {
+		case permissions.AskForApproval:
+			if call.Reviewer != permissions.HumanReviewer {
+				return tools.Result{}, fmt.Errorf("mcp: human approval is required")
+			}
+		case permissions.ApproveForMe:
+			if call.Reviewer != permissions.ModelReviewer {
+				return tools.Result{}, fmt.Errorf("mcp: model approval is required")
+			}
+		case permissions.FullAccess:
+		default:
+			return tools.Result{}, fmt.Errorf("mcp: tool call has no valid permission mode")
+		}
+	}
+	ctx = tools.WithAccess(ctx, tools.Access{Mode: call.Mode, SessionID: call.SessionID, RunID: call.RunID})
 	state, err := p.state(ctx, call.Workspace)
 	if err != nil {
 		return tools.Result{}, err
@@ -97,6 +129,16 @@ func (p *Provider) Call(ctx context.Context, call tools.Call) (tools.Result, err
 	err = json.Unmarshal(call.Arguments, &arguments)
 	if err != nil {
 		return tools.Result{}, fmt.Errorf("mcp: decode arguments for %q: %w", call.Name, err)
+	}
+	if p.approvals != nil && call.Mode != permissions.FullAccess {
+		approval := approvals.MCPRequest{Kind: "call", Workspace: call.Workspace, Server: connection.name, Tool: remoteName, Arguments: append(json.RawMessage(nil), call.Arguments...)}
+		err = p.approvals.AuthorizeMCPCall(ctx, approvals.Identity{SessionID: call.SessionID, RunID: call.RunID, ToolCallID: call.ToolCallID}, call.Reviewer, approval)
+		if err != nil {
+			return tools.Result{}, err
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return tools.Result{}, err
 	}
 	callCtx, cancel := context.WithTimeout(ctx, toolTimeout)
 	defer cancel()
@@ -157,6 +199,13 @@ func (p *Provider) state(ctx context.Context, workspace string) (*workspaceState
 		p.mu.Unlock()
 		return nil, fmt.Errorf("mcp: provider is closed")
 	}
+	access := tools.AccessFromContext(ctx)
+	runKey := access.SessionID + ":" + access.RunID
+	if access.RunID != "" && p.declined[key] == runKey {
+		p.mu.Unlock()
+		return p.user, nil
+	}
+	delete(p.declined, key)
 	state := p.workspaces[key]
 	if state == nil {
 		state = &workspaceState{}
@@ -175,31 +224,75 @@ func (p *Provider) state(ctx context.Context, workspace string) (*workspaceState
 		if p.workspaces[key] == state {
 			delete(p.workspaces, key)
 		}
+		if errors.Is(state.err, approvals.ErrMCPConfigDenied) {
+			p.declined[key] = runKey
+			p.mu.Unlock()
+			return p.user, nil
+		}
 		p.mu.Unlock()
 		return nil, state.err
+	}
+	// 工作区 MCP 快照按设计只在启动时构建；真实路径或配置变化后拒绝旧连接。
+	realPath, err := filepath.EvalSymlinks(key)
+	if err != nil {
+		return nil, fmt.Errorf("mcp: resolve project path: %w", err)
+	}
+	if realPath != state.realPath {
+		return nil, fmt.Errorf("mcp: project path changed; restart Harness to reconnect and confirm it")
+	}
+	_, _, digest, err := projectServers(realPath)
+	if err != nil {
+		return nil, err
+	}
+	if digest != state.digest {
+		return nil, fmt.Errorf("mcp: project configuration changed; restart Harness to reconnect and confirm it")
 	}
 	return state, nil
 }
 
 func (p *Provider) loadWorkspace(ctx context.Context, workspace string, state *workspaceState) error {
-	root, _, err := readConfig(filepath.Join(workspace, ".mcp.json"))
+	realPath, err := filepath.EvalSymlinks(workspace)
+	if err != nil {
+		return fmt.Errorf("mcp: resolve project path: %w", err)
+	}
+	specs, source, digest, err := projectServers(realPath)
 	if err != nil {
 		return err
 	}
-	nested, _, err := readConfig(filepath.Join(workspace, ".harness", "mcp.json"))
+	state.realPath = realPath
+	state.digest = digest
+	if len(specs) > 0 && p.approvals != nil {
+		request := approvals.MCPRequest{Kind: "config", Workspace: realPath, Source: source}
+		for _, spec := range specs {
+			target := spec.URL
+			if spec.Transport == transportStdio {
+				command := []string{strconv.Quote(spec.Command)}
+				for _, arg := range spec.Args {
+					command = append(command, strconv.Quote(arg))
+				}
+				target = strings.Join(command, " ") + "\n工作目录: " + spec.CWD
+			}
+			request.Servers = append(request.Servers, approvals.MCPServer{Name: spec.Name, Target: target})
+		}
+		access := tools.AccessFromContext(ctx)
+		err = p.approvals.ConfirmMCPConfig(ctx, approvals.Identity{SessionID: access.SessionID, RunID: access.RunID}, digest, request)
+		if err != nil {
+			return err
+		}
+	}
+	currentPath, err := filepath.EvalSymlinks(workspace)
+	if err != nil {
+		return fmt.Errorf("mcp: resolve project path: %w", err)
+	}
+	if currentPath != realPath {
+		return fmt.Errorf("mcp: project path changed during confirmation; restart Harness to reconnect and confirm it")
+	}
+	_, _, currentDigest, err := projectServers(realPath)
 	if err != nil {
 		return err
 	}
-	merged := configFile{MCPServers: make(map[string]serverConfig)}
-	for name, config := range root.MCPServers {
-		merged.MCPServers[name] = config
-	}
-	for name, config := range nested.MCPServers {
-		merged.MCPServers[name] = config
-	}
-	specs, err := normalizeServers(merged, workspace)
-	if err != nil {
-		return err
+	if currentDigest != digest {
+		return fmt.Errorf("mcp: project configuration changed during confirmation; restart Harness to reconnect and confirm it")
 	}
 	loadCtx, cancel := context.WithTimeout(ctx, startupTimeout)
 	defer cancel()
@@ -221,6 +314,44 @@ func (p *Provider) loadWorkspace(ctx context.Context, workspace string, state *w
 	combined = append(combined, connections...)
 	state.snapshot, state.routes = snapshotFromConnections(combined)
 	return nil
+}
+
+func projectServers(workspace string) ([]serverSpec, string, string, error) {
+	root, rootExists, err := readConfig(filepath.Join(workspace, ".mcp.json"))
+	if err != nil {
+		return nil, "", "", err
+	}
+	nested, nestedExists, err := readConfig(filepath.Join(workspace, ".harness", "mcp.json"))
+	if err != nil {
+		return nil, "", "", err
+	}
+	merged := configFile{MCPServers: make(map[string]serverConfig)}
+	for name, config := range root.MCPServers {
+		merged.MCPServers[name] = config
+	}
+	for name, config := range nested.MCPServers {
+		merged.MCPServers[name] = config
+	}
+	specs, err := normalizeServers(merged, workspace)
+	if err != nil {
+		return nil, "", "", err
+	}
+	body, err := json.Marshal(specs)
+	if err != nil {
+		return nil, "", "", err
+	}
+	hash := sha256.Sum256(body)
+	source := ""
+	if rootExists {
+		source = filepath.Join(workspace, ".mcp.json")
+	}
+	if nestedExists {
+		if source != "" {
+			source += "、"
+		}
+		source += filepath.Join(workspace, ".harness", "mcp.json")
+	}
+	return specs, source, hex.EncodeToString(hash[:]), nil
 }
 
 func connectAll(ctx context.Context, specs []serverSpec) ([]*serverConnection, error) {
