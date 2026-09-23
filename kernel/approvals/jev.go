@@ -12,7 +12,7 @@ import (
 
 // 固定模型版本；门槛是保守的转人工策略，不是安全正确率保证。
 const jevModel = "jev-1.13.0"
-const jevAllowConfidence = 0.8
+const jevAllowConfidence = 0.5
 
 func (s *Service) reviewJev(ctx context.Context, state json.RawMessage) (reviewResult, error) {
 	body, err := json.Marshal(map[string]any{
