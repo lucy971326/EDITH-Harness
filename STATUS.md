@@ -38,7 +38,7 @@ appserver.Server
 - Diff 审查：`apply_patch` 每次真实落盘后按 Run 实时聚合净变化，聊天显示文件数与增删行；审查页按需读取单文件前后内容，支持单双栏 Monaco Diff、变更列表调宽，以及 Run 结束后的版本保护单文件撤销。
 - 浏览器终端：右侧辅助区支持多个真实 Git Bash 标签；基于 xterm.js、ConPTY 与 machine-local PTY，支持交互输入、ANSI、窗口 Resize、退出状态和关闭时终止进程树。终端标签在切换或隐藏辅助区时保持运行，断开 Client 后统一清理。
 - 界面菜单：普通页面统一使用受控右键菜单，Monaco 使用自身 Command 菜单；浏览器尚未接入。
-- 视觉系统：按确认的 HTML 原型落地居中阅读布局，正文与输入框共用 660px 列宽和水平留白；右侧默认约四分之一窗口宽度，可拖动，Diff 文件列表可折叠。统一亮暗语义 Token，本地打包 Ginto、JetBrains Mono，中文统一回退 Noto Sans SC；等待用户截图验收。
+- 视觉系统：暖灰侧栏、白色内容区、细线分隔与蓝色焦点已应用到聊天、设置和辅助工作区；保留 Ginto／Noto Sans SC 字体，正文调整为 14px、导航 12px，收紧行高与间距，最大 660px 阅读列及面板拖动保留。设置页精简常驻说明、区分导航图标，Hooks 以可折叠列表展示。Monaco 保留 JetBrains Mono 并同步亮暗配色；等待用户运行页面截图验收。
 - 核心 Tool：`exec_command` / `write_stdin` 统一使用 Bash，支持普通管道与 PTY、增量输出、持续输入、轮询和 `Ctrl+C`；`apply_patch` 支持 Codex 格式的多文件新增、修改和删除。旧 `read/write/edit/bash` 已移除，已有 Agent 启动时幂等迁移到新 Tool。
 
 ## 后台边界

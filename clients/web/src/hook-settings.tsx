@@ -4,6 +4,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ChevronRight } from "./icons";
 import type { HookConfig, HookView } from "../../contracts/appserver.ts";
 import { RPCClient, formatRPCError } from "./client/rpc";
 
@@ -28,6 +30,7 @@ export function HookSettingsPanel({ client, currentWorkspace }: {
   const [saved, setSaved] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [reload, setReload] = useState(0);
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (dirty) return;
@@ -40,6 +43,7 @@ export function HookSettingsPanel({ client, currentWorkspace }: {
     setView(null);
     setError("");
     setSaved(false);
+    setOpenIndex(null);
     if (!client?.connected) return;
     void client.call("hooks/read", { workspace }).then((result) => {
       if (!active) return;
@@ -133,8 +137,6 @@ export function HookSettingsPanel({ client, currentWorkspace }: {
   const source = view?.[scope];
   return <>
     <h2>Hooks</h2>
-    <p className="muted">工具执行前依次运行命令。空输出继续；输出拒绝决定则阻止工具。</p>
-    <p className="inline-notice">命令在宿主运行。项目脚本内容变化不会触发重新信任，请只配置可信脚本。</p>
     <div className="effort-options" role="group" aria-label="Hook 来源">
       {(["global", "project"] as const).map((item) => <Button key={item}
         variant={scope === item ? "default" : "outline"} size="sm" disabled={saving}
@@ -163,39 +165,72 @@ export function HookSettingsPanel({ client, currentWorkspace }: {
         <p className="inline-notice">项目配置已改变，项目 Hook 已暂停。</p>
         <Button size="sm" variant="outline" disabled={saving || dirty || !!source.error} onClick={() => void trust()}>信任当前项目配置</Button>
       </>}
-      {draft.map((hook, index) => <div className="agent-form" key={index}>
-        <div className="effort-options">
-          <Switch checked={hook.enabled} disabled={saving} onCheckedChange={(enabled) => edit(index, { enabled })} />
-          <span>{hook.enabled ? "已启用" : "已停用"}</span>
-          <Button size="sm" variant="outline" disabled={saving || index === 0} onClick={() => {
-            setDraft((items) => {
-              const next = [...items]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next;
-            });
-            changed();
-          }}>上移</Button>
-          <Button size="sm" variant="outline" disabled={saving || index === draft.length - 1} onClick={() => {
-            setDraft((items) => {
-              const next = [...items]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; return next;
-            });
-            changed();
-          }}>下移</Button>
-          <Button size="sm" variant="ghost" disabled={saving} onClick={() => { setDraft((items) => items.filter((_, i) => i !== index)); changed(); }}>删除</Button>
-        </div>
-        <Label htmlFor={`hook-name-${index}`}>名称</Label>
-        <Input id={`hook-name-${index}`} value={hook.name} disabled={saving} onChange={(event) => edit(index, { name: event.target.value })} />
-        <Label htmlFor={`hook-command-${index}`}>命令</Label>
-        <Input id={`hook-command-${index}`} value={hook.command} disabled={saving} placeholder="/usr/bin/python3" onChange={(event) => edit(index, { command: event.target.value })} />
-        <Label htmlFor={`hook-args-${index}`}>参数（JSON 字符串数组）</Label>
-        <Textarea id={`hook-args-${index}`} rows={2} value={hook.argsText} disabled={saving} onChange={(event) => edit(index, { argsText: event.target.value })} />
-        <Label htmlFor={`hook-tools-${index}`}>匹配工具（每行一个，留空匹配全部）</Label>
-        <Textarea id={`hook-tools-${index}`} rows={2} value={hook.toolsText} disabled={saving} onChange={(event) => edit(index, { toolsText: event.target.value })} />
-        <Label htmlFor={`hook-timeout-${index}`}>超时秒数（0 使用默认 10 秒）</Label>
-        <Input id={`hook-timeout-${index}`} type="number" min={0} max={60} value={hook.timeoutSeconds} disabled={saving} onChange={(event) => edit(index, { timeoutSeconds: Number(event.target.value) })} />
-      </div>)}
+      <div className="hook-list">
+        {draft.map((hook, index) => <Collapsible
+          key={index}
+          className="hook-item"
+          open={openIndex === index}
+          onOpenChange={(open) => setOpenIndex(open ? index : null)}
+        >
+          <CollapsibleTrigger className="hook-summary">
+            <ChevronRight className="disclosure-chevron" />
+            <span className="hook-summary-name">{hook.name.trim() || `未命名 Hook ${index + 1}`}</span>
+            <span className="metadata">{hook.enabled ? "已启用" : "已停用"}</span>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="agent-form hook-form">
+            <div className="effort-options">
+              <Switch
+                aria-label={`${hook.name || `Hook ${index + 1}`}启用状态`}
+                checked={hook.enabled}
+                disabled={saving}
+                onCheckedChange={(enabled) => edit(index, { enabled })}
+              />
+              <span>{hook.enabled ? "已启用" : "已停用"}</span>
+              <Button size="sm" variant="outline" disabled={saving || index === 0} onClick={() => {
+                setDraft((items) => {
+                  const next = [...items];
+                  [next[index - 1], next[index]] = [next[index], next[index - 1]];
+                  return next;
+                });
+                setOpenIndex(index - 1);
+                changed();
+              }}>上移</Button>
+              <Button size="sm" variant="outline" disabled={saving || index === draft.length - 1} onClick={() => {
+                setDraft((items) => {
+                  const next = [...items];
+                  [next[index], next[index + 1]] = [next[index + 1], next[index]];
+                  return next;
+                });
+                setOpenIndex(index + 1);
+                changed();
+              }}>下移</Button>
+              <Button size="sm" variant="ghost" disabled={saving} onClick={() => {
+                setDraft((items) => items.filter((_, i) => i !== index));
+                setOpenIndex(null);
+                changed();
+              }}>删除</Button>
+            </div>
+            <Label htmlFor={`hook-name-${index}`}>名称</Label>
+            <Input id={`hook-name-${index}`} value={hook.name} disabled={saving} onChange={(event) => edit(index, { name: event.target.value })} />
+            <Label htmlFor={`hook-command-${index}`}>命令</Label>
+            <Input id={`hook-command-${index}`} value={hook.command} disabled={saving} placeholder="/usr/bin/python3" onChange={(event) => edit(index, { command: event.target.value })} />
+            <Label htmlFor={`hook-args-${index}`}>参数（JSON 字符串数组）</Label>
+            <Textarea id={`hook-args-${index}`} rows={2} value={hook.argsText} disabled={saving} onChange={(event) => edit(index, { argsText: event.target.value })} />
+            <Label htmlFor={`hook-tools-${index}`}>匹配工具（每行一个，留空匹配全部）</Label>
+            <Textarea id={`hook-tools-${index}`} rows={2} value={hook.toolsText} disabled={saving} onChange={(event) => edit(index, { toolsText: event.target.value })} />
+            <Label htmlFor={`hook-timeout-${index}`}>超时秒数（0 使用默认 10 秒）</Label>
+            <Input id={`hook-timeout-${index}`} type="number" min={0} max={60} value={hook.timeoutSeconds} disabled={saving} onChange={(event) => edit(index, { timeoutSeconds: Number(event.target.value) })} />
+          </CollapsibleContent>
+        </Collapsible>)}
+      </div>
       <div className="effort-options">
-        <Button variant="outline" disabled={saving} onClick={() => { setDraft((items) => [...items, {
-          name: "", enabled: true, command: "", argsText: "[]", toolsText: "", timeoutSeconds: 0,
-        }]); changed(); }}>新增 Hook</Button>
+        <Button variant="outline" disabled={saving} onClick={() => {
+          setDraft((items) => [...items, {
+            name: "", enabled: true, command: "", argsText: "[]", toolsText: "", timeoutSeconds: 0,
+          }]);
+          setOpenIndex(draft.length);
+          changed();
+        }}>新增 Hook</Button>
         <Button disabled={saving || !client?.connected || (!!source.error && !source.hash) || (scope === "project" && !workspace)} onClick={() => void save()}>
           {saving ? "正在保存…" : "保存"}
         </Button>

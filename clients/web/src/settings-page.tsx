@@ -27,7 +27,8 @@ import {
   Moon,
   Monitor,
   Bot,
-  SlidersHorizontal,
+  Shield,
+  Command,
   Plus,
   ChevronRight,
   Trash2,
@@ -116,22 +117,21 @@ export function SettingsPage({
       >
         <TabsList className="settings-nav">
           <TabsTrigger value="appearance">
-            <SlidersHorizontal />
+            <Sun />
             外观
           </TabsTrigger>
           <TabsTrigger value="agents">
             <Bot />
             Agent
           </TabsTrigger>
-          <TabsTrigger value="approvals"><SlidersHorizontal />智能审批</TabsTrigger>
-          <TabsTrigger value="hooks"><SlidersHorizontal />Hooks</TabsTrigger>
+          <TabsTrigger value="approvals"><Shield />智能审批</TabsTrigger>
+          <TabsTrigger value="hooks"><Command />Hooks</TabsTrigger>
         </TabsList>
         <div className="settings-content">
           <TabsContent value="approvals">{approvalSettings}</TabsContent>
           <TabsContent value="hooks">{hookSettings}</TabsContent>
           <TabsContent value="appearance">
             <h2>外观</h2>
-            <p className="muted">让工作空间更适合你的习惯。</p>
             <h3 className="section-label">主题</h3>
             <div className="theme-grid">
               {[
@@ -155,10 +155,7 @@ export function SettingsPage({
 
           <TabsContent value="agents">
             <div className="settings-section-header">
-              <div>
-                <h2>Agent</h2>
-                <p className="muted">定义它如何工作，而不是重复配置模型。</p>
-              </div>
+              <h2>Agent</h2>
               <Button
                 size="sm"
                 variant="outline"

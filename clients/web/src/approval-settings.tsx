@@ -64,7 +64,6 @@ export function ApprovalSettingsPanel({ client, models, modelError, onReloadMode
   const canSave = draft?.engine === "jev" ? view?.jevConfigured : modelValid;
   return <>
     <h2>智能审批</h2>
-    <p className="muted">所有会话共用。保存后用于新审批，已开始的审核保持原设置。</p>
     {!client?.connected && <p className="inline-notice">连接后台后可修改。</p>}
     {error && <p className="inline-notice" role="alert">{error}</p>}
     {!view && client?.connected && !error && <p className="metadata">正在加载…</p>}
@@ -88,7 +87,6 @@ export function ApprovalSettingsPanel({ client, models, modelError, onReloadMode
         ? "密钥已配置 · 批准置信度不足时转人工"
         : "尚未配置密钥：在 ~/.harness/config.yaml 添加 jev.apiKey，然后重启后台。"}</p>}
       {!view.available && <p className="metadata">当前保存的配置不可用，请完成配置后开启智能审批。</p>}
-      <p className="muted">审核信息不足或调用失败时交给你批准；停止任务会取消审批。</p>
       <Button disabled={!client?.connected || saving || !canSave} onClick={() => void save()}>
         {saving ? "正在保存…" : "保存"}
       </Button>
