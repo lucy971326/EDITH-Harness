@@ -18,6 +18,7 @@ type Registry struct {
 	mu        sync.RWMutex
 	entries   map[string]entry
 	providers []providerEntry
+	hooks     PreToolUse
 }
 
 // List 按名称稳定列出 Agent 可勾选的普通 Tool。
@@ -58,6 +59,13 @@ func NewRegistry() *Registry {
 	return &Registry{
 		entries: make(map[string]entry),
 	}
+}
+
+// SetPreToolUse 在组装阶段接入工具执行前的 Hook。
+func (r *Registry) SetPreToolUse(hooks PreToolUse) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.hooks = hooks
 }
 
 // Register 填入一条启动时固定的工具。
@@ -208,6 +216,7 @@ func (r *Registry) Call(ctx context.Context, call Call) (Result, error) {
 
 	r.mu.RLock()
 	staticEntry, static := r.entries[call.Name]
+	hooks := r.hooks
 	r.mu.RUnlock()
 	var schema *validator.Schema
 	var provider Provider
@@ -234,6 +243,18 @@ func (r *Registry) Call(ctx context.Context, call Call) (Result, error) {
 	err = schema.Validate(arguments)
 	if err != nil {
 		return toolError(fmt.Errorf("tool %q arguments do not match its schema: %w", call.Name, err)), nil
+	}
+	if hooks != nil {
+		reason, err := hooks.Check(ctx, call, call.Notice)
+		if err != nil {
+			return Result{}, err
+		}
+		if reason != "" {
+			return toolError(fmt.Errorf("tool %q denied by PreToolUse hook: %s", call.Name, reason)), nil
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return Result{}, err
 	}
 
 	var result Result

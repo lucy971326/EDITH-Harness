@@ -53,6 +53,7 @@ const (
 	EventToolFinished   EventKind = "tool-finished"
 	EventMessage        EventKind = "message"
 	EventUsage          EventKind = "usage"
+	EventNotice         EventKind = "notice"
 )
 
 // 数据。一次检查点之后 Loop 是否还必然继续。

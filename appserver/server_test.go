@@ -8,7 +8,59 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"harness/kernel/hooks"
+	"harness/kernel/host"
+	"harness/kernel/machine"
+	"harness/kernel/persist"
+	machinelocal "harness/plugins/machine/local"
 )
+
+func TestHookSettingsMethodsBindAndValidate(t *testing.T) {
+	h := host.NewHost()
+	if err := h.Install(machinelocal.New()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = h.Close() })
+	filesystem, err := host.Resolve[machine.FileSystem](h, "machine")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := persist.NewFiles(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := hooks.NewService(files, filesystem)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := New()
+	t.Cleanup(func() { _ = server.Close() })
+	if err := server.BindHooks(service); err != nil {
+		t.Fatal(err)
+	}
+	for _, request := range []struct {
+		method string
+		input  string
+	}{
+		{"hooks/read", `{"workspace":""}`},
+		{"hooks/save", `{"scope":"global","workspace":"","hash":"","hooks":[]}`},
+	} {
+		if _, err := server.Call(context.Background(), request.method, json.RawMessage(request.input)); err != nil {
+			t.Fatalf("%s: %v", request.method, err)
+		}
+	}
+	scope, err := files.Scope("hooks")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := scope.Write("settings.json", []byte("bad JSON")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.Call(context.Background(), "hooks/read", json.RawMessage(`{"workspace":""}`)); err != nil {
+		t.Fatalf("hooks/read must show invalid configuration: %v", err)
+	}
+}
 
 // 数据。覆盖必填、可选、枚举、数组、引用与时间的测试契约。
 type contractInput struct {

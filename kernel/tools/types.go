@@ -30,6 +30,8 @@ type Call struct {
 	ToolCallID string
 	// 只唤醒等待中的工具，不承载 Steer 消息。
 	InputSignal <-chan struct{}
+	// 仅报告运行时提示，不写入模型的工具结果。
+	Notice func(string)
 }
 
 // 数据。本轮发现动态工具时使用的真实权限模式与运行身份。
@@ -101,6 +103,11 @@ type Tools interface {
 	// 本轮查询与调用
 	Definitions(ctx context.Context, workspace string, allow []string) ([]Definition, error)
 	Call(ctx context.Context, call Call) (Result, error)
+}
+
+// 契约。工具分发前的检查；空原因表示继续执行。
+type PreToolUse interface {
+	Check(ctx context.Context, call Call, report func(string)) (reason string, err error)
 }
 
 // 契约。动态 Tool 来源按工作区提供快照并执行自己提供的 Tool。

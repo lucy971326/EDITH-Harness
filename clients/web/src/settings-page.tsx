@@ -66,6 +66,7 @@ export function SettingsPage({
   onSave,
   onDelete,
   approvalSettings,
+  hookSettings,
 }: {
   theme: string;
   setTheme: (theme: string) => void;
@@ -80,6 +81,7 @@ export function SettingsPage({
   onSave: (agent: AgentSaveParams) => Promise<AgentView | null>;
   onDelete: (agentID: string) => Promise<boolean>;
   approvalSettings: ReactNode;
+  hookSettings: ReactNode;
 }) {
   const [selectedID, setSelectedID] = useState<string | null>(null);
   const [draft, setDraft] = useState<AgentDraft | null>(null);
@@ -122,9 +124,11 @@ export function SettingsPage({
             Agent
           </TabsTrigger>
           <TabsTrigger value="approvals"><SlidersHorizontal />智能审批</TabsTrigger>
+          <TabsTrigger value="hooks"><SlidersHorizontal />Hooks</TabsTrigger>
         </TabsList>
         <div className="settings-content">
           <TabsContent value="approvals">{approvalSettings}</TabsContent>
+          <TabsContent value="hooks">{hookSettings}</TabsContent>
           <TabsContent value="appearance">
             <h2>外观</h2>
             <p className="muted">让工作空间更适合你的习惯。</p>

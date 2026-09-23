@@ -20,6 +20,7 @@ const (
 	ContextUsage   RunEventKind = "usage"
 	RunEnded       RunEventKind = "run-ended"
 	RunDiffUpdated RunEventKind = "run-diff-updated"
+	RunNotice      RunEventKind = "notice"
 )
 
 // 数据。一轮 Run 的结束状态。

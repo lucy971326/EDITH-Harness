@@ -235,6 +235,9 @@ func (l *reactLoop) execute(
 		RunID:       invocation.RunID,
 		ToolCallID:  call.ID,
 		InputSignal: inputSignal,
+		Notice: func(message string) {
+			_ = invocation.Emit(finishCtx, loops.Event{Kind: loops.EventNotice, Text: message})
+		},
 	})
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {

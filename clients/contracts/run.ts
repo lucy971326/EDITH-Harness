@@ -90,7 +90,8 @@ export interface RunEvent {
     | "message"
     | "usage"
     | "run-ended"
-    | "run-diff-updated";
+    | "run-diff-updated"
+    | "notice";
   entryID?: string;
   afterEntrySeq?: number;
   blockSeq?: number;

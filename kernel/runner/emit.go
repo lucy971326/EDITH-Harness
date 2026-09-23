@@ -52,6 +52,10 @@ func (r *Runner) emit(ctx context.Context, sessionID, runID string, sess *sessio
 		}
 		runEvent.AfterEntrySeq = current.afterSeq()
 		return r.publishUsage(ctx, sessionID, current, runEvent)
+	case loops.EventNotice:
+		return r.publish(ctx, r.liveEvent(current, RunEvent{
+			SessionID: sessionID, RunID: runID, Kind: RunNotice, Text: event.Text,
+		}))
 	default:
 		return fmt.Errorf("runner: unsupported loop event %q", event.Kind)
 	}

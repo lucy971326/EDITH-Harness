@@ -1,5 +1,6 @@
 import { Approvals } from "./approvals";
 import { ApprovalSettingsPanel } from "./approval-settings";
+import { HookSettingsPanel } from "./hook-settings";
 import type { PermissionModeChoice } from "../../contracts/approvals.ts";
 import type { PermissionMode } from "../../contracts/harness.ts";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
@@ -1048,6 +1049,10 @@ export default function App() {
           <div className="workspace">
             {settings ? (
               <SettingsPage
+                hookSettings={<HookSettingsPanel
+                  client={approvalClient}
+                  currentWorkspace={selected?.settings.workspace ?? ""}
+                />}
                 approvalSettings={<ApprovalSettingsPanel
                   client={approvalClient} models={models} modelError={modelError}
                   onReloadModels={() => {
@@ -1114,6 +1119,7 @@ export default function App() {
                       )}
                     </div>
                   )}
+                {chatState.notice && <div className="connection-banner" role="status">{chatState.notice}</div>}
                 <ChatMessages
                   snapshot={snapshot}
                   sessionID={selectedID}

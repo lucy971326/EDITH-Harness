@@ -1,6 +1,6 @@
 # 项目状态
 
-更新日期：2026-09-22
+更新日期：2026-09-23
 
 ## 当前形状
 
@@ -21,6 +21,7 @@ appserver.Server
 
 ## 已完成能力
 
+- `PreToolUse` Hook 首版：全局与项目命令配置、设置页编辑和排序；工具参数校验后、实际执行前按顺序检查静态和 MCP 工具。空输出放行，明确 `deny` 回给模型；故障提示并放行，停止 Run 会取消 Hook。项目配置按工作区真实路径和整份文件摘要信任，外部修改后暂停，页面可重新确认。Hook 在宿主运行，信任不跟踪脚本内容；运行提示不进账本。设置页已由用户截图验收。
 - 权限规则与接口：新增纯计算包 `kernel/permissions`，支持四档模式翻译、额外权限判断、受保护元数据目录和本次批准合并，并定义人／模型共用的 Reviewer 契约。Policy 仅保存无限制标记、可写根、联网标记。SessionSettings 持久保存 `permissionMode`，旧文件缺字段默认 Ask for approval，未知模式报错；设置更新省略模式时保留，分叉复制，子会话继承父 Run 快照。Go／TS 契约同步；模式菜单和审批服务见下一项。
 - 审批：独立 `kernel/approvals` 服务管理命令额外权限申请、补丁目录申请与本次授权。支持人工、常规 LLM、Jev；设置页全局选择审核方式，LLM 复用已配置模型与思考档位，Jev 密钥与 LLM 共用 config.yaml。信息不足、故障或 Jev 批准置信度不足转人工；停止取消、重连恢复人工待审批，批准仅影响本次操作。新消息标记真实用户来源，子 Agent 委派追溯父用户授权；旧来源无法确认的会话转人工。常规 LLM 实际使用与设置页截图已由用户验收。
 - Agent 沙箱：Runner 将本轮 Policy 经 Loop 传给 Tool；命令走 AgentExec，补丁走 AgentApplyChanges 的内部写入助手。Linux 共用 bwrap + seccomp，根只读、授权根可写、元数据保护、禁网与宿主 socket 阻断已接通；旧进程不接受权限更新。macOS Seatbelt 已在 macOS 27.0 arm64 实机验证。用户文件和终端保留直接入口。缺少系统启动器或不支持的策略明确失败；Windows 受限执行暂未实现，Full Access 可用。MCP 不在此沙箱覆盖范围，其独立权限边界见下文。
@@ -111,6 +112,8 @@ Windows 启动继续要求 Git Bash；Agent 长期进程与 UI 终端 PTY 均使
 - `TestProcessOutputIsIncremental` 已改为信号文件同步两段输出，不再要求首包在固定等待窗口内到达；此前 Mac / Windows 的时序失败记录保留在下方，改后的测试尚待这两个平台重跑。
 
 ## 本次验证
+
+- `PreToolUse` 首版：静态/MCP 工具统一埋点、顺序与拒绝、故障放行、项目配置变更后重新信任、取消中的命令，以及 Hook 设置 RPC 的实际注册/调用均通过定向测试；`make agent-check` 全通过。设置页由用户截图验收，用户确认全局日志 Hook 实际运行成功。
 
 - 修复 Agent 批量写入的两个锁问题：路径 key 只规范化一次，获取锁时不再解析且等待可取消；Full Access 也通过可终止的文件助手写入，不持有 machine 服务锁做文件 I/O。新增一组回归用例覆盖等待期间符号链接变化、取消路径锁等待，以及 FIFO 阻塞时其他命令仍可启动、文件助手可取消。machine-local、applypatch、appserver、Runner 的 race 与相关包 vet 通过；本次 `make agent-check` 仍因 npm `EALLOWREMOTE` 退出。
 

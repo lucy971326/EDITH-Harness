@@ -109,6 +109,8 @@ export function applyRunEvent(
     case "run-diff-updated":
       run.diff = event.diff ?? undefined;
       break;
+    case "notice":
+      break;
     // 工具关联保存在 Entry.blocks 中。
     case "tool-started":
     case "tool-finished":

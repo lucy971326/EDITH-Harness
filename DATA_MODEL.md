@@ -18,6 +18,10 @@
 ├─ mcp.json
 │  用户级 MCP Server 配置；项目级配置仍放在项目目录
 │
+├─ hooks/
+│  settings.json 是全局 PreToolUse 配置；trust.json 按真实工作区路径保存项目配置摘要
+│  项目配置在 <workspace>/.harness/hooks.json；脚本文件内容不在信任摘要内
+│
 ├─ agents/
 │  ├─ default.json
 │  │  新会话默认使用、可编辑但不可删除的 Agent 配置
@@ -74,6 +78,7 @@ Skill 发现
 插件状态
 └─ 插件自己的业务事实
    Todo、审批、游戏状态、插件设置等
+   Hook 最近故障只在服务内存；运行提示是非耐久事件，不进入 Session
 
 Runner 运行结果
 └─ 每轮 RunID、状态、账本锚点、错误和最后一次模型用量；与对话正文分开

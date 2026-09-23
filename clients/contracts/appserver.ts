@@ -85,7 +85,33 @@ export interface CommandExecOutputDeltaNotification {
   capReached: boolean;
 }
 
+export interface HookConfig {
+  name: string;
+  enabled: boolean;
+  tools: string[];
+  command: string;
+  args: string[];
+  timeoutSeconds: number;
+}
+
+export interface HookSource {
+  hooks: HookConfig[];
+  hash: string;
+  error?: string;
+}
+
+export interface HookView {
+  global: HookSource;
+  project: HookSource;
+  workspace: string;
+  trusted: boolean;
+  lastError: string;
+}
+
 export interface ServerMethods {
+  'hooks/read': { params: { workspace: string }; result: HookView };
+  'hooks/save': { params: { scope: 'global' | 'project'; workspace: string; hash: string; hooks: HookConfig[] }; result: HookView };
+  'hooks/trust': { params: { workspace: string; hash: string }; result: HookView };
   'approval/settings/read': { params: Record<string, never>; result: ApprovalSettingsView };
   'approval/settings/update': { params: ApprovalSettings; result: ApprovalSettingsView };
   'approval/subscribe': { params: Record<string, never>; result: { subscriptionID: string; pending: PendingApproval[] } };

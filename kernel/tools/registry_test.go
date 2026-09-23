@@ -95,6 +95,47 @@ func TestRegistry_rejectsInvalidOrUnauthorizedCall(t *testing.T) {
 	}
 }
 
+type testPreToolUse func(context.Context, Call, func(string)) (string, error)
+
+func (f testPreToolUse) Check(ctx context.Context, call Call, report func(string)) (string, error) {
+	return f(ctx, call, report)
+}
+
+func TestRegistryRunsHookAfterValidationForStaticAndDynamicTools(t *testing.T) {
+	registry := NewRegistry()
+	called := 0
+	registry.SetPreToolUse(testPreToolUse(func(_ context.Context, _ Call, _ func(string)) (string, error) {
+		called++
+		return "blocked", nil
+	}))
+	err := registry.Register(New("read", "Read.", func(_ context.Context, _ Call, _ testArgs) (Result, error) {
+		t.Fatal("static tool ran after Hook denial")
+		return Result{}, nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = registry.RegisterProvider(testToolProvider{name: "mcp", snapshot: Snapshot{Definitions: []Definition{{
+		Name: "mcp__demo__read", Description: "Read.", InputSchema: json.RawMessage(`{"type":"object"}`),
+	}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, call := range []Call{
+		{Name: "read", Arguments: json.RawMessage(`{"path":"a"}`), Allow: []string{"read"}},
+		{Name: "mcp__demo__read", Arguments: json.RawMessage(`{}`), Allow: []string{"mcp__demo__read"}, Mode: permissions.FullAccess},
+	} {
+		result, err := registry.Call(context.Background(), call)
+		if err != nil || !result.IsError || !strings.Contains(result.Content, "blocked") {
+			t.Fatalf("Call(%q) = %#v, %v", call.Name, result, err)
+		}
+	}
+	_, err = registry.Call(context.Background(), Call{Name: "read", Arguments: json.RawMessage(`{"path":""}`), Allow: []string{"read"}})
+	if err != nil || called != 2 {
+		t.Fatalf("Hook called %d times after invalid arguments; error = %v", called, err)
+	}
+}
+
 func TestRegistry_convertsToolErrorAndPreservesCancellation(t *testing.T) {
 	registry := NewRegistry()
 	tool := New("test", "Test tool.", func(_ context.Context, _ Call, _ testArgs) (Result, error) {

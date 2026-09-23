@@ -17,6 +17,7 @@ import (
 	"harness/kernel/approvals"
 	"harness/kernel/commands"
 	"harness/kernel/events"
+	"harness/kernel/hooks"
 	"harness/kernel/host"
 	"harness/kernel/llm"
 	"harness/kernel/loops"
@@ -81,6 +82,10 @@ func run() (result error) {
 		return err
 	}
 	err = h.Install(tools.NewPlugin())
+	if err != nil {
+		return err
+	}
+	err = h.Install(hooks.NewPlugin())
 	if err != nil {
 		return err
 	}
@@ -173,6 +178,14 @@ func run() (result error) {
 		return err
 	}
 	err = server.BindApprovals(approvalService)
+	if err != nil {
+		return err
+	}
+	hookService, err := host.Resolve[*hooks.Service](h, "hooks")
+	if err != nil {
+		return err
+	}
+	err = server.BindHooks(hookService)
 	if err != nil {
 		return err
 	}

@@ -16,6 +16,7 @@ export interface ChatConnectionState {
   syncing: boolean;
   error: string;
   missing: boolean;
+  notice: string;
 }
 
 export const initialChatState: ChatConnectionState = {
@@ -26,6 +27,7 @@ export const initialChatState: ChatConnectionState = {
   syncing: false,
   error: "",
   missing: false,
+  notice: "",
 };
 
 export const reconnectDelays = [1000, 2000, 4000, 8000, 10000];
@@ -39,6 +41,7 @@ export class ChatConnection {
   private revision = 0;
   private attempt = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private noticeTimer: ReturnType<typeof setTimeout> | null = null;
   private renderFrame: number | null = null;
   private closed = false;
   private readonly url: string;
@@ -107,6 +110,11 @@ export class ChatConnection {
         return;
       }
       if (snapshot === this.state.snapshot) return;
+      if (event.kind === "notice" && event.text) {
+        if (this.noticeTimer) clearTimeout(this.noticeTimer);
+        this.update({ notice: event.text });
+        this.noticeTimer = setTimeout(() => this.update({ notice: "" }), 8000);
+      }
       // 模型可能在一帧内送来许多很小的增量。内部投影立即前进，画面每帧最多刷新一次。
       this.update({ snapshot }, true);
       if (
@@ -138,6 +146,7 @@ export class ChatConnection {
       syncing: sessionID !== null,
       error: "",
       missing: false,
+      notice: "",
     });
     void this.synchronize();
   }
@@ -182,6 +191,7 @@ export class ChatConnection {
     this.closed = true;
     this.revision++;
     if (this.timer) clearTimeout(this.timer);
+    if (this.noticeTimer) clearTimeout(this.noticeTimer);
     this.timer = null;
     if (this.renderFrame !== null && typeof cancelAnimationFrame === "function")
       cancelAnimationFrame(this.renderFrame);

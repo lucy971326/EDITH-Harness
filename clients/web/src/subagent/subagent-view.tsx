@@ -61,6 +61,7 @@ export function SubagentView({
   const taskRef = useRef<SubagentInfo | null>(null);
   const urls = useRef<string[]>([]);
   const renderFrame = useRef<number | null>(null);
+  const hookNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeRef = useRef(active);
   const onTaskRef = useRef(onTask);
   const onDiffUpdateRef = useRef(onDiffUpdate);
@@ -100,6 +101,13 @@ export function SubagentView({
         if (next !== current) {
           snapshotRef.current = next;
           publishSnapshot();
+        }
+        if (event.kind === "notice" && event.text) {
+          if (hookNoticeTimer.current) clearTimeout(hookNoticeTimer.current);
+          setNotice(event.text);
+          hookNoticeTimer.current = setTimeout(() => {
+            setNotice((value) => value === event.text ? "" : value);
+          }, 8000);
         }
         if (event.kind === "run-started")
           updateTaskStatus("running", event.runID);
@@ -163,6 +171,7 @@ export function SubagentView({
       removeListener();
       if (renderFrame.current !== null)
         cancelAnimationFrame(renderFrame.current);
+      if (hookNoticeTimer.current) clearTimeout(hookNoticeTimer.current);
       renderFrame.current = null;
       if (subscription.current === subscriptionID) subscription.current = "";
       if (subscriptionID && client.connected)
