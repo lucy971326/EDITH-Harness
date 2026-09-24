@@ -13,7 +13,7 @@ Harness.exe
 ├─ Wails 窗口
 ├─ React
 ├─ appserver
-└─ Host / Product / Kernel
+└─ 显式组装的领域服务
 ```
 
 ## 决定

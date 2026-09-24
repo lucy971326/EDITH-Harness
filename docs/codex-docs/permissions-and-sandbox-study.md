@@ -1,25 +1,12 @@
-# Codex 权限与沙箱研究（含历史 Harness 方向）
+# Codex 权限与沙箱研究
 
-> 历史研究记录：Codex 源码研究参考本地 `reference/codex` 提交 ce24367；文中的“Harness 方向”保留当时的讨论，不代表当前实现。Harness 现状见 [STATUS.md](../../STATUS.md)，稳定决策见 [设计书](../设计书.md)。
+> 历史研究记录：Codex 源码研究参考本地 `reference/codex` 提交 ce24367；本篇仅记录当时的外部实现，不代表当前 Harness 规范。Harness 现状见 [STATUS.md](../../STATUS.md)，稳定决策见 [设计书](../设计书.md)。
 
 ## 目标
 
 让 Agent 在明确边界内自主工作；需要越界时，用户知道它想做什么、由谁批准，以及批准后实际放宽了什么。
 
 一句话心智模型：**策略决定能否申请，审批决定谁同意，Sandbox 限制真正执行的进程。Hook 可以插入检查，但不代替 Sandbox。**
-
-## 产品形态（Harness 方向）
-
-| 模式 | Agent 默认能做什么 | 越界时 |
-| --- | --- | --- |
-| **Read Only** | 读取，不主动修改 | 询问用户 |
-| **Ask for approval** | 在工作区内编辑、运行常规命令 | 询问用户 |
-| **Approve for me** | 与上一档使用相同的工作区边界 | 由独立审查 Agent 处理符合条件的请求 |
-| **Full Access** | 不受 Agent 沙箱的文件与网络限制 | 不发起常规审批 |
-
-只保留这四种内置模式，不提供 Custom。自动审查只改变**谁来审批**，不扩大文件、网络或进程权限。Full Access 仍受当前 Linux 用户的 UID／GID、文件权限与宿主机安全机制约束，不会让 Agent 变成 root。
-
-Codex 的桌面端前三种选项分别对应“工作区沙箱＋用户审批”“同一沙箱＋自动审核”“无常规 Codex 沙箱＋不弹常规审批”。其中 **approval_policy = never 不等于 Full Access**：它也可以配合受限沙箱使用。[官方说明](https://learn.chatgpt.com/docs/sandboxing)
 
 ## 心智模型
 
@@ -96,33 +83,3 @@ Codex 的桌面端前三种选项分别对应“工作区沙箱＋用户审批�
 | **PostToolUse** | 改写或阻止模型看到工具结果 | 工具已经执行，不能撤销文件修改 |
 
 Hook 脚本出错或超时通常会记录失败并继续原来的流程；不能把它当成强制隔离层。普通 Hook 需要用户按定义信任，修改后重审；项目 Hook 仅从受信任项目加载。Hook 命令自身也不是自动套在被检查命令的 bubblewrap 中。部分托管工具不走本地 Tool Hook 路径。[工具 Hook 顺序](../../reference/codex/codex-rs/core/src/tools/registry.rs#L588)、[审批 Hook 顺序](../../reference/codex/codex-rs/core/src/tools/approvals.rs#L500)、[Hook 执行](../../reference/codex/codex-rs/hooks/src/engine/command_runner.rs#L206)、[官方 Hooks 文档](https://learn.chatgpt.com/docs/hooks)
-
-## Harness 架构方向
-
-- 权限模式属于会话运行设置；每轮执行先确定一份有效权限。
-- Agent Tool、MCP 与子 Agent 都经过统一权限**决策**入口，不各造审批旁路；实际强制边界由各执行方落实。
-- 待审批请求属于活跃运行，不进入 Session 对话账本；断线重连后仍可看到和处理未结束的请求。
-- machine-local 为 Agent 提供受控执行通道，同时保留用户编辑器、终端使用的原始机器通道。
-- 本机 Agent 命令最终由平台 Sandbox 强制约束；命令字符串分类与 Hook 只作上层判断。
-- 自动审查只替换审核者，不改变 Sandbox、文件、网络或进程的权限范围。
-
-## 平台方向
-
-    macOS       → Seatbelt
-    Linux/WSL2  → bubblewrap + seccomp
-    Windows     → 借鉴 Codex 的原生权限与沙箱边界
-
-Windows 不从零设计低层隔离；研究并复用适合 Harness 的用户、ACL、网络、Restricted Token 与进程管理做法。平台机制以各自实际约束为准。
-
-## 明确边界
-
-- 不提供 Custom 权限模式。
-- 不把审批状态写入 Session 账本。
-- 不用 Hook 或命令分类冒充 Sandbox。
-- 不全局限制 machine-local，避免影响用户主动使用编辑器和终端。
-- 不为单个 Tool 各造一套审批机制。
-- 不因权限系统改变 Runner、Loop、Session 的既有职责。
-
-## 成功形态
-
-用户能看懂当前模式；所有 Agent 副作用都经过同一权限决策主干；越界时可由用户或独立审查 Agent 处理；本机工具即使误判或运行不可信代码，仍由平台 Sandbox 守住实际边界。

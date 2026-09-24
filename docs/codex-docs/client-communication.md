@@ -108,7 +108,3 @@ TUI 收到 → 移除待办及对应弹窗
 | 粘贴调查中的 Rust 就是原源码 | 部分为简化伪代码，省略错误处理、状态字段和分支，不能直接作为实现复制 |
 
 源码：[传输枚举](../../reference/codex/codex-rs/app-server-transport/src/transport/mod.rs)、[WebSocket Origin 检查](../../reference/codex/codex-rs/app-server-transport/src/transport/websocket.rs)。
-
-## 7. Harness 可借鉴，尚未全部拍板
-
-统一 Client 连接层、连接级请求编号、会话订阅、单次回答交付、待问题重发、慢连接隔离值得借鉴。多 Client 协作已确定要做；自动订阅范围、回答权限、无人在线与后台重启策略仍需自己决定，不自动采用 Codex 默认行为。

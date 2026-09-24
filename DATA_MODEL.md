@@ -13,10 +13,13 @@
 ```text
 ~/.harness/
 ├─ config.yaml
-│  全局 LLM 配置
+│  全局 LLM 与 Jev 密钥配置
 │
 ├─ mcp.json
 │  用户级 MCP Server 配置；项目级配置仍放在项目目录
+│
+├─ approvals/{settings.json,mcp-trust.json}
+│  审核设置与项目 MCP 配置信任
 │
 ├─ hooks/
 │  settings.json 是全局 PreToolUse 配置；trust.json 按真实工作区路径保存项目配置摘要
@@ -90,7 +93,7 @@ Skill 发现
 
 领域服务状态
 └─ 各服务自己的业务事实
-   Todo、审批、游戏状态、插件设置等
+   审批配置与待审批请求等；是否持久化由所属领域决定
    Hook 最近故障只在服务内存；运行提示是非耐久事件，不进入 Session
 
 Runner 运行结果
@@ -123,49 +126,13 @@ app-server 瞬时状态
 
 Agent 执行权限由 Runner 的本轮 SessionSettings 快照计算，经 Loop / Tool 传递；Policy 与启动方案只在内存中存在，不写入对话账本。machine-local 拥有执行进程、沙箱资源和临时占位引用，进程退出后释放；交付后的长期进程保持启动权限。批量文件助手的提交进度用于已有 FileDelta，不另建持久化记录。
 
-## 不可跨越的边界
+## 恢复与一致性
 
-```text
-Session
-  只记对话事实
-  不写 Todo、审批、Dock 状态、面板状态、运行时间
-
-领域服务状态
-  插件自己拥有、自己保存、自己恢复
-  不借 Session 当通用存储
-
-Client 状态
-  不写 Session
-  刷新后可丢失的状态不必持久化
-  当前会话 ID 只记在本标签页 sessionStorage；输入草稿／压缩图片预览／待发送引用按会话留内存
-  Snapshot 本身是投影底稿，实时更新同一份 entries / runs，不另存前端账本
-
-运行事件
-  Runner 产生稳定事件，app-server 按订阅投影给 Client
-  不是账本，也不是插件存储
-  生成中的正文／思考草稿只在 liveRun 内存；完整消息先落账，再移除同 Entry.ID 草稿
-  运行结果（身份、状态、锚点、错误、最后一次模型用量）由 Runner 写入 runs.json，不伪造结束消息
-  Run Diff 不写 messages.jsonl；正文文件是恢复依据，runs.json 只保存聊天和列表需要的摘要
-
-连接与请求
-  JSON-RPC 请求 ID 只匹配一次响应；连接、订阅和待发送队列都在内存
-  UI 终端进程属于创建它的 Client 连接；终端输出和标签状态不进 Session，断线后终止且不恢复
-  send.expectedRunID 只是本次插话的身份前提，不新增消息身份或持久化字段
-  Connection 只是 IM 网关式的临时连接对象，不能成为业务状态或业务规则的主人
-  后台重启后全部失效，Client 必须重新初始化，通过订阅接口一起取得 Snapshot 与后续事件
-  Snapshot 与通知的重叠：耐久消息按 Entry.ID 去重；实时增量按本进程会话更新序号过滤快照边界之后的事件
-  更新序号不能跨会话或跨后台重启混用；重启后未收尾的运行标记中断，不自动续跑
-  状态与更新序号一起提交；网络订阅按序号整理乱序，快照已含的更新不再发送
-  runs.json 的读改写与快照互斥；快照不能用旧记录覆盖新结果
-
-Skill 正文
-  保留在各自 Skill 目录的 SKILL.md 和相对资源中
-  Prepare 只把摘要与 SKILL.md 绝对路径写入本轮提示词；模型按需使用已启用的普通 Tool 读取正文
-```
-
-项目内 `.harness/`、`.mcp.json` 和工作区文件属于项目内容，由 Skill / MCP / machine 按其作用域读取，不属于用户数据根目录的持久化服务。
-
-文件内容的 SHA-256 版本、路径锁和 fsnotify 监听都只用于当前进程的并发与同步，不是持久化事实；磁盘文件本身始终是真相。
+- 账本、运行结果和领域设置分别持久化；草稿、审批等待、连接、进程只在内存。重启不恢复执行，未完成运行标记中断。
+- 状态与 updateSeq 一起提交；序号不能跨会话或后台 epoch 混用。网络订阅按序号整理通知，耐久消息按 Entry.ID 去重。runs.json 的读改写与快照互斥，旧记录不能覆盖新结果。
+- UI 终端归 Client 连接，断线终止；Agent 已交付的进程归 Session，可跨 Turn，均不写账本。
+- 项目文件与项目配置归 machine／对应 Provider，不经用户数据 persist。文件哈希、路径锁与监听只用于并发保护，磁盘文件是真相。
+- Skill 正文留在 SKILL.md 与相对资源中，Prepare 只放摘要和路径。Client 草稿与投影规则见 [WEB_UI](WEB_UI.md)。
 
 ## 对话账本
 
@@ -193,7 +160,7 @@ messages.jsonl
 
 `blocks` 只记录实际发生的对话内容：`text`、`image`、`reasoning`、`tool-call`、`tool-result`、`summary`。图片保存 Client 压缩后的 MIME 与 Base64，不另存原始大图。页面长什么样、哪些内容展开，不是账本事实。`summary` 是压缩落账的助手块；`History()` 把它收成普通文本再发给模型。未完成消息保留半截正文与思考，并附「未完成」说明；不把思考改成普通正文，不携带悬空工具调用。工具结果按 `ToolCall.ID` 回填，工具结果消息有自己的 Entry.ID。
 
-上下文引用是用户 `text` 末尾带版本标记、JSON 转义的普通文本段；格式约定见设计书。文件和目录仅记录路径，代码选区记录添加时的路径、行列范围与原文，助手选区记录完成回答的 Entry ID、渲染纯文本范围、原文与可选评论；两者都不跟随来源后续变化。后台不解析引用，也没有独立引用表或 Block；刷新／分叉从同一份用户正文恢复标签。草稿附件 ID、候选、预览展开状态只属于 Client，成功确认按提交 ID 清理，失败与等待期间的新引用继续留在对应会话草稿。
+上下文引用是用户 `text` 末尾带版本标记、JSON 转义的普通文本段；格式约定见 WEB_UI 与 chat/context-references.ts。文件和目录仅记录路径，代码选区记录添加时的路径、行列范围与原文，助手选区记录完成回答的 Entry ID、渲染纯文本范围、原文与可选评论；两者都不跟随来源后续变化。后台不解析引用，也没有独立引用表或 Block；刷新／分叉从同一份用户正文恢复标签。草稿附件 ID、候选、预览展开状态只属于 Client，成功确认按提交 ID 清理，失败与等待期间的新引用继续留在对应会话草稿。
 
 协作消息在账本使用 `role=collaboration`，`runID` 是接收它的直属父 Run，`sourceSessionID/sourceRunID/sourceTaskID` 是孩子的来源。孙子的结果只进入孩子账本，不越级写根会话。TaskID 让页面按稳定身份打开子任务，不靠解析正文猜测。启动前失败没有真实子 Run，来源 RunID 留空，不捏造身份。发给模型时转换成带来源说明的普通输入，不提升为系统指令。通知进入活 Run 后先留在 Runner 的待提交输入中，只有检查点落账后才算投递；重试按父账本中实际存在的 `messageID` 去重，不靠内存中的“已发送”判断。
 
@@ -204,9 +171,9 @@ messages.jsonl
 新增一种数据前，先回答：
 
 ```text
-1. 它是谁的事实？Session、会话设置、Agent、产品/插件、app-server，还是 Client？
+1. 它是谁的事实？Session、会话设置、Agent、领域服务、app-server，还是 Client？
 2. 重启后必须恢复吗？
-3. 是否需要被其他插件读取？
+3. 是否需要被其他领域读取？
 4. 它是耐久事实，还是本轮运行的临时通知？
 ```
 
