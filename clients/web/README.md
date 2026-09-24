@@ -29,15 +29,15 @@ Vite 页面位于 `http://127.0.0.1:5173`，仅把同源 `/rpc` 代理到正式�
 App -> 页面 / 草稿 / 操作
   -> client/rpc -> WebSocket -> appserver
 快照 + 事件 -> state/chat -> 聊天 / 过程 / 子任务页面
-workspace-tabs -> editor / review / terminal / subagent
+workspace/workspace-tabs -> editor / review / terminal / subagent
 ```
 
-- `App.tsx`：页面装配；`sidebar.tsx / composer.tsx`：会话导航与输入。
+- `App.tsx`：页面装配；`workspace/sidebar.tsx / chat/composer.tsx`：会话导航与输入。
 - `client/rpc.ts`：类型化 RPC；`client/chat.ts`：主会话连接；`client/run-subscription.ts`：共用订阅、补快照与清理。
-- `state/chat.ts / state/chat-process.ts`：事件归并与只读分轮；`chat-messages.tsx / work-process.tsx`：呈现结果和过程。
-- `workspace-tabs.tsx / auxiliary/`：辅助面板与标签编排；[`editor/`](src/editor/README.md)：文件草稿、保存、冲突和监听。
+- `state/chat.ts / state/chat-process.ts`：事件归并与只读分轮；`chat/chat-messages.tsx / chat/work-process.tsx`：呈现结果和过程。
+- `workspace/workspace-tabs.tsx / workspace/auxiliary-panel.tsx`：辅助面板与标签编排；[`editor/`](src/editor/README.md)：文件草稿、保存、冲突和监听。
 - `review/ / terminal/ / subagent/`：Diff、终端与子任务工作页。
-- `settings-page.tsx / approval-settings.tsx / hook-settings.tsx`：设置；`styles.css / components/ui/`：视觉规则与基础控件。
+- `settings/settings-page.tsx / settings/approval-settings.tsx / settings/hook-settings.tsx`：设置；`styles.css / components/ui/`：视觉规则与基础控件。
 
 Client 保存界面状态和服务端投影，账本与 Run 仍以后台为准。关闭标签或断线不停止后台任务。
 
@@ -46,7 +46,7 @@ Client 保存界面状态和服务端投影，账本与 Run 仍以后台为准�
 仓库根目录的 `make test` 执行前后端测试、契约检查、网络验收、Go vet 和相关 race。隔离浏览器后台仍可运行：
 
 ```sh
-HARNESS_WEB_QA=1 go test ./kernel/conversations -run '^TestTypeScriptClient$' -count=1 -v -timeout=0
+HARNESS_WEB_QA=1 go test ./tests/integration -run '^TestTypeScriptClient$' -count=1 -v -timeout=0
 ```
 
 它使用临时数据与本机模型替身，不读取用户会话。Windows 原生目录选择器仍需在交互式 Windows 桌面人工验收。

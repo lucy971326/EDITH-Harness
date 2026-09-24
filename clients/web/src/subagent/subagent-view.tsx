@@ -1,11 +1,11 @@
 import { runSubscription } from "../client/run-subscription";
 import { useEffect, useRef, useState } from "react";
-import { ChatMessages } from "../chat-messages";
-import { Composer, type Attachment } from "../composer";
-import { compressImage } from "../image-compression";
+import { ChatMessages } from "../chat/chat-messages";
+import { Composer, type Attachment } from "../chat/composer";
+import { compressImage } from "../chat/image-compression";
 import { activeRun, applyRunEvent, latestUsage } from "../state/chat";
 import { formatRPCError, type RPCClient } from "../client/rpc";
-import type { ModelSelection } from "../model-menu";
+import type { ModelSelection } from "../components/model-menu";
 import type { AgentView, ModelChoice } from "../../../contracts/appserver";
 import type {
   SubagentInfo,

@@ -1,6 +1,6 @@
-import { Approvals } from "./approvals";
-import { ApprovalSettingsPanel } from "./approval-settings";
-import { HookSettingsPanel } from "./hook-settings";
+import { Approvals } from "./chat/approvals";
+import { ApprovalSettingsPanel } from "./settings/approval-settings";
+import { HookSettingsPanel } from "./settings/hook-settings";
 import type { PermissionModeChoice } from "../../contracts/approvals.ts";
 import type { PermissionMode } from "../../contracts/harness.ts";
 import {
@@ -17,7 +17,7 @@ import {
   referencePath,
   type ContextReference,
   type ReferenceAttachment,
-} from "./context-references";
+} from "./chat/context-references";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -33,9 +33,9 @@ import {
   WifiOff,
   RefreshCw,
 } from "./icons";
-import { SettingsPage } from "./settings-page";
-import { WorkspaceTabs } from "./workspace-tabs";
-import { Sidebar } from "./sidebar";
+import { SettingsPage } from "./settings/settings-page";
+import { WorkspaceTabs } from "./workspace/workspace-tabs";
+import { Sidebar } from "./workspace/sidebar";
 import { ResizeHandle } from "./components/resize-handle";
 import { AppContextMenu } from "./components/app-context-menu";
 import {
@@ -43,7 +43,7 @@ import {
   type Attachment,
   type CommandSelection,
   type ComposerHandle,
-} from "./composer";
+} from "./chat/composer";
 import {
   formatRPCError,
   isWorkspaceUnavailable,
@@ -54,12 +54,12 @@ import {
 } from "./client/rpc";
 import { ChatConnection, initialChatState } from "./client/chat";
 import { activeRun, latestUsage } from "./state/chat";
-import { ChatMessages } from "./chat-messages";
-import { type ModelSelection } from "./model-menu";
-import { compressImage } from "./image-compression";
+import { ChatMessages } from "./chat/chat-messages";
+import { type ModelSelection } from "./components/model-menu";
+import { compressImage } from "./chat/image-compression";
 import { workspaceName } from "./state/projects";
 import type { FileLocation } from "./editor/links";
-import type { ReviewOpenRequest, SubagentOpenRequest } from "./workspace-tabs";
+import type { ReviewOpenRequest, SubagentOpenRequest } from "./workspace/workspace-tabs";
 import type { SendParams, SessionView } from "../../contracts/harness.ts";
 import type {
   AgentListResult,

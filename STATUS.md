@@ -22,8 +22,8 @@ appserver.Server
 ## 已完成能力
 
 - `PreToolUse` Hook 首版：全局与项目命令配置、设置页编辑和排序；工具参数校验后、实际执行前按顺序检查静态和 MCP 工具。空输出放行，明确 `deny` 回给模型；故障提示并放行，停止 Run 会取消 Hook。项目配置按工作区真实路径和整份文件摘要信任，外部修改后暂停，页面可重新确认。Hook 在宿主运行，信任不跟踪脚本内容；运行提示不进账本。设置页已由用户截图验收。
-- 权限规则与接口：新增纯计算包 `kernel/permissions`，支持四档模式翻译、额外权限判断、受保护元数据目录和本次批准合并，并定义人／模型共用的 Reviewer 契约。Policy 仅保存无限制标记、可写根、联网标记。SessionSettings 持久保存 `permissionMode`，旧文件缺字段默认 Ask for approval，未知模式报错；设置更新省略模式时保留，分叉复制，子会话继承父 Run 快照。Go／TS 契约同步；模式菜单和审批服务见下一项。
-- 审批：独立 `kernel/approvals` 服务管理命令额外权限申请、补丁目录申请与本次授权。支持人工、常规 LLM、Jev；设置页全局选择审核方式，LLM 复用已配置模型与思考档位，Jev 密钥与 LLM 共用 config.yaml。信息不足、故障或 Jev 批准置信度不足转人工；停止取消、重连恢复人工待审批，批准仅影响本次操作。新消息标记真实用户来源，子 Agent 委派追溯父用户授权；旧来源无法确认的会话转人工。常规 LLM 实际使用与设置页截图已由用户验收。
+- 权限规则与接口：新增纯计算包 `internal/permissions`，支持四档模式翻译、额外权限判断、受保护元数据目录和本次批准合并，并定义人／模型共用的 Reviewer 契约。Policy 仅保存无限制标记、可写根、联网标记。SessionSettings 持久保存 `permissionMode`，旧文件缺字段默认 Ask for approval，未知模式报错；设置更新省略模式时保留，分叉复制，子会话继承父 Run 快照。Go／TS 契约同步；模式菜单和审批服务见下一项。
+- 审批：独立 `internal/approvals` 服务管理命令额外权限申请、补丁目录申请与本次授权。支持人工、常规 LLM、Jev；设置页全局选择审核方式，LLM 复用已配置模型与思考档位，Jev 密钥与 LLM 共用 config.yaml。信息不足、故障或 Jev 批准置信度不足转人工；停止取消、重连恢复人工待审批，批准仅影响本次操作。新消息标记真实用户来源，子 Agent 委派追溯父用户授权；旧来源无法确认的会话转人工。常规 LLM 实际使用与设置页截图已由用户验收。
 - Agent 沙箱：Runner 将本轮 Policy 经 Loop 传给 Tool；命令走 AgentExec，补丁走 AgentApplyChanges 的内部写入助手。Linux 共用 bwrap + seccomp，根只读、授权根可写、元数据保护、禁网与宿主 socket 阻断已接通；旧进程不接受权限更新。macOS Seatbelt 已在 macOS 27.0 arm64 实机验证。用户文件和终端保留直接入口。缺少系统启动器或不支持的策略明确失败；Windows 受限执行暂未实现，Full Access 可用。MCP 不在此沙箱覆盖范围，其独立权限边界见下文。
 - 项目与会话：原生目录选择、按工作区分组、新建或复用空会话、切换及自动命名。
 - 聊天：文字与图片、实时输出、直接 Steer、停止父子任务、历史、刷新、重连与后台重启恢复。
@@ -117,7 +117,7 @@ Windows 启动继续要求 Git Bash；Agent 长期进程与 UI 终端 PTY 均使
 
 - 修复 Agent 批量写入的两个锁问题：路径 key 只规范化一次，获取锁时不再解析且等待可取消；Full Access 也通过可终止的文件助手写入，不持有 machine 服务锁做文件 I/O。新增一组回归用例覆盖等待期间符号链接变化、取消路径锁等待，以及 FIFO 阻塞时其他命令仍可启动、文件助手可取消。machine-local、applypatch、appserver、Runner 的 race 与相关包 vet 通过；本次 `make agent-check` 仍因 npm `EALLOWREMOTE` 退出。
 
-- Linux Agent 沙箱：真实 bwrap 集成验证项目内写入、项目外/符号链接/保护目录拒绝、Read Only 与 Full Access、TCP/Unix stream/Unix datagram 阻断、补丁整批权限预检与部分提交、Session 归属和 PTY 后续交互。`go test ./kernel/... ./plugins/... ./products/... ./appserver/...` 与对应 vet 通过；machine-local、补丁/命令 Tool、Runner、ReAct 的相关 race 通过。后台包在 macOS arm64、Windows amd64 交叉编译通过；Linux arm64 machine-local 编译通过，非 Linux 未做运行验收。
+- Linux Agent 沙箱：真实 bwrap 集成验证项目内写入、项目外/符号链接/保护目录拒绝、Read Only 与 Full Access、TCP/Unix stream/Unix datagram 阻断、补丁整批权限预检与部分提交、Session 归属和 PTY 后续交互。`go test ./internal/... ./internal/... ./products/... ./internal/appserver/...` 与对应 vet 通过；machine-local、补丁/命令 Tool、Runner、ReAct 的相关 race 通过。后台包在 macOS arm64、Windows amd64 交叉编译通过；Linux arm64 machine-local 编译通过，非 Linux 未做运行验收。
 - 本次 `make agent-check` 在前端 npm ci 阶段因 `EALLOWREMOTE`（禁止下载锁文件中的远程包）退出；没有改动依赖配置。`go build ./cmd/harness` 因缺少 `clients/web/dist` 无法完成，因此前端和完整可执行文件构建未验收；写入助手已通过同样内部入口的测试可执行文件实际运行验证。
 
 - 权限规则、设置持久化与更新、分叉与子会话模式继承测试通过；permissions、persist、appserver、harness Product、subagents 的 race 与相关包 vet 通过。`make agent-check` 在前端依赖阶段因环境缺少 npm 退出；补跑 `make agent-go` 时其余 Go 包测试通过，只有 `clients/web` 与 `cmd/harness` 因缺少前端 `dist` 嵌入产物无法编译，因此该目标后续的全量 vet 未执行。前端构建与 TS 检查未执行，不能视为全量验收通过。
@@ -125,7 +125,7 @@ Windows 启动继续要求 Git Bash；Agent 长期进程与 UI 终端 PTY 均使
 - 上下文引用只保留两组核心测试：后端路径搜索的 `.gitignore`／匹配／截断，前端引用文本的转义往返／无效段回退／去重与确认清理。Go 编译、相关包 vet、TS 契约检查和前端生产构建通过；只有既有 Vite 大包提示。未新增 UI 自动化测试，也未执行包含全量 UI 测试的 `make agent-check`。
 - Subagent 两层委派、恢复图校验、直属回报、递归停止、准备期停止竞态、停止后逐层续聊、隐藏会话隔离和真实 WebSocket 嵌套订阅测试通过；TS 契约、RPC 类型检查、64 项前端测试、生产构建和 Go vet 通过。`make agent-check` 仅有已记录的 machine-local `TestProcessOutputIsIncremental` 首次输出为空，在普通与 race 检查中失败；未修改该模块。
 - Subagents 生命周期收为 `ctx / work / shutdown`：取消状态统一用于关闭准入，一份计数等待调用与后台退出，`sync.OnceValue` 复用关闭结果；取消与解除订阅函数只由关闭函数持有。补强了创建阻塞期间并发 Close 不得提前返回的测试。
-- 本次关闭基线与修改后的相关测试、Subagents 及产品/Runner/委派工具 race、Go vet、前端构建、64 项前端测试和 TS 契约检查通过。`make agent-check` 未全通过：本机 `plugins/machine/local.TestProcessOutputIsIncremental` 在普通与 race 检查均因首次输出为空失败，单独 race 复核仍失败；未修改该模块。
+- 本次关闭基线与修改后的相关测试、Subagents 及产品/Runner/委派工具 race、Go vet、前端构建、64 项前端测试和 TS 契约检查通过。`make agent-check` 未全通过：本机 `internal/machine/local.TestProcessOutputIsIncremental` 在普通与 race 检查均因首次输出为空失败，单独 race 复核仍失败；未修改该模块。
 - TypeScript 编译、生产构建、TS 契约检查及 64 项前端测试通过。
 - `apply_patch` 的真实 Delta、Run 内聚合、缓存与失效测试通过；Diff 正文恢复、分叉复制、单文件撤销和后续修改冲突测试通过。
 - 受 Runner 新增 machine 依赖影响的 subagents 与 ReAct 测试脚手架已补齐真实 machine-local；对应 race 检查通过。
@@ -136,7 +136,7 @@ Windows 启动继续要求 Git Bash；Agent 长期进程与 UI 终端 PTY 均使
 
 ### 第 3 阶段验证（2026-09-22）
 
-- `go test ./kernel/... ./plugins/... ./products/... ./appserver/...` 与对应 `go vet` 通过。核心验证覆盖审批批准/拒绝/取消/关闭、重复回答、真实 WebSocket 重连、Linux 本次目录及联网授权与其他目录继续只读、权限说明前缀保留及截断后的基线。
+- `go test ./internal/... ./internal/... ./products/... ./internal/appserver/...` 与对应 `go vet` 通过。核心验证覆盖审批批准/拒绝/取消/关闭、重复回答、真实 WebSocket 重连、Linux 本次目录及联网授权与其他目录继续只读、权限说明前缀保留及截断后的基线。
 - approvals、Runner、appserver、exec、applypatch 的 race 通过；machine-local 的 race 首次仅新增网络用例因测试助手退出超过 1 秒而失败，延长该用例等待后单独 race 通过，其余用例在首次检查中通过。
 - `make agent-check` 在 npm ci 阶段因 `EALLOWREMOTE`（远程依赖下载被禁用）退出。未修改依赖限制；前端类型检查、构建与完整 CLI 构建未验收。网页不做自动化操作，由用户运行 `make run` 截图验收。
 
@@ -156,8 +156,8 @@ Windows 启动继续要求 Git Bash；Agent 长期进程与 UI 终端 PTY 均使
 
 - 新增 Darwin 平台的 Seatbelt 启动方案，使用固定系统 sandbox-exec、内存 SBPL 与独立路径参数；命令与文件修改助手复用同一入口。处理系统顶层路径别名、授权根及祖先保护、元数据目录保护、网络开关与特殊 fcntl 限制；失败不降级。
 - `make agent-check` 通过；macOS arm64 / amd64 的 machine-local 测试可执行文件与完整 Harness 可执行文件交叉编译通过。未在 Linux 上执行 Mac 二进制，不能视为实机限制验证通过。
-- 已编写一组 Mac 核心集成测试：目录写入与保护、符号链接、只读与本次授权、文件助手、PTY、取消及 TCP / Unix socket。换到 Mac 后执行 `go test ./plugins/machine/local -run TestDarwinAgentSandbox -v`；再用 `make run` 验收实际 HTTPS 与审批授权。测试不访问外网。
-- macOS 27.0 arm64 实机执行 `go test ./plugins/machine/local -run '^TestDarwinAgentSandbox$' -v -count=1` 通过。首次运行发现 Unix socket 测试地址超过系统长度限制，改用短临时路径后，文件边界、保护目录、符号链接、本次授权回落、文件助手、PTY、取消及 TCP / Unix socket 网络开关全部通过。
+- 已编写一组 Mac 核心集成测试：目录写入与保护、符号链接、只读与本次授权、文件助手、PTY、取消及 TCP / Unix socket。换到 Mac 后执行 `go test ./internal/machine/local -run TestDarwinAgentSandbox -v`；再用 `make run` 验收实际 HTTPS 与审批授权。测试不访问外网。
+- macOS 27.0 arm64 实机执行 `go test ./internal/machine/local -run '^TestDarwinAgentSandbox$' -v -count=1` 通过。首次运行发现 Unix socket 测试地址超过系统长度限制，改用短临时路径后，文件边界、保护目录、符号链接、本次授权回落、文件助手、PTY、取消及 TCP / Unix socket 网络开关全部通过。
 - 本机 `make agent-check` 的前端生产构建、71 项前端测试、TS 契约与 RPC 检查及其余 Go 包通过；普通和 race 检查均命中已记录的 `TestProcessOutputIsIncremental` 首包为空时序问题，因此全量目标退出失败。
 - 用户手工验收通过项目内免审批写入、项目外拒绝与单次授权、真实 HTTPS 单次联网、只读、完全访问和交互式 PTY。单次授权不会延续到下一次操作；未申请额外权限的联网直接由规则拒绝。停止和刷新审批本轮未重复验证，属于平台无关的审批生命周期与界面行为。
 - Agent PTY 的 Tool 结果在进入模型与聊天卡片前转换为稳定纯文本，处理回车覆盖、退格、清行和 ANSI 控制序列；machine 仍保存原始增量字节，右侧 xterm 终端不受影响。回归用例覆盖 SSH 密码提示的同一行重复重绘，exec Tool 测试通过；`make agent-check` 的前端、契约和其余 Go 检查通过，普通与 race 仍只命中已记录的 `TestProcessOutputIsIncremental` 首包时序问题。
@@ -174,7 +174,7 @@ Windows 启动继续要求 Git Bash；Agent 长期进程与 UI 终端 PTY 均使
 
 - 授权来源追溯按原始 Entry ID 全局去重，防止跨轮次跟进时把父会话旧授权重新追加到子会话新限制后；用户后来重复的同文消息仍保留。现有核心测试增加跨轮次顺序与同文新消息回归。
 - 删除临时 TypeSafe 探针脚本和两份测试结果，硬编码测试密钥不进入提交。
-- `go test -race ./kernel/approvals` 与 `make agent-check` 通过。用户报告 Jev 实际批准、拒绝及沙箱对照测试通过；普通 LLM 的真实使用后来也已由用户确认。
+- `go test -race ./internal/approvals` 与 `make agent-check` 通过。用户报告 Jev 实际批准、拒绝及沙箱对照测试通过；普通 LLM 的真实使用后来也已由用户确认。
 
 ### MCP 权限边界（2026-09-23）
 
@@ -185,7 +185,7 @@ Windows 启动继续要求 Git Bash；Agent 长期进程与 UI 终端 PTY 均使
 
 ## 架构精简：主干迁移（2026-09-24）
 
-- `products/harness` 已迁入 `kernel/conversations`，按会话协调发送、设置与命令；跨会话不再共用发送锁，Stop 仍独立执行。
+- `products/harness` 已迁入 `internal/conversations`，按会话协调发送、设置与命令；跨会话不再共用发送锁，Stop 仍独立执行。
 - 删除 Host 服务表及服务装配 Plugin。入口显式创建依赖与登记扩展，长期资源取得后立即安排收尾；实际 Tool / Loop / Skill / MCP 实现保留。
 - Runner 普通运行与压缩共用结束记录和通知流程；压缩准备去掉与设置重复的工作区、模型和思考档位字段。普通取消草稿和失败压缩的处理区别保留。
 - 主聊天、子任务聊天与子任务 Diff 共用订阅生命周期；草稿文字、图片、引用与编辑版本合为一份会话记录，保留迟到确认保护。UI 样式未改变。
@@ -201,3 +201,10 @@ Windows 启动继续要求 Git Bash；Agent 长期进程与 UI 终端 PTY 均使
 - 按开发阶段的新决定，删除旧工具名迁移、读取时过滤历史工具名单、旧权限字段补全、旧子任务名称推导，以及无运行记录时把历史正文当作成功回答的兼容行为；不迁移旧数据。未知授权来源仍转人工，损坏文件仍报错。
 - 已清理本机 `~/.harness/sessions`（62 文件）和 `~/.harness/subagents`（2 文件）；模型密钥、Agent、Hooks、MCP、Skills 配置保留。
 - 验证：`make agent-check` 的构建、契约检查通过；首次 Go 测试装配与前端旧兼容预期失败，修正后 `make agent-go agent-race agent-web-test` 通过（70 个前端测试）。补跑 Agent race 与前端类型检查通过。复用并迁移已有核心测试，未新增 UI 模拟测试；界面交互仍由用户运行验收。
+
+## 工程目录整理（2026-09-24）
+
+- 后台采用 `cmd/harness + internal`：原 kernel 领域归 `internal`，原 plugins 具体实现归 tools、loops、skills、commands、machine 的子目录；appserver 保留自己的私有 internal 边界。入口依旧显式组装与逆序关闭，未增加运行层级、兼容包或数据迁移。
+- 跨层网络验收归 `tests/integration`；普通单测留在领域源码旁，补丁登记测试归 applypatch。Makefile、TS 网络测试入口、资源与源码引用同步迁移。
+- React 文件按 `chat / settings / workspace` 归位，共用菜单归 components；动态导入与 SSR 测试路径同步。UI、状态归属、协议和数据格式未改变。
+- 独立方案审核通过；`make agent-check` 通过：前端构建、手写契约与 RPC 类型检查、70 项前端测试、Go 测试（含网络验收）、vet 与指定包 race。Vite 仍提示已有大 chunk；未做浏览器视觉验收。资源随包完整迁移，未新增测试。

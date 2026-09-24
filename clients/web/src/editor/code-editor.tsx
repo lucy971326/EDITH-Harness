@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import Editor, { type OnMount } from "@monaco-editor/react";
 import type { EditorFile } from "./files";
 import type { FileLocation } from "./links";
-import type { ContextReference } from "../context-references";
+import type { ContextReference } from "../chat/context-references";
 import { ContextMenu } from "../components/context-menu";
 import {
   defineEditorThemes,

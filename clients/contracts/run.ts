@@ -1,4 +1,4 @@
-// 手工对应 kernel/session/types.go、kernel/runner/types.go 与产品 Snapshot。
+// 手工对应 internal/session/types.go、internal/runner/types.go 与产品 Snapshot。
 export interface Block {
   kind: string;
   text?: string;

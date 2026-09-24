@@ -2,7 +2,7 @@
 
 面向后续维护 Harness 的人和 AI。先确认一件事：数据放在哪里，取决于它是谁的事实；不是取决于它显示在哪个页面。
 
-`kernel/conversations` 只组合现有 Session / SessionSettings / Runner / Subagents 的业务，不迁移用户数据。`clients/contracts/` 是手工维护的 TS 接口类型；appserver 的 Schema 只用于运行时校验，不提供接口目录。这些契约都不是运行状态或持久化格式；对外 Session 投影中的时间编码为 RFC 3339 字符串。
+`internal/conversations` 只组合现有 Session / SessionSettings / Runner / Subagents 的业务，不迁移用户数据。`clients/contracts/` 是手工维护的 TS 接口类型；appserver 的 Schema 只用于运行时校验，不提供接口目录。这些契约都不是运行状态或持久化格式；对外 Session 投影中的时间编码为 RFC 3339 字符串。
 
 ## 物理位置
 

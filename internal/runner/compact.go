@@ -1,0 +1,275 @@
+package runner
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/zendev-sh/goai/provider"
+
+	"harness/internal/llm"
+	"harness/internal/loops"
+	"harness/internal/permissions"
+	"harness/internal/session"
+	"harness/internal/session/settings"
+	"harness/internal/tools"
+)
+
+const compactInstruction = "请把到目前为止的对话压缩成一份后续可继续使用的摘要。保留目标、约束、已完成事项、关键结论和未完成工作。不要调用工具。只输出摘要正文。"
+
+const compactBlockSeq = uint64(1)
+
+type compactPreparation struct {
+	sess         *session.Session
+	settings     settings.SessionSettings
+	systemPrompt string
+	toolNames    []string
+}
+
+// Compact 占用空闲会话，用当前模型生成摘要并落账。失败或停止不改有效上下文。
+func (r *Runner) Compact(ctx context.Context, sessionID string) error {
+	err := ctx.Err()
+	if err != nil {
+		return err
+	}
+	runID, current, runCtx, err := r.openLive(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	prepared, err := r.prepareCompact(runCtx, sessionID)
+	if err == nil {
+		err = runCtx.Err()
+	}
+	if err != nil {
+		r.release(sessionID, current)
+		r.wg.Done()
+		return err
+	}
+	current.mu.Lock()
+	current.settings = &prepared.settings
+	current.mu.Unlock()
+	go func() {
+		defer func() {
+			r.release(sessionID, current)
+			r.wg.Done()
+		}()
+		_ = r.runCompact(runCtx, sessionID, runID, current, prepared)
+	}()
+	return nil
+}
+
+func (r *Runner) prepareCompact(ctx context.Context, sessionID string) (compactPreparation, error) {
+	sess, err := r.sessions.Get(sessionID)
+	if err != nil {
+		return compactPreparation{}, err
+	}
+	if len(sess.History()) == 0 {
+		return compactPreparation{}, fmt.Errorf("runner: session %q has no history to compact", sessionID)
+	}
+	runSettings, err := r.settings.For(sessionID)
+	if err != nil {
+		return compactPreparation{}, err
+	}
+	if strings.TrimSpace(runSettings.Model) == "" {
+		return compactPreparation{}, fmt.Errorf("runner: compact needs a model")
+	}
+	prepared, err := r.agents.Prepare(ctx, runSettings.AgentID, runSettings.Workspace, tools.Access{Mode: permissions.ReadOnly})
+	if err != nil {
+		return compactPreparation{}, err
+	}
+	return compactPreparation{
+		sess:         sess,
+		settings:     runSettings,
+		systemPrompt: prepared.SystemPrompt,
+		toolNames:    append([]string(nil), prepared.Tools...),
+	}, nil
+}
+
+func (r *Runner) runCompact(runCtx context.Context, sessionID, runID string, current *liveRun, prepared compactPreparation) (err error) {
+
+	sess := prepared.sess
+	entries := sess.Entries()
+	current.compact = true
+	current.setAfterEntrySeq(entries[len(entries)-1].Seq)
+	saveErr := r.upsertRecord(sessionID, runRecord{
+		RunID:         runID,
+		Status:        RunRunning,
+		AfterEntrySeq: current.afterSeq(),
+	})
+	if saveErr != nil {
+		return saveErr
+	}
+	runStartedAttempted := false
+	defer func() {
+		if !runStartedAttempted {
+			return
+		}
+		current.handoff.Lock()
+		current.mu.Lock()
+		current.drafts = make(map[string]*runDraft)
+		current.mu.Unlock()
+		current.handoff.Unlock()
+		err = r.finishRun(current, sessionID, runID, err, true)
+	}()
+	runStartedAttempted = true
+	err = r.publish(runCtx, r.liveEvent(current, RunEvent{
+		SessionID:     sessionID,
+		RunID:         runID,
+		Kind:          RunStarted,
+		AfterEntrySeq: current.afterSeq(),
+	}))
+	if err != nil {
+		return err
+	}
+
+	definitions, err := r.tools.Definitions(tools.WithAccess(runCtx, tools.Access{Mode: permissions.ReadOnly}), prepared.settings.Workspace, prepared.toolNames)
+	if err != nil {
+		return err
+	}
+	history := append([]session.Message(nil), sess.History()...)
+	history = append(history, session.Message{
+		Role:   session.RoleUser,
+		Blocks: []session.Block{{Kind: "text", Text: compactInstruction}},
+	})
+	input := llm.Input{
+		System:  prepared.systemPrompt,
+		History: history,
+		Tools:   definitions,
+	}
+	if len(definitions) > 0 {
+		input.ToolChoice = "none"
+	}
+	stream, err := r.llm.Stream(runCtx, llm.RunConfig{
+		Model:           prepared.settings.Model,
+		ReasoningEffort: prepared.settings.ReasoningEffort,
+	}, input)
+	if err != nil {
+		return err
+	}
+
+	entryID, err := session.NewEntryID()
+	if err != nil {
+		return err
+	}
+	err = r.startDraft(runCtx, sessionID, runID, current, entryID)
+	if err != nil {
+		return err
+	}
+
+	text := ""
+	sawToolCall := false
+	finishReason := provider.FinishReason("")
+	var usage provider.Usage
+	for {
+		select {
+		case <-runCtx.Done():
+			return runCtx.Err()
+		case chunk, ok := <-stream:
+			if !ok {
+				return r.finishCompact(runCtx, sessionID, runID, sess, current, prepared.settings.Model, entryID, text, sawToolCall, finishReason, usage)
+			}
+			switch chunk.Type {
+			case provider.ChunkReasoning:
+				continue
+			case provider.ChunkText:
+				text += chunk.Text
+				err = r.applyDelta(runCtx, sessionID, runID, current, loops.Event{
+					Kind:     loops.EventTextDelta,
+					EntryID:  entryID,
+					BlockSeq: compactBlockSeq,
+					Text:     chunk.Text,
+				})
+				if err != nil {
+					return err
+				}
+			case provider.ChunkToolCall:
+				sawToolCall = true
+			case provider.ChunkStepFinish:
+				if chunk.FinishReason != "" {
+					finishReason = chunk.FinishReason
+				}
+			case provider.ChunkFinish:
+				usage = chunk.Usage
+				if chunk.FinishReason != "" {
+					finishReason = chunk.FinishReason
+				}
+			case provider.ChunkError:
+				if chunk.Error == nil {
+					return fmt.Errorf("runner: compact stream failed")
+				}
+				return chunk.Error
+			}
+		}
+	}
+}
+
+func (r *Runner) finishCompact(
+	ctx context.Context,
+	sessionID, runID string,
+	sess *session.Session,
+	current *liveRun,
+	model, entryID, text string,
+	sawToolCall bool,
+	finishReason provider.FinishReason,
+	usage provider.Usage,
+) error {
+	if sawToolCall {
+		return fmt.Errorf("runner: compact requested a tool")
+	}
+	switch finishReason {
+	case provider.FinishStop:
+		if strings.TrimSpace(text) == "" {
+			return fmt.Errorf("runner: compact produced empty summary")
+		}
+	case provider.FinishLength:
+		return fmt.Errorf("runner: compact was truncated")
+	case "":
+		return fmt.Errorf("runner: compact finished without a stop reason")
+	default:
+		return fmt.Errorf("runner: compact finished with %s", finishReason)
+	}
+
+	blocks := []session.Block{{Kind: "summary", Text: text}}
+	message := session.Message{RunID: runID, Role: session.RoleAssistant, Blocks: blocks, AfterSeq: current.afterSeq()}
+	current.handoff.Lock()
+	entry, err := sess.AppendID(entryID, message)
+	if err != nil {
+		current.handoff.Unlock()
+		return err
+	}
+	current.setAfterEntrySeq(entry.Seq)
+	current.mu.Lock()
+	delete(current.drafts, entryID)
+	current.persisted[entryID] = struct{}{}
+	current.updateSeq++
+	seq := current.updateSeq
+	after := current.afterEntrySeq
+	current.mu.Unlock()
+	current.handoff.Unlock()
+	err = r.publish(ctx, RunEvent{
+		SessionID:     sessionID,
+		RunID:         runID,
+		Kind:          Message,
+		EntryID:       entry.ID,
+		AfterEntrySeq: after,
+		BlockSeq:      compactBlockSeq,
+		Entry:         &entry,
+		UpdateSeq:     seq,
+		SeqEpoch:      r.epoch,
+	})
+	if err != nil {
+		return err
+	}
+	return r.publishUsage(ctx, sessionID, current, RunEvent{
+		SessionID:     sessionID,
+		RunID:         runID,
+		Kind:          ContextUsage,
+		EntryID:       entry.ID,
+		AfterEntrySeq: current.afterSeq(),
+		Usage: &Usage{
+			InputTokens:     usage.InputTokens,
+			CacheReadTokens: usage.CacheReadTokens,
+			ContextWindow:   r.llm.ContextWindow(model),
+		},
+	})
+}

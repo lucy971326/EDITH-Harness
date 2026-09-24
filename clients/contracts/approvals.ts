@@ -1,4 +1,4 @@
-// 对应 kernel/permissions 与 kernel/approvals；申请数据不是已授予权限。
+// 对应 internal/permissions 与 internal/approvals；申请数据不是已授予权限。
 import type { PermissionMode } from "./harness.ts";
 
 export interface PermissionModeChoice {

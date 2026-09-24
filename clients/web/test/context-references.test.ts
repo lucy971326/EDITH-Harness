@@ -3,7 +3,7 @@ import { test } from "node:test";
 import {
   addReference, clearSubmittedReferences, decodeReferences, encodeReferences,
   referenceLabel, referencePath, type ContextReference,
-} from "../src/context-references.ts";
+} from "../src/chat/context-references.ts";
 
 const selection: ContextReference = {
   kind: "selection", path: "src/中文文件.ts",

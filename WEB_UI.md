@@ -11,7 +11,7 @@ React 组件
    ↓
 WebSocket / 标准 JSON-RPC 2.0
    ↓
-app-server → conversations / 公共服务 → kernel
+app-server → conversations / 公共领域服务
 ```
 
 - HTTP 只提供 Vite 构建后的静态资源。
@@ -66,25 +66,28 @@ App-server 的运行订阅负责把内核并发通知排成连续序号，Client
 正式目录为 `clients/web/`：
 
 ```text
-clients/web/
-  └─ src/
-     ├─ auxiliary/     辅助工作区公共标签壳与视图登记契约
-     ├─ client/        JSON-RPC 连接、手写契约适配、订阅与恢复
-     ├─ editor/        文件状态、文件树、Monaco 与本地链接定位
-     ├─ terminal/      xterm.js 终端视图与连接生命周期
-   ├─ state/         后台投影 reducer 与只读展示派生
-   ├─ components/ui/ shadcn 基础组件
-   ├─ lib/           基础组件共用的小工具
-   ├─ *.tsx          当前唯一 Harness 产品的界面组件
-   ├─ styles.css     Token、主题与公共语义样式
-   └─ icons.ts       受控图标入口
+clients/web/src/
+  ├─ App.tsx          页面装配、主会话选择与草稿
+  ├─ chat/            消息、输入、过程、引用与待审批交互
+  ├─ settings/        Agent、审批与 Hooks 设置
+  ├─ workspace/       侧栏、辅助标签壳与视图编排
+  ├─ client/          JSON-RPC、订阅与恢复
+  ├─ state/           后台投影 reducer 与共享界面状态
+  ├─ editor/          文件状态、文件树与 Monaco
+  ├─ terminal/        xterm.js 与连接生命周期
+  ├─ review/          Diff 审查
+  ├─ subagent/        子任务工作页
+  ├─ components/      共用菜单与基础 UI
+  ├─ lib/             基础组件共用的小工具
+  ├─ styles.css       Token、主题与公共语义样式
+  └─ icons.ts         受控图标入口
 ```
 
 - 不使用 Next.js，不引入服务端 React。
 - TypeScript 写法直白、类型明确，少语法糖和高级类型技巧。
 - 没有真实复用前，不建立通用 Store、组件框架或插件化 UI。
-- 聊天阅读路线：`src/client/rpc.ts` 收发 → `src/client/chat.ts` 连接与主聊天、`run-subscription.ts` 共用订阅／恢复 → `src/state/chat.ts` 统一投影 → `src/chat-messages.tsx` 渲染。`App` 保留连接、会话选择、草稿和发送／停止流程；`sidebar.tsx` 与 `composer.tsx` 只展示并回调，不发 RPC。不为符合目标目录图预建空壳。
-- 后台插件传数据，不传 HTML、React 组件或任意 SVG。
+- 聊天阅读路线：`src/client/rpc.ts` 收发 → `src/client/chat.ts` 连接与主聊天、`run-subscription.ts` 共用订阅／恢复 → `src/state/chat.ts` 统一投影 → `src/chat/chat-messages.tsx` 渲染。`App` 保留连接、会话选择、草稿和发送／停止流程；`workspace/sidebar.tsx` 与 `chat/composer.tsx` 只展示并回调，不发 RPC。不为符合目标目录图预建空壳。
+- 后台传数据，不传 HTML、React 组件或任意 SVG。
 - 不建立页面插件插槽；产品内部扩展由真实需求再设计。
 
 ## 4. 视觉系统

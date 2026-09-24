@@ -22,7 +22,7 @@ Harness 解析决定；拒绝原因通过失败的工具结果交给模型，脚
 
 ## 接入位置
 
-在 `kernel/tools/Registry.Call` 中，工具可用性与参数 Schema 校验之后、分发给静态工具或动态 Provider 之前执行 Hook。拒绝时不调用工具，返回 `IsError` 工具结果；现有 Loop 继续为该 tool call 落下一条配对的 tool result。没有匹配 Hook 时，调用路径不变。
+在 `internal/tools/Registry.Call` 中，工具可用性与参数 Schema 校验之后、分发给静态工具或动态 Provider 之前执行 Hook。拒绝时不调用工具，返回 `IsError` 工具结果；现有 Loop 继续为该 tool call 落下一条配对的 tool result。没有匹配 Hook 时，调用路径不变。
 
 ## 实施前待定
 
@@ -39,7 +39,7 @@ Harness 解析决定；拒绝原因通过失败的工具结果交给模型，脚
 
 ## 实现方向
 
-- 首版只做 `PreToolUse`。在 [Registry.Call](/Users/lucy/Documents/Projects/Harness/kernel/tools/registry.go:193) 完成工具可用性及参数校验后、调用具体工具前，按**全局在前、项目在后**的顺序运行匹配 Hook；同一来源按设置顺序运行，遇到拒绝即停止。匹配只支持全部工具或精确工具名。
+- 首版只做 `PreToolUse`。在 [Registry.Call](/Users/lucy/Documents/Projects/Harness/internal/tools/registry.go:193) 完成工具可用性及参数校验后、调用具体工具前，按**全局在前、项目在后**的顺序运行匹配 Hook；同一来源按设置顺序运行，遇到拒绝即停止。匹配只支持全部工具或精确工具名。
 - 命令直接按 `command` 和 `args` 启动，不隐式经过 Shell；工作目录为当前工作区，继承宿主环境。`stdin` 使用[方向书](/Users/lucy/Documents/Projects/Harness/.forward/plan/hooks系统实现.md)已定的 JSON 字段。退出码为 0 且 `stdout` 为空表示不表态；退出码为 0 且输出 `{"decision":"deny","reason":"..."}` 表示拒绝，`reason` 必须非空。其他输出或非零退出均视为 Hook 失败。
 - 每个 Hook 默认超时 10 秒，可在设置页配置 1–60 秒；限制输入和输出大小。超时、启动失败、无效输出时终止并等待 Hook 进程，**报告失败后继续原有工具流程**；用户停止 Run 时则终止 Hook，且不再执行工具。拒绝转换为配对的失败工具结果，原因交给模型；Hook 故障不交给模型。
 - 全局配置存于 `~/.harness/hooks/settings.json`，项目配置存于 `<workspace>/.harness/hooks.json`。设置页可选择工作区，编辑两种来源的 Hook、顺序和启用状态，并查看最近失败。项目配置以真实工作区路径和**整份文件摘要**记录信任；页面保存即信任该版本，外部修改后项目 Hook 暂停运行，待页面重新确认。配置在**下一次工具调用**生效，已启动的 Hook 按原配置完成。全局 Hook 不受项目待信任状态影响。

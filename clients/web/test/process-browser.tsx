@@ -1,7 +1,7 @@
 // 仅供 Vite 开发模式下人工验收，不进入正式入口或生产构建。
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
-import { ChatMessages } from "../src/chat-messages";
+import { ChatMessages } from "../src/chat/chat-messages";
 import type { Snapshot } from "../../contracts/run";
 import "../src/styles.css";
 

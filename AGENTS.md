@@ -35,7 +35,7 @@ conversations      公共服务接口
 - Web 使用 React + TypeScript + Vite，不使用 Next.js。Wails 首版复用同一套界面和 WebSocket。
 - app-server 负责接入、协议、校验、分发、订阅、反向请求和连接清理；不拥有产品业务。
 - conversations 负责会话操作；不拥有协议、页面组件或公共内核数据。
-- kernel 提供执行和数据能力；不依赖 appserver、products、clients、surface 或 plugins。
+- internal 按领域组织后台能力；执行与数据领域不依赖 appserver、Client 或具体能力子包。
 - Client 只保存界面状态和服务端投影，不成为业务事实来源。
 
 ---
@@ -75,7 +75,7 @@ Client 调用 create(params)
 ```
 
 - Go 数据类型与 TS 数据类型分别手工维护；修改接口时同步方法名、字段、可选性和返回类型。Go 端负责实际运行时校验。
-- 业务数据放定义者的 `types.go`；网络参数与结果放 `appserver/harness_types.go`，登记、请求处理与错误映射放 `appserver/harness.go`，运行订阅处理放 `appserver/harness_run.go`。共享业务结果直接复用，不复制。
+- 业务数据放定义者的 `types.go`；网络参数与结果放 `internal/appserver/harness_types.go`，登记、请求处理与错误映射放 `internal/appserver/harness.go`，运行订阅处理放 `internal/appserver/harness_run.go`。共享业务结果直接复用，不复制。
 - `appserver.Register` 直接绑定方法名和类型化处理函数，组装时编译输入输出 Schema；不要为只有 Name 的方法再造声明结构体或工厂函数。
 - 只有会改变同一 Session 的 `settings/update`、`fork`、`send` 与 `command/call` 使用 Session FIFO；不同 Session 并行。Stop 是独立控制信号，使用普通登记直接执行，Connection 不识别业务方法名。
 - 重名、空处理函数或坏契约使组装失败。
@@ -84,7 +84,7 @@ Client 调用 create(params)
 - Client 按手写契约调用，不提供运行时接口目录；Schema 只用于服务端校验。
 - `npm --prefix clients run contracts:check` 检查手写 TS 类型及类型测试，不保证 Go / TS 自动一致；接口改动需对照两端审查。
 - 运行时仍校验输入和输出；TypeScript 不能表达的格式、长度等约束以 Schema 为准。
-- appserver 直接 import conversations 和所需公共服务；kernel 和能力实现不得 import appserver。入口传入依赖，调用 `server.BindHarness(conversations, runner, events)`；appserver 不依赖具体 Client。
+- appserver 直接 import conversations 和所需公共服务；领域服务和能力实现不得 import appserver。入口传入依赖，调用 `server.BindHarness(conversations, runner, events)`；appserver 不依赖具体 Client。
 - 不自动暴露内部方法；只有显式登记的对外方法可调用。
 - `sourcegraph/jsonrpc2` 负责 JSON-RPC 封套、请求 ID、响应与通知；appserver 只保留类型化方法登记、校验和产品调用，不在库外重写一套协议兼容层。
 - appserver 只有一个入口 `Server`，方法表、WebSocket 监听和关闭生命周期不再拆成两个 Server。方法表与 Session 写请求排序在 `internal/rpc`，单 Client 生命周期在 `internal/clientconn`，系统目录选择在 `internal/workspacepicker`。每个 Client 对应一个 `Connection`；它是 IM 网关式的基础设施对象，只保存初始化、RPC 连接、订阅、发送保护和断线清理等瞬时连接状态，绝不保存 Session、Run、设置或任何产品业务状态，也不决定 Start / Steer / Stop 等业务行为。
@@ -98,7 +98,7 @@ Client 调用 create(params)
 
 ## 4. 会话操作与公共服务
 
-`kernel/conversations` 拥有创建、发送、Steer、停止、分叉、快照和命令准入。Runner 仍拥有运行准入、执行与收尾；Session 只保存对话事实。
+`internal/conversations` 拥有创建、发送、Steer、停止、分叉、快照和命令准入。Runner 仍拥有运行准入、执行与收尾；Session 只保存对话事实。
 
 同会话的设置与启动在同一操作锁下协调，不同会话并行。等待 Steer 落账前释放操作锁；Stop 不取操作锁。创建空会话的复用单独协调。
 
@@ -163,26 +163,28 @@ app-server       连接、订阅、请求配对等瞬时状态
 
 ```text
 cmd/harness/          进程组装、启动与关闭
+internal/appserver/   方法契约、登记、校验、协议与连接
+internal/             按领域组织执行、数据、登记处与具体实现
+  tools/{exec,applypatch,mcp,subagents}
+  loops/react、skills/{builtin,filesystem}、commands/compact、machine/local
 clients/contracts/    手写 TypeScript 契约
 clients/test/         无界面的网络验收 Client，不是正式 SDK
-appserver/            方法契约、登记、校验、协议与连接
-kernel/conversations/ 会话操作与协调
-kernel/               公共执行、数据与登记处
-plugins/              内核服务提供者、登记处填充者
 clients/web/          React + TypeScript + Vite 与嵌入静态资源
+tests/integration/    跨层组装与网络验收；普通单测跟源码
 ```
 
 依赖方向：
 
 ```text
-cmd       → appserver / kernel / plugins / clients 的静态资源
-plugins   → 自己填充的定义者
-appserver → kernel/conversations / kernel 公共服务
-appserver 不得 import plugins / Client
-kernel    不得 import appserver / products / plugins / Client
-Client    只依赖手写 TS 契约和自身 UI；不读取 Go 对象
-定义者    不得 import 填充者
+cmd       → internal 各领域及具体实现 / clients 的静态资源
+appserver → conversations / 各领域公共服务
+具体实现  → 领域契约
+领域契约  不得反向 import 具体实现
+执行与数据领域不得 import appserver / Client
+Client    只依赖手写 TS 契约和自身 UI
 ```
+
+`internal` 限制应用外部导入，不替代上述内部依赖规则。`appserver/internal` 仅供接入层使用。具体实现放领域子包，由入口显式登记；不恢复 kernel / plugins 顶层分类，不增加旧 import 路径兼容。保留单一 Go module。
 
 一个领域默认同包分文件，不先拆子包。只有“可独立替换、边界稳定、不会绕圈转发”三项都成立，才增加一层目录。不要创建 `manager.go`、`utils.go`、`common.go`。
 

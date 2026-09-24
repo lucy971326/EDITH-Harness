@@ -22,7 +22,7 @@ before(async () => {
     server: { middlewareMode: true, hmr: false, watch: null },
     optimizeDeps: { noDiscovery: true },
   });
-  ({ ChatMessages } = await server.ssrLoadModule("/src/chat-messages.tsx"));
+  ({ ChatMessages } = await server.ssrLoadModule("/src/chat/chat-messages.tsx"));
 });
 after(async () => {
   await server?.close();

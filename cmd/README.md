@@ -8,4 +8,4 @@ cmd/harness/main.go
   -> 退出时逆序关闭
 ```
 
-业务流程在 kernel，具体能力实现在 plugins；入口只接线。
+业务流程与具体实现在 `internal` 各领域；入口只接线。

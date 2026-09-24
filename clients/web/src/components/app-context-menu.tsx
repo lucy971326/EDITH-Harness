@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { ContextReference } from "../context-references";
+import type { ContextReference } from "../chat/context-references";
 import { ContextMenu, type ContextMenuItem } from "./context-menu";
 
 interface MenuState {

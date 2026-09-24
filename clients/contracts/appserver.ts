@@ -1,7 +1,7 @@
 import type { PendingApproval, PermissionModeChoice, ApprovalSettings, ApprovalSettingsView } from "./approvals.ts";
 export interface InitializeResult { protocolVersion: number }
 
-// 手工对应 kernel/llm.ModelChoice；只有目录数据，没有 Provider 密钥。
+// 手工对应 internal/llm.ModelChoice；只有目录数据，没有 Provider 密钥。
 export interface ModelChoice {
   id: string;
   contextWindow: number;

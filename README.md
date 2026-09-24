@@ -14,9 +14,9 @@ React Client -> WebSocket JSON-RPC -> appserver
                                        +-> 公共服务           +-> Session
 ```
 
-`appserver` 负责协议与连接，`conversations` 编排会话操作，`kernel` 拥有执行与数据能力，`plugins` 提供具体实现。没有 Host 服务表或 Product 层。
+`appserver` 负责协议与连接，`conversations` 编排会话操作，`internal` 按领域归拢执行、数据与具体实现。没有 Host 服务表或 Product 层。
 
-源码地图：[`kernel`](kernel/README.md) · [`appserver`](appserver/README.md) · [`plugins`](plugins/README.md) · [`clients`](clients/README.md)。
+源码地图：[`internal`](internal/README.md) · [`appserver`](internal/appserver/README.md) · [`clients`](clients/README.md) · [`集成验收`](tests/integration/README.md)。
 
 ## 已实现
 

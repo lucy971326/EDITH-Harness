@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createServer, type ViteDevServer } from "vite";
 import type { SessionView } from "../../contracts/harness.ts";
 import type { ModelChoice } from "../../contracts/appserver.ts";
-import type { Attachment } from "../src/composer.tsx";
+import type { Attachment } from "../src/chat/composer.tsx";
 
 let server: ViteDevServer;
 let TooltipProvider: ComponentType<{ children?: ReactNode }>;
@@ -49,9 +49,9 @@ before(async () => {
   ({ TooltipProvider } = await server.ssrLoadModule(
     "/src/components/ui/tooltip.tsx",
   ));
-  ({ Sidebar } = await server.ssrLoadModule("/src/sidebar.tsx"));
+  ({ Sidebar } = await server.ssrLoadModule("/src/workspace/sidebar.tsx"));
   ({ Composer, composerTrigger, isComposerSubmitKey } =
-    await server.ssrLoadModule("/src/composer.tsx"));
+    await server.ssrLoadModule("/src/chat/composer.tsx"));
   ({ chatSendParams, shouldClearSubmittedDraft } =
     await server.ssrLoadModule("/src/App.tsx"));
 });
