@@ -25,7 +25,7 @@ var (
 	ErrInUse         = errors.New("agents: agent is used by a session")
 )
 
-// 活对象。挂在 Host 的 agents 键上的 Agent 设置服务。
+// 活对象。拥有 Agent 设置、准备流程和引用协调的服务。
 type Service struct {
 	store    AgentStore
 	settings settings.SessionSettingsStore
@@ -33,7 +33,7 @@ type Service struct {
 	tools    tools.Tools
 	skills   skills.Skills
 
-	// Agent 引用写入与删除必须互斥，不能留下悬空的会话设置。
+	// 删除与目录读取、Agent 引用写入互斥，避免读到已删文件或留下悬空引用。
 	references sync.RWMutex
 }
 
@@ -55,9 +55,6 @@ func NewService(store AgentStore, settingsStore settings.SessionSettingsStore, l
 		return nil, fmt.Errorf("agents: nil skills")
 	}
 	service := &Service{store: store, settings: settingsStore, loops: loopRegistry, tools: toolRegistry, skills: skillRegistry}
-	if err := service.migrateLegacyTools(); err != nil {
-		return nil, err
-	}
 	if err := service.ensureDefault(); err != nil {
 		return nil, err
 	}
@@ -66,13 +63,16 @@ func NewService(store AgentStore, settingsStore settings.SessionSettingsStore, l
 
 // List 返回所有 Agent；default 始终排在第一项。
 func (s *Service) List() ([]Agent, error) {
+	s.references.RLock()
+	defer s.references.RUnlock()
+
 	registered, err := s.store.ListAgents()
 	if err != nil {
 		return nil, err
 	}
 	out := make([]Agent, 0, len(registered))
 	for _, agent := range registered {
-		agent = s.normalize(agent)
+		agent = copyAgent(agent)
 		if agent.ID == DefaultID {
 			out = append([]Agent{agent}, out...)
 			continue
@@ -84,15 +84,21 @@ func (s *Service) List() ([]Agent, error) {
 
 // Get 按 ID 取一份 Agent 设置。
 func (s *Service) Get(id string) (Agent, error) {
+	s.references.RLock()
+	defer s.references.RUnlock()
+
 	agent, err := s.store.ForAgent(id)
 	if err != nil {
 		return Agent{}, err
 	}
-	return s.normalize(agent), nil
+	return copyAgent(agent), nil
 }
 
 // Save 新建或更新一份 Agent。空 ID 会生成一个新 ID。
 func (s *Service) Save(agent Agent) (Agent, error) {
+	s.references.RLock()
+	defer s.references.RUnlock()
+
 	if agent.ID == "" {
 		id, err := newID()
 		if err != nil {
@@ -212,23 +218,6 @@ func (s *Service) validate(agent Agent) error {
 	return nil
 }
 
-func (s *Service) normalize(agent Agent) Agent {
-	agent = copyAgent(agent)
-	known := make(map[string]struct{})
-	for _, tool := range s.tools.List() {
-		known[tool.Name] = struct{}{}
-	}
-	filtered := make([]string, 0, len(agent.Tools))
-	for _, name := range agent.Tools {
-		if _, ok := known[name]; !ok {
-			continue
-		}
-		filtered = append(filtered, name)
-	}
-	agent.Tools = filtered
-	return agent
-}
-
 func (s *Service) ensureDefault() error {
 	_, err := s.store.ForAgent(DefaultID)
 	if err == nil {
@@ -249,62 +238,6 @@ func (s *Service) ensureDefault() error {
 		SystemPrompt: defaultSystemPrompt,
 		Tools:        toolNames,
 	})
-}
-
-func (s *Service) migrateLegacyTools() error {
-	known := make(map[string]struct{})
-	for _, definition := range s.tools.List() {
-		known[definition.Name] = struct{}{}
-	}
-	agents, err := s.store.ListAgents()
-	if err != nil {
-		return fmt.Errorf("agents: list for tool migration: %w", err)
-	}
-	for _, agent := range agents {
-		migrated := migrateToolNames(agent.Tools, known)
-		if slices.Equal(agent.Tools, migrated) {
-			continue
-		}
-		agent.Tools = migrated
-		err = s.store.PutAgent(agent)
-		if err != nil {
-			return fmt.Errorf("agents: migrate tools for %q: %w", agent.ID, err)
-		}
-	}
-	return nil
-}
-
-func migrateToolNames(names []string, known map[string]struct{}) []string {
-	migrated := make([]string, 0, len(names))
-	seen := make(map[string]struct{}, len(names))
-	for _, name := range names {
-		replacements := []string{name}
-		switch name {
-		case "read":
-			replacements = availableReplacement(known, name, "exec_command")
-		case "bash":
-			replacements = availableReplacement(known, name, "exec_command", "write_stdin")
-		case "write", "edit":
-			replacements = availableReplacement(known, name, "apply_patch")
-		}
-		for _, replacement := range replacements {
-			if _, duplicate := seen[replacement]; duplicate {
-				continue
-			}
-			seen[replacement] = struct{}{}
-			migrated = append(migrated, replacement)
-		}
-	}
-	return migrated
-}
-
-func availableReplacement(known map[string]struct{}, original string, replacements ...string) []string {
-	for _, replacement := range replacements {
-		if _, ok := known[replacement]; !ok {
-			return []string{original}
-		}
-	}
-	return replacements
 }
 
 func assemblePrompt(systemPrompt string, selected []skills.Skill, instructions []tools.Instruction, workspace string, allowedTools []string) string {

@@ -14,8 +14,8 @@ func TestRecoveredTaskGraphDepthAndCycles(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, record := range []TaskRecord{
-		{Version: 1, ID: "task-child", ParentSessionID: "root", ChildSessionID: "child", Description: "child"},
-		{Version: 1, ID: "task-grandchild", ParentSessionID: "child", ChildSessionID: "grandchild", Description: "grandchild"},
+		{TaskName: "test", Version: 1, ID: "task-child", ParentSessionID: "root", ChildSessionID: "child", Description: "child"},
+		{TaskName: "test", Version: 1, ID: "task-grandchild", ParentSessionID: "child", ChildSessionID: "grandchild", Description: "grandchild"},
 	} {
 		if err := validStore.saveTask(record); err != nil {
 			t.Fatal(err)
@@ -30,7 +30,8 @@ func TestRecoveredTaskGraphDepthAndCycles(t *testing.T) {
 	}
 
 	if err := validStore.saveTask(TaskRecord{
-		Version: 1, ID: "task-too-deep", ParentSessionID: "grandchild", ChildSessionID: "great-grandchild", Description: "too deep",
+		TaskName: "test",
+		Version:  1, ID: "task-too-deep", ParentSessionID: "grandchild", ChildSessionID: "great-grandchild", Description: "too deep",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -44,8 +45,8 @@ func TestRecoveredTaskGraphDepthAndCycles(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, record := range []TaskRecord{
-		{Version: 1, ID: "task-a", ParentSessionID: "session-b", ChildSessionID: "session-a", Description: "a"},
-		{Version: 1, ID: "task-b", ParentSessionID: "session-a", ChildSessionID: "session-b", Description: "b"},
+		{TaskName: "test", Version: 1, ID: "task-a", ParentSessionID: "session-b", ChildSessionID: "session-a", Description: "a"},
+		{TaskName: "test", Version: 1, ID: "task-b", ParentSessionID: "session-a", ChildSessionID: "session-b", Description: "b"},
 	} {
 		if err := cycleStore.saveTask(record); err != nil {
 			t.Fatal(err)

@@ -59,9 +59,9 @@ func newSubagentsFixture(t *testing.T) subagentsFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	disk := persist.NewStore(files)
+	disk := session.NewPersistence(files)
+	settingsStore := settings.NewStore(files)
 	sessions := session.NewStore(disk)
-	settingsStore := disk
 	models, err := llm.New(files)
 	if err != nil {
 		t.Fatal(err)
@@ -79,11 +79,11 @@ func newSubagentsFixture(t *testing.T) subagentsFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	agentService, err := agents.NewService(disk, disk, loopRegistry, toolRegistry, skillService)
+	agentService, err := agents.NewService(agents.NewStore(files), settingsStore, loopRegistry, toolRegistry, skillService)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runService, err := runner.NewRunner(sessions, disk, agentService, loopRegistry, eventRegistry, models, toolRegistry, disk, files, machineService)
+	runService, err := runner.NewRunner(sessions, settingsStore, agentService, loopRegistry, eventRegistry, models, toolRegistry, files, machineService)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,7 @@ func newSubagentsFixture(t *testing.T) subagentsFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	subagentService, err := NewSubagents(sessions, disk, agentService, models, runService, eventRegistry, subFiles)
+	subagentService, err := NewSubagents(sessions, settingsStore, agentService, models, runService, eventRegistry, subFiles)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,6 +250,7 @@ func TestStoreAtomicAndRecovery(t *testing.T) {
 	}
 
 	task := TaskRecord{
+		TaskName:        "test",
 		Version:         1,
 		ID:              "task-1",
 		ParentSessionID: "parent-1",
@@ -318,6 +319,7 @@ func TestStoreValidationAndIntegrity(t *testing.T) {
 	}
 
 	validTask := TaskRecord{
+		TaskName:        "test",
 		Version:         1,
 		ID:              "task-val-1",
 		ParentSessionID: "parent-val-1",

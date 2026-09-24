@@ -71,6 +71,9 @@ func validateTask(record TaskRecord, expectedID string) error {
 	if record.ChildSessionID == "" {
 		return fmt.Errorf("%w: empty childSessionID", ErrInvalidTaskData)
 	}
+	if strings.TrimSpace(record.TaskName) == "" {
+		return fmt.Errorf("%w: empty taskName", ErrInvalidTaskData)
+	}
 	if strings.TrimSpace(record.Description) == "" {
 		return fmt.Errorf("%w: empty description", ErrInvalidTaskData)
 	}

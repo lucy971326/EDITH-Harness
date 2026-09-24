@@ -1,4 +1,4 @@
-package persist
+package settings
 
 import (
 	"encoding/json"
@@ -7,56 +7,55 @@ import (
 	"os"
 
 	"harness/kernel/permissions"
-	"harness/kernel/session/settings"
+	"harness/kernel/persist"
 )
 
-func (s *jsonl) For(sessionID string) (settings.SessionSettings, error) {
-	err := checkID(sessionID)
-	if err != nil {
-		return settings.SessionSettings{}, err
-	}
+// 活对象。会话运行设置的文件存储；Agent 引用事务由 agents.Service 协调。
+type Store struct {
+	files *persist.Files
+}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// NewStore 创建会话设置存储。
+func NewStore(files *persist.Files) *Store {
+	return &Store{files: files}
+}
 
+func (s *Store) For(sessionID string) (SessionSettings, error) {
 	files, err := s.sessionFiles(sessionID)
 	if err != nil {
-		return settings.SessionSettings{}, err
+		return SessionSettings{}, err
 	}
 	b, err := files.Read("settings.json")
 	if err != nil {
-		return settings.SessionSettings{}, err
+		return SessionSettings{}, err
 	}
 
-	var out settings.SessionSettings
+	var out SessionSettings
 	err = json.Unmarshal(b, &out)
 	if err != nil {
-		return settings.SessionSettings{}, fmt.Errorf("persist: session settings %q: %w", sessionID, err)
+		return SessionSettings{}, fmt.Errorf("settings: session %q: %w", sessionID, err)
+	}
+	if out.PermissionMode == "" {
+		return SessionSettings{}, fmt.Errorf("settings: missing permission mode")
 	}
 	out.PermissionMode, err = permissions.NormalizeMode(out.PermissionMode)
 	if err != nil {
-		return settings.SessionSettings{}, fmt.Errorf("persist: session settings %q: %w", sessionID, err)
+		return SessionSettings{}, fmt.Errorf("settings: session %q: %w", sessionID, err)
 	}
 	return out, nil
 }
 
-func (s *jsonl) Put(sessionID string, in settings.SessionSettings) error {
-	err := checkID(sessionID)
+func (s *Store) Put(sessionID string, in SessionSettings) error {
+	mode, err := permissions.NormalizeMode(in.PermissionMode)
 	if err != nil {
-		return err
+		return fmt.Errorf("settings: session %q: %w", sessionID, err)
 	}
-
-	in.PermissionMode, err = permissions.NormalizeMode(in.PermissionMode)
-	if err != nil {
-		return fmt.Errorf("persist: session settings %q: %w", sessionID, err)
-	}
+	in.PermissionMode = mode
 	b, err := json.Marshal(in)
 	if err != nil {
 		return err
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	files, err := s.sessionFiles(sessionID)
 	if err != nil {
 		return err
@@ -65,14 +64,7 @@ func (s *jsonl) Put(sessionID string, in settings.SessionSettings) error {
 }
 
 // UsesAgent 返回是否仍有会话选择了指定 Agent。
-func (s *jsonl) UsesAgent(agentID string) (bool, error) {
-	if err := checkID(agentID); err != nil {
-		return false, err
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
+func (s *Store) UsesAgent(agentID string) (bool, error) {
 	sessions, err := s.files.Scope("sessions")
 	if err != nil {
 		return false, err
@@ -96,13 +88,17 @@ func (s *jsonl) UsesAgent(agentID string) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		var sessionSettings settings.SessionSettings
+		var sessionSettings SessionSettings
 		if err := json.Unmarshal(data, &sessionSettings); err != nil {
-			return false, fmt.Errorf("persist: session settings %q: %w", entry.Name, err)
+			return false, fmt.Errorf("settings: session %q: %w", entry.Name, err)
 		}
 		if sessionSettings.AgentID == agentID {
 			return true, nil
 		}
 	}
 	return false, nil
+}
+
+func (s *Store) sessionFiles(id string) (*persist.Files, error) {
+	return s.files.Scope("sessions", id)
 }

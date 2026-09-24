@@ -75,8 +75,7 @@ export function chatTurns(snapshot: Snapshot): ChatTurn[] {
     const answeredInput =
       candidate &&
       (candidate.message.afterSeq ?? candidate.seq ?? 0) >= lastInputSeq;
-    // runs.json 出现前的旧历史没有运行状态；完整落账的最后一条助手正文仍是回答。
-    const completed = run?.status === "success" || run === undefined;
+    const completed = run?.status === "success";
     const answer =
       completed &&
       candidate &&

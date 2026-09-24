@@ -1,4 +1,4 @@
-package persist
+package agents
 
 import (
 	"encoding/json"
@@ -6,17 +6,24 @@ import (
 	"sort"
 	"strings"
 
-	"harness/kernel/agents/config"
+	"harness/kernel/persist"
 )
 
-func (s *jsonl) agentFiles() (*Files, error) {
+// 活对象。Agent 设置的文件存储。
+type fileStore struct {
+	files *persist.Files
+}
+
+// NewStore 创建 Agent 设置存储。
+func NewStore(files *persist.Files) AgentStore {
+	return &fileStore{files: files}
+}
+
+func (s *fileStore) agentFiles() (*persist.Files, error) {
 	return s.files.Scope("agents")
 }
 
-func (s *jsonl) ListAgents() ([]config.Agent, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
+func (s *fileStore) ListAgents() ([]Agent, error) {
 	files, err := s.agentFiles()
 	if err != nil {
 		return nil, err
@@ -25,7 +32,7 @@ func (s *jsonl) ListAgents() ([]config.Agent, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := make([]config.Agent, 0, len(entries))
+	out := make([]Agent, 0, len(entries))
 	for _, entry := range entries {
 		if entry.IsDir || !strings.HasSuffix(entry.Name, ".json") {
 			continue
@@ -34,9 +41,9 @@ func (s *jsonl) ListAgents() ([]config.Agent, error) {
 		if err != nil {
 			return nil, err
 		}
-		var agent config.Agent
+		var agent Agent
 		if err := json.Unmarshal(b, &agent); err != nil {
-			return nil, fmt.Errorf("persist: agent %q: %w", entry.Name, err)
+			return nil, fmt.Errorf("agents: agent %q: %w", entry.Name, err)
 		}
 		out = append(out, agent)
 	}
@@ -46,30 +53,27 @@ func (s *jsonl) ListAgents() ([]config.Agent, error) {
 	return out, nil
 }
 
-func (s *jsonl) ForAgent(id string) (config.Agent, error) {
+func (s *fileStore) ForAgent(id string) (Agent, error) {
 	if err := checkID(id); err != nil {
-		return config.Agent{}, err
+		return Agent{}, err
 	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	files, err := s.agentFiles()
 	if err != nil {
-		return config.Agent{}, err
+		return Agent{}, err
 	}
 	b, err := files.Read(id + ".json")
 	if err != nil {
-		return config.Agent{}, err
+		return Agent{}, err
 	}
-	var agent config.Agent
+	var agent Agent
 	if err := json.Unmarshal(b, &agent); err != nil {
-		return config.Agent{}, fmt.Errorf("persist: agent %q: %w", id, err)
+		return Agent{}, fmt.Errorf("agents: agent %q: %w", id, err)
 	}
 	return agent, nil
 }
 
-func (s *jsonl) PutAgent(agent config.Agent) error {
+func (s *fileStore) PutAgent(agent Agent) error {
 	if err := checkID(agent.ID); err != nil {
 		return err
 	}
@@ -78,9 +82,6 @@ func (s *jsonl) PutAgent(agent config.Agent) error {
 		return err
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	files, err := s.agentFiles()
 	if err != nil {
 		return err
@@ -88,16 +89,21 @@ func (s *jsonl) PutAgent(agent config.Agent) error {
 	return files.Write(agent.ID+".json", b)
 }
 
-func (s *jsonl) DeleteAgent(id string) error {
+func (s *fileStore) DeleteAgent(id string) error {
 	if err := checkID(id); err != nil {
 		return err
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	files, err := s.agentFiles()
 	if err != nil {
 		return err
 	}
 	return files.Remove(id + ".json")
+}
+
+func checkID(id string) error {
+	if id == "" || id == "." || id == ".." || strings.ContainsAny(id, `/\`) {
+		return fmt.Errorf("agents: bad id %q", id)
+	}
+	return nil
 }

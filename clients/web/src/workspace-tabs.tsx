@@ -1,12 +1,4 @@
-import {
-  lazy,
-  memo,
-  Suspense,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { lazy, memo, Suspense, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -26,22 +18,9 @@ import {
 } from "./auxiliary/auxiliary-panel";
 import type { RPCClient } from "./client/rpc";
 import type { ContextReference } from "./context-references";
-import { RPCError } from "./client/rpc";
+import { useEditorFiles } from "./editor/use-files";
 import { FileTree } from "./editor/file-tree";
-import {
-  decodeFile,
-  encodeFile,
-  applyExternalFile,
-  applySavedFile,
-  fileConflictCode,
-  fileName,
-  samePath,
-  needsCloseConfirmation,
-  projectEditorState,
-  statusLabel,
-  type EditorFile,
-  type ProjectEditorState,
-} from "./editor/files";
+import { fileName, needsCloseConfirmation, statusLabel } from "./editor/files";
 import { Bot, FileText, GitCompareArrows, PanelRight } from "./icons";
 import { Terminal } from "./icons";
 import type { FileLocation } from "./editor/links";
@@ -90,12 +69,6 @@ export interface SubagentOpenRequest {
   requestID: number;
   parentSessionID: string;
   taskID: string;
-}
-
-interface WatchTarget {
-  path: string;
-  kind: "file" | "directory";
-  subscriptionID: string;
 }
 
 interface TerminalTab {
@@ -168,17 +141,19 @@ function WorkspaceTabsComponent({
   onHide: () => void;
   onAddReference: (reference: ContextReference) => void;
 }) {
-  const projects = useRef(new Map<string, ProjectEditorState>());
-  const watches = useRef(new Map<string, WatchTarget>());
-  const watchPaths = useRef(new Map<string, string>());
-  const saveTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
-  const saving = useRef(new Set<string>());
+  const files = useEditorFiles(client, workspace);
+  const {
+    project,
+    treeRevision,
+    editFile,
+    saveFile,
+    reloadConflict,
+    watchDirectory,
+  } = files;
   const handledReviewRequestID = useRef(0);
   const handledSubagentRequestID = useRef(0);
   const terminalSequence = useRef(0);
   const treePane = useRef<HTMLElement>(null);
-  const [, setRevision] = useState(0);
-  const [treeRevision, setTreeRevision] = useState(0);
   const [treeOpen, setTreeOpen] = useState(true);
   const [treeWidth, setTreeWidth] = useState(storedTreeWidth);
   const [closingPath, setClosingPath] = useState("");
@@ -191,7 +166,6 @@ function WorkspaceTabsComponent({
   );
   const [activeTabID, setActiveTabID] = useState("");
 
-  const project = workspace ? projects.current.get(workspace) : undefined;
   const activeFile = project?.files.get(project.activePath);
   const reviewTabID = (runID: string) => `review:${sessionID}:${runID}`;
   const activeReviewRunID = reviewRunIDs.find(
@@ -214,15 +188,6 @@ function WorkspaceTabsComponent({
     };
     setTerminals((current) => [...current, terminal]);
     setActiveTabID(terminal.processID);
-  }
-
-  function currentProject(): ProjectEditorState | null {
-    if (!workspace) return null;
-    return projectEditorState(projects.current, workspace);
-  }
-
-  function render() {
-    setRevision((value) => value + 1);
   }
 
   function openSubagent(
@@ -248,113 +213,6 @@ function WorkspaceTabsComponent({
     setActiveTabID(id);
   }
 
-  function updateFile(path: string, update: (file: EditorFile) => void) {
-    const file = currentProject()?.files.get(path);
-    if (!file) return;
-    update(file);
-    render();
-  }
-
-  const clearWatches = useCallback((targetClient: RPCClient | null) => {
-    const subscriptions = [...watches.current.values()];
-    watches.current.clear();
-    watchPaths.current.clear();
-    if (!targetClient?.connected) return;
-    for (const watch of subscriptions) {
-      void targetClient.unsubscribe(watch.subscriptionID).catch(() => {});
-    }
-  }, []);
-
-  const watch = useCallback(
-    async (path: string, kind: WatchTarget["kind"]) => {
-      if (!workspace || !client?.connected || watchPaths.current.has(path))
-        return;
-      watchPaths.current.set(path, "pending");
-      try {
-        await client.watchFile(path, (subscriptionID) => {
-          if (!client.connected || watchPaths.current.get(path) !== "pending") {
-            void client.unsubscribe(subscriptionID).catch(() => {});
-            return;
-          }
-          watchPaths.current.set(path, subscriptionID);
-          watches.current.set(subscriptionID, { path, kind, subscriptionID });
-        });
-      } catch {
-        watchPaths.current.delete(path);
-      }
-    },
-    [client, workspace],
-  );
-  const watchDirectory = useCallback(
-    (path: string) => {
-      void watch(path, "directory");
-    },
-    [watch],
-  );
-
-  const refreshFromDisk = useCallback(
-    async (path: string) => {
-      if (!client?.connected) return;
-      try {
-        const result = await client.readFile(path);
-        const content = decodeFile(result.dataBase64);
-        updateFile(path, (file) => {
-          if (file.status === "saving") {
-            setTimeout(() => void refreshFromDisk(path), 120);
-            return;
-          }
-          applyExternalFile(file, content, result.hash);
-        });
-      } catch (error) {
-        updateFile(path, (file) => {
-          if (error instanceof RPCError && error.code === -32004) {
-            file.status = "missing";
-            file.error = "文件已被删除；草稿仍保留在本页。";
-            return;
-          }
-          file.status = "error";
-          file.error = error instanceof Error ? error.message : "重新读取失败";
-        });
-      }
-    },
-    [client, workspace],
-  );
-
-  useEffect(() => {
-    clearWatches(client);
-    if (!client?.connected || !workspace) return;
-
-    client.onFileChanged = ({ subscriptionID, event }) => {
-      const target = watches.current.get(subscriptionID);
-      if (!target) return;
-      if (target.kind === "directory") setTreeRevision((value) => value + 1);
-      const openFiles = currentProject()?.files;
-      if (!openFiles) return;
-      for (const changedPath of event.changedPaths) {
-        for (const path of openFiles.keys()) {
-          if (samePath(path, changedPath)) void refreshFromDisk(path);
-        }
-      }
-    };
-    void watch(workspace, "directory");
-    for (const path of currentProject()?.order ?? []) {
-      void watch(path, "file");
-      const file = currentProject()?.files.get(path);
-      if (
-        file &&
-        file.content !== file.savedContent &&
-        file.status !== "conflict" &&
-        file.status !== "missing"
-      )
-        scheduleSave(path);
-    }
-
-    return () => {
-      client.onFileChanged = null;
-      clearWatches(client);
-    };
-  }, [client, workspace, clearWatches, refreshFromDisk, watch]);
-
   useEffect(() => {
     try {
       localStorage.setItem("harness-web:file-tree-width", String(treeWidth));
@@ -362,13 +220,6 @@ function WorkspaceTabsComponent({
       /* 本机偏好不可写时仅保留本页状态。 */
     }
   }, [treeWidth]);
-
-  useEffect(
-    () => () => {
-      for (const timer of saveTimers.current.values()) clearTimeout(timer);
-    },
-    [],
-  );
 
   useEffect(() => {
     if (!openRequest || !workspace || openRequest.workspace !== workspace)
@@ -381,7 +232,7 @@ function WorkspaceTabsComponent({
     setReviewRunIDs([]);
     setSubagentTabs([]);
     setSubagentReviews([]);
-    setActiveTabID(currentProject()?.activePath ?? "");
+    setActiveTabID(project?.activePath ?? "");
   }, [sessionID, workspace]);
 
   useEffect(() => {
@@ -405,116 +256,18 @@ function WorkspaceTabsComponent({
       return;
     if (subagentRequest.requestID === handledSubagentRequestID.current) return;
     handledSubagentRequestID.current = subagentRequest.requestID;
-    openSubagent(
-      subagentRequest.parentSessionID,
-      subagentRequest.taskID,
-      [],
-    );
+    openSubagent(subagentRequest.parentSessionID, subagentRequest.taskID, []);
   }, [subagentRequest?.requestID, sessionID]);
 
-  async function openFile(path: string, target?: FileLocation) {
-    const state = currentProject();
-    if (!state || !client?.connected) return;
-    if (state.files.has(path)) {
-      state.activePath = path;
-      setActiveTabID(path);
-      setLocation(target);
-      render();
-      return;
-    }
-    state.files.set(path, {
-      path,
-      name: fileName(path),
-      content: "",
-      savedContent: "",
-      hash: "",
-      status: "loading",
-    });
-    state.order.push(path);
-    state.activePath = path;
+  function openFile(path: string, target?: FileLocation) {
+    if (!project || !client?.connected) return;
     setActiveTabID(path);
     setLocation(target);
-    render();
-    try {
-      const result = await client.readFile(path);
-      const content = decodeFile(result.dataBase64);
-      updateFile(path, (file) => {
-        file.content = content;
-        file.savedContent = content;
-        file.hash = result.hash;
-        file.status = "saved";
-      });
-      void watch(path, "file");
-    } catch (error) {
-      updateFile(path, (file) => {
-        file.status = "error";
-        file.error = error instanceof Error ? error.message : "文件读取失败";
-      });
-    }
-  }
-
-  function scheduleSave(path: string) {
-    const previous = saveTimers.current.get(path);
-    if (previous) clearTimeout(previous);
-    saveTimers.current.set(
-      path,
-      setTimeout(() => {
-        saveTimers.current.delete(path);
-        void saveFile(path);
-      }, 700),
-    );
-  }
-
-  function editFile(path: string, content: string) {
-    updateFile(path, (file) => {
-      file.content = content;
-      if (file.status !== "conflict")
-        file.status = content === file.savedContent ? "saved" : "dirty";
-      delete file.error;
-    });
-    scheduleSave(path);
-  }
-
-  async function saveFile(path: string, overwriteHash?: string) {
-    const file = currentProject()?.files.get(path);
-    if (!file || !client?.connected || saving.current.has(path)) return;
-    if (!file.hash || file.status === "missing" || file.status === "loading")
-      return;
-    if (file.content === file.savedContent && !overwriteHash) return;
-
-    const submittedContent = file.content;
-    const expectedHash = overwriteHash ?? file.hash;
-    saving.current.add(path);
-    file.status = "saving";
-    delete file.error;
-    render();
-    try {
-      const result = await client.writeFile(
-        path,
-        encodeFile(submittedContent),
-        expectedHash,
-      );
-      updateFile(path, (current) => {
-        applySavedFile(current, submittedContent, result.hash);
-      });
-    } catch (error) {
-      if (error instanceof RPCError && error.code === fileConflictCode) {
-        await refreshFromDisk(path);
-      } else {
-        updateFile(path, (current) => {
-          current.status = "error";
-          current.error = error instanceof Error ? error.message : "保存失败";
-        });
-      }
-    } finally {
-      saving.current.delete(path);
-      const current = currentProject()?.files.get(path);
-      if (current?.status === "dirty") scheduleSave(path);
-    }
+    void files.openFile(path);
   }
 
   function requestClose(path: string) {
-    const file = currentProject()?.files.get(path);
+    const file = project?.files.get(path);
     if (!file) return;
     if (needsCloseConfirmation(file)) {
       setClosingPath(path);
@@ -524,44 +277,13 @@ function WorkspaceTabsComponent({
   }
 
   function closeFile(path: string) {
-    const state = currentProject();
-    if (!state) return;
-    const index = state.order.indexOf(path);
-    state.files.delete(path);
-    state.order = state.order.filter((item) => item !== path);
-    if (state.activePath === path)
-      state.activePath =
-        state.order[Math.min(index, state.order.length - 1)] ?? "";
+    files.closeFile(path);
     if (activeTabID === path)
       setActiveTabID(
-        state.activePath ||
+        project?.activePath ||
           (reviewRunIDs[0] ? reviewTabID(reviewRunIDs[0]) : ""),
       );
-    const timer = saveTimers.current.get(path);
-    if (timer) clearTimeout(timer);
-    saveTimers.current.delete(path);
-    const subscriptionID = watchPaths.current.get(path);
-    watchPaths.current.delete(path);
-    if (subscriptionID && subscriptionID !== "pending") {
-      watches.current.delete(subscriptionID);
-      if (client?.connected)
-        void client.unsubscribe(subscriptionID).catch(() => {});
-    }
     setClosingPath("");
-    render();
-  }
-
-  function reloadConflict(path: string) {
-    updateFile(path, (file) => {
-      if (file.diskContent == null || !file.diskHash) return;
-      file.content = file.diskContent;
-      file.savedContent = file.diskContent;
-      file.hash = file.diskHash;
-      file.status = "saved";
-      delete file.diskContent;
-      delete file.diskHash;
-      delete file.error;
-    });
   }
 
   const tabs: AuxiliaryTab[] = [
@@ -917,9 +639,8 @@ function WorkspaceTabsComponent({
         onActivateTab={(tab) => {
           setActiveTabID(tab.id);
           if (project && tab.kind === "file") {
-            project.activePath = tab.id === emptyFileTabID ? "" : tab.id;
+            files.selectFile(tab.id === emptyFileTabID ? "" : tab.id);
             setLocation(undefined);
-            render();
           }
         }}
         onCloseTab={(tab) => {

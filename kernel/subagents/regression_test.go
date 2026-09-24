@@ -143,14 +143,6 @@ func TestRecoveryProjectsHistoryFromChildSession(t *testing.T) {
 	if err = f.subagents.Close(); err != nil {
 		t.Fatal(err)
 	}
-	legacy, err := f.subagents.store.loadTask(child.TaskID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	legacy.TaskName = ""
-	if err = f.subagents.store.saveTask(legacy); err != nil {
-		t.Fatal(err)
-	}
 
 	files, err := persist.NewFiles(filepath.Dir(f.subagents.store.dir))
 	if err != nil {

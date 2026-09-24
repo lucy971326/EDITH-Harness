@@ -24,6 +24,7 @@ import (
 	"harness/kernel/persist"
 	"harness/kernel/runner"
 	"harness/kernel/session"
+	"harness/kernel/session/settings"
 	"harness/kernel/skills"
 	"harness/kernel/subagents"
 	"harness/kernel/tools"
@@ -62,7 +63,8 @@ func run() (result error) {
 	if err != nil {
 		return err
 	}
-	disk := persist.NewStore(files)
+	disk := session.NewPersistence(files)
+	settingsStore := settings.NewStore(files)
 	sessions := session.NewStore(disk)
 	models, err := llm.New(files)
 	if err != nil {
@@ -120,12 +122,12 @@ func run() (result error) {
 	if err != nil {
 		return err
 	}
-	agentService, err := agents.NewService(disk, disk, loopRegistry, toolRegistry, skillService)
+	agentService, err := agents.NewService(agents.NewStore(files), settingsStore, loopRegistry, toolRegistry, skillService)
 	if err != nil {
 		return err
 	}
 	commandService := commands.NewRegistry()
-	runService, err := runner.NewRunner(sessions, disk, agentService, loopRegistry, registry, models, toolRegistry, disk, files, machineService)
+	runService, err := runner.NewRunner(sessions, settingsStore, agentService, loopRegistry, registry, models, toolRegistry, files, machineService)
 	if err != nil {
 		return err
 	}
@@ -134,7 +136,7 @@ func run() (result error) {
 	if err != nil {
 		return err
 	}
-	subagentService, err := subagents.NewSubagents(sessions, disk, agentService, models, runService, registry, subagentFiles)
+	subagentService, err := subagents.NewSubagents(sessions, settingsStore, agentService, models, runService, registry, subagentFiles)
 	if err != nil {
 		return err
 	}
@@ -143,7 +145,7 @@ func run() (result error) {
 	if err != nil {
 		return err
 	}
-	conversationService, err := conversations.New(sessions, disk, agentService, models, runService, commandService, subagentService, approvalService)
+	conversationService, err := conversations.New(sessions, settingsStore, agentService, models, runService, commandService, subagentService, approvalService)
 	if err != nil {
 		return err
 	}

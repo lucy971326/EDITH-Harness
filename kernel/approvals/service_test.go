@@ -232,7 +232,7 @@ func reviewFixture(t *testing.T, endpoint string) (*Service, *persist.Files) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service, err := Open(files, models, session.NewStore(persist.NewStore(files)))
+	service, err := Open(files, models, session.NewStore(session.NewPersistence(files)))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"harness/kernel/agents"
-	"harness/kernel/agents/config"
 	"harness/kernel/events"
 	"harness/kernel/llm"
 	"harness/kernel/loops"
@@ -37,44 +36,43 @@ func (l *runnerTestLoop) Run(ctx context.Context, invocation loops.Invocation) e
 
 type memoryPersistence struct {
 	mu      sync.Mutex
-	trees   map[string][]persist.Node
-	metas   map[string]persist.Meta
-	runs    map[string][]byte
+	trees   map[string][]session.Node
+	metas   map[string]session.SessionMeta
 	addFail error
 }
 
 func newMemoryPersistence() *memoryPersistence {
-	return &memoryPersistence{trees: make(map[string][]persist.Node), metas: make(map[string]persist.Meta), runs: make(map[string][]byte)}
+	return &memoryPersistence{trees: make(map[string][]session.Node), metas: make(map[string]session.SessionMeta)}
 }
 
-func (p *memoryPersistence) Load(id string) (*persist.Tree, error) {
+func (p *memoryPersistence) Load(id string) (*session.Tree, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	nodes, ok := p.trees[id]
 	if !ok {
 		return nil, os.ErrNotExist
 	}
-	return &persist.Tree{ID: id, Nodes: append([]persist.Node(nil), nodes...)}, nil
+	return &session.Tree{ID: id, Nodes: append([]session.Node(nil), nodes...)}, nil
 }
 
-func (p *memoryPersistence) Save(id string, tree *persist.Tree) error {
+func (p *memoryPersistence) Save(id string, tree *session.Tree) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.trees[id] = append([]persist.Node(nil), tree.Nodes...)
+	p.trees[id] = append([]session.Node(nil), tree.Nodes...)
 	return nil
 }
 
-func (p *memoryPersistence) LoadMeta(id string) (persist.Meta, error) {
+func (p *memoryPersistence) LoadMeta(id string) (session.SessionMeta, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	meta, ok := p.metas[id]
 	if !ok {
-		return persist.Meta{}, os.ErrNotExist
+		return session.SessionMeta{}, os.ErrNotExist
 	}
 	return meta, nil
 }
 
-func (p *memoryPersistence) SaveMeta(meta persist.Meta) error {
+func (p *memoryPersistence) SaveMeta(meta session.SessionMeta) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.metas[meta.ID] = meta
@@ -91,40 +89,23 @@ func (p *memoryPersistence) DeleteMeta(id string) error {
 	return nil
 }
 
-func (p *memoryPersistence) List() ([]persist.Meta, error) {
+func (p *memoryPersistence) List() ([]session.SessionMeta, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	out := make([]persist.Meta, 0, len(p.metas))
+	out := make([]session.SessionMeta, 0, len(p.metas))
 	for _, meta := range p.metas {
 		out = append(out, meta)
 	}
 	return out, nil
 }
 
-func (p *memoryPersistence) Add(id string, node persist.Node) error {
+func (p *memoryPersistence) Add(id string, node session.Node) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.addFail != nil {
 		return p.addFail
 	}
 	p.trees[id] = append(p.trees[id], node)
-	return nil
-}
-
-func (p *memoryPersistence) LoadRunRecords(id string) ([]byte, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	body, ok := p.runs[id]
-	if !ok {
-		return nil, os.ErrNotExist
-	}
-	return append([]byte(nil), body...), nil
-}
-
-func (p *memoryPersistence) SaveRunRecords(id string, body []byte) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.runs[id] = append([]byte(nil), body...)
 	return nil
 }
 
@@ -161,30 +142,30 @@ func (s *memorySettings) readCount() int {
 }
 
 type emptyAgentStore struct {
-	agents map[string]config.Agent
+	agents map[string]agents.Agent
 }
 
 func newEmptyAgentStore() *emptyAgentStore {
-	return &emptyAgentStore{agents: make(map[string]config.Agent)}
+	return &emptyAgentStore{agents: make(map[string]agents.Agent)}
 }
 
-func (s *emptyAgentStore) ListAgents() ([]config.Agent, error) {
-	out := make([]config.Agent, 0, len(s.agents))
+func (s *emptyAgentStore) ListAgents() ([]agents.Agent, error) {
+	out := make([]agents.Agent, 0, len(s.agents))
 	for _, agent := range s.agents {
 		out = append(out, agent)
 	}
 	return out, nil
 }
 
-func (s *emptyAgentStore) ForAgent(id string) (config.Agent, error) {
+func (s *emptyAgentStore) ForAgent(id string) (agents.Agent, error) {
 	agent, ok := s.agents[id]
 	if !ok {
-		return config.Agent{}, os.ErrNotExist
+		return agents.Agent{}, os.ErrNotExist
 	}
 	return agent, nil
 }
 
-func (s *emptyAgentStore) PutAgent(agent config.Agent) error {
+func (s *emptyAgentStore) PutAgent(agent agents.Agent) error {
 	s.agents[agent.ID] = agent
 	return nil
 }
@@ -243,14 +224,15 @@ func newRunnerFixtureWithLLM(t *testing.T, loop loops.Loop, client *llm.Client) 
 		t.Fatal(err)
 	}
 	eventRegistry := events.NewRegistry()
-	diffFiles, err := persist.NewFiles(t.TempDir())
+	files, err := persist.NewFiles(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := NewRunner(sessions, settingsStore, agentService, loopRegistry, eventRegistry, client, toolRegistry, persistence, diffFiles, localTestMachine(t))
+	r, err := NewRunner(sessions, settingsStore, agentService, loopRegistry, eventRegistry, client, toolRegistry, files, localTestMachine(t))
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(r.Close)
 	return runnerFixture{
 		runner:      r,
 		sessions:    sessions,
@@ -327,8 +309,7 @@ func TestRunPublishesAndPersistsLatestUsage(t *testing.T) {
 		events.NewRegistry(),
 		fixture.runner.llm,
 		fixture.tools,
-		fixture.persistence,
-		fixture.runner.diffFiles,
+		fixture.runner.files,
 		fixture.runner.filesystem,
 	)
 	if err != nil {

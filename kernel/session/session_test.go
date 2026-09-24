@@ -5,19 +5,23 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"harness/kernel/persist"
+	"harness/kernel/session/settings"
 )
 
-func newTestStore(t *testing.T) (*Store, persist.Persistence) {
+func newTestStore(t *testing.T) (*Store, Persistence) {
 	t.Helper()
 	files, err := persist.NewFiles(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := persist.NewStore(files)
+	p := NewPersistence(files)
 	return NewStore(p), p
 }
 
@@ -85,7 +89,7 @@ func TestEmptySessionSurvivesNewStoreAndList(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := persist.NewStore(files)
+	p := NewPersistence(files)
 	first := NewStore(p)
 	_, err = first.Create("empty")
 	if err != nil {
@@ -130,7 +134,7 @@ func TestAppendSurvivesNewStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := persist.NewStore(files)
+	p := NewPersistence(files)
 	first := NewStore(p)
 	s, err := first.Create("chat1")
 	if err != nil {
@@ -151,7 +155,7 @@ func TestAppendSurvivesNewStore(t *testing.T) {
 	}
 }
 
-func TestGetRejectsOldLedgerWithoutSequence(t *testing.T) {
+func TestGetRejectsLedgerWithoutSequence(t *testing.T) {
 	store, p := newTestStore(t)
 	_, err := store.Create("old")
 	if err != nil {
@@ -161,12 +165,12 @@ func TestGetRejectsOldLedgerWithoutSequence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = p.Add("old", persist.Node{ID: "old-node", Body: body})
+	err = p.Add("old", Node{ID: "old-node", Body: body})
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, err = NewStore(p).Get("old")
-	if err == nil || !strings.Contains(err.Error(), "unsupported old format") {
+	if err == nil || !strings.Contains(err.Error(), "invalid zero sequence") {
 		t.Fatalf("Get() error = %v", err)
 	}
 }
@@ -332,7 +336,7 @@ func TestSummarySurvivesReload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := persist.NewStore(files)
+	p := NewPersistence(files)
 	first := NewStore(p)
 	s, err := first.Create("chat1")
 	if err != nil {
@@ -640,5 +644,271 @@ func TestHistoryProjectsIncompleteWithoutDanglingTools(t *testing.T) {
 		if block.Kind == "tool-call" {
 			t.Fatalf("dangling tool call in history: %#v", got[1])
 		}
+	}
+}
+
+func TestAdd_thenLoad(t *testing.T) {
+	dir := t.TempDir()
+	files, err := persist.NewFiles(dir)
+	s := NewPersistence(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = s.Add("chat1", Node{
+		ID:     "n1",
+		Parent: "",
+		Body:   json.RawMessage(`{"text":"hi"}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tree, err := s.Load("chat1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tree.ID != "chat1" {
+		t.Fatalf("id = %q", tree.ID)
+	}
+	if len(tree.Nodes) != 1 {
+		t.Fatalf("nodes = %d, want 1", len(tree.Nodes))
+	}
+	if tree.Nodes[0].ID != "n1" {
+		t.Fatalf("node id = %q", tree.Nodes[0].ID)
+	}
+}
+
+func TestAdd_survivesReopen(t *testing.T) {
+	dir := t.TempDir()
+	files, err := persist.NewFiles(dir)
+	s := NewPersistence(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.Add("chat1", Node{ID: "n1", Body: json.RawMessage(`{}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := persist.NewFiles(dir)
+	again := NewPersistence(reopened)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree, err := again.Load("chat1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tree.Nodes) != 1 || tree.Nodes[0].ID != "n1" {
+		t.Fatalf("after reopen: %+v", tree.Nodes)
+	}
+}
+
+func TestAdd_fork(t *testing.T) {
+	files, err := persist.NewFiles(t.TempDir())
+	s := NewPersistence(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = s.Add("chat1", Node{ID: "root", Body: json.RawMessage(`{}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.Add("chat1", Node{ID: "a", Parent: "root", Body: json.RawMessage(`{}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.Add("chat1", Node{ID: "b", Parent: "root", Body: json.RawMessage(`{}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tree, err := s.Load("chat1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tree.Nodes) != 3 {
+		t.Fatalf("nodes = %d, want 3", len(tree.Nodes))
+	}
+
+	var kids []string
+	for _, n := range tree.Nodes {
+		if n.Parent == "root" {
+			kids = append(kids, n.ID)
+		}
+	}
+	slices.Sort(kids)
+	if !slices.Equal(kids, []string{"a", "b"}) {
+		t.Fatalf("kids = %v, want [a b]", kids)
+	}
+}
+
+func TestList(t *testing.T) {
+	files, err := persist.NewFiles(t.TempDir())
+	s := NewPersistence(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.SaveMeta(SessionMeta{ID: "one", Title: "One", CreatedAt: time.Now().UTC()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.SaveMeta(SessionMeta{ID: "two", Title: "Two", CreatedAt: time.Now().UTC()})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	list, err := s.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, m := range list {
+		ids = append(ids, m.ID)
+	}
+	slices.Sort(ids)
+	if !slices.Equal(ids, []string{"one", "two"}) {
+		t.Fatalf("list = %v", ids)
+	}
+}
+
+func TestMeta_roundTripWithoutLedger(t *testing.T) {
+	files, err := persist.NewFiles(t.TempDir())
+	s := NewPersistence(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := SessionMeta{ID: "empty", Title: "新对话", CreatedAt: time.Now().UTC().Round(0)}
+	err = s.SaveMeta(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.LoadMeta("empty")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("meta = %#v, want %#v", got, want)
+	}
+	_, err = s.Load("empty")
+	if !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("ledger error = %v, want not exist", err)
+	}
+}
+
+func TestListRejectsMetaWhoseIDDoesNotMatchFilename(t *testing.T) {
+	files, err := persist.NewFiles(t.TempDir())
+	s := NewPersistence(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := []byte(`{"id":"other","title":"新对话","createdAt":"2026-09-02T00:00:00Z"}`)
+	files, err = files.Scope("sessions", "expected")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = files.Write("meta.json", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.List()
+	if err == nil || !strings.Contains(err.Error(), `has id "other"`) {
+		t.Fatalf("List() error = %v", err)
+	}
+}
+
+func TestBadID(t *testing.T) {
+	files, err := persist.NewFiles(t.TempDir())
+	s := NewPersistence(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bads := []string{"", ".", "..", "a/b", `a\b`, "../x"}
+	for _, id := range bads {
+		err := s.Add(id, Node{ID: "n", Body: json.RawMessage(`{}`)})
+		if err == nil {
+			t.Fatalf("Add(%q): want error", id)
+		}
+		err = settings.NewStore(files).Put(id, settings.SessionSettings{})
+		if err == nil {
+			t.Fatalf("Put(%q): want error", id)
+		}
+	}
+
+	entries, err := files.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("wrote files for bad ids: %v", entries)
+	}
+}
+
+func TestSave_roundTrip(t *testing.T) {
+	files, err := persist.NewFiles(t.TempDir())
+	s := NewPersistence(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := &Tree{
+		ID: "chat1",
+		Nodes: []Node{
+			{ID: "n1", Body: json.RawMessage(`{"t":1}`)},
+			{ID: "n2", Parent: "n1", Body: json.RawMessage(`{"t":2}`)},
+		},
+	}
+	err = s.Save("chat1", want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Load("chat1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Nodes) != 2 {
+		t.Fatalf("nodes = %d", len(got.Nodes))
+	}
+	if got.Nodes[1].Parent != "n1" {
+		t.Fatalf("parent = %q", got.Nodes[1].Parent)
+	}
+}
+
+func TestAdd_emptyNodeID(t *testing.T) {
+	files, err := persist.NewFiles(t.TempDir())
+	s := NewPersistence(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.Add("chat1", Node{Body: json.RawMessage(`{}`)})
+	if err == nil {
+		t.Fatal("want error on empty node id")
+	}
+}
+
+func names(entries []os.DirEntry) []string {
+	out := make([]string, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, e.Name())
+	}
+	return out
+}
+
+func TestTreeFileName(t *testing.T) {
+	dir := t.TempDir()
+	files, err := persist.NewFiles(dir)
+	s := NewPersistence(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.Add("chat1", Node{ID: "n", Body: json.RawMessage(`{}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = os.Stat(filepath.Join(dir, "sessions", "chat1", "messages.jsonl"))
+	if err != nil {
+		t.Fatal(err)
 	}
 }

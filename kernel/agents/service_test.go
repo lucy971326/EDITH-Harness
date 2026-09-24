@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
 	"harness/kernel/loops"
+	"harness/kernel/persist"
 	"harness/kernel/session/settings"
 	"harness/kernel/skills"
 	"harness/kernel/tools"
@@ -202,7 +204,7 @@ func TestService_prepareWithoutSkillReaderStillListsSkills(t *testing.T) {
 	}
 }
 
-func TestService_availableSkillsIgnoresAgentAndStripsLegacyTools(t *testing.T) {
+func TestService_availableSkillsIgnoresAgentSelection(t *testing.T) {
 	service, loopsRegistry, toolsRegistry, skillsRegistry := testService(t)
 	registerLoop(t, loopsRegistry, "react")
 	registerTool(t, toolsRegistry, "read")
@@ -215,7 +217,7 @@ func TestService_availableSkillsIgnoresAgentAndStripsLegacyTools(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	agent := Agent{ID: "legacy", Name: "Legacy", Kind: "react", Tools: []string{"read", "mcp__tavily__search"}}
+	agent := Agent{ID: "configured", Name: "Configured", Kind: "react", Tools: []string{"read"}}
 	err = service.store.PutAgent(agent)
 	if err != nil {
 		t.Fatal(err)
@@ -246,38 +248,6 @@ func TestService_availableSkillsPropagatesDiscoveryError(t *testing.T) {
 	_, err = service.AvailableSkills("/work")
 	if err == nil || !strings.Contains(err.Error(), "broken skill root") {
 		t.Fatalf("AvailableSkills() error = %v", err)
-	}
-}
-
-func TestService_migratesLegacyToolsOnce(t *testing.T) {
-	store := newMemoryStore()
-	store.agents["legacy"] = Agent{
-		ID: "legacy", Name: "Legacy", Kind: "react",
-		Tools: []string{"other", "read", "bash", "write", "edit", "exec_command"},
-	}
-	loopsRegistry := loops.NewRegistry()
-	toolsRegistry := tools.NewRegistry()
-	for _, name := range []string{"other", "exec_command", "write_stdin", "apply_patch"} {
-		registerTool(t, toolsRegistry, name)
-	}
-	skillsRegistry := skills.NewRegistry()
-	_, err := NewService(store, noAgentUse{}, loopsRegistry, toolsRegistry, skillsRegistry)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := store.agents["legacy"]
-	want := []string{"other", "exec_command", "write_stdin", "apply_patch"}
-	if !slices.Equal(got.Tools, want) {
-		t.Fatalf("migrated tools = %#v, want %#v", got.Tools, want)
-	}
-
-	putsAfterMigration := store.putCount
-	_, err = NewService(store, noAgentUse{}, loopsRegistry, toolsRegistry, skillsRegistry)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if store.putCount != putsAfterMigration {
-		t.Fatalf("second startup wrote agents: puts %d -> %d", putsAfterMigration, store.putCount)
 	}
 }
 
@@ -439,4 +409,40 @@ func (s *memoryStore) DeleteAgent(id string) error {
 	}
 	delete(s.agents, id)
 	return nil
+}
+
+func TestAgentStore_roundTripListAndDelete(t *testing.T) {
+	dir := t.TempDir()
+	files, err := persist.NewFiles(dir)
+	s := NewStore(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := Agent{ID: "coding", Name: "Coding", Kind: "react", Tools: []string{"bash"}}
+	if err := s.PutAgent(input); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "agents", "coding.json")); err != nil {
+		t.Fatalf("agent file: %v", err)
+	}
+	got, err := s.ForAgent("coding")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != input.ID || got.Name != input.Name || got.Kind != input.Kind || !slices.Equal(got.Tools, input.Tools) {
+		t.Fatalf("ForAgent() = %#v, want %#v", got, input)
+	}
+	list, err := s.ListAgents()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].ID != "coding" {
+		t.Fatalf("ListAgents() = %#v", list)
+	}
+	if err := s.DeleteAgent("coding"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ForAgent("coding"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("ForAgent() error = %v, want not exist", err)
+	}
 }

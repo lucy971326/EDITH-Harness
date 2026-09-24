@@ -62,7 +62,7 @@ func (r *Runner) persistLiveDiff(sessionID, runID string, current *liveRun, snap
 }
 
 func (r *Runner) storeDiffLocked(sessionID, runID string, revision uint64, files []trackedFileChange, summary *RunDiffSummary) error {
-	if r.diffFiles == nil {
+	if r.files == nil {
 		return fmt.Errorf("runner: diff storage is unavailable")
 	}
 	wasReconciled := r.reconciled[sessionID]
@@ -265,10 +265,10 @@ func contentHash(content *string) string {
 }
 
 func (r *Runner) diffScope(sessionID string) (*persist.Files, error) {
-	if r.diffFiles == nil {
+	if r.files == nil {
 		return nil, fmt.Errorf("runner: diff storage is unavailable")
 	}
-	return r.diffFiles.Scope("sessions", sessionID, "diffs")
+	return r.files.Scope("sessions", sessionID, "diffs")
 }
 
 func (r *Runner) writeDiffBody(sessionID string, body runDiffBody) error {
@@ -342,7 +342,7 @@ func (r *Runner) removeDiffBody(sessionID, runID string) error {
 }
 
 func (r *Runner) reconcileDiffsLocked(sessionID string, records []runRecord) ([]runRecord, error) {
-	if r.diffFiles == nil || r.reconciled[sessionID] {
+	if r.files == nil || r.reconciled[sessionID] {
 		return records, nil
 	}
 	changed := false

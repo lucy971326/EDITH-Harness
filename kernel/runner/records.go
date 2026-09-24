@@ -19,7 +19,11 @@ type runRecord struct {
 }
 
 func (r *Runner) loadRecords(sessionID string) ([]runRecord, error) {
-	body, err := r.persist.LoadRunRecords(sessionID)
+	files, err := r.files.Scope("sessions", sessionID)
+	if err != nil {
+		return nil, err
+	}
+	body, err := files.Read("runs.json")
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
@@ -45,7 +49,11 @@ func (r *Runner) saveRecords(sessionID string, records []runRecord) error {
 	if err != nil {
 		return err
 	}
-	err = r.persist.SaveRunRecords(sessionID, body)
+	files, err := r.files.Scope("sessions", sessionID)
+	if err != nil {
+		return err
+	}
+	err = files.Write("runs.json", body)
 	if err != nil {
 		return fmt.Errorf("runner: save run records %q: %w", sessionID, err)
 	}

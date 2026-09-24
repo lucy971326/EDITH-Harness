@@ -92,7 +92,7 @@ type runPreparation struct {
 	loop     loops.Loop
 }
 
-// 活对象。挂在 Host 上、管理尚未结束 Run 的对话运行器。
+// 活对象。管理尚未结束 Run 的对话运行器。
 type Runner struct {
 	sessions   *session.Store
 	settings   settings.SessionSettingsStore
@@ -101,8 +101,7 @@ type Runner struct {
 	events     *events.Registry
 	llm        *llm.Client
 	tools      tools.Tools
-	persist    persist.Persistence
-	diffFiles  *persist.Files
+	files      *persist.Files
 	filesystem machine.FileSystem
 	epoch      string
 
@@ -163,8 +162,7 @@ func NewRunner(
 	eventRegistry *events.Registry,
 	llmClient *llm.Client,
 	toolRegistry tools.Tools,
-	persistence persist.Persistence,
-	diffFiles *persist.Files,
+	files *persist.Files,
 	filesystem machine.FileSystem,
 ) (*Runner, error) {
 	if sessions == nil {
@@ -188,11 +186,8 @@ func NewRunner(
 	if toolRegistry == nil {
 		return nil, fmt.Errorf("runner: nil tools")
 	}
-	if persistence == nil {
-		return nil, fmt.Errorf("runner: nil persistence")
-	}
-	if diffFiles == nil {
-		return nil, fmt.Errorf("runner: nil diff files")
+	if files == nil {
+		return nil, fmt.Errorf("runner: nil files")
 	}
 	if filesystem == nil {
 		return nil, fmt.Errorf("runner: nil filesystem")
@@ -209,8 +204,7 @@ func NewRunner(
 		events:     eventRegistry,
 		llm:        llmClient,
 		tools:      toolRegistry,
-		persist:    persistence,
-		diffFiles:  diffFiles,
+		files:      files,
 		filesystem: filesystem,
 		epoch:      epoch,
 		live:       make(map[string]*liveRun),

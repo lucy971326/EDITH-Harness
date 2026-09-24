@@ -16,23 +16,11 @@ type taskProjection struct {
 }
 
 func (s *Subagents) projectTask(record TaskRecord) (taskProjection, error) {
-	taskName := record.TaskName
-	if taskName == "" {
-		setup, settingsErr := s.settings.For(record.ChildSessionID)
-		if settingsErr == nil {
-			agent, agentErr := s.agents.Get(setup.AgentID)
-			if agentErr == nil {
-				taskName = agent.Name
-			} else {
-				taskName = setup.AgentID
-			}
-		}
-	}
 	projection := taskProjection{view: TaskView{
 		ID:              record.ID,
 		ParentSessionID: record.ParentSessionID,
 		ChildSessionID:  record.ChildSessionID,
-		TaskName:        taskName,
+		TaskName:        record.TaskName,
 		Description:     record.Description,
 		Turns:           []TurnRecord{},
 		Results:         []TurnResult{},

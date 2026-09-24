@@ -567,9 +567,9 @@ func TestReactCancellingOneOfMultipleToolCallsPersistsEveryResult(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	disk := persist.NewStore(files)
+	disk := session.NewPersistence(files)
+	settingsStore := settings.NewStore(files)
 	sessions := session.NewStore(disk)
-	settingsStore := disk
 	models, err := llm.New(files)
 	if err != nil {
 		t.Fatal(err)
@@ -602,11 +602,11 @@ func TestReactCancellingOneOfMultipleToolCallsPersistsEveryResult(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	agentService, err := agents.NewService(disk, disk, loopRegistry, toolRegistry, skills.NewRegistry())
+	agentService, err := agents.NewService(agents.NewStore(files), settingsStore, loopRegistry, toolRegistry, skills.NewRegistry())
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := runner.NewRunner(sessions, disk, agentService, loopRegistry, eventRegistry, models, toolRegistry, disk, files, machineService)
+	r, err := runner.NewRunner(sessions, settingsStore, agentService, loopRegistry, eventRegistry, models, toolRegistry, files, machineService)
 	if err != nil {
 		t.Fatal(err)
 	}

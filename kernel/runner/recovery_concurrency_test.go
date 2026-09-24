@@ -3,24 +3,13 @@ package runner
 import (
 	"context"
 	"errors"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"harness/kernel/events"
 	"harness/kernel/loops"
-	"harness/kernel/persist"
 	"harness/kernel/session"
 )
-
-// 在读到旧记录或写入输入时暂停，稳定制造快照、收尾和插话交错。
-type recoveryGatePersistence struct {
-	persist.Persistence
-	loadGate atomic.Bool
-	addGate  atomic.Bool
-	reached  chan struct{}
-	resume   chan struct{}
-}
 
 func TestExpectedRunCannotEnterAfterFinalCheckpoint(t *testing.T) {
 	closed, finish := make(chan struct{}), make(chan struct{})
@@ -43,23 +32,6 @@ func TestExpectedRunCannotEnterAfterFinalCheckpoint(t *testing.T) {
 	}
 }
 
-func (p *recoveryGatePersistence) LoadRunRecords(id string) ([]byte, error) {
-	body, err := p.Persistence.LoadRunRecords(id)
-	if p.loadGate.Swap(false) {
-		close(p.reached)
-		<-p.resume
-	}
-	return body, err
-}
-
-func (p *recoveryGatePersistence) Add(id string, node persist.Node) error {
-	if p.addGate.Swap(false) {
-		close(p.reached)
-		<-p.resume
-	}
-	return p.Persistence.Add(id, node)
-}
-
 func TestSnapshotCannotOverwriteCompletedRecord(t *testing.T) {
 	started, finish := make(chan struct{}), make(chan struct{})
 	f := newRunnerFixture(t, &runnerTestLoop{run: func(context.Context, loops.Invocation) error {
@@ -67,27 +39,25 @@ func TestSnapshotCannotOverwriteCompletedRecord(t *testing.T) {
 		<-finish
 		return nil
 	}})
-	gate := &recoveryGatePersistence{Persistence: f.persistence, reached: make(chan struct{}), resume: make(chan struct{})}
-	f.runner.persist = gate
 	handle, err := f.runner.Start(context.Background(), "session-1", textInput("q"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	<-started
-	gate.loadGate.Store(true)
+	f.runner.recordsMu.Lock()
+	// 同一把锁覆盖快照与结束记录，完成不能越过正在进行的记录事务。
 	snapshotDone := make(chan error, 1)
 	go func() {
 		_, err := f.runner.SessionView("session-1")
 		snapshotDone <- err
 	}()
-	<-gate.reached
 	close(finish)
-	// 旧实现此时能写 success，随后被快照的旧 running 覆盖；新实现串行完成。
 	select {
 	case <-handle.Done():
+		t.Error("completion bypassed record transaction")
 	case <-time.After(20 * time.Millisecond):
 	}
-	close(gate.resume)
+	f.runner.recordsMu.Unlock()
 	if err := <-snapshotDone; err != nil {
 		t.Fatal(err)
 	}

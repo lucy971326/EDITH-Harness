@@ -68,7 +68,7 @@ type TaskRecord struct {
 	ID              string `json:"id"`
 	ParentSessionID string `json:"parentSessionID"`
 	ChildSessionID  string `json:"childSessionID"`
-	TaskName        string `json:"taskName,omitempty"`
+	TaskName        string `json:"taskName"`
 	Description     string `json:"description"`
 }
 

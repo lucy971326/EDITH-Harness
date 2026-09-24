@@ -19,7 +19,7 @@ func Modes() []ModeChoice {
 	}
 }
 
-// NormalizeMode 为旧设置补默认值，拒绝未知模式。
+// NormalizeMode 为未指定的新设置提供默认值，拒绝未知模式。
 func NormalizeMode(mode Mode) (Mode, error) {
 	switch mode {
 	case "":

@@ -1,16 +1,7 @@
 # agents
 
-【它是什么】Agent 设置插件。
+拥有 Agent 设置、文件格式、本轮准备与引用协调。`NewStore` 读写 `agents/<id>.json`，`NewService` 接入工具、Loop、Skills 和会话设置。
 
-【使用能力】
+普通工具按 Agent 设置准备，MCP 与 Skills 按作用域发现。Agent 删除与会话引用写入、目录读取互斥，避免悬空引用与并发删除读取失败。
 
-- `agentStore`：读取和保存 Agent 设置，由 `persist` 提供；
-- `loops`、`tools`、`skills`：校验 Kind 与普通 Tool，并取得本轮 Skill 与动态 Tool 事实。
-
-【提供能力】注册服务 `agents`：保存设置，并在每轮 `Prepare` 时产出 Kind、Tool 名单与最终 System Prompt。当前作用域的 Skills 与 MCP 自动加入；普通 Tool 仍按 Agent 勾选。
-
-【填充插槽】不填。
-
-【谁在用】`runner` 每轮调用 `Prepare`，再交给选中的 Loop。
-
-【不做】不运行 Loop、不写账本、不把提示词另存进 Session；不新增 Skill Tool。
+不自动改写旧工具名或过滤已保存的工具选择；不运行 Loop、不写对话账本。

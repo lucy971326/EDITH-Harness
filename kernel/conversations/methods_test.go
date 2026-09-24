@@ -182,7 +182,7 @@ func TestSettingsUpdatePersistsAndRejectsWhileRunning(t *testing.T) {
 	if result.Session.Settings.Workspace != created.Settings.Workspace || result.Session.Settings.Model != "deepseek/deepseek-flash" {
 		t.Fatalf("updated session = %#v", result.Session)
 	}
-	// 旧 Client 或只切换模型的请求省略模式时，必须保留已经保存的选择。
+	// 只切换模型的请求省略模式时，必须保留已经保存的选择。
 	params = json.RawMessage(`{"sessionID":"` + created.Meta.ID + `","agentID":"default","model":"deepseek/deepseek-flash","reasoningEffort":"high"}`)
 	_, err = server.Call(t.Context(), "harness/session/settings/update", params)
 	if err != nil {

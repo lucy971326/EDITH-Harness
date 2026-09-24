@@ -106,19 +106,6 @@ test("failure, cancellation, interruption and incomplete never become final", ()
   assert.equal(chatTurns(s)[0].answer, undefined);
 });
 
-test("legacy history without run state still renders its complete final Markdown", () => {
-  const s = snapshot([
-    user,
-    entry(2, "assistant", [text("## 标题\n\n- **内容**")], 1),
-  ]);
-  s.runs = [];
-
-  const turn = chatTurns(s)[0];
-  assert.equal(turn.run, undefined);
-  assert.equal(turn.answer?.text, "## 标题\n\n- **内容**");
-  assert.equal(turn.items.length, 0);
-});
-
 test("tool result fills its call exactly once, all four statuses derive from snapshot", () => {
   const s = snapshot([user, entry(2, "assistant", [call], 1)], "running");
   assert.equal(chatTurns(s)[0].items[0].status, "等待结果");

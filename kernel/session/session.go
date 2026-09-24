@@ -5,16 +5,14 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-
-	"harness/kernel/persist"
 )
 
 // 活对象。一本对话账。nodes 和磁盘上的节点保持同一份追加顺序。
 type Session struct {
 	mu    sync.Mutex
 	id    string
-	disk  persist.Persistence
-	nodes map[string]persist.Node
+	disk  Persistence
+	nodes map[string]Node
 	head  string
 	next  uint64
 }
@@ -53,7 +51,7 @@ func (s *Session) appendEntry(id string, m Message) (Entry, error) {
 	if _, exists := s.nodes[id]; exists {
 		return Entry{}, fmt.Errorf("session: entry %q already exists", id)
 	}
-	node := persist.Node{ID: id, Parent: s.head, Seq: s.next + 1, Body: body}
+	node := Node{ID: id, Parent: s.head, Seq: s.next + 1, Body: body}
 	err = s.disk.Add(s.id, node)
 	if err != nil {
 		return Entry{}, fmt.Errorf("session: append: %w", err)

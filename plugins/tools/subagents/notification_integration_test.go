@@ -152,9 +152,9 @@ func TestRealReactWaitReceivesCompletionOrUserInput(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			disk := persist.NewStore(files)
+			disk := session.NewPersistence(files)
+			settingsStore := settings.NewStore(files)
 			sessions := session.NewStore(disk)
-			settingsStore := disk
 			models, err := llm.New(files)
 			if err != nil {
 				t.Fatal(err)
@@ -172,11 +172,11 @@ func TestRealReactWaitReceivesCompletionOrUserInput(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			agentService, err := agents.NewService(disk, disk, loopRegistry, toolRegistry, skillService)
+			agentService, err := agents.NewService(agents.NewStore(files), settingsStore, loopRegistry, toolRegistry, skillService)
 			if err != nil {
 				t.Fatal(err)
 			}
-			runService, err := runner.NewRunner(sessions, disk, agentService, loopRegistry, eventRegistry, models, toolRegistry, disk, files, machineService)
+			runService, err := runner.NewRunner(sessions, settingsStore, agentService, loopRegistry, eventRegistry, models, toolRegistry, files, machineService)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -185,7 +185,7 @@ func TestRealReactWaitReceivesCompletionOrUserInput(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			subagentService, err := delegation.NewSubagents(sessions, disk, agentService, models, runService, eventRegistry, subFiles)
+			subagentService, err := delegation.NewSubagents(sessions, settingsStore, agentService, models, runService, eventRegistry, subFiles)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -201,7 +201,7 @@ func TestRealReactWaitReceivesCompletionOrUserInput(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = approvalService.Close() })
-			service, err := conversations.New(sessions, disk, agentService, models, runService, commandService, subagentService, approvalService)
+			service, err := conversations.New(sessions, settingsStore, agentService, models, runService, commandService, subagentService, approvalService)
 			if err != nil {
 				t.Fatal(err)
 			}

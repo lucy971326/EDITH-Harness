@@ -27,6 +27,7 @@ import (
 	"harness/kernel/persist"
 	"harness/kernel/runner"
 	"harness/kernel/session"
+	"harness/kernel/session/settings"
 	"harness/kernel/skills"
 	"harness/kernel/subagents"
 	"harness/kernel/tools"
@@ -141,7 +142,8 @@ func newNetworkHost(t *testing.T, data string) (func() error, *appserver.Server,
 	if err != nil {
 		t.Fatal(err)
 	}
-	disk := persist.NewStore(files)
+	disk := session.NewPersistence(files)
+	settingsStore := settings.NewStore(files)
 	sessions := session.NewStore(disk)
 	models, err := llm.New(files)
 	if err != nil {
@@ -160,11 +162,11 @@ func newNetworkHost(t *testing.T, data string) (func() error, *appserver.Server,
 	if err != nil {
 		t.Fatal(err)
 	}
-	agentService, err := agents.NewService(disk, disk, loopRegistry, toolRegistry, skillService)
+	agentService, err := agents.NewService(agents.NewStore(files), settingsStore, loopRegistry, toolRegistry, skillService)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runService, err := runner.NewRunner(sessions, disk, agentService, loopRegistry, eventRegistry, models, toolRegistry, disk, files, machineService)
+	runService, err := runner.NewRunner(sessions, settingsStore, agentService, loopRegistry, eventRegistry, models, toolRegistry, files, machineService)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +175,7 @@ func newNetworkHost(t *testing.T, data string) (func() error, *appserver.Server,
 	if err != nil {
 		t.Fatal(err)
 	}
-	subagentService, err := subagents.NewSubagents(sessions, disk, agentService, models, runService, eventRegistry, subFiles)
+	subagentService, err := subagents.NewSubagents(sessions, settingsStore, agentService, models, runService, eventRegistry, subFiles)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +191,7 @@ func newNetworkHost(t *testing.T, data string) (func() error, *appserver.Server,
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = approvalService.Close() })
-	service, err := conversations.New(sessions, disk, agentService, models, runService, commandService, subagentService, approvalService)
+	service, err := conversations.New(sessions, settingsStore, agentService, models, runService, commandService, subagentService, approvalService)
 	if err != nil {
 		t.Fatal(err)
 	}

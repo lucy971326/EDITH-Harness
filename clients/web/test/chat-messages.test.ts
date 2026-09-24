@@ -61,7 +61,7 @@ test("long history finds run statuses with linear work", () => {
   assert.ok(runReads <= count * 20, `repeated history scans: ${runReads}`);
 });
 
-test("legacy answers render normally while live and interrupted statuses stay visible", () => {
+test("completed answers render normally while live and interrupted statuses stay visible", () => {
   const snapshot: Snapshot = {
     seqEpoch: "epoch",
     updateSeq: 3,
@@ -70,7 +70,7 @@ test("legacy answers render normally while live and interrupted statuses stay vi
         id: "old",
         seq: 1,
         message: {
-          runID: "legacy",
+          runID: "completed",
           role: "assistant",
           blocks: [{ kind: "text", text: "旧回答" }],
         },
@@ -86,6 +86,7 @@ test("legacy answers render normally while live and interrupted statuses stay vi
       },
     ],
     runs: [
+      { runID: "completed", afterEntrySeq: 0, status: "success" },
       {
         runID: "live",
         afterEntrySeq: 2,

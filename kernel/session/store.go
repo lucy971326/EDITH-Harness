@@ -7,19 +7,17 @@ import (
 	"os"
 	"sync"
 	"time"
-
-	"harness/kernel/persist"
 )
 
-// 活对象。表上那份对话账。live 里是打开过的 Session。
+// 活对象。对话账本集合。live 里是打开过的 Session。
 type Store struct {
-	persist persist.Persistence
+	persist Persistence
 	mu      sync.Mutex
 	live    map[string]*Session
 }
 
 // NewStore 造一个空 Store。账本在 Persistence 上。
-func NewStore(p persist.Persistence) *Store {
+func NewStore(p Persistence) *Store {
 	return &Store{persist: p, live: make(map[string]*Session)}
 }
 
@@ -42,13 +40,13 @@ func (s *Store) Create(id string) (*Session, error) {
 	if !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("session: create %q: %w", id, err)
 	}
-	err = s.persist.SaveMeta(persist.Meta{ID: id, Title: "新对话", CreatedAt: time.Now().UTC()})
+	err = s.persist.SaveMeta(SessionMeta{ID: id, Title: "新对话", CreatedAt: time.Now().UTC()})
 	if err != nil {
 		return nil, fmt.Errorf("session: create %q: %w", id, err)
 	}
 
 	// 空账没有文件；元数据文件已经表明会话存在。
-	sess := &Session{id: id, disk: s.persist, nodes: make(map[string]persist.Node)}
+	sess := &Session{id: id, disk: s.persist, nodes: make(map[string]Node)}
 	s.live[id] = sess
 	return sess, nil
 }
@@ -80,8 +78,8 @@ func (s *Store) Fork(sourceID, destinationID, throughEntryID, title string) (*Se
 		return nil, fmt.Errorf("session: fork target %q is not in current branch", throughEntryID)
 	}
 
-	nodes := make([]persist.Node, 0, through+1)
-	cloned := make(map[string]persist.Node, through+1)
+	nodes := make([]Node, 0, through+1)
+	cloned := make(map[string]Node, through+1)
 	parent := ""
 	for index, entry := range entries[:through+1] {
 		body, err := json.Marshal(entry.Message)
@@ -92,7 +90,7 @@ func (s *Store) Fork(sourceID, destinationID, throughEntryID, title string) (*Se
 		if err != nil {
 			return nil, err
 		}
-		node := persist.Node{ID: id, Parent: parent, Seq: uint64(index + 1), Body: body}
+		node := Node{ID: id, Parent: parent, Seq: uint64(index + 1), Body: body}
 		nodes = append(nodes, node)
 		cloned[id] = node
 		parent = id
@@ -110,11 +108,11 @@ func (s *Store) Fork(sourceID, destinationID, throughEntryID, title string) (*Se
 	if !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("session: fork destination %q: %w", destinationID, err)
 	}
-	err = s.persist.Save(destinationID, &persist.Tree{ID: destinationID, Nodes: nodes})
+	err = s.persist.Save(destinationID, &Tree{ID: destinationID, Nodes: nodes})
 	if err != nil {
 		return nil, fmt.Errorf("session: fork save ledger: %w", err)
 	}
-	err = s.persist.SaveMeta(persist.Meta{ID: destinationID, Title: title, CreatedAt: time.Now().UTC()})
+	err = s.persist.SaveMeta(SessionMeta{ID: destinationID, Title: title, CreatedAt: time.Now().UTC()})
 	if err != nil {
 		return nil, fmt.Errorf("session: fork save metadata: %w", err)
 	}
@@ -139,7 +137,7 @@ func (s *Store) Get(id string) (*Session, error) {
 	if err != nil {
 		return nil, fmt.Errorf("session: get %q: %w", id, err)
 	}
-	sess := &Session{id: id, disk: s.persist, nodes: make(map[string]persist.Node)}
+	sess := &Session{id: id, disk: s.persist, nodes: make(map[string]Node)}
 	tree, err := s.persist.Load(id)
 	if errors.Is(err, os.ErrNotExist) {
 		s.live[id] = sess
@@ -150,7 +148,7 @@ func (s *Store) Get(id string) (*Session, error) {
 	}
 	for _, node := range tree.Nodes {
 		if node.Seq == 0 {
-			return nil, fmt.Errorf("session: ledger %q uses unsupported old format; please clear old data", id)
+			return nil, fmt.Errorf("session: ledger %q has invalid zero sequence", id)
 		}
 		sess.nodes[node.ID] = node
 		sess.head = node.ID
@@ -164,15 +162,7 @@ func (s *Store) Get(id string) (*Session, error) {
 
 // List 列出持久化服务知道的会话。
 func (s *Store) List() ([]SessionMeta, error) {
-	metas, err := s.persist.List()
-	if err != nil {
-		return nil, err
-	}
-	out := make([]SessionMeta, 0, len(metas))
-	for _, meta := range metas {
-		out = append(out, SessionMeta{ID: meta.ID, Title: meta.Title, CreatedAt: meta.CreatedAt})
-	}
-	return out, nil
+	return s.persist.List()
 }
 
 // Rename 修改一本会话的显示标题。

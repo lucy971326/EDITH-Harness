@@ -18,7 +18,7 @@ func TestRunDiffRepairsSummaryAndCopiesBodyOnFork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fixture.runner.diffFiles = files
+	fixture.runner.files = files
 	oldText, newText := "old\n", "new\n"
 	body := runDiffBody{Version: runDiffVersion, RunID: "run-a", Revision: 2, Files: []trackedFileChange{{Path: "main.go", Operation: tools.FileOperationUpdate, OldContent: &oldText, NewContent: &newText}}}
 	if err = fixture.runner.upsertRecord("session-1", runRecord{RunID: "run-a", Status: RunSucceeded, AfterEntrySeq: 1, Diff: &RunDiffSummary{RunID: "run-a", Revision: 1}}); err != nil {
@@ -47,7 +47,7 @@ func TestRunDiffRevertIsConflictSafe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fixture.runner.diffFiles = files
+	fixture.runner.files = files
 	fixture.runner.filesystem = localTestMachine(t)
 
 	path := filepath.Join(t.TempDir(), "main.go")

@@ -1,12 +1,15 @@
 package session
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // 数据。一本会话在账本外的元数据。元数据文件是会话存在的依据。
 type SessionMeta struct {
-	ID        string
-	Title     string
-	CreatedAt time.Time
+	ID        string    `json:"id"`
+	Title     string    `json:"title"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 // 数据。账本里一句话的身份。
@@ -53,7 +56,7 @@ type Block struct {
 
 // 数据。账本中的一个完整节点内容。
 type Message struct {
-	// UserAuthored 由 Runner 标记真实用户输入；旧记录缺失时不作为自动授权证据。
+	// UserAuthored 由 Runner 标记真实用户输入；未标记的输入不作为自动授权证据。
 	UserAuthored    bool    `json:"userAuthored,omitempty"`
 	MessageID       string  `json:"messageID,omitempty"`
 	SourceSessionID string  `json:"sourceSessionID,omitempty"`
@@ -82,4 +85,33 @@ type UserMessage struct {
 	// 仅进程内委派填写，网络输入不能指定来源。
 	SourceSessionID string `json:"-"`
 	SourceRunID     string `json:"-"`
+}
+
+// 数据。账本里的一个节点。Body 是不拆的 JSON。
+type Node struct {
+	ID     string          `json:"id"`
+	Parent string          `json:"parent"`
+	Seq    uint64          `json:"seq"`
+	Body   json.RawMessage `json:"body"`
+}
+
+// 数据。一本账在磁盘上的样子。Nodes 是文件顺序。
+type Tree struct {
+	ID    string
+	Nodes []Node
+}
+
+// 契约。只负责账本字节。不认识 Append / History / Branch。
+// Add 写穿一个节点（jsonl 一行）。Save 留给整棵重写。
+type Persistence interface {
+	// 会话元数据（会话存在的依据与列表）
+	List() ([]SessionMeta, error)
+	LoadMeta(id string) (SessionMeta, error)
+	SaveMeta(meta SessionMeta) error
+	DeleteMeta(id string) error
+
+	// 账本树与节点数据（按行追加与整树加载）
+	Load(id string) (*Tree, error)
+	Save(id string, tree *Tree) error
+	Add(id string, node Node) error
 }

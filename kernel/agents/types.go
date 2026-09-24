@@ -2,15 +2,20 @@
 package agents
 
 import (
-	"harness/kernel/agents/config"
 	"harness/kernel/loops"
 	"harness/kernel/tools"
 )
 
 const DefaultID = "default"
 
-// 数据。Alias 到 Agent 设置域的纯数据，供 UI 和 Agent 服务共同使用。
-type Agent = config.Agent
+// 数据。一份用户可选择的 Agent 设置。
+type Agent struct {
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	Kind         string   `json:"kind"`
+	SystemPrompt string   `json:"systemPrompt"`
+	Tools        []string `json:"tools"`
+}
 
 // 数据。Agent 设置界面可展示的候选项。
 type Choices struct {
@@ -25,5 +30,10 @@ type PreparedAgent struct {
 	SystemPrompt string
 }
 
-// 契约。Alias 到 Agent 设置域的持久化读写契约。
-type AgentStore = config.Store
+// 契约。自建 Agent 的持久化读写。
+type AgentStore interface {
+	ListAgents() ([]Agent, error)
+	ForAgent(id string) (Agent, error)
+	PutAgent(agent Agent) error
+	DeleteAgent(id string) error
+}

@@ -1,45 +1,36 @@
-package persist
+package session
 
 import (
 	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"harness/kernel/persist"
 	"os"
 	"strings"
-	"sync"
 )
 
-// 活对象。jsonl 账本和 SessionSettings 的实现。
+// 活对象。会话账本与元数据的文件格式。
 type jsonl struct {
-	files *Files
-	mu    sync.Mutex
+	files *persist.Files
 }
 
 func checkID(id string) error {
 	if id == "" || id == "." || id == ".." {
-		return fmt.Errorf("persist: bad id %q", id)
+		return fmt.Errorf("session: bad id %q", id)
 	}
 	if strings.ContainsAny(id, `/\`) {
-		return fmt.Errorf("persist: bad id %q", id)
+		return fmt.Errorf("session: bad id %q", id)
 	}
 	return nil
 }
 
-func openJSONL(dir string) (*jsonl, error) {
-	files, err := NewFiles(dir)
-	if err != nil {
-		return nil, err
-	}
-	return NewStore(files), nil
-}
-
-// NewStore 创建共享的文件格式存储，读改写使用同一把锁。
-func NewStore(files *Files) *jsonl {
+// NewPersistence 创建会话账本的文件存储；文件操作由 persist 串行写入。
+func NewPersistence(files *persist.Files) Persistence {
 	return &jsonl{files: files}
 }
 
-func (s *jsonl) sessionFiles(id string) (*Files, error) {
+func (s *jsonl) sessionFiles(id string) (*persist.Files, error) {
 	return s.files.Scope("sessions", id)
 }
 
@@ -48,9 +39,6 @@ func (s *jsonl) Load(id string) (*Tree, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	files, err := s.sessionFiles(id)
 	if err != nil {
@@ -70,7 +58,7 @@ func (s *jsonl) Load(id string) (*Tree, error) {
 		var n Node
 		err := json.Unmarshal(line, &n)
 		if err != nil {
-			return nil, fmt.Errorf("persist: load %q: %w", id, err)
+			return nil, fmt.Errorf("session: load %q: %w", id, err)
 		}
 		tree.Nodes = append(tree.Nodes, n)
 	}
@@ -83,11 +71,9 @@ func (s *jsonl) Save(id string, tree *Tree) error {
 		return err
 	}
 	if tree == nil {
-		return fmt.Errorf("persist: save %q: nil tree", id)
+		return fmt.Errorf("session: save %q: nil tree", id)
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	files, err := s.sessionFiles(id)
 	if err != nil {
 		return err
@@ -106,52 +92,47 @@ func (s *jsonl) Save(id string, tree *Tree) error {
 	return files.Write("messages.jsonl", buf.Bytes())
 }
 
-func (s *jsonl) LoadMeta(id string) (Meta, error) {
+func (s *jsonl) LoadMeta(id string) (SessionMeta, error) {
 	err := checkID(id)
 	if err != nil {
-		return Meta{}, err
+		return SessionMeta{}, err
 	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	files, err := s.sessionFiles(id)
 	if err != nil {
-		return Meta{}, err
+		return SessionMeta{}, err
 	}
 	body, err := files.Read("meta.json")
 	if err != nil {
-		return Meta{}, err
+		return SessionMeta{}, err
 	}
-	var meta Meta
+	var meta SessionMeta
 	err = json.Unmarshal(body, &meta)
 	if err != nil {
-		return Meta{}, fmt.Errorf("persist: session meta %q: %w", id, err)
+		return SessionMeta{}, fmt.Errorf("session: session meta %q: %w", id, err)
 	}
 	if meta.ID != id {
-		return Meta{}, fmt.Errorf("persist: session meta %q has id %q", id, meta.ID)
+		return SessionMeta{}, fmt.Errorf("session: session meta %q has id %q", id, meta.ID)
 	}
 	return meta, nil
 }
 
-func (s *jsonl) SaveMeta(meta Meta) error {
+func (s *jsonl) SaveMeta(meta SessionMeta) error {
 	err := checkID(meta.ID)
 	if err != nil {
 		return err
 	}
 	if meta.Title == "" {
-		return fmt.Errorf("persist: session meta %q has empty title", meta.ID)
+		return fmt.Errorf("session: session meta %q has empty title", meta.ID)
 	}
 	if meta.CreatedAt.IsZero() {
-		return fmt.Errorf("persist: session meta %q has empty created time", meta.ID)
+		return fmt.Errorf("session: session meta %q has empty created time", meta.ID)
 	}
 	body, err := json.Marshal(meta)
 	if err != nil {
 		return err
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	files, err := s.sessionFiles(meta.ID)
 	if err != nil {
 		return err
@@ -165,9 +146,6 @@ func (s *jsonl) DeleteMeta(id string) error {
 		return err
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	files, err := s.sessionFiles(id)
 	if err != nil {
 		return err
@@ -175,10 +153,7 @@ func (s *jsonl) DeleteMeta(id string) error {
 	return files.Remove("meta.json")
 }
 
-func (s *jsonl) List() ([]Meta, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
+func (s *jsonl) List() ([]SessionMeta, error) {
 	sessions, err := s.files.Scope("sessions")
 	if err != nil {
 		return nil, err
@@ -187,7 +162,7 @@ func (s *jsonl) List() ([]Meta, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := make([]Meta, 0, len(entries))
+	out := make([]SessionMeta, 0, len(entries))
 	for _, entry := range entries {
 		if !entry.IsDir {
 			continue
@@ -204,17 +179,17 @@ func (s *jsonl) List() ([]Meta, error) {
 		if err != nil {
 			return nil, err
 		}
-		var meta Meta
+		var meta SessionMeta
 		err = json.Unmarshal(body, &meta)
 		if err != nil {
-			return nil, fmt.Errorf("persist: session meta %q: %w", expectedID, err)
+			return nil, fmt.Errorf("session: session meta %q: %w", expectedID, err)
 		}
 		err = checkID(meta.ID)
 		if err != nil {
 			return nil, err
 		}
 		if meta.ID != expectedID {
-			return nil, fmt.Errorf("persist: session meta %q has id %q", expectedID, meta.ID)
+			return nil, fmt.Errorf("session: session meta %q has id %q", expectedID, meta.ID)
 		}
 		out = append(out, meta)
 	}
@@ -227,11 +202,9 @@ func (s *jsonl) Add(id string, node Node) error {
 		return err
 	}
 	if node.ID == "" {
-		return fmt.Errorf("persist: empty node id")
+		return fmt.Errorf("session: empty node id")
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	files, err := s.sessionFiles(id)
 	if err != nil {
 		return err
@@ -243,42 +216,4 @@ func (s *jsonl) Add(id string, node Node) error {
 	}
 
 	return files.Append("messages.jsonl", append(line, '\n'))
-}
-
-func (s *jsonl) LoadRunRecords(id string) ([]byte, error) {
-	err := checkID(id)
-	if err != nil {
-		return nil, err
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	files, err := s.sessionFiles(id)
-	if err != nil {
-		return nil, err
-	}
-	body, err := files.Read("runs.json")
-	if err != nil {
-		return nil, err
-	}
-	return body, nil
-}
-
-func (s *jsonl) SaveRunRecords(id string, body []byte) error {
-	err := checkID(id)
-	if err != nil {
-		return err
-	}
-	if body == nil {
-		body = []byte("[]")
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	files, err := s.sessionFiles(id)
-	if err != nil {
-		return err
-	}
-	return files.Write("runs.json", body)
 }
