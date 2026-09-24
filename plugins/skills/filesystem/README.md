@@ -1,20 +1,13 @@
-# skills-filesystem
+# filesystem skills
 
-【它是什么】从约定目录发现 Agent Skills 的内核 Provider 插件。
+扫描约定目录，解析 `SKILL.md` 的元数据并返回摘要。
 
-【使用能力】
+```text
+项目 .harness/skills -> 项目 .agents/skills
+  -> 用户 .harness/skills -> 用户 .agents/skills
+  -> 同名保留先发现者 -> Skill 摘要
+```
 
-- `machine`：取得主目录、读取目录和 `SKILL.md`；
-- `skills`：登记自身 Provider。
+源码在 `provider.go`：`New` 接收 machine 与 persist；`List` 确定来源顺序，`readSkill` 解析和校验。
 
-【提供能力】不注册 Host 服务；提供用户目录与工作区目录中的 Skill 摘要。
-
-【填充插槽】向 `skills` 登记处填入文件系统 Provider。
-
-【谁在用】`agents` 在 Choices / Prepare 时动态读取发现结果。
-
-【目录】用户侧扫描 `~/.harness/skills`、`~/.agents/skills`；工作区侧扫描
-`<workspace>/.harness/skills`、`<workspace>/.agents/skills`。项目覆盖用户，
-同层 `.harness` 覆盖 `.agents`。
-
-【不做】不读取 Skill 正文交给模型、不新增 Skill Tool、不执行 Skill。
+Harness 自有用户目录走 persist，其余目录走 machine。只返回名称、描述、位置和作用域，不把正文注入模型、不执行 Skill。

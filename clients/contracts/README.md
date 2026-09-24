@@ -1,15 +1,16 @@
 # contracts
 
-> Client 眼中的 JSON-RPC 契约。
+手写 TypeScript 契约，与 appserver 的 Go 契约人工对齐。
 
 ```text
-appserver.ts  初始化、模型、Agent、Skill、命令与文件等公共接口
-harness.ts    Harness 会话与产品操作
-run.ts        Snapshot、Run、Entry 和实时事件
+Go 接口 <-> 人工核对字段 / 可选性 / 方法名 <-> TS 类型
+                                                    -> Client
 ```
 
-- Go 与 TypeScript 契约手工同步。
-- 这里仅描述数据形状，不发送请求，也不实现业务。
-- `contracts-types.test.ts` 检查 Client 侧关键类型是否仍能正确使用。
+- `appserver.ts`：公共查询、文件、终端与 Hooks 等接口。
+- `harness.ts`：会话和子任务操作。
+- `run.ts`：快照、账本投影和运行事件。
+- `approvals.ts`：权限模式、审批请求与审核设置。
+- `contracts-types.test.ts`：类型用法检查。
 
-修改 RPC 时：先改 Go 契约，再同步这里，最后运行 `npm --prefix clients run contracts:check`。
+不发送请求、不实现业务、不生成 Go 类型。`npm --prefix clients run contracts:check` 只检查 TS，不能代替两端契约核对。

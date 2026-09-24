@@ -1,11 +1,11 @@
 # workspacepicker
 
-调用操作系统原生目录选择器：
+调用系统原生目录选择器，只返回路径或取消。
 
 ```text
-macOS     osascript
-Linux     zenity / kdialog
-Windows   IFileDialog
+Pick -> macOS: osascript
+     -> Linux: zenity / kdialog
+     -> Windows: IFileDialog
 ```
 
-只返回用户选择的路径或取消，不创建 Session，不读取 Product。
+从 `picker.go` 看入口，再读对应的 `picker_*.go`。不创建会话、不修改设置；由调用方处理选择结果。

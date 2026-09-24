@@ -1,13 +1,13 @@
 # loops
 
-【它是什么】运行范式登记处插件。
+登记可复用的执行程序；Agent 的 Kind 决定选哪一个。
 
-【使用能力】不 Resolve 其他服务。
+```text
+入口 Register(react)
+  -> Registry.Get(kind)
+  -> Runner 调用 Loop.Run(Invocation)
+```
 
-【提供能力】注册登记处服务 `loops`：按 Kind 保存可复用的 `Loop` 程序。
+`registry.go` 管登记与查询，`types.go` 定义 Loop、Invocation、事件和检查点。
 
-【填充插槽】自身不填；`react` 等运行范式插件向它登记。
-
-【谁在用】`agents` 校验 Agent 选用的 Kind；`runner` 按本轮 Agent 的 Kind 取出并运行 Loop。
-
-【不做】不拥有某场 Run；活 Run 永远由 `runner` 管理。
+Invocation 是 Runner 准备好的本轮输入。Loop 通过 Emit 交回输出，通过 Checkpoint 接收插话；活 Run、账本和取消收尾属于 Runner。

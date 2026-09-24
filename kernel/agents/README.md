@@ -1,7 +1,14 @@
 # agents
 
-拥有 Agent 设置、文件格式、本轮准备与引用协调。`NewStore` 读写 `agents/<id>.json`，`NewService` 接入工具、Loop、Skills 和会话设置。
+管理 Agent 设置，准备本轮的执行类型、工具与系统提示词。
 
-普通工具按 Agent 设置准备，MCP 与 Skills 按作用域发现。Agent 删除与会话引用写入、目录读取互斥，避免悬空引用与并发删除读取失败。
+```text
+Agent 设置 + 当前工具 / Skills
+  -> Service.Prepare -> PreparedAgent -> Runner
 
-不自动改写旧工具名或过滤已保存的工具选择；不运行 Loop、不写对话账本。
+Service -> fileStore -> persist -> agents/<id>.json
+```
+
+阅读顺序：`types.go` 看数据与存储契约，`service.go` 看设置校验和 Prepare，`store.go` 看 JSON 格式。
+
+`references` 锁协调 Agent 删除与会话引用写入、目录读取。普通工具来自 Agent 选择；MCP、Skills 按作用域发现。不执行 Loop，不写对话账本，不迁移旧工具名。

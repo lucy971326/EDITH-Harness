@@ -1,7 +1,17 @@
 # session
 
-拥有对话账本、元数据和分叉。`NewPersistence` 创建 JSONL / JSON 文件存储，`NewStore` 管理打开的 Session；底层字节读写交给 `persist.Files`。
+一本对话账及其元数据；不保存运行、审批或 UI 状态。
 
-`AppendID` 支持先分配身份再落账；重复 ID 报错，不覆盖。`History` 从最近摘要开始投影有效历史，未完成消息保留标记，不携带悬空工具调用。
+```text
+Store -> 同一 ID 的 Session -> Append / History
+  |                              |
+  +----------> jsonl ------------+
+                -> persist -> meta.json / messages.jsonl
+```
 
-Runner 追加对话事实，conversations 编排会话操作。这里不调用模型、不发布运行事件，不保存 UI 或其他业务状态。运行记录由 Runner 自己读写。
+- `types.go`：消息、节点、元数据与 Persistence 契约。
+- `store.go`：创建、打开、列表、改名与分叉。
+- `session.go`：追加节点、分支历史、摘要后的有效输入。
+- `jsonl.go / id.go`：文件格式与身份生成。
+
+`AppendID` 支持先分配身份再落账，重复 ID 报错。分叉复制指定边界前的账本；设置和运行记录由上层分别复制。这里不调模型、不发布运行事件。

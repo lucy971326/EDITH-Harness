@@ -1,17 +1,13 @@
 # react
 
-【它是什么】默认 ReAct 运行范式插件。
+默认 ReAct 执行循环，源码集中在 `react.go`。
 
-【使用能力】
+```text
+Runner -> Run -> 模型流 -> 工具调用 -> 模型流 ... -> 最终回答
+             +-> Emit 输出
+             +-> Checkpoint 接收外部输入
+```
 
-- `llm`：流式调用模型；
-- `tools`：取得本轮 Tool Schema，并执行模型请求的 Tool；
-- `loops`：登记自身。
+`New` 接收 LLM 与工具登记处；入口登记 `react` Kind。一次模型输出及全部工具结果之间不插入外部消息，在步骤后的检查点消费输入。
 
-【提供能力】不注册整份服务；提供可运行的 `react` Loop。
-
-【填充插槽】向 `loops` 登记 `react` Kind。
-
-【谁在用】`runner` 根据 Agent 的 Kind 取出并执行它。
-
-【不做】不读 SessionSettings、不写账本、不直接向浏览器发事件。
+取消时不再执行剩余工具，但为已发出的调用补齐结果。这里不读取 SessionSettings、不直接写账本、不向浏览器发通知；这些由 Runner 处理。

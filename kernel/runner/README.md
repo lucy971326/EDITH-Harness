@@ -1,24 +1,23 @@
 # runner
 
-【它是什么】一轮对话的运行外壳插件。
+拥有一轮执行的准入、准备、取消、输出与收尾。
 
-【使用能力】
+```text
+Start -> 占用 live -> 准备配置 / Agent -> Loop.Run
+                                            |
+                         Emit -> 落账 / 更新草稿 -> 发布事件
+                   Checkpoint -> 消费 Steer / 协作输入
+结束或取消 -> 保存结果 -> 释放 live -> 完成句柄
+```
 
-- `sessions`：先落账，再广播耐久消息；
-- `sessionSettings`：读取本轮模型、思考档位、Agent 与工作区；
-- `agents`：准备本轮输入；
-- `loops`：按 Kind 运行 Loop；
-- `llm`：压缩时直接 Stream；
-- `tools`：压缩时取当前工具 schema；
-- `events`：发布稳定 `RunEvent`；
-- `sessionPersistence`：读写与账本分开的运行记录字节。
+## 阅读顺序
 
-【提供能力】注册服务 `runner`：`Start`、`Run`、`Steer`、`Receive`、`Stop`、`StopRun`、`Compact`、`SessionView`，并管理活 Run。生成期草稿留在 liveRun；完整消息先落账再清除同 Entry.ID 草稿。运行结果写入 `runs.json`。准备设置前就占用 live，停止与关闭覆盖准备期；`StopRun` 只取消匹配 RunID 的运行。`Receive` 接收带来源的协作消息，以账本中的消息 ID 去重；不接收时返回待投递，不启动新 Run。
+- `run.go / types.go`：Runner、liveRun、启动与共同收尾。
+- `steer.go / collaboration.go`：外部输入、停止与协作消息去重。
+- `emit.go / snapshot.go`：草稿、耐久消息、事件与快照边界。
+- `records.go / permission_context.go`：运行记录与模型权限说明。
+- `compact.go`：历史压缩；`diff_tracker.go / diff_store.go`：净变化聚合、保存与撤销。
 
-【填充插槽】不填。
+同一 Session 只有一个活 Run；准备期也受停止控制。完整消息先落账再发布；停止拒绝尚未落账的 Steer，已发出的工具调用必须补齐结果。
 
-【谁在用】`HarnessProduct` 发起、插话和停止；appserver 经 `events` 接收 Run 事件。用户停止先交给 `subagents.StopFamily` 取消孩子，再停止父 Run。`subagents` 还负责启动孩子，并向正在运行的父会话投递协作消息。
-
-【不做】不自己决定怎么思考；具体推理与工具循环属于 Loop。
-
-权限上下文：Runner 每轮构建 Policy 和 ReviewerKind，经 Invocation/Call 传给工具。运行记录保存 permissionInstructions，重建模型历史时只在内容变化处插入运行环境说明；分叉沿用记录，压缩后恢复基线，不改 Session 账本或旧提示前缀。
+内存保存 liveRun；`runs.json` 与 `diffs/` 保存运行结果，不混入对话账本。重启将未完成轮次标记中断，不自动续跑；`Close` 取消并等待全部运行。

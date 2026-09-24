@@ -23,17 +23,23 @@ Vite 页面位于 `http://127.0.0.1:5173`，仅把同源 `/rpc` 代理到正式�
 
 ## 阅读路线
 
+以下路径相对 `src/`：
+
 ```text
-client/rpc.ts          JSON-RPC 收发
-client/chat.ts         订阅、切换和重连
-state/chat.ts          Snapshot + 事件 → 一份投影
-state/chat-process.ts  只读派生分轮、工具配对和最终正文
-chat-messages.tsx      消息列表与滚动
-work-process.tsx       结构化工作过程
-App.tsx                连接、会话、草稿和操作流程
-sidebar.tsx            项目与会话列表
-composer.tsx           输入区
+App -> 页面 / 草稿 / 操作
+  -> client/rpc -> WebSocket -> appserver
+快照 + 事件 -> state/chat -> 聊天 / 过程 / 子任务页面
+workspace-tabs -> editor / review / terminal / subagent
 ```
+
+- `App.tsx`：页面装配；`sidebar.tsx / composer.tsx`：会话导航与输入。
+- `client/rpc.ts`：类型化 RPC；`client/chat.ts`：主会话连接；`client/run-subscription.ts`：共用订阅、补快照与清理。
+- `state/chat.ts / state/chat-process.ts`：事件归并与只读分轮；`chat-messages.tsx / work-process.tsx`：呈现结果和过程。
+- `workspace-tabs.tsx / auxiliary/`：辅助面板与标签编排；[`editor/`](src/editor/README.md)：文件草稿、保存、冲突和监听。
+- `review/ / terminal/ / subagent/`：Diff、终端与子任务工作页。
+- `settings-page.tsx / approval-settings.tsx / hook-settings.tsx`：设置；`styles.css / components/ui/`：视觉规则与基础控件。
+
+Client 保存界面状态和服务端投影，账本与 Run 仍以后台为准。关闭标签或断线不停止后台任务。
 
 ## 验证
 

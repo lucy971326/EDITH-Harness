@@ -1,16 +1,13 @@
 # session/settings
 
-> 一场会话“下一轮如何运行”的设置契约。
+保存一场会话下一轮如何运行，与对话账本分开。
 
 ```text
-SessionSettings
-├─ AgentID
-├─ Model
-├─ ReasoningEffort
-├─ Workspace
-└─ PermissionMode
+AgentID / Model / ReasoningEffort / Workspace / PermissionMode
+  -> Store.Put -> persist -> sessions/<id>/settings.json
+  -> Store.For -> Runner 本轮快照
 ```
 
-它与消息账本分开保存。这里拥有数据、Store 契约与 JSON 读写；`persist.Files` 只提供底层文件操作。
+`types.go` 定义数据与存储契约，`store.go` 实现 JSON 读写和 Agent 引用查询。
 
-权限模式默认 `ask_for_approval`；新设置保存时补默认值；文件缺字段或含未知值直接报错，不迁移旧数据。一次批准的额外权限不保存在这里。模式保存不等于执行层已经实施沙箱限制，接入状态见根目录 `STATUS.md`。
+新设置保存时补默认权限模式；读取缺字段或未知模式报错，不迁移旧数据。Agent 引用写入与删除由 agents.Service 协调；一次审批的额外权限不存这里。

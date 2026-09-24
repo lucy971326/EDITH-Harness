@@ -1,13 +1,16 @@
 # tools
 
-【它是什么】Tool 登记处插件。
+普通工具与动态来源的统一调用入口。
 
-【使用能力】不 Resolve 其他服务。
+```text
+静态 Tool / MCP Provider -> Registry
+Agent 选择 -> Prepare -> 本轮工具名单与来源快照
+模型调用   -> Call -> 可用性 / 参数校验 -> PreToolUse -> 实际工具
+```
 
-【提供能力】注册登记处服务 `tools`：登记普通 Tool 与动态来源、生成 Schema、按本轮允许名单校验并调用 Tool。
+- `types.go / tool.go`：工具契约、参数类型与处理函数。
+- `registry.go`：登记、动态发现、Schema 查询和调用主线。
+- `schema.go / access.go`：参数校验与可信访问上下文。
+- `path.go / truncate.go`：工具共用的路径与输出处理。
 
-【填充插槽】自身不填；`apply_patch`、`exec_command`、`write_stdin` 等 Tool 插件和 MCP 来源向它登记。
-
-【谁在用】`agents` 校验普通 Tool 名单并在 Prepare 时合并动态 Tool；`react` 取得 Schema 并在模型要求时调用 Tool。
-
-【不做】不直接读写文件或运行命令；这些由具体 Tool 通过 `machine` 完成。
+Hook 明确拒绝会生成失败工具结果。具体审批、命令执行和文件修改交给 Tool 及其依赖；登记处不拥有进程或账本。

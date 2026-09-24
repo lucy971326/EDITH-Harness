@@ -1,39 +1,21 @@
 # subagents
 
-> 用父 Session 委派、等待和控制子 Session。
+管理父子会话关系、委派、等待、回报与整族停止；执行仍交给同一个 Runner。
 
 ```text
-主 Session（第 0 层）
-   └─ task.json（直属关系）
-          ↓
-      子 Session（第 1 层）
-         └─ task.json（直属关系）
-                ↓
-            孙子 Session（第 2 层）
-
-每层状态 / 结果从自己的会话投影
-回报只写进直属父账本
+主 Session (0) -> 子 Session (1) -> 孙 Session (2)
+                     |
+               Runner 执行 -> 完成回报 -> 直属父账本
 ```
 
 ## 从哪里读
 
-```text
-types.go          对外输入、结果与 TaskView
-subagents.go      服务组成、生命周期和共享状态
-spawn.go          创建子任务
-send.go           向子任务追加指令
-wait.go           等待完成通知
-stop.go           停止任务族
-projection.go     子会话事实 → TaskView
-notifications.go  将完成回报可靠送进父账本
-store.go          task.json 关系文件
-```
+- `subagents.go / types.go`：服务生命周期、共享状态与对外数据。
+- `spawn.go / send.go / turn.go`：创建孩子、继续任务与启动轮次。
+- `access.go / family.go / stop.go`：归属、深度与停止代次。
+- `wait.go / projection.go`：等待通知、组合任务视图。
+- `notifications.go / store.go`：回报投递与任务关系文件。
 
-## 铁律
+任务关系存在 `subagents/tasks/<id>.json`；状态和结果来自子会话，父账本中的 MessageID 是投递确认。不重复保存 depth、结果或 delivered。
 
-- 子 Session 与主 Session 平级，格式完全一致。
-- 最大深度固定为 2；第 2 层不能继续委派。
-- `task.json` 不复制 depth、rootID、状态、结果或 delivered。
-- 子账本是执行事实；父账本中的 MessageID 是回报已送达的证明。
-- Stop 沿父子关系停止目标及全部后代；正常完成不停止孩子。
-- 内存缓存可以丢，重启后必须能从账本恢复判断。
+最大深度为 2，父子共享工作区。Stop 取消目标及全部后代，正常完成不停止孩子；父闲时不因回报自动启动。重启恢复关系但不续跑；Close 解除订阅、取消并等待后台工作。

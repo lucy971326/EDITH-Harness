@@ -1,18 +1,13 @@
 # subagent tools
 
-> 把 `kernel/subagents` 的能力包装成模型可调用的工具。
+把父子会话协作能力暴露为模型工具。
 
 ```text
-subagent_options  查看可用 Agent / 模型
-subagent_spawn    派出任务（主会话第 0 层，最多到第 2 层）
-subagent_send     追加指令
-subagent_list     查看任务
-subagent_wait     等待完成
-subagent_stop     停止任务及其全部后代
+options / spawn / send / list / wait / stop
+  -> kernel/subagents -> Runner -> 子会话
 ```
 
-- `tools.go`：工具声明与调用转发。
-- `types.go`：模型看到的参数形状。
-- `plugin.go`：将这些工具登记到 `kernel/tools`。
+- `construct.go`：`Register` 登记六个带 `subagent_` 前缀的工具。
+- `types.go`：模型参数；`tools.go`：工具说明与调用转发。
 
-任务状态、关系和通知逻辑都在 `kernel/subagents`；本目录不另存一份状态。
+Session / Run / ToolCall 身份由程序传入，模型不能冒充父任务。关系、深度、通知和停止规则归 Subagents；本包不保存第二份任务状态。

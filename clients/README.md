@@ -1,13 +1,14 @@
 # clients
 
-> 用户实际接触 Harness 的地方。
+Client 通过统一协议使用后台，只保存界面状态和服务端投影。
 
 ```text
-contracts/  前后端共同遵守的 TypeScript 数据形状
-test/       没有界面的网络验收 Client
-web/        正式 React 页面
+web（正式界面） / test（网络验收）
+  -> contracts（手写类型）-> WebSocket JSON-RPC -> appserver
 ```
 
-Client 通过 WebSocket + JSON-RPC 调用后台，只保存界面状态和服务端投影，不拥有业务事实。
+- [`contracts/`](contracts/README.md)：方法、参数、结果和事件的数据形状。
+- [`web/`](web/README.md)：React 页面、通信与投影。
+- [`test/`](test/README.md)：无界面的真实网络验收 Client，不是正式 SDK。
 
-继续阅读：正式页面看 [`web/README.md`](web/README.md)，通信类型看 [`contracts/README.md`](contracts/README.md)。
+业务事实归服务端；Client 不读取 Go 内部对象。

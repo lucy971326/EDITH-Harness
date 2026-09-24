@@ -6,17 +6,17 @@ EDITH-Harness 将 Agent 运行时、文件编辑、终端、Diff 审查和 Subag
 
 ## 架构
 
-```mermaid
-flowchart LR
-    Client[React Client] -->|WebSocket<br/>JSON-RPC 2.0| Server[app-server]
-    Server --> Product[Harness Product]
-    Product --> Kernel[Agent Kernel]
-    Kernel --> Runtime[Runner · Session · LLM]
-    Kernel --> Machine[Tools · PTY · Files]
-    Kernel --> Subagents[Subagents]
+```text
+cmd/harness 显式装配、启动与逆序关闭
+
+React Client -> WebSocket JSON-RPC -> appserver
+                                       +-> conversations -> Runner -> Loop / Tools
+                                       +-> 公共服务           +-> Session
 ```
 
-`Host` 是进程内唯一组装根，负责登记服务与管理生命周期；`app-server` 只负责协议和连接；Product 编排业务；Kernel 提供可复用的执行与数据能力。
+`appserver` 负责协议与连接，`conversations` 编排会话操作，`kernel` 拥有执行与数据能力，`plugins` 提供具体实现。没有 Host 服务表或 Product 层。
+
+源码地图：[`kernel`](kernel/README.md) · [`appserver`](appserver/README.md) · [`plugins`](plugins/README.md) · [`clients`](clients/README.md)。
 
 ## 已实现
 

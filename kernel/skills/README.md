@@ -1,13 +1,12 @@
 # skills
 
-【它是什么】Skill Provider 登记处插件。
+登记 Skill 来源，按工作区合并名称、描述和位置。
 
-【使用能力】不 Resolve 其他服务；文件系统 Provider 自己使用 `machine`。
+```text
+builtin / filesystem -> Register Provider
+工作区              -> List -> 校验 / 稳定排序 -> agents.Prepare
+```
 
-【提供能力】注册登记处服务 `skills`：登记 Provider，并按工作区动态发现、稳定合并 Skill 摘要。
+`types.go` 定义 Skill 摘要与 Provider，`registry.go` 实现合并。每轮动态发现可见 Skills，不复制进 Agent 设置。
 
-【填充插槽】自身不填；Skill Provider 向它登记 `List(workspace)`。
-
-【谁在用】`agents` 读取用户选中的 Skill 与工作区全部项目 Skill，拼进本轮最终 System Prompt。
-
-【不做】不加载 Skill 正文、不执行 Skill、不自己拼完整提示词；跨 Provider 同名直接报错。
+跨 Provider 同名报错；文件系统来源内部的覆盖顺序由该 Provider 决定。登记处不注入正文、不执行 Skill，Agent 按位置读取具体说明。

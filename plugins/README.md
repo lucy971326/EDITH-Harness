@@ -1,20 +1,15 @@
-# 插件地图
+# plugins
 
-插件都静态编译进 Harness；目录表达“它填谁的契约”，不代表动态加载或新的 Host 层级。React Client 不是后台插件。
+静态编译的具体能力实现，由 `cmd/harness` 显式构造、登记和关闭。
 
 ```text
-Host
-├─ 内核服务
-│  persist → session → llm
-│  events / tools / loops / skills / agents / commands / runner / subagents
-│
-└─ 提供者与登记处填充者
-   machine/local       → machine
-   loops/react         → loops
-   skills/builtin      → skills
-   skills/filesystem   → skills
-   commands/compact    → commands
-   tools/*             → tools
+machine/local     -> kernel/machine 契约
+loops/react       -> loops 登记处
+skills/*          -> skills 登记处
+commands/compact  -> commands 登记处
+tools/*           -> tools 登记处
 ```
 
-插件只负责解析依赖、构造能力并登记；业务实现留在所属包。前端边界见根目录 `WEB_UI.md`。
+目录表示实现哪种能力，不再有统一的 Start / Resolve / Close 插件外壳。需要长期资源的实现仍负责 Close，由入口安排调用。
+
+先看各目录 README，再看 `New / Register` 入口；执行规则属于具体实现，共用契约属于 kernel。

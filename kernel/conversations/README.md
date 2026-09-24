@@ -1,31 +1,17 @@
-# 会话操作
+# conversations
 
-> Harness 核心会话操作与协调。
-
-```text
-appserver
-   ↓
-会话操作
-   ├─ 创建 / 列出 / 获取会话
-   ├─ 发送或 Steer
-   ├─ 停止父子任务
-   ├─ 生成 Snapshot
-   ├─ 分叉会话
-   └─ 接受平台命令
-         ↓
-   Session / Runner / Agents / LLM / Commands / Subagents
-```
-
-## 从哪里读
+编排创建、发送、设置、停止、分叉和命令等会话操作。
 
 ```text
-service.go  业务流程
-types.go    会话输入与 Snapshot
-errors.go   可识别业务错误
+appserver -> Service
+              +-> 闲时发送 -> Runner.Start
+              +-> 忙时输入 -> Runner.Steer
+              +-> 停止     -> Subagents.StopFamily
+              +-> 会话资料 -> Session / Settings
 ```
 
-## 边界
+- `service.go`：主流程与同会话操作锁；等待 Steer 落账前释放锁，Stop 不取操作锁。
+- `subagents.go`：子任务页面的查询、发送与设置。
+- `types.go / errors.go`：操作输入、快照与可识别错误。
 
-- 做：决定一次会话操作要按什么顺序调用公共服务。
-- 不做：JSON-RPC 编解码、网页渲染、底层文件格式或模型实现。
-- 公共的 Agent、Model、Skill 列表由 appserver 直接调用公共服务，不经这里转发。
+Runner 拥有实际执行，Session 拥有账本。这里不处理网络协议或文件格式；公共模型、Agent、Skill 列表由 appserver 直接调用所属服务。

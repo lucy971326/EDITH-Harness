@@ -1,13 +1,15 @@
 # llm
 
-【它是什么】模型流式调用插件。
+读取模型配置，通过 goai 发起流式模型调用。
 
-【使用能力】不 Resolve Host 服务；启动时读取 `~/.harness/config.yaml` 与内置模型清单。
+```text
+RunConfig + Input
+  -> Client.Stream -> 消息 / 工具转换 -> goai -> 流事件
+```
 
-【提供能力】注册服务 `llm`：`Models()` 返回可选模型、窗口、是否看图和思考档位，`Stream()` 按当前模型调用并把不看图时的图片换成文字占位。压缩请求可带 `ToolChoice=none`。
+- `client.go`：构造、模型查询、Stream 主线。
+- `config.go`：本机 `config.yaml`；`models.go / models.json`：内置模型能力与思考档位。
+- `messages.go`：账本消息与工具转成 Provider 输入。
+- `types.go`：调用配置与输入形状。
 
-【填充插槽】不填。
-
-【谁在用】`react` 用 `Stream()` 调模型；`Runner.Compact` 用 `Stream()` 生成摘要；appserver 用 `Models()` 向 Client 提供模型选择。
-
-【不做】不保存会话、不决定本轮配置、不直接写页面。
+ReAct、压缩与智能审核复用此客户端。模型配置在启动时读取；这里不保存会话，也不决定本轮执行流程。

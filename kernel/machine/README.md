@@ -1,17 +1,17 @@
 # machine
 
-【它是什么】操作本机的公共契约，实现位于 `plugins/machine/local`。
+本机操作的接口与数据，全在 `types.go`；实现见 [`plugins/machine/local`](../../plugins/machine/local/README.md)。
 
 ```text
-Agent Tool → AgentProcesses / AgentFiles → 按可信 Policy 执行
-用户界面   → FileSystem / TerminalSystem → 用户直接操作
-                       ↓
-                同一份 machine 服务
+Agent Tool -> AgentProcesses / AgentFiles -> 携带可信 Policy
+用户界面   -> FileSystem / TerminalSystem -> 直接操作
+                         |
+                    同一份 Local
 ```
 
-- `AgentExec`：携带权限启动命令。
-- `AgentInteract`：继续操作已有进程，不能改变启动权限。
-- `AgentApplyChanges`：携带权限提交一批版本受保护的文件修改。
-- `FileSystem`、`PathSearcher`、`TerminalSystem`：文件、搜索、监听与用户终端。
+- `AgentExec / AgentInteract`：启动和继续长期进程，已有进程沿用启动权限。
+- `AgentApplyChanges`：批量提交带版本检查的文件修改。
+- `FileSystem / PathSearcher`：文件、目录、监听与路径搜索。
+- `TerminalSystem`：用户终端的 PTY 句柄。
 
-这里只定义接口与数据，不直接操作系统。Tool 从 Host 取得服务，不 import 本机实现；实际接入状态见 [STATUS.md](../../STATUS.md)。
+依赖由构造函数传入。这里不操作系统、不审批，也不决定 Tool 是否对模型开放。

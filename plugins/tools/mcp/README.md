@@ -1,16 +1,15 @@
 # MCP tools
 
-> 连接用户配置的 MCP Server，并把它们的工具填入 Harness 工具登记处。
+连接 MCP Server，把远端工具适配成统一 Tool 来源。
 
 ```text
-~/.harness/mcp.json
-        ↓
-读取 Server 配置 → 建立连接 → 获取工具 → 登记到 tools
+全局 mcp.json + 项目配置（需信任）
+  -> Provider -> 工具目录 -> tools.Registry -> Provider.Call
 ```
 
-- `config.go`：配置格式与校验。
-- `provider.go`：连接、按 workspace 发现工具和调用。
-- `result.go`：把 MCP 结果转换为 Harness 工具结果。
-- `plugin.go`：解析依赖、登记 Provider、关闭连接。
+- `construct.go`：`New` 读取全局配置并创建 Provider。
+- `config.go`：配置解析、合并与校验。
+- `provider.go`：工作区发现、配置快照、连接、调用和 Close。
+- `result.go`：MCP 结果转成 Harness 工具结果。
 
-这里不实现 MCP 工具本身，也不把远端数据写进 Session；Loop 会把实际调用与结果写账本。
+项目来源是 `.mcp.json` 与 `.harness/mcp.json`。只读模式禁用 MCP；其他模式按规则确认配置、审核调用。Server 在宿主或远端运行，不自动进入 Agent 命令沙箱。入口负责 Close；结果经 Loop 交给 Runner 落账。

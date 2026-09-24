@@ -1,10 +1,9 @@
 # test client
 
-> 无界面的真实 JSON-RPC 客户端，用来检查“网络整条链能不能走通”。
+无界面的真实网络验收，用来检查协议整条链路。
 
 ```text
-client.ts  建立连接、初始化并调用类型化方法
-smoke.ts   按真实顺序执行最小验收
+smoke.ts -> client.ts -> WebSocket -> appserver -> 后台服务
 ```
 
-它不是正式 SDK，也不保存业务状态。正式用户界面在 `clients/web`。
+`client.ts` 处理初始化和类型化调用，`smoke.ts` 按场景执行验收。Go 网络测试负责启动隔离后台；它不是正式 SDK，也不保存业务状态。

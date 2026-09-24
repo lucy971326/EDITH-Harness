@@ -1,7 +1,11 @@
 # builtin skills
 
-> 把随 Harness 发布的系统 Skill 提供给 Skill 登记处。
+发布内置 Skill 摘要，并把嵌入正文写成 Agent 可读取的文件。
 
-系统 Skill 来自嵌入资源，经 `persist` 的 `system/skills` 作用域读取；当前包含 `skill-creator`。
+```text
+assets/skill-creator/SKILL.md
+  -> New -> persist -> system/skills/skill-creator/SKILL.md
+  -> Provider.List -> skills 登记处
+```
 
-它不管理用户 Skill，也不把 Skill 复制进 Agent 设置。用户和项目 Skill 由 filesystem provider 发现。
+源码在 `provider.go`。当前提供 `skill-creator`；不管理用户或项目 Skill，也不把正文复制进 Agent 设置。

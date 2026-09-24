@@ -1,13 +1,13 @@
 # events
 
-【它是什么】进程内同步事件登记处插件。
+按 Go 类型区分事件的进程内同步通知。
 
-【使用能力】不 Resolve 其他服务。
+```text
+Subscribe[T] -> 回调列表
+Publish[T]   -> 按登记顺序调用 -> 汇总错误
+取消订阅     -> 移除回调（幂等）
+```
 
-【提供能力】注册登记处服务 `events`：监听者可 `Subscribe`，发布者可 `Publish` 同一种 Go 事件。
+源码集中在 `registry.go`。Runner 发布运行事件，appserver 与 Subagents 等监听；回调在登记处锁外执行。
 
-【填充插槽】自身不填；监听者填入的是回调，不是长期业务数据。
-
-【谁在用】`runner` 发布稳定 `RunEvent`；app-server 按 Client 订阅并转成 JSON-RPC 通知，不改变 events 的进程内职责。
-
-【不做】不保存、不缓冲、不重放事件；有返回值的协作仍直接调用服务。
+不保存、缓冲或重放事件。监听者必须及时返回；网络排队和慢连接处理属于 appserver。

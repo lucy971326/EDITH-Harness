@@ -1,5 +1,11 @@
 # cmd
 
-> 可执行程序入口集合。
+可执行程序入口。当前只有 [`harness/`](harness/README.md)，负责装配和进程生命周期。
 
-当前只有 `harness/`。它负责把服务和插件按固定顺序装起来，然后启动 appserver；业务实现不放这里。
+```text
+cmd/harness/main.go
+  -> 构造服务 -> 登记扩展 -> 绑定 RPC -> 启动监听
+  -> 退出时逆序关闭
+```
+
+业务流程在 kernel，具体能力实现在 plugins；入口只接线。

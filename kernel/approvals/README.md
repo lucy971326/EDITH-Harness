@@ -1,28 +1,21 @@
 # approvals
 
-独立审批服务，挂在 Host 的 `approvals` 键。`permissions` 负责纯规则，Tool 提供原操作，machine 强制执行最终权限。
+管理一次操作的批准、拒绝与等待；批准只改变本次权限。
 
-- `Authorize`：先比较权限；需要时调用人或模型审核，生成本次 Policy 副本。
-- `ConfirmMCPConfig / AuthorizeMCPCall`：项目 MCP 连接前确认配置版本；MCP Tool 调用逐次审核。
-- `Settings / SaveSettings`：读取、保存全局审核方式与模型；每个申请使用开始时快照。
-- `Subscribe`：原子交付待审批快照及后续完整列表；容量 1，只保留最新状态。
-- `Respond`：取走并回答请求；重复、过期或取消后的回答返回冲突。
-
-每个申请保存可信 Session / Run / ToolCall 身份和不可由客户端改写的操作。等待沿用 Run Context，不创建后台执行队列。取消或关闭收尾，断线仅解除订阅，后台重启不续接申请。待审批不写对话账本；普通操作的批准不持久化，项目 MCP 配置确认按版本单独保存。
-
-本机网页订阅全部请求，含其他会话及子 Agent，并显示来源；现有本机单用户信任边界不变。人和模型审核可转人工，最终仍只返回批准/拒绝。这里不执行命令，也不执行 Hook。
-
-## 智能审核
-
-同包分文件：`settings.go` 管配置，`context.go` 取用户授权，`review.go` 调常规 LLM，`jev.go` 调 TypeSafe。常规 LLM 复用模型服务与已配置模型；Jev 固定 `jev-1.13.0`，批准置信度低于 0.8 转人工。门槛是保守策略，尚未完成生产场景校准。
-
-输入包含当前分支真实用户原话、操作、工作目录、已有权限与本次申请。委派文字不是用户授权，按来源 Session / Run 追溯；来源缺失、旧记录、图片、超预算或调用失败均转人工，不截断安全限制。模型审核总时限 45 秒，Jev HTTP 时限 30 秒；人工等待直到回答或停止。Jev 原因由代码按分类生成，未伪装为模型推理。
-
-全局选择经 persist 保存到 `~/.harness/approvals/settings.json`。密钥与 LLM 共用 `~/.harness/config.yaml`，在现有 `providers` 旁增加：
-
-```yaml
-jev:
-  apiKey: "你的 TypeSafe Key"
+```text
+Tool -> Authorize -> permissions 比较
+                         +-> 已允许
+                         +-> 人工 / LLM / Jev -> 本次 Policy
+                                            -> machine 执行
 ```
 
-修改密钥后重启。设置页选择审核方式、模型与思考档位并保存，再将会话模式切为“智能审批”。密钥不通过设置 RPC 返回前端。
+## 从哪里读
+
+- `types.go / service.go`：申请身份、待审批表、回答、订阅与取消。
+- `context.go`：从账本追溯真实用户授权，委派说明不冒充授权。
+- `settings.go`：全局审核设置；`review.go / jev.go`：两种智能审核。
+- `mcp.go`：项目配置版本信任与 MCP 调用审批。
+
+信息不足或智能审核失败转人工；停止取消等待。Jev 使用 `jev-1.13.0`，批准置信度门槛为 **0.5**，以 `jev.go` 常量为准。待审批只在内存，订阅发送最新完整列表，断线不取消 Run。
+
+审核设置在 `~/.harness/approvals/settings.json`；Jev 密钥读取 `~/.harness/config.yaml` 的 `jev.apiKey`，修改后重启，密钥不返回前端。项目 MCP 信任单独保存；普通批准不落账、不执行命令或 Hook。
