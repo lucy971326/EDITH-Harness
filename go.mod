@@ -1,6 +1,6 @@
 module harness
 
-go 1.25.0
+go 1.27.0
 
 require (
 	github.com/charmbracelet/x/xpty v0.1.4
