@@ -1,6 +1,6 @@
 # Wails Desktop
 
-状态：前沿探索，尚未进入施工。
+状态：前沿探索，尚未进入施工。多端共用边界见[多 Client 方向书](../多client%20计划书.md)。
 
 ## 目标
 
@@ -18,12 +18,13 @@ Harness.exe
 
 ## 决定
 
-- Wails 只负责桌面窗口。
+- Wails v3 负责桌面窗口和 Stream 消息传输，不承载业务判断。
 - Go 与 React 打进同一个应用。
-- 应用内部监听 `127.0.0.1` 随机端口。
-- 继续使用 WebSocket + JSON-RPC 2.0，不增加 Wails 业务 RPC。
+- 桌面业务消息走 Wails Stream，不为此开放回环端口。
+- React WebView 的 Stream 适配放在共用前端；桌面 Go 入口把 `StreamConn` 接入 appserver 的通用连接入口。appserver 不依赖 Wails。
+- 保留完整 JSON-RPC 2.0 消息格式；Stream 只提供通用消息传输，不绑定业务方法。
 - 浏览器版与 Desktop 版共用 React、契约和后台。
-- 首版选择稳定的 Wails v2。
+- 首版选择 Wails v3，固定经验证的 Beta 版本；重点验证连接顺序、断线、背压和窗口关闭。
 
 ## 首版范围
 

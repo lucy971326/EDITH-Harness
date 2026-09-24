@@ -40,9 +40,9 @@ make test         # 完整串行验收
 
 ## 后续方向（未实施）
 
-Wails 桌面包装、通用服务端反向请求、业务操作防重与完整多 Client 协调、辅助浏览器、Windows 沙箱。新的 Hook 事件仅在有具体需求时设计，不预建框架。
+Web 传输拆分、headless CLI、Wails 桌面包装、通用服务端反向请求、业务操作防重与完整多 Client 协调、辅助浏览器、Windows 沙箱。新的 Hook 事件仅在有具体需求时设计，不预建框架。
 
-Wails 已定范围见[桌面方向](docs/forward/Wails-Desktop.md)。
+近期 Web／headless／Wails 方向见[多 Client 方向书](docs/多client%20计划书.md)，桌面边界见[桌面方向](docs/forward/Wails-Desktop.md)。
 
 ## 最近验证
 
