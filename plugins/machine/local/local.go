@@ -11,8 +11,8 @@ import (
 	"time"
 )
 
-// 活对象。挂在 Host 的 machine 键上的本机机器。
-type local struct {
+// 活对象。拥有本机文件、进程与监听资源的服务。
+type Local struct {
 	bash string
 
 	fileLocks pathLockSet
@@ -24,12 +24,13 @@ type local struct {
 	closed    bool
 }
 
-func newLocal() (*local, error) {
+// New 创建本机服务；调用方负责 Close。
+func New() (*Local, error) {
 	bash, err := findBash()
 	if err != nil {
 		return nil, err
 	}
-	return &local{
+	return &Local{
 		bash:      bash,
 		watches:   make(map[*localWatch]struct{}),
 		processes: make(map[int64]*localProcess),
@@ -37,7 +38,7 @@ func newLocal() (*local, error) {
 	}, nil
 }
 
-func (m *local) HomeDir() (string, error) {
+func (m *Local) HomeDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("machine-local: find home directory: %w", err)
@@ -45,14 +46,15 @@ func (m *local) HomeDir() (string, error) {
 	return home, nil
 }
 
-func (m *local) ResolvePath(workspace string, path string) string {
+func (m *Local) ResolvePath(workspace string, path string) string {
 	if filepath.IsAbs(path) {
 		return filepath.Clean(path)
 	}
 	return filepath.Clean(filepath.Join(workspace, path))
 }
 
-func (m *local) close() error {
+// Close 终止并等待所有进程与文件监听。
+func (m *Local) Close() error {
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()

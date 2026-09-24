@@ -16,7 +16,7 @@ import (
 )
 
 // SearchPaths 按目录顺序搜索当前磁盘；每次查询独立，不维护第二份文件索引。
-func (m *local) SearchPaths(ctx context.Context, workspace, query string) (machine.PathSearchResult, error) {
+func (m *Local) SearchPaths(ctx context.Context, workspace, query string) (machine.PathSearchResult, error) {
 	result := machine.PathSearchResult{Entries: []machine.PathMatch{}}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()

@@ -4,37 +4,21 @@ import (
 	"testing"
 
 	"harness/kernel/approvals"
-	"harness/kernel/host"
 	"harness/kernel/tools"
 	machinelocal "harness/plugins/machine/local"
 	exectool "harness/plugins/tools/exec"
 )
 
-func TestPluginRegistersBothTools(t *testing.T) {
-	h := host.NewHost()
+func TestRegisterBothTools(t *testing.T) {
 	service := approvals.New()
 	t.Cleanup(func() { _ = service.Close() })
-	err := h.RegisterService("approvals", service)
+	m, err := machinelocal.New()
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		if err := h.Close(); err != nil {
-			t.Error(err)
-		}
-	})
-	for _, plugin := range []host.Plugin{
-		machinelocal.New(),
-		tools.NewPlugin(),
-		exectool.New(),
-	} {
-		err := h.Install(plugin)
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	registry, err := host.Resolve[tools.Tools](h, "tools")
+	t.Cleanup(func() { _ = m.Close() })
+	registry := tools.NewRegistry()
+	err = exectool.Register(registry, m, m, service)
 	if err != nil {
 		t.Fatal(err)
 	}

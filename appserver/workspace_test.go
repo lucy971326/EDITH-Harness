@@ -57,7 +57,7 @@ func TestSelectWorkspaceDoesNotCreateASession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if server.harnessProduct != nil {
+	if server.conversations != nil {
 		t.Fatal("workspace select must not require a product")
 	}
 	workspace := t.TempDir()

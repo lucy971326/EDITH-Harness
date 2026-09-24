@@ -1,6 +1,6 @@
 # 项目状态
 
-更新日期：2026-09-23
+更新日期：2026-09-24
 
 ## 当前形状
 
@@ -13,7 +13,7 @@ ws://127.0.0.1:8888/rpc   WebSocket + JSON-RPC 2.0
 React Client
      ↓
 appserver.Server
-     ├─ HarnessProduct → Runner / Session
+     ├─ conversations → Runner / Session
      └─ 公共服务 → Agents / LLM / Skills / Commands
 ```
 
@@ -45,16 +45,16 @@ appserver.Server
 
 - 智能审批本轮验收：`make agent-check` 通过，另对 approvals 与 subagents 执行针对性 race。覆盖两种适配、拒绝、失败/低置信度转人工、取消、全局设置持久化与在途快照，以及真实用户与模型委派来源区分。Jev 独立探针扩为 15 例，实测 15/15、平均 483ms、错误放行 0；探针提示词与正式适配不同，此结果不是正式安全校准。用户随后确认常规 LLM 实际使用与智能审批设置页截图验收；Jev 的生产安全准确率仍未校准。
 
-- appserver 是 Host 外的接入层，只管理静态页面、协议、连接、订阅与清理，不拥有业务状态。
+- appserver 是入口直接组装的接入层，只管理静态页面、协议、连接、订阅与清理，不拥有业务状态。
 - appserver 的类型化方法、单 Client 连接和系统目录选择已分成三个内部职责；同一 Session 的写请求排队，不同 Session 并行，Stop 直接执行。
-- HarnessProduct 负责创建、发送、Steer、停止、快照、分叉和命令准入。
+- conversations 负责创建、发送、Steer、停止、快照、分叉和命令准入。
 - Runner 负责运行、草稿、事件、取消与收尾；模型输出及整批工具结果组成不可插入的步骤，Steer 与协作回报只在随后检查点按序落账。连接断开不停止已接受的 Run。
 - Stop 是独立的 Context 取消；它不进账本，并可取消仍在等待检查点的 Steer。
 - 耐久消息先落账再发布；增量只进入运行投影。生成、草稿和最终 Entry 共用同一个 Entry.ID。
 - 每个 Session 同时只有一个活 Run；运行状态、最近用量和 Diff 摘要保存在 `runs.json`，Diff 正文独立压缩保存；未完成运行在重启后标记 interrupted，不自动续跑。
 - Client 只保存服务端投影和草稿、主题、折叠等临时界面状态，不成为业务事实来源。
 - appserver 已显式接入同一份 machine 文件能力，提供读取、受版本保护的保存、目录、路径搜索、元数据与监听 RPC；监听复用统一订阅和断线清理。`fs/searchPaths` 搜索工作区相对路径，逐层遵守 `.gitignore`、跳过 `.git` 与符号链接，最多 50 项；前端 200ms 防抖并忽略迟到结果。
-- appserver 通过连接级 `command/exec` 系列 RPC 管理 UI 终端；进程按 `ConnectionID + processId` 隔离，输出实时通知 Client，断线、取消或服务关闭都会终止并等待进程收尾。它不进入 Product、Host 或 Session 账本。
+- appserver 通过连接级 `command/exec` 系列 RPC 管理 UI 终端；进程按 `ConnectionID + processId` 隔离，输出实时通知 Client，断线、取消或服务关闭都会终止并等待进程收尾。它不进入会话操作或 Session 账本。
 - machine-local 持有文件与长期进程的平台能力；长期进程按 Harness Session 隔离，进程 ID 已交付后可跨 Turn 存活，关闭时终止进程树并等待读取与回收完成。`apply_patch` 写入前完整计算所有目标，匹配失败或文件并发变化时不覆盖，I/O 中途失败准确返回已提交前缀。Agent Tool 只转换参数和呈现结果。
 
 ## 构建与启动
@@ -182,3 +182,12 @@ Windows 启动继续要求 Git Bash；Agent 长期进程与 UI 终端 PTY 均使
 - 只读模式不发现或调用 MCP Tool；请求批准逐次人审，智能审批逐次由所选 LLM/Jev 审核并在不确定时转人工，完全访问直接调用。MCP Server 仍在宿主或远端运行，MCP 审批不修改文件与网络沙箱权限。
 - MCP 核心测试覆盖连接前确认、拒绝、逐次批准/拒绝、只读与完全访问，以及配置变更阻断；真实 WebSocket 审批快照通过契约验证。相关 Go 测试和 MCP/approvals race、前端构建与 TS 检查通过。`make agent-check` 的前端测试在本机触发文件监听 `EMFILE`；使用 `CHOKIDAR_USEPOLLING=1 npm --prefix clients/web test` 顺序重跑，71 项通过。网页视觉与真实 MCP Server 交互待用户 `make run` 验收。
 - 审查修复：项目确认展示完整命令参数与工作目录或完整 URL，按钮明确表示按配置版本记住信任；缓存连接复用前核对工作区真实路径，符号链接改指向即拒绝旧连接。定向 MCP race、TypeScript 与轮询模式前端测试通过；本轮并行 `make agent-check` 另有一次 `fs/watch` race 用例失败，单项重跑通过。
+
+## 架构精简：主干迁移（2026-09-24）
+
+- `products/harness` 已迁入 `kernel/conversations`，按会话协调发送、设置与命令；跨会话不再共用发送锁，Stop 仍独立执行。
+- 删除 Host 服务表及服务装配 Plugin。入口显式创建依赖与登记扩展，长期资源取得后立即安排收尾；实际 Tool / Loop / Skill / MCP 实现保留。
+- Runner 普通运行与压缩共用结束记录和通知流程；压缩准备去掉与设置重复的工作区、模型和思考档位字段。普通取消草稿和失败压缩的处理区别保留。
+- 主聊天、子任务聊天与子任务 Diff 共用订阅生命周期；草稿文字、图片、引用与编辑版本合为一份会话记录，保留迟到确认保护。UI 样式未改变。
+- 本批复用原有测试并删除 Host 注册专属测试；只新增一条跨会话阻塞回归。`make agent-check` 的前端构建、71 条前端测试和契约检查通过；Go 阶段发现本次方法重命名遗漏，修正后 `make agent-go agent-race`（全量 Go 测试、vet、指定包 race）通过。运行界面仍由用户验收，未提交。
+- 领域存储格式迁移、编辑器文件生命周期提取尚未实施，不计入本批完成范围。

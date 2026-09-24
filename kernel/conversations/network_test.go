@@ -1,8 +1,9 @@
-package harness_test
+package conversations_test
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -19,8 +20,8 @@ import (
 	"harness/kernel/agents"
 	"harness/kernel/approvals"
 	"harness/kernel/commands"
+	"harness/kernel/conversations"
 	"harness/kernel/events"
-	"harness/kernel/host"
 	"harness/kernel/llm"
 	"harness/kernel/loops"
 	"harness/kernel/persist"
@@ -34,10 +35,9 @@ import (
 	machinelocal "harness/plugins/machine/local"
 	skillsbuiltin "harness/plugins/skills/builtin"
 	skillsfilesystem "harness/plugins/skills/filesystem"
-	"harness/products/harness"
 )
 
-// 全链路使用真正的 ReAct / Runner / harness.Product，只有模型 HTTP 服务是本地替身。
+// 全链路使用真正的 ReAct / Runner / conversations.Service，只有模型 HTTP 服务是本地替身。
 func TestTypeScriptClient(t *testing.T) {
 	node, err := exec.LookPath("node")
 	if err != nil {
@@ -90,7 +90,7 @@ func TestTypeScriptClient(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				err = h.Close()
+				err = h()
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -135,36 +135,83 @@ func TestTypeScriptClient(t *testing.T) {
 }
 
 // 真实公共服务组装可重启；每次都重新创建 Runner，不能靠旧内存通过恢复验收。
-func newNetworkHost(t *testing.T, data string) (*host.Host, *appserver.Server, *harness.Product) {
+func newNetworkHost(t *testing.T, data string) (func() error, *appserver.Server, *conversations.Service) {
 	t.Helper()
-	h := host.NewHost()
+	files, err := persist.NewFiles(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	disk := persist.NewStore(files)
+	sessions := session.NewStore(disk)
+	models, err := llm.New(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	machineService, err := machinelocal.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = machineService.Close() })
+	eventRegistry := events.NewRegistry()
+	loopRegistry := loops.NewRegistry()
+	toolRegistry := tools.NewRegistry()
+	skillService := skills.NewRegistry()
+	err = loopRegistry.Register(react.New(models, toolRegistry))
+	if err != nil {
+		t.Fatal(err)
+	}
+	agentService, err := agents.NewService(disk, disk, loopRegistry, toolRegistry, skillService)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runService, err := runner.NewRunner(sessions, disk, agentService, loopRegistry, eventRegistry, models, toolRegistry, disk, files, machineService)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(runService.Close)
+	subFiles, err := files.Scope("subagents")
+	if err != nil {
+		t.Fatal(err)
+	}
+	subagentService, err := subagents.NewSubagents(sessions, disk, agentService, models, runService, eventRegistry, subFiles)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = subagentService.Close() })
+	closeServices := func() error {
+		err := subagentService.Close()
+		runService.Close()
+		return errors.Join(err, machineService.Close())
+	}
+	commandService := commands.NewRegistry()
+	approvalService, err := approvals.Open(files, models, sessions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = approvalService.Close() })
+	service, err := conversations.New(sessions, disk, agentService, models, runService, commandService, subagentService, approvalService)
+	if err != nil {
+		t.Fatal(err)
+	}
+	builtin, err := skillsbuiltin.New(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = skillService.Register(builtin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = skillService.Register(skillsfilesystem.New(machineService, files))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = commandService.Register(compactcmd.New(runService))
+	if err != nil {
+		t.Fatal(err)
+	}
 	server := appserver.New()
-	t.Cleanup(func() { _ = h.Close() })
 	t.Cleanup(func() { _ = server.Close() })
-	plugins := []host.Plugin{&persist.Plugin{Dir: data}, &session.Plugin{}, &llm.Plugin{}, approvals.NewPlugin(), machinelocal.New(), events.NewPlugin(), tools.NewPlugin(), loops.NewPlugin(), react.New(), skills.NewPlugin(), skillsbuiltin.New(), skillsfilesystem.New(), agents.NewPlugin(), commands.NewPlugin(), runner.NewPlugin(), compactcmd.New(), subagents.NewPlugin(), harness.NewPlugin()}
-	for _, plugin := range plugins {
-		err := h.Install(plugin)
-		if err != nil {
-			t.Fatal(plugin.Name(), err)
-		}
-	}
-	product, err := host.Resolve[*harness.Product](h, "harnessProduct")
-	if err != nil {
-		t.Fatal(err)
-	}
-	registry, err := host.Resolve[*events.Registry](h, "events")
-	if err != nil {
-		t.Fatal(err)
-	}
-	runService, err := host.Resolve[*runner.Runner](h, "runner")
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = server.BindHarness(product, runService, registry)
-	if err != nil {
-		t.Fatal(err)
-	}
-	models, err := host.Resolve[*llm.Client](h, "llm")
+	err = server.BindHarness(service, runService, eventRegistry)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,15 +219,7 @@ func newNetworkHost(t *testing.T, data string) (*host.Host, *appserver.Server, *
 	if err != nil {
 		t.Fatal(err)
 	}
-	agentService, err := host.Resolve[*agents.Service](h, "agents")
-	if err != nil {
-		t.Fatal(err)
-	}
 	err = server.BindAgents(agentService)
-	if err != nil {
-		t.Fatal(err)
-	}
-	skillService, err := host.Resolve[skills.Skills](h, "skills")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,15 +227,12 @@ func newNetworkHost(t *testing.T, data string) (*host.Host, *appserver.Server, *
 	if err != nil {
 		t.Fatal(err)
 	}
-	commandService, err := host.Resolve[commands.Commands](h, "commands")
-	if err != nil {
-		t.Fatal(err)
-	}
 	err = server.BindCommands(commandService)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return h, server, product
+	return closeServices, server, service
+
 }
 
 type networkModel struct {

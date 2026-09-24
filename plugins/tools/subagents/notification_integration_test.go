@@ -3,6 +3,7 @@ package subagents
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -17,8 +18,8 @@ import (
 	"harness/kernel/agents"
 	"harness/kernel/approvals"
 	"harness/kernel/commands"
+	"harness/kernel/conversations"
 	"harness/kernel/events"
-	"harness/kernel/host"
 	"harness/kernel/llm"
 	"harness/kernel/loops"
 	"harness/kernel/persist"
@@ -30,7 +31,6 @@ import (
 	"harness/kernel/tools"
 	"harness/plugins/loops/react"
 	machinelocal "harness/plugins/machine/local"
-	harnessproduct "harness/products/harness"
 )
 
 // 数据。测试模型收到的普通聊天请求。
@@ -148,32 +148,78 @@ func TestRealReactWaitReceivesCompletionOrUserInput(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			h := host.NewHost()
-			defer func() {
-				err := h.Close()
-				if err != nil {
-					t.Error(err)
-				}
-			}()
-			for _, plugin := range []host.Plugin{&persist.Plugin{Dir: dir}, &session.Plugin{}, &llm.Plugin{}, approvals.NewPlugin(), machinelocal.New(), tools.NewPlugin(), events.NewPlugin(), loops.NewPlugin(), react.New(), skills.NewPlugin(), agents.NewPlugin(), commands.NewPlugin(), runner.NewPlugin(), delegation.NewPlugin(), New(), harnessproduct.NewPlugin()} {
-				err = h.Install(plugin)
-				if err != nil {
-					t.Fatal(err)
-				}
+			files, err := persist.NewFiles(dir)
+			if err != nil {
+				t.Fatal(err)
 			}
-			r := resolve[*runner.Runner](t, h, "runner")
-			s := resolve[*delegation.Subagents](t, h, "subagents")
-			chatService := resolve[*harnessproduct.Product](t, h, "harnessProduct")
-			err = resolve[tools.Tools](t, h, "tools").Register(tools.New("side_effect", "Test cancellation boundary", func(context.Context, tools.Call, struct{}) (tools.Result, error) {
+			disk := persist.NewStore(files)
+			sessions := session.NewStore(disk)
+			settingsStore := disk
+			models, err := llm.New(files)
+			if err != nil {
+				t.Fatal(err)
+			}
+			machineService, err := machinelocal.New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = machineService.Close() })
+			eventRegistry := events.NewRegistry()
+			loopRegistry := loops.NewRegistry()
+			toolRegistry := tools.NewRegistry()
+			skillService := skills.NewRegistry()
+			err = loopRegistry.Register(react.New(models, toolRegistry))
+			if err != nil {
+				t.Fatal(err)
+			}
+			agentService, err := agents.NewService(disk, disk, loopRegistry, toolRegistry, skillService)
+			if err != nil {
+				t.Fatal(err)
+			}
+			runService, err := runner.NewRunner(sessions, disk, agentService, loopRegistry, eventRegistry, models, toolRegistry, disk, files, machineService)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(runService.Close)
+			subFiles, err := files.Scope("subagents")
+			if err != nil {
+				t.Fatal(err)
+			}
+			subagentService, err := delegation.NewSubagents(sessions, disk, agentService, models, runService, eventRegistry, subFiles)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = subagentService.Close() })
+			closeServices := func() error {
+				err := subagentService.Close()
+				runService.Close()
+				return errors.Join(err, machineService.Close())
+			}
+			commandService := commands.NewRegistry()
+			approvalService, err := approvals.Open(files, models, sessions)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = approvalService.Close() })
+			service, err := conversations.New(sessions, disk, agentService, models, runService, commandService, subagentService, approvalService)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer closeServices()
+			err = Register(toolRegistry, subagentService)
+			if err != nil {
+				t.Fatal(err)
+			}
+			r := runService
+			s := subagentService
+			chatService := service
+			err = toolRegistry.Register(tools.New("side_effect", "Test cancellation boundary", func(context.Context, tools.Call, struct{}) (tools.Result, error) {
 				sideEffects.Add(1)
 				return tools.Result{Content: "executed"}, nil
 			}))
 			if err != nil {
 				t.Fatal(err)
 			}
-			sessions := resolve[*session.Store](t, h, "sessions")
-			settingsStore := resolve[settings.SessionSettingsStore](t, h, "sessionSettings")
-			agentService := resolve[*agents.Service](t, h, "agents")
 			agent, err := agentService.Get(agents.DefaultID)
 			if err != nil {
 				t.Fatal(err)
@@ -192,7 +238,7 @@ func TestRealReactWaitReceivesCompletionOrUserInput(t *testing.T) {
 				t.Fatal(err)
 			}
 			waiting := make(chan struct{}, 1)
-			_, err = events.Subscribe(resolve[*events.Registry](t, h, "events"), func(_ context.Context, event runner.RunEvent) error {
+			_, err = events.Subscribe(eventRegistry, func(_ context.Context, event runner.RunEvent) error {
 				if event.Kind == runner.ToolStarted && event.Tool.Name == "subagent_wait" {
 					waiting <- struct{}{}
 				}
@@ -234,7 +280,7 @@ func TestRealReactWaitReceivesCompletionOrUserInput(t *testing.T) {
 				}
 				assertCancelledChild(t, s, taskID)
 				// 重新从持久层加载，核对每个已落账调用恰好有一个结果。
-				reloaded := session.NewStore(resolve[persist.Persistence](t, h, "sessionPersistence"))
+				reloaded := session.NewStore(disk)
 				parent, loadErr := reloaded.Get("parent")
 				if loadErr != nil {
 					t.Fatal(loadErr)

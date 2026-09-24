@@ -35,11 +35,11 @@ func TestMain(m *testing.M) {
 }
 
 func TestDarwinAgentSandbox(t *testing.T) {
-	m, err := newLocal()
+	m, err := New()
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = m.close() })
+	t.Cleanup(func() { _ = m.Close() })
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

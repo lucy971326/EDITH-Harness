@@ -20,7 +20,7 @@ type preparingSettings struct {
 func TestStopFromRunStartedPreventsLoop(t *testing.T) {
 	started := make(chan struct{}, 1)
 	f := newRunnerFixture(t, &runnerTestLoop{run: func(context.Context, loops.Invocation) error { started <- struct{}{}; return nil }})
-	defer f.runner.close()
+	defer f.runner.Close()
 	_, err := events.Subscribe(f.events, func(_ context.Context, event RunEvent) error {
 		if event.Kind == RunStarted {
 			f.runner.StopRun(event.SessionID, event.RunID)
@@ -48,7 +48,7 @@ func TestStopFromRunStartedPreventsLoop(t *testing.T) {
 func TestStopRunDoesNotCancelDifferentRun(t *testing.T) {
 	started := make(chan struct{})
 	f := newRunnerFixture(t, &runnerTestLoop{run: func(ctx context.Context, _ loops.Invocation) error { close(started); <-ctx.Done(); return ctx.Err() }})
-	defer f.runner.close()
+	defer f.runner.Close()
 	handle, err := f.runner.Start(context.Background(), "session-1", textInput("question"))
 	if err != nil {
 		t.Fatal(err)
@@ -79,7 +79,7 @@ func (s *preparingSettings) For(id string) (settings.SessionSettings, error) {
 func TestStopDuringPreparationPreventsLoop(t *testing.T) {
 	started := make(chan struct{}, 1)
 	f := newRunnerFixture(t, &runnerTestLoop{run: func(context.Context, loops.Invocation) error { started <- struct{}{}; return nil }})
-	defer f.runner.close()
+	defer f.runner.Close()
 	barrier := &preparingSettings{SessionSettingsStore: f.settings, entered: make(chan struct{}), release: make(chan struct{})}
 	f.runner.settings = barrier
 	done := make(chan error, 1)

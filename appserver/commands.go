@@ -60,6 +60,6 @@ func (s *Server) handleCommandList(_ context.Context, _ CommandListParams) (Comm
 }
 
 func (s *Server) handleCommandCall(ctx context.Context, input CommandCallParams) (CommandCallResult, error) {
-	err := s.harnessProduct.CallCommand(ctx, input.Name, input.SessionID)
+	err := s.conversations.CallCommand(ctx, input.Name, input.SessionID)
 	return CommandCallResult{}, methodError(err)
 }

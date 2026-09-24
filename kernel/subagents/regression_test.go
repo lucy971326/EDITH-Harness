@@ -49,7 +49,7 @@ func awaitSignal(t *testing.T, ch <-chan struct{}) {
 
 func TestCloseWhileSendReadsSettings(t *testing.T) {
 	f := newSubagentsFixture(t)
-	defer f.host.Close()
+	defer f.close()
 	parent, run := createParentRun(t, f, t.TempDir())
 	child, err := f.subagents.Spawn(context.Background(), SpawnInput{
 		TaskName:        "test",
@@ -99,7 +99,7 @@ func TestCloseWhileSendReadsSettings(t *testing.T) {
 
 func TestTaskRecordStaysRelationOnlyAfterCompletion(t *testing.T) {
 	f := newSubagentsFixture(t)
-	defer f.host.Close()
+	defer f.close()
 	parent, run := createParentRun(t, f, t.TempDir())
 	f.loop.release()
 	child, err := f.subagents.Spawn(context.Background(), SpawnInput{
@@ -125,7 +125,7 @@ func TestTaskRecordStaysRelationOnlyAfterCompletion(t *testing.T) {
 
 func TestRecoveryProjectsHistoryFromChildSession(t *testing.T) {
 	f := newSubagentsFixture(t)
-	defer f.host.Close()
+	defer f.close()
 	parent, run := createParentRun(t, f, t.TempDir())
 	child, err := f.subagents.Spawn(context.Background(), SpawnInput{
 		TaskName:        "test",

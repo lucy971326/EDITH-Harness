@@ -12,7 +12,7 @@ import (
 
 func TestStopFamilyDoesNotWaitForChildSettingsOrStartLateChild(t *testing.T) {
 	f := newSubagentsFixture(t)
-	defer f.host.Close()
+	defer f.close()
 	handle, parent := notificationParent(t, f)
 	entered := make(chan struct{})
 	release := make(chan struct{})
@@ -61,7 +61,7 @@ func TestStopFamilyDoesNotWaitForChildSettingsOrStartLateChild(t *testing.T) {
 
 func TestStoppedSendCannotCrossIntoNewParentRun(t *testing.T) {
 	f := newSubagentsFixture(t)
-	defer f.host.Close()
+	defer f.close()
 	handle, parent := notificationParent(t, f)
 	child := notificationChild(t, f, parent)
 	f.loop.release()
@@ -106,7 +106,7 @@ func TestStoppedSendCannotCrossIntoNewParentRun(t *testing.T) {
 
 func TestSingleChildStopInvalidatesPendingSend(t *testing.T) {
 	f := newSubagentsFixture(t)
-	defer f.host.Close()
+	defer f.close()
 	_, parent := notificationParent(t, f)
 	child := notificationChild(t, f, parent)
 	f.loop.release()
@@ -141,7 +141,7 @@ func TestSingleChildStopInvalidatesPendingSend(t *testing.T) {
 
 func TestSingleChildStopInvalidatesUserSendBeforeSettingsRead(t *testing.T) {
 	f := newSubagentsFixture(t)
-	defer f.host.Close()
+	defer f.close()
 	_, parent := notificationParent(t, f)
 	child := notificationChild(t, f, parent)
 	f.loop.release()
@@ -190,7 +190,7 @@ func TestStopCascadesThroughDescendants(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			f := newSubagentsFixture(t)
-			defer f.host.Close()
+			defer f.close()
 			_, parent := notificationParent(t, f)
 			child := notificationChild(t, f, parent)
 			grandchild, err := f.subagents.Spawn(context.Background(), SpawnInput{
@@ -256,7 +256,7 @@ func TestStopCascadesThroughDescendants(t *testing.T) {
 
 func TestStopTaskDoesNotWaitForNestedStartup(t *testing.T) {
 	f := newSubagentsFixture(t)
-	defer f.host.Close()
+	defer f.close()
 	_, parent := notificationParent(t, f)
 	child := notificationChild(t, f, parent)
 

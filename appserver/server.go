@@ -11,19 +11,19 @@ import (
 	"harness/kernel/agents"
 	"harness/kernel/approvals"
 	"harness/kernel/commands"
+	"harness/kernel/conversations"
 	"harness/kernel/events"
 	"harness/kernel/hooks"
 	"harness/kernel/llm"
 	"harness/kernel/machine"
 	"harness/kernel/runner"
 	"harness/kernel/skills"
-	"harness/products/harness"
 )
 
 // 活对象。应用唯一的接入服务，拥有方法表、页面监听和当前连接。
 type Server struct {
 	// 产品入口与公共能力；业务状态由产品和内核管理。
-	harnessProduct  *harness.Product
+	conversations   *conversations.Service
 	approvals       *approvals.Service
 	hooks           *hooks.Service
 	runner          *runner.Runner

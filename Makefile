@@ -15,7 +15,7 @@ test: web
 	npm --prefix clients ci
 	go test ./...
 	go vet ./...
-	go test -race ./appserver ./products/harness ./kernel/runner
+	go test -race ./appserver ./kernel/conversations ./kernel/runner
 	npm --prefix clients run contracts:check
 	npm --prefix clients run rpc:check
 	npm --prefix clients run rpc:test
@@ -34,7 +34,7 @@ agent-go:
 	go vet ./...
 
 agent-race:
-	go test -race ./appserver ./products/harness ./kernel/runner ./kernel/subagents ./plugins/machine/local ./plugins/tools/subagents
+	go test -race ./appserver ./kernel/conversations ./kernel/runner ./kernel/subagents ./plugins/machine/local ./plugins/tools/subagents
 
 agent-contracts: clients/node_modules/.package-lock.json
 	npm --prefix clients run contracts:check

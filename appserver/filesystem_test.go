@@ -10,8 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"harness/kernel/host"
-	"harness/kernel/machine"
 	machinelocal "harness/plugins/machine/local"
 )
 
@@ -122,20 +120,12 @@ func TestFilesystemWatchUsesSubscriptionEnvelopeAndUnsubscribe(t *testing.T) {
 
 func newFilesystemServer(t *testing.T) *Server {
 	t.Helper()
-	h := host.NewHost()
-	err := h.Install(machinelocal.New())
+	filesystem, err := machinelocal.New()
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		if err := h.Close(); err != nil {
-			t.Error(err)
-		}
-	})
-	filesystem, err := host.Resolve[machine.FileSystem](h, "machine")
-	if err != nil {
-		t.Fatal(err)
-	}
+	t.Cleanup(func() { _ = filesystem.Close() })
+
 	server := New()
 	err = server.BindFilesystem(filesystem)
 	if err != nil {

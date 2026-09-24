@@ -382,3 +382,8 @@ func errorText(content string) string {
 	}
 	return "error: " + content
 }
+
+// New 创建 ReAct Loop。
+func New(client *llm.Client, registry tools.Tools) loops.Loop {
+	return &reactLoop{llm: client, tools: registry}
+}

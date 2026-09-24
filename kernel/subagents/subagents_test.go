@@ -11,9 +11,7 @@ import (
 	"time"
 
 	"harness/kernel/agents"
-	"harness/kernel/commands"
 	"harness/kernel/events"
-	"harness/kernel/host"
 	"harness/kernel/llm"
 	"harness/kernel/loops"
 	"harness/kernel/persist"
@@ -22,12 +20,12 @@ import (
 	"harness/kernel/session/settings"
 	"harness/kernel/skills"
 	"harness/kernel/tools"
-	"harness/plugins/machine/local"
+	machinelocal "harness/plugins/machine/local"
 )
 
 // 数据。测试脚手架。
 type subagentsFixture struct {
-	host      *host.Host
+	close     func() error
 	subagents *Subagents
 	runner    *runner.Runner
 	sessions  *session.Store
@@ -56,67 +54,60 @@ func newSubagentsFixture(t *testing.T) subagentsFixture {
 	}
 	t.Cleanup(func() { _ = os.Setenv("HOME", prevHome) })
 
-	h := host.NewHost()
-	plugins := []host.Plugin{
-		&persist.Plugin{Dir: dataDir},
-		&session.Plugin{},
-		&llm.Plugin{},
-		machinelocal.New(),
-		events.NewPlugin(),
-		loops.NewPlugin(),
-		skills.NewPlugin(),
-		tools.NewPlugin(),
-		agents.NewPlugin(),
-		commands.NewPlugin(),
-		runner.NewPlugin(),
-		NewPlugin(),
-	}
 	loop := newTestLoop()
-
-	for _, plugin := range plugins {
-		err = h.Install(plugin)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if plugin.Name() == "loops" {
-			registry, err := host.Resolve[loops.Loops](h, "loops")
-			if err != nil {
-				t.Fatal(err)
-			}
-			err = registry.Register(loop)
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
-
-	subService, err := host.Resolve[*Subagents](h, "subagents")
+	files, err := persist.NewFiles(dataDir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runSvc, err := host.Resolve[*runner.Runner](h, "runner")
+	disk := persist.NewStore(files)
+	sessions := session.NewStore(disk)
+	settingsStore := disk
+	models, err := llm.New(files)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sessStore, err := host.Resolve[*session.Store](h, "sessions")
+	machineService, err := machinelocal.New()
 	if err != nil {
 		t.Fatal(err)
 	}
-	settingsStore, err := host.Resolve[settings.SessionSettingsStore](h, "sessionSettings")
+	t.Cleanup(func() { _ = machineService.Close() })
+	eventRegistry := events.NewRegistry()
+	loopRegistry := loops.NewRegistry()
+	toolRegistry := tools.NewRegistry()
+	skillService := skills.NewRegistry()
+	err = loopRegistry.Register(loop)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	eventRegistry, err := host.Resolve[*events.Registry](h, "events")
+	agentService, err := agents.NewService(disk, disk, loopRegistry, toolRegistry, skillService)
 	if err != nil {
 		t.Fatal(err)
+	}
+	runService, err := runner.NewRunner(sessions, disk, agentService, loopRegistry, eventRegistry, models, toolRegistry, disk, files, machineService)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(runService.Close)
+	subFiles, err := files.Scope("subagents")
+	if err != nil {
+		t.Fatal(err)
+	}
+	subagentService, err := NewSubagents(sessions, disk, agentService, models, runService, eventRegistry, subFiles)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = subagentService.Close() })
+	closeServices := func() error {
+		err := subagentService.Close()
+		runService.Close()
+		return errors.Join(err, machineService.Close())
 	}
 	return subagentsFixture{
 		events:    eventRegistry,
-		host:      h,
-		subagents: subService,
-		runner:    runSvc,
-		sessions:  sessStore,
+		close:     closeServices,
+		subagents: subagentService,
+		runner:    runService,
+		sessions:  sessions,
 		settings:  settingsStore,
 		loop:      loop,
 		dataDir:   dataDir,
@@ -414,7 +405,7 @@ func TestStoreValidationAndIntegrity(t *testing.T) {
 	}
 
 	f := newSubagentsFixture(t)
-	defer f.host.Close()
+	defer f.close()
 	_, err = newSubagentsWithStore(f.sessions, f.settings, f.subagents.agents, f.subagents.models, f.runner, f.events, store)
 	if err == nil {
 		t.Fatal("expected newSubagentsWithStore to fail on duplicate childSessionID, got nil")
@@ -423,7 +414,7 @@ func TestStoreValidationAndIntegrity(t *testing.T) {
 
 func TestSubagentsOptions(t *testing.T) {
 	f := newSubagentsFixture(t)
-	defer f.host.Close()
+	defer f.close()
 
 	opts, err := f.subagents.Options(context.Background())
 	if err != nil {
@@ -439,7 +430,7 @@ func TestSubagentsOptions(t *testing.T) {
 
 func TestSubagentsSpawnValidation(t *testing.T) {
 	f := newSubagentsFixture(t)
-	defer f.host.Close()
+	defer f.close()
 
 	workspace := t.TempDir()
 	parentSessionID, parentRunID := createParentRun(t, f, workspace)
@@ -492,7 +483,7 @@ func TestSubagentsSpawnValidation(t *testing.T) {
 
 func TestFindFinalAssistantEntryStrict(t *testing.T) {
 	f := newSubagentsFixture(t)
-	defer f.host.Close()
+	defer f.close()
 
 	childID := "child-strict-test"
 	_, err := f.sessions.Create(childID)
@@ -608,7 +599,7 @@ func TestFindFinalAssistantEntryStrict(t *testing.T) {
 
 func TestSubagentsFastCompletionAndResultBinding(t *testing.T) {
 	f := newSubagentsFixture(t)
-	defer f.host.Close()
+	defer f.close()
 
 	workspace := t.TempDir()
 	parentSessionID, parentRunID := createParentRun(t, f, workspace)
@@ -652,7 +643,7 @@ func TestSubagentsFastCompletionAndResultBinding(t *testing.T) {
 
 func TestSubagentsDelegationDepthLimit(t *testing.T) {
 	f := newSubagentsFixture(t)
-	defer f.host.Close()
+	defer f.close()
 
 	workspace := t.TempDir()
 	parentSessionID, parentRunID := createParentRun(t, f, workspace)
@@ -699,7 +690,7 @@ func TestSubagentsDelegationDepthLimit(t *testing.T) {
 
 func TestSubagentsSendIdleAndMultiTurn(t *testing.T) {
 	f := newSubagentsFixture(t)
-	defer f.host.Close()
+	defer f.close()
 
 	workspace := t.TempDir()
 	parentSessionID, parentRunID := createParentRun(t, f, workspace)
@@ -750,7 +741,7 @@ func TestSubagentsSendIdleAndMultiTurn(t *testing.T) {
 
 func TestTaskPerTurnHistoryAndNotificationsAndDeepCopy(t *testing.T) {
 	f := newSubagentsFixture(t)
-	defer f.host.Close()
+	defer f.close()
 
 	workspace := t.TempDir()
 	parentSessionID, parentRunID := createParentRun(t, f, workspace)
@@ -848,7 +839,7 @@ func TestTaskPerTurnHistoryAndNotificationsAndDeepCopy(t *testing.T) {
 
 func TestSubagentsSendRunningSteers(t *testing.T) {
 	f := newSubagentsFixture(t)
-	defer f.host.Close()
+	defer f.close()
 
 	workspace := t.TempDir()
 	parentSessionID, parentRunID := createParentRun(t, f, workspace)
@@ -900,7 +891,7 @@ func TestSubagentsSendRunningSteers(t *testing.T) {
 
 func TestWaitReturnsCompletedTurnDespiteImmediateSend(t *testing.T) {
 	f := newSubagentsFixture(t)
-	defer f.host.Close()
+	defer f.close()
 
 	workspace := t.TempDir()
 	parentSessionID, parentRunID := createParentRun(t, f, workspace)
@@ -974,7 +965,7 @@ func TestWaitReturnsCompletedTurnDespiteImmediateSend(t *testing.T) {
 
 func TestListConcurrentWithSendAndFinish(t *testing.T) {
 	f := newSubagentsFixture(t)
-	defer f.host.Close()
+	defer f.close()
 
 	workspace := t.TempDir()
 	parentSessionID, parentRunID := createParentRun(t, f, workspace)
@@ -1035,7 +1026,7 @@ func TestListConcurrentWithSendAndFinish(t *testing.T) {
 
 func TestSubagentsStopAndStopFamily(t *testing.T) {
 	f := newSubagentsFixture(t)
-	defer f.host.Close()
+	defer f.close()
 
 	workspace := t.TempDir()
 	parentSessionID, parentRunID := createParentRun(t, f, workspace)
@@ -1090,7 +1081,7 @@ func TestSubagentsStopAndStopFamily(t *testing.T) {
 
 func TestCloseBlockedSpawnAndConcurrency(t *testing.T) {
 	f := newSubagentsFixture(t)
-	defer f.host.Close()
+	defer f.close()
 
 	workspace := t.TempDir()
 	parentSessionID, parentRunID := createParentRun(t, f, workspace)
@@ -1181,7 +1172,7 @@ func TestCloseBlockedSpawnAndConcurrency(t *testing.T) {
 
 func TestSpawnInitialPersistFailureConsistency(t *testing.T) {
 	f := newSubagentsFixture(t)
-	defer f.host.Close()
+	defer f.close()
 
 	workspace := t.TempDir()
 	parentSessionID, parentRunID := createParentRun(t, f, workspace)
@@ -1264,6 +1255,6 @@ func TestSubagentsCloseStopsAndExitsCleanly(t *testing.T) {
 	if !errors.Is(err, ErrClosed) {
 		t.Fatalf("expected ErrClosed, got %v", err)
 	}
-	_ = f.host.Close()
+	_ = f.close()
 	_ = spawnRes
 }

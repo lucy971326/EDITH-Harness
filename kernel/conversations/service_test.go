@@ -1,4 +1,4 @@
-package harness_test
+package conversations_test
 
 import (
 	"context"
@@ -14,8 +14,8 @@ import (
 	"harness/kernel/agents"
 	"harness/kernel/approvals"
 	"harness/kernel/commands"
+	"harness/kernel/conversations"
 	"harness/kernel/events"
-	"harness/kernel/host"
 	"harness/kernel/llm"
 	"harness/kernel/loops"
 	"harness/kernel/persist"
@@ -26,14 +26,13 @@ import (
 	"harness/kernel/subagents"
 	"harness/kernel/tools"
 	machinelocal "harness/plugins/machine/local"
-	"harness/products/harness"
 
 	"github.com/coder/websocket"
 )
 
 func TestProductRunsWithoutWebAndForksCompletedSegment(t *testing.T) {
 	fixture := newTestFixture(t)
-	defer fixture.host.Close()
+	defer fixture.close()
 
 	workspace := t.TempDir()
 	created, err := fixture.service.Create(workspace)
@@ -63,7 +62,7 @@ func TestProductRunsWithoutWebAndForksCompletedSegment(t *testing.T) {
 	}
 	defer unsubscribe()
 
-	err = fixture.service.Start(context.Background(), harness.RunInput{
+	err = fixture.service.Start(context.Background(), conversations.RunInput{
 		SessionID: created.Meta.ID, Model: "deepseek/deepseek-flash", ReasoningEffort: "high",
 		Message: session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "first"}}},
 	})
@@ -101,7 +100,7 @@ func TestProductRunsWithoutWebAndForksCompletedSegment(t *testing.T) {
 		t.Fatalf("snapshot runs = %#v json=%s", snapshot.Runs, encoded)
 	}
 
-	forkID, err := fixture.service.Fork(harness.ForkInput{SessionID: created.Meta.ID, RunID: snapshot.Entries[1].Message.RunID, BoundaryEntryID: snapshot.Entries[1].ID})
+	forkID, err := fixture.service.Fork(conversations.ForkInput{SessionID: created.Meta.ID, RunID: snapshot.Entries[1].Message.RunID, BoundaryEntryID: snapshot.Entries[1].ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +123,7 @@ func TestProductRunsWithoutWebAndForksCompletedSegment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = fixture.service.Start(context.Background(), harness.RunInput{
+	err = fixture.service.Start(context.Background(), conversations.RunInput{
 		SessionID: stopping.Meta.ID, Model: "deepseek/deepseek-flash", ReasoningEffort: "high",
 		Message: session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "stop"}}},
 	})
@@ -141,8 +140,8 @@ func TestProductRunsWithoutWebAndForksCompletedSegment(t *testing.T) {
 
 func TestProductCreateDiscardsSessionWhenSettingsSaveFails(t *testing.T) {
 	fixture := newTestFixture(t)
-	defer fixture.host.Close()
-	service, err := harness.New(fixture.sessions, failingSettings{store: fixture.settings}, fixture.agents, fixture.models, fixture.runner, fixture.commands, fixture.subagents, approvals.New())
+	defer fixture.close()
+	service, err := conversations.New(fixture.sessions, failingSettings{store: fixture.settings}, fixture.agents, fixture.models, fixture.runner, fixture.commands, fixture.subagents, approvals.New())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +160,7 @@ func TestProductCreateDiscardsSessionWhenSettingsSaveFails(t *testing.T) {
 
 func TestProductSessionDoesNotReadOtherSessionSettings(t *testing.T) {
 	fixture := newTestFixture(t)
-	defer fixture.host.Close()
+	defer fixture.close()
 	workspace := t.TempDir()
 	good, err := fixture.service.Create(workspace)
 	if err != nil {
@@ -175,7 +174,7 @@ func TestProductSessionDoesNotReadOtherSessionSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service, err := harness.New(fixture.sessions, selectiveFailSettings{store: fixture.settings, badID: "bad"}, fixture.agents, fixture.models, fixture.runner, fixture.commands, fixture.subagents, approvals.New())
+	service, err := conversations.New(fixture.sessions, selectiveFailSettings{store: fixture.settings, badID: "bad"}, fixture.agents, fixture.models, fixture.runner, fixture.commands, fixture.subagents, approvals.New())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,8 +188,8 @@ func TestProductSessionDoesNotReadOtherSessionSettings(t *testing.T) {
 }
 
 type testFixture struct {
-	host      *host.Host
-	service   *harness.Product
+	close     func() error
+	service   *conversations.Service
 	sessions  *session.Store
 	settings  settings.SessionSettingsStore
 	agents    *agents.Service
@@ -220,74 +219,65 @@ func newTestFixture(t *testing.T) testFixture {
 	}
 	t.Cleanup(func() { _ = os.Setenv("HOME", previousHome) })
 
-	h := host.NewHost()
-	plugins := []host.Plugin{&persist.Plugin{Dir: filepath.Join(home, ".harness")}, &session.Plugin{}, &llm.Plugin{}, approvals.NewPlugin(), machinelocal.New(), events.NewPlugin(), loops.NewPlugin(), skills.NewPlugin(), tools.NewPlugin(), agents.NewPlugin(), commands.NewPlugin(), runner.NewPlugin(), subagents.NewPlugin(), harness.NewPlugin()}
-	for _, plugin := range plugins {
-		err = h.Install(plugin)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if plugin.Name() == "loops" {
-			registry, resolveErr := host.Resolve[loops.Loops](h, "loops")
-			if resolveErr != nil {
-				t.Fatal(resolveErr)
-			}
-			loop := newTestLoop()
-			registerErr := registry.Register(loop)
-			if registerErr != nil {
-				t.Fatal(registerErr)
-			}
-		}
-	}
-	service, err := host.Resolve[*harness.Product](h, "harnessProduct")
+	loop := newTestLoop()
+	files, err := persist.NewFiles(filepath.Join(home, ".harness"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	sessions, err := host.Resolve[*session.Store](h, "sessions")
+	disk := persist.NewStore(files)
+	sessions := session.NewStore(disk)
+	settingsStore := disk
+	models, err := llm.New(files)
 	if err != nil {
 		t.Fatal(err)
 	}
-	settingsStore, err := host.Resolve[settings.SessionSettingsStore](h, "sessionSettings")
+	machineService, err := machinelocal.New()
 	if err != nil {
 		t.Fatal(err)
 	}
-	agentService, err := host.Resolve[*agents.Service](h, "agents")
+	t.Cleanup(func() { _ = machineService.Close() })
+	eventRegistry := events.NewRegistry()
+	loopRegistry := loops.NewRegistry()
+	toolRegistry := tools.NewRegistry()
+	skillService := skills.NewRegistry()
+	err = loopRegistry.Register(loop)
 	if err != nil {
 		t.Fatal(err)
 	}
-	models, err := host.Resolve[*llm.Client](h, "llm")
+	agentService, err := agents.NewService(disk, disk, loopRegistry, toolRegistry, skillService)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runService, err := host.Resolve[*runner.Runner](h, "runner")
+	runService, err := runner.NewRunner(sessions, disk, agentService, loopRegistry, eventRegistry, models, toolRegistry, disk, files, machineService)
 	if err != nil {
 		t.Fatal(err)
 	}
-	commandService, err := host.Resolve[commands.Commands](h, "commands")
+	t.Cleanup(runService.Close)
+	subFiles, err := files.Scope("subagents")
 	if err != nil {
 		t.Fatal(err)
 	}
-	eventRegistry, err := host.Resolve[*events.Registry](h, "events")
+	subagentService, err := subagents.NewSubagents(sessions, disk, agentService, models, runService, eventRegistry, subFiles)
 	if err != nil {
 		t.Fatal(err)
 	}
-	subagentService, err := host.Resolve[*subagents.Subagents](h, "subagents")
+	t.Cleanup(func() { _ = subagentService.Close() })
+	closeServices := func() error {
+		err := subagentService.Close()
+		runService.Close()
+		return errors.Join(err, machineService.Close())
+	}
+	commandService := commands.NewRegistry()
+	approvalService, err := approvals.Open(files, models, sessions)
 	if err != nil {
 		t.Fatal(err)
 	}
-	loopRegistry, err := host.Resolve[loops.Loops](h, "loops")
+	t.Cleanup(func() { _ = approvalService.Close() })
+	service, err := conversations.New(sessions, disk, agentService, models, runService, commandService, subagentService, approvalService)
 	if err != nil {
 		t.Fatal(err)
 	}
-	registeredLoop, err := loopRegistry.Get("react")
-	if err != nil {
-		t.Fatal(err)
-	}
-	loop, ok := registeredLoop.(*testLoop)
-	if !ok {
-		t.Fatal("test loop unavailable")
-	}
-	return testFixture{host: h, service: service, sessions: sessions, settings: settingsStore, agents: agentService, models: models, runner: runService, commands: commandService, events: eventRegistry, subagents: subagentService, loop: loop}
+	return testFixture{close: closeServices, service: service, sessions: sessions, settings: settingsStore, agents: agentService, models: models, runner: runService, commands: commandService, events: eventRegistry, subagents: subagentService, loop: loop}
 }
 
 type testLoop struct {
@@ -374,7 +364,7 @@ func waitEnded(t *testing.T, received <-chan runner.RunEvent, sessionID string) 
 
 func TestSubagentsChatIsolation(t *testing.T) {
 	fixture := newTestFixture(t)
-	defer fixture.host.Close()
+	defer fixture.close()
 
 	workspace := t.TempDir()
 	created, err := fixture.service.Create(workspace)
@@ -382,7 +372,7 @@ func TestSubagentsChatIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = fixture.service.Start(context.Background(), harness.RunInput{
+	err = fixture.service.Start(context.Background(), conversations.RunInput{
 		SessionID: created.Meta.ID, Model: "deepseek/deepseek-flash", ReasoningEffort: "high",
 		Message: session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "parent prompt"}}},
 	})
@@ -465,7 +455,7 @@ func TestSubagentsChatIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	if newChat.Meta.ID == spawnRes.ChildSessionID {
-		t.Fatalf("child session %q was reused by harnessProduct.Create", spawnRes.ChildSessionID)
+		t.Fatalf("child session %q was reused by conversations.Create", spawnRes.ChildSessionID)
 	}
 
 	// 3. HarnessProduct.Session 拒绝访问子会话
@@ -474,16 +464,16 @@ func TestSubagentsChatIsolation(t *testing.T) {
 		t.Fatalf("expected ErrNotExist, got %v", err)
 	}
 	_, err = fixture.service.Snapshot(spawnRes.ChildSessionID)
-	if !errors.Is(err, harness.ErrSessionNotFound) {
+	if !errors.Is(err, conversations.ErrSessionNotFound) {
 		t.Fatalf("snapshot exposed child session: %v", err)
 	}
 	err = fixture.service.Stop(spawnRes.ChildSessionID)
-	if !errors.Is(err, harness.ErrSessionNotFound) {
+	if !errors.Is(err, conversations.ErrSessionNotFound) {
 		t.Fatalf("stop exposed child session: %v", err)
 	}
 
 	// 4. HarnessProduct.Start / Steer / CallCommand 拒绝操作子会话
-	err = fixture.service.Start(context.Background(), harness.RunInput{
+	err = fixture.service.Start(context.Background(), conversations.RunInput{
 		SessionID: spawnRes.ChildSessionID,
 		Message:   session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "hi"}}},
 	})
@@ -497,20 +487,20 @@ func TestSubagentsChatIsolation(t *testing.T) {
 		t.Fatalf("expected ErrNotExist, got %v", err)
 	}
 	err = fixture.service.CallCommand(context.Background(), "compact", spawnRes.ChildSessionID)
-	if !errors.Is(err, harness.ErrSessionNotFound) {
+	if !errors.Is(err, conversations.ErrSessionNotFound) {
 		t.Fatalf("expected ErrSessionNotFound, got %v", err)
 	}
 }
 
 func TestNestedSubagentInterfacesUseDirectParent(t *testing.T) {
 	fixture := newTestFixture(t)
-	defer fixture.host.Close()
+	defer fixture.close()
 
 	created, err := fixture.service.Create(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = fixture.service.Start(t.Context(), harness.RunInput{
+	err = fixture.service.Start(t.Context(), conversations.RunInput{
 		SessionID: created.Meta.ID, Model: "deepseek/deepseek-flash", ReasoningEffort: "high",
 		Message: session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "root"}}},
 	})
@@ -642,4 +632,57 @@ func mustJSON(t *testing.T, value any) []byte {
 		t.Fatal(err)
 	}
 	return raw
+}
+
+// 单个会话的慢命令不能挡住其他会话；同会话协调由同一操作锁负责。
+func TestCommandDoesNotBlockOtherSession(t *testing.T) {
+	f := newTestFixture(t)
+	defer f.close()
+	first, err := f.service.Create(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := f.service.Create(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := &blockingCommand{sessionID: first.Meta.ID, started: make(chan struct{}), release: make(chan struct{})}
+	err = f.commands.Register(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- f.service.CallCommand(context.Background(), "block", first.Meta.ID) }()
+	defer func() { close(command.release); <-done }()
+	select {
+	case <-command.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first command did not start")
+	}
+	other := make(chan error, 1)
+	go func() { other <- f.service.CallCommand(context.Background(), "block", second.Meta.ID) }()
+	select {
+	case err := <-other:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("unrelated session blocked")
+	}
+}
+
+type blockingCommand struct {
+	sessionID string
+	started   chan struct{}
+	release   chan struct{}
+}
+
+func (*blockingCommand) Name() string        { return "block" }
+func (*blockingCommand) Description() string { return "block one session" }
+func (c *blockingCommand) Run(_ context.Context, sessionID string) error {
+	if sessionID == c.sessionID {
+		close(c.started)
+		<-c.release
+	}
+	return nil
 }

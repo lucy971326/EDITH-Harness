@@ -1,9 +1,10 @@
 package builtin
 
 import (
+	_ "embed"
 	"fmt"
-
 	"harness/kernel/persist"
+
 	kernskills "harness/kernel/skills"
 )
 
@@ -46,3 +47,9 @@ func (p *Provider) List(string) ([]kernskills.Skill, error) {
 		},
 	}, nil
 }
+
+//go:embed assets/skill-creator/SKILL.md
+var skillCreator []byte
+
+// New 创建内置 Skill 来源。
+func New(files *persist.Files) (*Provider, error) { return newProvider(files, skillCreator) }

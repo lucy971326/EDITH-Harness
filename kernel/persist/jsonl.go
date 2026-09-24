@@ -31,10 +31,11 @@ func openJSONL(dir string) (*jsonl, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newJSONL(files), nil
+	return NewStore(files), nil
 }
 
-func newJSONL(files *Files) *jsonl {
+// NewStore 创建共享的文件格式存储，读改写使用同一把锁。
+func NewStore(files *Files) *jsonl {
 	return &jsonl{files: files}
 }
 

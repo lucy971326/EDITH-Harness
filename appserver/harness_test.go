@@ -5,18 +5,18 @@ import (
 	"os"
 	"testing"
 
-	"harness/products/harness"
+	"harness/kernel/conversations"
 )
 
 func TestMethodErrorsDoNotConfuseMissingFilesWithMissingSession(t *testing.T) {
 	if mapped := methodError(os.ErrNotExist); mapped != os.ErrNotExist {
 		t.Fatal("storage failure was reclassified as missing session")
 	}
-	assertMethodError(t, methodError(harness.ErrSessionNotFound), CodeNotFound)
-	assertMethodError(t, methodError(harness.ErrWorkspace), CodeInvalidParams)
-	assertMethodError(t, methodError(harness.ErrInvalidRunSettings), CodeInvalidParams)
-	assertMethodError(t, methodError(harness.ErrInvalidCommand), CodeInvalidParams)
-	assertMethodError(t, methodError(harness.ErrCommandRejected), CodeConflict)
+	assertMethodError(t, methodError(conversations.ErrSessionNotFound), CodeNotFound)
+	assertMethodError(t, methodError(conversations.ErrWorkspace), CodeInvalidParams)
+	assertMethodError(t, methodError(conversations.ErrInvalidRunSettings), CodeInvalidParams)
+	assertMethodError(t, methodError(conversations.ErrInvalidCommand), CodeInvalidParams)
+	assertMethodError(t, methodError(conversations.ErrCommandRejected), CodeConflict)
 }
 
 func assertMethodError(t *testing.T, err error, code ErrorCode) {

@@ -222,7 +222,7 @@ func TestCloseCancelsAndWaitsForManagedRun(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- fixture.runner.Run(context.Background(), "session-1", textInput("first")) }()
 	<-ready
-	fixture.runner.close()
+	fixture.runner.Close()
 	select {
 	case err := <-done:
 		if !errors.Is(err, context.Canceled) {
@@ -240,7 +240,7 @@ func TestStartRejectsRunAfterClose(t *testing.T) {
 		return nil
 	}}
 	fixture := newRunnerFixture(t, loop)
-	fixture.runner.close()
+	fixture.runner.Close()
 	_, err := fixture.runner.Start(context.Background(), "session-1", textInput("first"))
 	if err == nil || !strings.Contains(err.Error(), "closing") {
 		t.Fatalf("Start error = %v", err)

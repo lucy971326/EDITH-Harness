@@ -36,7 +36,7 @@ func (s *Server) BindSkills(service skills.Skills) error {
 }
 
 func (s *Server) handleSkillList(_ context.Context, input SkillListParams) (SkillListResult, error) {
-	info, err := s.harnessProduct.Session(input.SessionID)
+	info, err := s.conversations.Session(input.SessionID)
 	if err != nil {
 		return SkillListResult{}, methodError(err)
 	}

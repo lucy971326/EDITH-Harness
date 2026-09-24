@@ -245,3 +245,16 @@ func cloneRequest(request permissions.ApprovalRequest) permissions.ApprovalReque
 	request.Requested.WriteRoots = slices.Clone(request.Requested.WriteRoots)
 	return request
 }
+
+// Open 创建审批服务并读取持久化设置；失败时释放已创建的取消资源。
+func Open(files *persist.Files, models *llm.Client, sessions *session.Store) (*Service, error) {
+	service := New()
+	service.models = models
+	service.sessions = sessions
+	err := service.loadSettings(files)
+	if err != nil {
+		service.Close()
+		return nil, err
+	}
+	return service, nil
+}

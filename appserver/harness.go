@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 
+	"harness/kernel/conversations"
 	"harness/kernel/events"
 	"harness/kernel/runner"
 	"harness/kernel/session/settings"
 	"harness/kernel/subagents"
-	"harness/products/harness"
 )
 
 const (
@@ -34,14 +34,14 @@ const (
 )
 
 // BindHarness 在监听前接入产品与事件来源，登记 Harness 的对外方法。
-func (s *Server) BindHarness(product *harness.Product, runService *runner.Runner, registry *events.Registry) error {
+func (s *Server) BindHarness(product *conversations.Service, runService *runner.Runner, registry *events.Registry) error {
 	if product == nil || runService == nil || registry == nil {
 		return fmt.Errorf("appserver: nil harness product, runner or events")
 	}
-	if s.harnessProduct != nil {
+	if s.conversations != nil {
 		return fmt.Errorf("appserver: harness already bound")
 	}
-	s.harnessProduct = product
+	s.conversations = product
 	s.runner = runService
 	s.events = registry
 	err := s.registerWorkspaceSelect()
@@ -127,12 +127,12 @@ func (s *Server) BindHarness(product *harness.Product, runService *runner.Runner
 }
 
 func (s *Server) handleCreate(_ context.Context, input CreateParams) (SessionResult, error) {
-	info, err := s.harnessProduct.Create(input.Workspace)
+	info, err := s.conversations.Create(input.Workspace)
 	return SessionResult{Session: sessionView(info)}, methodError(err)
 }
 
 func (s *Server) handleList(_ context.Context, _ ListParams) (ListResult, error) {
-	infos, err := s.harnessProduct.List()
+	infos, err := s.conversations.List()
 	if err != nil {
 		return ListResult{}, methodError(err)
 	}
@@ -144,12 +144,12 @@ func (s *Server) handleList(_ context.Context, _ ListParams) (ListResult, error)
 }
 
 func (s *Server) handleGet(_ context.Context, input SessionIDParams) (SessionResult, error) {
-	info, err := s.harnessProduct.Session(input.SessionID)
+	info, err := s.conversations.Session(input.SessionID)
 	return SessionResult{Session: sessionView(info)}, methodError(err)
 }
 
 func (s *Server) handleUpdateSettings(ctx context.Context, input UpdateSettingsParams) (SessionResult, error) {
-	info, err := s.harnessProduct.UpdateSettings(ctx, input.SessionID, settings.SessionSettings{
+	info, err := s.conversations.UpdateSettings(ctx, input.SessionID, settings.SessionSettings{
 		AgentID:         input.AgentID,
 		Model:           input.Model,
 		ReasoningEffort: input.ReasoningEffort,
@@ -159,7 +159,7 @@ func (s *Server) handleUpdateSettings(ctx context.Context, input UpdateSettingsP
 }
 
 func (s *Server) handleFork(_ context.Context, input ForkParams) (SessionResult, error) {
-	destinationID, err := s.harnessProduct.Fork(harness.ForkInput{
+	destinationID, err := s.conversations.Fork(conversations.ForkInput{
 		SessionID:       input.SessionID,
 		RunID:           input.RunID,
 		BoundaryEntryID: input.BoundaryEntryID,
@@ -167,11 +167,11 @@ func (s *Server) handleFork(_ context.Context, input ForkParams) (SessionResult,
 	if err != nil {
 		return SessionResult{}, methodError(err)
 	}
-	info, err := s.harnessProduct.Session(destinationID)
+	info, err := s.conversations.Session(destinationID)
 	return SessionResult{Session: sessionView(info)}, methodError(err)
 }
 
-func sessionView(info harness.SessionInfo) SessionView {
+func sessionView(info conversations.SessionInfo) SessionView {
 	return SessionView{
 		SessionID: info.Meta.ID,
 		Title:     info.Meta.Title,
@@ -184,7 +184,7 @@ func methodError(err error) error {
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, harness.ErrRunChanged) {
+	if errors.Is(err, conversations.ErrRunChanged) {
 		return &Error{Code: CodeConflict, Message: "expected run has ended or changed", Cause: err}
 	}
 	if errors.Is(err, subagents.ErrTaskNotFound) || errors.Is(err, subagents.ErrOwnershipMismatch) {
@@ -208,26 +208,26 @@ func methodError(err error) error {
 	if errors.Is(err, runner.ErrRunDiffConflict) || errors.Is(err, runner.ErrRunDiffActive) {
 		return &Error{Code: CodeConflict, Message: "run diff has changed or cannot be reverted now", Cause: err}
 	}
-	if errors.Is(err, harness.ErrInvalidMessage) {
+	if errors.Is(err, conversations.ErrInvalidMessage) {
 		return &Error{Code: CodeInvalidParams, Message: "message is empty", Cause: err}
 	}
-	if errors.Is(err, harness.ErrWorkspace) {
+	if errors.Is(err, conversations.ErrWorkspace) {
 		return &Error{Code: CodeInvalidParams, Message: "workspace is not available", Cause: err}
 	}
-	if errors.Is(err, harness.ErrInvalidRunSettings) {
+	if errors.Is(err, conversations.ErrInvalidRunSettings) {
 		return &Error{Code: CodeInvalidParams, Message: "model, reasoning effort or agent is unavailable", Cause: err}
 	}
-	if errors.Is(err, harness.ErrRunActive) {
+	if errors.Is(err, conversations.ErrRunActive) {
 		return &Error{Code: CodeConflict, Message: "session has an active run", Cause: err}
 	}
-	if errors.Is(err, harness.ErrInvalidCommand) {
+	if errors.Is(err, conversations.ErrInvalidCommand) {
 		return &Error{Code: CodeInvalidParams, Message: "command is unavailable", Cause: err}
 	}
-	if errors.Is(err, harness.ErrCommandRejected) {
+	if errors.Is(err, conversations.ErrCommandRejected) {
 		return &Error{Code: CodeConflict, Message: "command cannot run in the current session", Cause: err}
 	}
 	// 底层文件缺失不是目标会话不存在，只有产品的明确判断才能映射为未找到。
-	if errors.Is(err, harness.ErrSessionNotFound) {
+	if errors.Is(err, conversations.ErrSessionNotFound) {
 		return &Error{Code: CodeNotFound, Message: "session not found", Cause: err}
 	}
 	return err

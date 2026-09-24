@@ -357,39 +357,7 @@ func (r *Runner) executePrepared(runCtx context.Context, sessionID, runID string
 		if !current.compact {
 			err = errors.Join(err, r.persistOpenDrafts(sess, current, sessionID, runID))
 		}
-		status := RunSucceeded
-		if isCancellationOnly(err) {
-			status = RunCancelled
-		} else if err != nil {
-			status = RunFailed
-		}
-		saveErr := r.upsertRecord(sessionID, runRecord{
-			RunID:         runID,
-			Status:        status,
-			AfterEntrySeq: current.afterSeq(),
-			Error:         errorText(err),
-			Usage:         current.usageCopy(),
-		})
-		if saveErr != nil {
-			err = errors.Join(err, saveErr)
-			if status == RunSucceeded {
-				status = RunFailed
-			}
-		}
-		if !runStartedAttempted {
-			return
-		}
-		endErr := r.publish(context.Background(), r.liveEvent(current, RunEvent{
-			SessionID:     sessionID,
-			RunID:         runID,
-			Kind:          RunEnded,
-			AfterEntrySeq: current.afterSeq(),
-			Status:        status,
-			Error:         errorText(err),
-		}))
-		if endErr != nil {
-			err = errors.Join(err, endErr)
-		}
+		err = r.finishRun(current, sessionID, runID, err, runStartedAttempted)
 	}()
 
 	message := messageFromInput(runID, input)
@@ -560,7 +528,8 @@ func (r *Runner) publish(ctx context.Context, event RunEvent) error {
 	return events.Publish(ctx, r.events, event)
 }
 
-func (r *Runner) close() {
+// Close 拒绝新运行，取消现有运行并等待全部收尾。
+func (r *Runner) Close() {
 	r.mu.Lock()
 	r.closeStarted = true
 	runs := make([]*liveRun, 0, len(r.live))
@@ -630,4 +599,42 @@ func (r *liveRun) usageCopy() *Usage {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return cloneUsage(r.usage)
+}
+
+// finishRun 保存结束记录后通知；草稿处理由普通运行与压缩各自负责。
+func (r *Runner) finishRun(current *liveRun, sessionID, runID string, err error, notify bool) error {
+	status := RunSucceeded
+	if isCancellationOnly(err) {
+		status = RunCancelled
+	} else if err != nil {
+		status = RunFailed
+	}
+	saveErr := r.upsertRecord(sessionID, runRecord{
+		RunID:         runID,
+		Status:        status,
+		AfterEntrySeq: current.afterSeq(),
+		Error:         errorText(err),
+		Usage:         current.usageCopy(),
+	})
+	if saveErr != nil {
+		err = errors.Join(err, saveErr)
+		if status == RunSucceeded {
+			status = RunFailed
+		}
+	}
+	if !notify {
+		return err
+	}
+	endErr := r.publish(context.Background(), r.liveEvent(current, RunEvent{
+		SessionID:     sessionID,
+		RunID:         runID,
+		Kind:          RunEnded,
+		AfterEntrySeq: current.afterSeq(),
+		Status:        status,
+		Error:         errorText(err),
+	}))
+	if endErr != nil {
+		err = errors.Join(err, endErr)
+	}
+	return err
 }

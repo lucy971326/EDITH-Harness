@@ -234,3 +234,8 @@ func validateDescription(description string) error {
 	}
 	return nil
 }
+
+// New 创建文件系统 Skill 来源。
+func New(machineService machine.Machine, files *persist.Files) *Provider {
+	return newProvider(machineService, files)
+}

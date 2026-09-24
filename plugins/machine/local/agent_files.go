@@ -46,7 +46,7 @@ func RunFileWorker(args []string, input io.Reader, output io.Writer) (bool, erro
 	return true, encoder.Encode(reply)
 }
 
-func (m *local) AgentApplyChanges(ctx context.Context, policy permissions.Policy, changes []machine.FileChange) (machine.FileCommit, error) {
+func (m *Local) AgentApplyChanges(ctx context.Context, policy permissions.Policy, changes []machine.FileChange) (machine.FileCommit, error) {
 	empty := machine.FileCommit{Exact: true}
 	paths := make([]string, 0, len(changes))
 	for _, change := range changes {
@@ -137,7 +137,7 @@ func (m *local) AgentApplyChanges(ctx context.Context, policy permissions.Policy
 }
 
 // 启动、登记与关闭检查在同一把锁内；等待与读取不占用服务锁。
-func (m *local) startFileWorker(ctx context.Context, policy permissions.Policy, changes []machine.FileChange) (*localProcess, int64, error) {
+func (m *Local) startFileWorker(ctx context.Context, policy permissions.Policy, changes []machine.FileChange) (*localProcess, int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closed {
@@ -185,7 +185,7 @@ func (m *local) startFileWorker(ctx context.Context, policy permissions.Policy, 
 func commitFileChanges(ctx context.Context, changes []machine.FileChange, progress func(machine.FileCommit) error) (machine.FileCommit, error) {
 	result := machine.FileCommit{Exact: true}
 	// 独立的短命写入器；宿主在批次期间持有跨入口共享的路径锁。
-	files := &local{}
+	files := &Local{}
 	for _, change := range changes {
 		err := ctx.Err()
 		if err != nil {

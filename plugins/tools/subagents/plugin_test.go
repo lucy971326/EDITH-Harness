@@ -12,7 +12,6 @@ import (
 
 	"harness/kernel/agents"
 	"harness/kernel/events"
-	"harness/kernel/host"
 	"harness/kernel/llm"
 	"harness/kernel/loops"
 	"harness/kernel/persist"
@@ -65,7 +64,8 @@ func (l *controlledLoop) Run(ctx context.Context, invocation loops.Invocation) e
 
 // 数据。工具测试使用的真实服务组合。
 type fixture struct {
-	host     *host.Host
+	close    func() error
+	events   *events.Registry
 	registry tools.Tools
 	agents   *agents.Service
 	settings settings.SessionSettingsStore
@@ -74,15 +74,6 @@ type fixture struct {
 	service  *delegation.Subagents
 	loop     *controlledLoop
 	parent   loops.Invocation
-}
-
-func resolve[T any](t *testing.T, h *host.Host, name string) T {
-	t.Helper()
-	value, err := host.Resolve[T](h, name)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return value
 }
 
 func newFixture(t *testing.T) fixture {
@@ -98,40 +89,59 @@ func newFixture(t *testing.T) fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := host.NewHost()
-	t.Cleanup(func() {
-		err := h.Close()
-		if err != nil {
-			t.Error(err)
-		}
-	})
 	loop := &controlledLoop{started: make(chan loops.Invocation, 10), release: make(chan struct{}, 10)}
-	for _, plugin := range []host.Plugin{
-		&persist.Plugin{Dir: dataDir}, &session.Plugin{}, &llm.Plugin{},
-		machinelocal.New(),
-		tools.NewPlugin(), events.NewPlugin(), loops.NewPlugin(), skills.NewPlugin(),
-		agents.NewPlugin(), runner.NewPlugin(), delegation.NewPlugin(), New(),
-	} {
-		err = h.Install(plugin)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if plugin.Name() == "loops" {
-			registry := resolve[loops.Loops](t, h, "loops")
-			err = registry.Register(loop)
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
+	files, err := persist.NewFiles(dataDir)
+	if err != nil {
+		t.Fatal(err)
 	}
-	f := fixture{
-		host: h, registry: resolve[tools.Tools](t, h, "tools"),
-		agents:   resolve[*agents.Service](t, h, "agents"),
-		settings: resolve[settings.SessionSettingsStore](t, h, "sessionSettings"),
-		sessions: resolve[*session.Store](t, h, "sessions"),
-		runner:   resolve[*runner.Runner](t, h, "runner"),
-		service:  resolve[*delegation.Subagents](t, h, "subagents"), loop: loop,
+	disk := persist.NewStore(files)
+	sessions := session.NewStore(disk)
+	settingsStore := disk
+	models, err := llm.New(files)
+	if err != nil {
+		t.Fatal(err)
 	}
+	machineService, err := machinelocal.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = machineService.Close() })
+	eventRegistry := events.NewRegistry()
+	loopRegistry := loops.NewRegistry()
+	toolRegistry := tools.NewRegistry()
+	skillService := skills.NewRegistry()
+	err = loopRegistry.Register(loop)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agentService, err := agents.NewService(disk, disk, loopRegistry, toolRegistry, skillService)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runService, err := runner.NewRunner(sessions, disk, agentService, loopRegistry, eventRegistry, models, toolRegistry, disk, files, machineService)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(runService.Close)
+	subFiles, err := files.Scope("subagents")
+	if err != nil {
+		t.Fatal(err)
+	}
+	subagentService, err := delegation.NewSubagents(sessions, disk, agentService, models, runService, eventRegistry, subFiles)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = subagentService.Close() })
+	closeServices := func() error {
+		err := subagentService.Close()
+		runService.Close()
+		return errors.Join(err, machineService.Close())
+	}
+	err = Register(toolRegistry, subagentService)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := fixture{close: closeServices, events: eventRegistry, registry: toolRegistry, agents: agentService, settings: settingsStore, sessions: sessions, runner: runService, service: subagentService, loop: loop}
 	_, err = f.sessions.Create("parent")
 	if err != nil {
 		t.Fatal(err)
@@ -418,7 +428,7 @@ func TestSendPublicationFailureDoesNotRepeatInput(t *testing.T) {
 	f := newFixture(t)
 	child := decode[delegation.SpawnResult](t, f.call(t, "subagent_spawn", `{"taskName":"test","description":"child"}`))
 	invocation := f.nextRun(t)
-	registry := resolve[*events.Registry](t, f.host, "events")
+	registry := f.events
 	unsubscribe, err := events.Subscribe(registry, func(ctx context.Context, event runner.RunEvent) error {
 		if event.SessionID == child.ChildSessionID && event.Kind == runner.Message && event.Entry.Message.Role == session.RoleUser {
 			return errors.New("publication failed after durable acceptance")

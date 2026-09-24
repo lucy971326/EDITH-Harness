@@ -4,27 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"harness/kernel/host"
-	"harness/kernel/machine"
 )
-
-func TestPluginStart_registersMachine(t *testing.T) {
-	h := host.NewHost()
-	t.Cleanup(func() {
-		_ = h.Close()
-	})
-
-	err := h.Install(New())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_, err = host.Resolve[machine.Machine](h, "machine")
-	if err != nil {
-		t.Fatal(err)
-	}
-}
 
 func TestLocal_writeThenRead(t *testing.T) {
 	m := newTestLocal(t)
@@ -83,14 +63,14 @@ func TestLocal_resolvePath(t *testing.T) {
 	}
 }
 
-func newTestLocal(t *testing.T) *local {
+func newTestLocal(t *testing.T) *Local {
 	t.Helper()
-	m, err := newLocal()
+	m, err := New()
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		if err := m.close(); err != nil {
+		if err := m.Close(); err != nil {
 			t.Error(err)
 		}
 	})

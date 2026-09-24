@@ -10,22 +10,17 @@ import (
 	"time"
 
 	"harness/kernel/hooks"
-	"harness/kernel/host"
-	"harness/kernel/machine"
 	"harness/kernel/persist"
 	machinelocal "harness/plugins/machine/local"
 )
 
 func TestHookSettingsMethodsBindAndValidate(t *testing.T) {
-	h := host.NewHost()
-	if err := h.Install(machinelocal.New()); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = h.Close() })
-	filesystem, err := host.Resolve[machine.FileSystem](h, "machine")
+	filesystem, err := machinelocal.New()
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = filesystem.Close() })
+
 	files, err := persist.NewFiles(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

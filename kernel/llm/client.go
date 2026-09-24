@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"fmt"
+	"harness/kernel/persist"
 	"sort"
 
 	"github.com/zendev-sh/goai/provider"
@@ -114,4 +115,13 @@ func (c *Client) Stream(ctx context.Context, config RunConfig, input Input) (<-c
 		return nil, err
 	}
 	return stream.Stream, nil
+}
+
+// New 从本机配置创建模型客户端。
+func New(files *persist.Files) (*Client, error) {
+	config, err := loadConfig(files)
+	if err != nil {
+		return nil, err
+	}
+	return newClient(config)
 }

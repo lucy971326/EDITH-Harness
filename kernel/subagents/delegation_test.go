@@ -13,7 +13,7 @@ import (
 
 func TestSendRejectsBlankBeforeStartingTurn(t *testing.T) {
 	f := newSubagentsFixture(t)
-	defer f.host.Close()
+	defer f.close()
 	parent, run := createParentRun(t, f, t.TempDir())
 	child, err := f.subagents.Spawn(context.Background(), SpawnInput{
 		TaskName:        "test",
@@ -50,7 +50,7 @@ func TestSendRejectsBlankBeforeStartingTurn(t *testing.T) {
 
 func TestInheritedIncompatibleEffortIsNotSilentlyReplaced(t *testing.T) {
 	f := newSubagentsFixture(t)
-	defer f.host.Close()
+	defer f.close()
 	_, err := f.sessions.Create("parent-session")
 	if err != nil {
 		t.Fatal(err)
@@ -105,7 +105,7 @@ func TestInheritedIncompatibleEffortIsNotSilentlyReplaced(t *testing.T) {
 
 func TestUserCanContinueChildAfterParentRunEnds(t *testing.T) {
 	f := newSubagentsFixture(t)
-	defer f.host.Close()
+	defer f.close()
 	parentSessionID, parentRunID := createParentRun(t, f, t.TempDir())
 	child, err := f.subagents.Spawn(context.Background(), SpawnInput{
 		TaskName: "继续实现", ParentSessionID: parentSessionID,
@@ -163,7 +163,7 @@ func TestUserCanContinueChildAfterParentRunEnds(t *testing.T) {
 
 func TestTaskSettingsOnlyChangeWhenChildIsIdle(t *testing.T) {
 	f := newSubagentsFixture(t)
-	defer f.host.Close()
+	defer f.close()
 	parentSessionID, parentRunID := createParentRun(t, f, t.TempDir())
 	defer f.loop.releaseParent()
 	child, err := f.subagents.Spawn(context.Background(), SpawnInput{

@@ -3,7 +3,13 @@ import { ApprovalSettingsPanel } from "./approval-settings";
 import { HookSettingsPanel } from "./hook-settings";
 import type { PermissionModeChoice } from "../../contracts/approvals.ts";
 import type { PermissionMode } from "../../contracts/harness.ts";
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import {
   addReference,
   clearSubmittedReferences,
@@ -65,10 +71,15 @@ import type {
 } from "../../contracts/appserver.ts";
 
 type Draft = {
+  version: number;
   text: string;
   images: Attachment[];
   references: ReferenceAttachment[];
 };
+
+function emptyDraft(): Draft {
+  return { text: "", images: [], references: [], version: 0 };
+}
 
 function preference(key: string, fallback: string) {
   try {
@@ -114,11 +125,11 @@ export function chatSendParams(
 }
 
 export function shouldClearSubmittedDraft(
-  versions: Map<string, number>,
+  drafts: Map<string, { version: number }>,
   sessionID: string,
   submittedVersion: number,
 ): boolean {
-  return (versions.get(sessionID) ?? 0) === submittedVersion;
+  return (drafts.get(sessionID)?.version ?? 0) === submittedVersion;
 }
 
 export default function App() {
@@ -152,12 +163,13 @@ export default function App() {
     typeof window === "undefined" ? 1280 : window.innerWidth,
   );
   const [theme, setTheme] = useState(() => preference("theme", "system"));
-  const [draft, setDraft] = useState("");
-  const [images, setImages] = useState<Attachment[]>([]);
-  const [references, setReferences] = useState<ReferenceAttachment[]>([]);
+  const [composerDraft, setComposerDraft] = useState<Draft>(emptyDraft);
+  const { text: draft, images, references } = composerDraft;
   const [notice, setNotice] = useState("");
   const [approvalClient, setApprovalClient] = useState<RPCClient | null>(null);
-  const [permissionModes, setPermissionModes] = useState<PermissionModeChoice[]>([]);
+  const [permissionModes, setPermissionModes] = useState<
+    PermissionModeChoice[]
+  >([]);
   const [chatState, setChatState] = useState(initialChatState);
   const { connection, detail: connectionDetail } = chatState;
   const [models, setModels] = useState<ModelChoice[] | null>(null);
@@ -203,21 +215,15 @@ export default function App() {
   const clientRef = useRef<RPCClient | null>(null);
   const chatRef = useRef<ChatConnection | null>(null);
   const selectedIDRef = useRef<string | null>(selectedID);
-  const draftVersions = useRef(new Map<string, number>());
   const sendingRef = useRef(new Set<string>());
   const stopPending = useRef(false);
   const settingsPending = useRef(false);
   const compressionPending = useRef(false);
   const commandPending = useRef(false);
   const forkPending = useRef(false);
-  const draftRef = useRef(draft);
-  const imagesRef = useRef(images);
-  const referencesRef = useRef(references);
+  const draftRef = useRef(composerDraft);
   const selectGeneration = useRef(0);
   const listGeneration = useRef(0);
-  draftRef.current = draft;
-  imagesRef.current = images;
-  referencesRef.current = references;
 
   const connected = connection === "connected";
   const sidebarSpace = sidebar ? sidebarWidth : 0;
@@ -274,60 +280,56 @@ export default function App() {
     (!!currentRun || (!!validAgent && !!validModel && !modelError)) &&
     (!images.length || !!selectedModel?.vision);
 
+  // 同一份草稿同时服务异步回调与当前画面；每次编辑立即保存到对应会话。
+  function updateDraft(patch: Partial<Draft>) {
+    const next = { ...draftRef.current, ...patch };
+    drafts.current.set(draftKey(selectedIDRef.current), next);
+    draftRef.current = next;
+    setComposerDraft(next);
+  }
+
   function editDraft(text: string) {
-    const key = draftKey(selectedIDRef.current);
-    draftVersions.current.set(key, (draftVersions.current.get(key) ?? 0) + 1);
-    draftRef.current = text;
-    setDraft(text);
+    updateDraft({ text, version: draftRef.current.version + 1 });
   }
 
   const referenceWorkspace = selected?.settings.workspace;
-  const searchContextPaths = useCallback(async (workspace: string, query: string) => {
-    const client = clientRef.current;
-    if (!client?.connected) throw new Error("后台未连接");
-    return client.searchPaths(workspace, query);
-  }, []);
-  const addContextReference = useCallback((reference: ContextReference) => {
-    if (!selectedID || selectedIDRef.current !== selectedID) return;
-    if (reference.kind !== "assistant-selection" && !referenceWorkspace) return;
-    const normalized = reference.kind === "assistant-selection" ? reference : {
-      ...reference,
-      path: referencePath(referenceWorkspace!, reference.path),
-    };
-    const next = addReference(referencesRef.current, normalized);
-    referencesRef.current = next;
-    setReferences(next);
-    setSettings(false);
-    requestAnimationFrame(() => composer.current?.focus());
-  }, [selectedID, referenceWorkspace]);
+  const searchContextPaths = useCallback(
+    async (workspace: string, query: string) => {
+      const client = clientRef.current;
+      if (!client?.connected) throw new Error("后台未连接");
+      return client.searchPaths(workspace, query);
+    },
+    [],
+  );
+  const addContextReference = useCallback(
+    (reference: ContextReference) => {
+      if (!selectedID || selectedIDRef.current !== selectedID) return;
+      if (reference.kind !== "assistant-selection" && !referenceWorkspace)
+        return;
+      const normalized =
+        reference.kind === "assistant-selection"
+          ? reference
+          : {
+              ...reference,
+              path: referencePath(referenceWorkspace!, reference.path),
+            };
+      const next = addReference(draftRef.current.references, normalized);
+      updateDraft({ references: next });
+      setSettings(false);
+      requestAnimationFrame(() => composer.current?.focus());
+    },
+    [selectedID, referenceWorkspace],
+  );
 
   function removeReference(id: string) {
-    const next = referencesRef.current.filter((item) => item.id !== id);
-    referencesRef.current = next;
-    setReferences(next);
+    const next = draftRef.current.references.filter((item) => item.id !== id);
+    updateDraft({ references: next });
   }
 
-  function rememberDraft(
-    sessionID: string | null,
-    text: string,
-    attachments: Attachment[],
-  ) {
-    drafts.current.set(draftKey(sessionID), {
-      text, images: attachments, references: referencesRef.current,
-    });
-  }
   function applyDraft(sessionID: string | null) {
-    const stored = drafts.current.get(draftKey(sessionID)) ?? {
-      text: "",
-      images: [],
-      references: [],
-    };
-    setDraft(stored.text);
-    setImages(stored.images);
-    setReferences(stored.references);
-    draftRef.current = stored.text;
-    imagesRef.current = stored.images;
-    referencesRef.current = stored.references;
+    const stored = drafts.current.get(draftKey(sessionID)) ?? emptyDraft();
+    draftRef.current = stored;
+    setComposerDraft(stored);
   }
   function setCurrentSession(id: string | null, session: SessionView | null) {
     if (id !== selectedIDRef.current) setSkills([]);
@@ -354,7 +356,7 @@ export default function App() {
       return;
     }
     const targetID = selectedIDRef.current;
-    const initialImages = [...imagesRef.current];
+    const initialImages = [...draftRef.current.images];
     const available = 4 - initialImages.length;
     if (available <= 0) {
       setNotice("每次最多发送 4 张图片。");
@@ -373,13 +375,11 @@ export default function App() {
       const next = [...initialImages, ...attachments].slice(0, 4);
       const key = draftKey(targetID);
       if (selectedIDRef.current === targetID) {
-        imagesRef.current = next;
-        setImages(next);
+        updateDraft({ images: next });
       } else {
         const stored = drafts.current.get(key) ?? {
-          text: "",
+          ...emptyDraft(),
           images: initialImages,
-          references: [],
         };
         drafts.current.set(key, { ...stored, images: next });
       }
@@ -394,11 +394,10 @@ export default function App() {
     }
   }
   function removeImage(id: string) {
-    const removed = imagesRef.current.find((item) => item.id === id);
+    const removed = draftRef.current.images.find((item) => item.id === id);
     if (removed) URL.revokeObjectURL(removed.url);
-    const next = imagesRef.current.filter((item) => item.id !== id);
-    imagesRef.current = next;
-    setImages(next);
+    const next = draftRef.current.images.filter((item) => item.id !== id);
+    updateDraft({ images: next });
   }
 
   async function loadSessions(client: RPCClient) {
@@ -450,7 +449,7 @@ export default function App() {
         setNotice(formatRPCError(error, "无法读取所选会话，请重连后重试"));
         return;
       }
-      rememberDraft(sessionID, draftRef.current, imagesRef.current);
+
       setCurrentSession(null, null);
       applyDraft(null);
       setNotice("所选会话已不存在。");
@@ -459,7 +458,7 @@ export default function App() {
 
   async function selectSession(sessionID: string) {
     if (sessionID === selectedIDRef.current && !settings) return;
-    rememberDraft(selectedIDRef.current, draftRef.current, imagesRef.current);
+
     setCurrentSession(
       sessionID,
       sessions?.find((item) => item.sessionID === sessionID) ?? null,
@@ -482,7 +481,7 @@ export default function App() {
       if (client !== clientRef.current || !client.connected) return;
       await loadSessions(client);
       if (client !== clientRef.current || !client.connected) return;
-      rememberDraft(selectedIDRef.current, draftRef.current, imagesRef.current);
+
       setCurrentSession(result.session.sessionID, result.session);
       applyDraft(result.session.sessionID);
       void loadSkills(client, result.session.sessionID);
@@ -696,10 +695,10 @@ export default function App() {
       compressionPending.current
     )
       return;
-    const text = draftRef.current;
-    const submittedImages = [...imagesRef.current];
-    const submittedReferences = [...referencesRef.current];
-    const version = draftVersions.current.get(id) ?? 0;
+    const text = draftRef.current.text;
+    const submittedImages = [...draftRef.current.images];
+    const submittedReferences = [...draftRef.current.references];
+    const version = drafts.current.get(id)?.version ?? 0;
     sendingRef.current.add(id);
     setSending([...sendingRef.current]);
     setNotice("");
@@ -707,7 +706,10 @@ export default function App() {
       await client.send(
         chatSendParams(
           id,
-          encodeReferences(text, submittedReferences.map((item) => item.reference)),
+          encodeReferences(
+            text,
+            submittedReferences.map((item) => item.reference),
+          ),
           submittedImages,
           currentRun?.runID,
         ),
@@ -715,14 +717,23 @@ export default function App() {
       // 文字按编辑版本清理；图片和引用按 ID 清理，保留等待期间的新输入。
       const visible = selectedIDRef.current === id;
       const currentDraft = visible
-        ? { text: draftRef.current, images: imagesRef.current, references: referencesRef.current }
-        : (drafts.current.get(id) ?? { text, images: submittedImages, references: submittedReferences });
+        ? draftRef.current
+        : (drafts.current.get(id) ?? {
+            text,
+            images: submittedImages,
+            references: submittedReferences,
+            version,
+          });
       const submittedImageIDs = new Set(
         submittedImages.map((image) => image.id),
       );
       const nextDraft = {
-        references: clearSubmittedReferences(currentDraft.references, submittedReferences),
-        text: shouldClearSubmittedDraft(draftVersions.current, id, version)
+        version: currentDraft.version,
+        references: clearSubmittedReferences(
+          currentDraft.references,
+          submittedReferences,
+        ),
+        text: shouldClearSubmittedDraft(drafts.current, id, version)
           ? ""
           : currentDraft.text,
         images: currentDraft.images.filter(
@@ -732,12 +743,8 @@ export default function App() {
       drafts.current.set(id, nextDraft);
       for (const image of submittedImages) URL.revokeObjectURL(image.url);
       if (visible) {
-        draftRef.current = nextDraft.text;
-        imagesRef.current = nextDraft.images;
-        setDraft(nextDraft.text);
-        setImages(nextDraft.images);
-        referencesRef.current = nextDraft.references;
-        setReferences(nextDraft.references);
+        draftRef.current = nextDraft;
+        setComposerDraft(nextDraft);
       }
       if (client === clientRef.current && client.connected)
         void loadSessions(client);
@@ -797,7 +804,7 @@ export default function App() {
     )
       return;
     const key = draftKey(sessionID);
-    const version = draftVersions.current.get(key) ?? 0;
+    const version = drafts.current.get(key)?.version ?? 0;
     commandPending.current = true;
     setCommandBusy(true);
     setNotice("");
@@ -805,26 +812,24 @@ export default function App() {
       await client.callCommand(sessionID, name);
 
       const visible = selectedIDRef.current === sessionID;
-      const currentDraft = visible
-        ? { text: draftRef.current, images: imagesRef.current, references: referencesRef.current }
-        : drafts.current.get(key);
+      const currentDraft = visible ? draftRef.current : drafts.current.get(key);
       if (
         !currentDraft ||
         currentDraft.text !== selection.draft ||
-        (draftVersions.current.get(key) ?? 0) !== version
+        (drafts.current.get(key)?.version ?? 0) !== version
       )
         return;
 
       const nextDraft = {
+        version: version + 1,
         text: `${selection.draft.slice(0, selection.start)}${selection.draft.slice(selection.end)}`,
         images: currentDraft.images,
         references: currentDraft.references,
       };
       drafts.current.set(key, nextDraft);
-      draftVersions.current.set(key, version + 1);
       if (visible) {
-        draftRef.current = nextDraft.text;
-        setDraft(nextDraft.text);
+        draftRef.current = nextDraft;
+        setComposerDraft(nextDraft);
       }
     } catch (error) {
       if (selectedIDRef.current === sessionID)
@@ -858,7 +863,6 @@ export default function App() {
         ];
       });
       if (selectedIDRef.current === sourceID) {
-        rememberDraft(sourceID, draftRef.current, imagesRef.current);
         setCurrentSession(result.session.sessionID, result.session);
         applyDraft(result.session.sessionID);
         setSettings(false);
@@ -938,7 +942,6 @@ export default function App() {
   }, []);
   useEffect(() => {
     if (chatState.missing && chatState.sessionID === selectedIDRef.current) {
-      rememberDraft(selectedIDRef.current, draftRef.current, imagesRef.current);
       setCurrentSession(null, null);
       applyDraft(null);
       setNotice("所选会话已不存在。");
@@ -1049,21 +1052,27 @@ export default function App() {
           <div className="workspace">
             {settings ? (
               <SettingsPage
-                hookSettings={<HookSettingsPanel
-                  client={approvalClient}
-                  currentWorkspace={selected?.settings.workspace ?? ""}
-                />}
-                approvalSettings={<ApprovalSettingsPanel
-                  client={approvalClient} models={models} modelError={modelError}
-                  onReloadModels={() => {
-                    const client = clientRef.current;
-                    if (client?.connected) void loadModels(client);
-                  }}
-                  onSaved={() => {
-                    const client = clientRef.current;
-                    if (client?.connected) void loadPermissionModes(client);
-                  }}
-                />}
+                hookSettings={
+                  <HookSettingsPanel
+                    client={approvalClient}
+                    currentWorkspace={selected?.settings.workspace ?? ""}
+                  />
+                }
+                approvalSettings={
+                  <ApprovalSettingsPanel
+                    client={approvalClient}
+                    models={models}
+                    modelError={modelError}
+                    onReloadModels={() => {
+                      const client = clientRef.current;
+                      if (client?.connected) void loadModels(client);
+                    }}
+                    onSaved={() => {
+                      const client = clientRef.current;
+                      if (client?.connected) void loadPermissionModes(client);
+                    }}
+                  />
+                }
                 theme={theme}
                 setTheme={setTheme}
                 onBack={() => setSettings(false)}
@@ -1119,7 +1128,11 @@ export default function App() {
                       )}
                     </div>
                   )}
-                {chatState.notice && <div className="connection-banner" role="status">{chatState.notice}</div>}
+                {chatState.notice && (
+                  <div className="connection-banner" role="status">
+                    {chatState.notice}
+                  </div>
+                )}
                 <ChatMessages
                   snapshot={snapshot}
                   sessionID={selectedID}
@@ -1212,71 +1225,73 @@ export default function App() {
                   </div>
                 </ChatMessages>
                 <Approvals client={connected ? approvalClient : null}>
-                <Composer
-                  key={selectedID ?? ""}
-                  references={references}
-                  referenceWorkspace={referenceWorkspace}
-                  onSearchPaths={searchContextPaths}
-                  onAddReference={addContextReference}
-                  onRemoveReference={removeReference}
-                  draft={draft}
-                  images={images}
-                  notice={notice}
-                  agents={agentCatalog?.agents ?? null}
-                  agentID={selected?.settings.agentID ?? ""}
-                  settingsDisabled={settingsDisabled}
-                  permissionMode={selected?.settings.permissionMode}
-                  permissionModes={permissionModes}
-                  onPermissionChange={(permissionMode) =>
-                    void updateSessionSettings({
-                      agentID: selected?.settings.agentID ?? "",
-                      model: selected?.settings.model ?? "",
-                      reasoningEffort: selected?.settings.reasoningEffort ?? "",
-                      permissionMode,
-                    })
-                  }
-                  usage={sessionUsage}
-                  running={!!currentRun}
-                  stopping={stoppingCurrent}
-                  canSend={!!canSend}
-                  stopDisabled={!synchronized || stoppingCurrent}
-                  modelDisabled={settingsDisabled}
-                  validModel={!!validModel}
-                  models={models}
-                  modelSelection={modelSelection}
-                  modelError={modelError}
-                  imageDisabled={compressingImages || !selectedModel?.vision}
-                  skills={skills}
-                  commands={commands}
-                  suggestionsDisabled={!selected || !synchronized}
-                  commandBusy={commandBusy}
-                  onDraftChange={editDraft}
-                  onSend={() => void sendMessage()}
-                  onStop={() => void stopRun()}
-                  onAddImages={(files) => void addImages(files)}
-                  onRemoveImage={removeImage}
-                  onModelChange={(value) =>
-                    void updateSessionSettings({
-                      agentID: selected?.settings.agentID ?? "",
-                      model: value.model,
-                      reasoningEffort: value.reasoningEffort,
-                    })
-                  }
-                  onAgentChange={(agentID) =>
-                    void updateSessionSettings({
-                      agentID,
-                      model: selected?.settings.model ?? "",
-                      reasoningEffort: selected?.settings.reasoningEffort ?? "",
-                    })
-                  }
-                  onRetryModels={() => {
-                    if (clientRef.current?.connected)
-                      void loadModels(clientRef.current);
-                  }}
-                  onCommand={executeCommand}
-                  onDismissNotice={() => setNotice("")}
-                  composerRef={composer}
-                />
+                  <Composer
+                    key={selectedID ?? ""}
+                    references={references}
+                    referenceWorkspace={referenceWorkspace}
+                    onSearchPaths={searchContextPaths}
+                    onAddReference={addContextReference}
+                    onRemoveReference={removeReference}
+                    draft={draft}
+                    images={images}
+                    notice={notice}
+                    agents={agentCatalog?.agents ?? null}
+                    agentID={selected?.settings.agentID ?? ""}
+                    settingsDisabled={settingsDisabled}
+                    permissionMode={selected?.settings.permissionMode}
+                    permissionModes={permissionModes}
+                    onPermissionChange={(permissionMode) =>
+                      void updateSessionSettings({
+                        agentID: selected?.settings.agentID ?? "",
+                        model: selected?.settings.model ?? "",
+                        reasoningEffort:
+                          selected?.settings.reasoningEffort ?? "",
+                        permissionMode,
+                      })
+                    }
+                    usage={sessionUsage}
+                    running={!!currentRun}
+                    stopping={stoppingCurrent}
+                    canSend={!!canSend}
+                    stopDisabled={!synchronized || stoppingCurrent}
+                    modelDisabled={settingsDisabled}
+                    validModel={!!validModel}
+                    models={models}
+                    modelSelection={modelSelection}
+                    modelError={modelError}
+                    imageDisabled={compressingImages || !selectedModel?.vision}
+                    skills={skills}
+                    commands={commands}
+                    suggestionsDisabled={!selected || !synchronized}
+                    commandBusy={commandBusy}
+                    onDraftChange={editDraft}
+                    onSend={() => void sendMessage()}
+                    onStop={() => void stopRun()}
+                    onAddImages={(files) => void addImages(files)}
+                    onRemoveImage={removeImage}
+                    onModelChange={(value) =>
+                      void updateSessionSettings({
+                        agentID: selected?.settings.agentID ?? "",
+                        model: value.model,
+                        reasoningEffort: value.reasoningEffort,
+                      })
+                    }
+                    onAgentChange={(agentID) =>
+                      void updateSessionSettings({
+                        agentID,
+                        model: selected?.settings.model ?? "",
+                        reasoningEffort:
+                          selected?.settings.reasoningEffort ?? "",
+                      })
+                    }
+                    onRetryModels={() => {
+                      if (clientRef.current?.connected)
+                        void loadModels(clientRef.current);
+                    }}
+                    onCommand={executeCommand}
+                    onDismissNotice={() => setNotice("")}
+                    composerRef={composer}
+                  />
                 </Approvals>
               </section>
             )}
@@ -1322,7 +1337,13 @@ export default function App() {
             />
           </aside>
         </>
-        <AppContextMenu onAddReference={selected && selectedID === selected.sessionID ? addContextReference : undefined} />
+        <AppContextMenu
+          onAddReference={
+            selected && selectedID === selected.sessionID
+              ? addContextReference
+              : undefined
+          }
+        />
       </div>
     </TooltipProvider>
   );

@@ -8,9 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"harness/kernel/host"
 	"harness/kernel/loops"
-	"harness/kernel/persist"
 	"harness/kernel/session/settings"
 	"harness/kernel/skills"
 	"harness/kernel/tools"
@@ -302,33 +300,6 @@ func TestService_deleteRejectsAgentUsedBySession(t *testing.T) {
 	usage.used["coding"] = false
 	if err := service.Delete("coding"); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestPlugin_registersAgentService(t *testing.T) {
-	h := host.NewHost()
-	if err := h.Install(&persist.Plugin{Dir: t.TempDir()}); err != nil {
-		t.Fatal(err)
-	}
-	if err := h.Install(loops.NewPlugin()); err != nil {
-		t.Fatal(err)
-	}
-	if err := h.Install(tools.NewPlugin()); err != nil {
-		t.Fatal(err)
-	}
-	if err := h.Install(skills.NewPlugin()); err != nil {
-		t.Fatal(err)
-	}
-	if err := h.Install(NewPlugin()); err != nil {
-		t.Fatal(err)
-	}
-	defer h.Close()
-	service, err := host.Resolve[*Service](h, "agents")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if service == nil {
-		t.Fatal("agents service = nil")
 	}
 }
 

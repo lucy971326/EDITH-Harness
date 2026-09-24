@@ -17,7 +17,6 @@ import (
 
 	"harness/kernel/agents"
 	"harness/kernel/events"
-	"harness/kernel/host"
 	"harness/kernel/llm"
 	"harness/kernel/loops"
 	"harness/kernel/permissions"
@@ -564,30 +563,26 @@ func TestReactCancellingOneOfMultipleToolCallsPersistsEveryResult(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	h := host.NewHost()
-	t.Cleanup(func() {
-		err := h.Close()
-		if err != nil {
-			t.Error(err)
-		}
-	})
-	for _, plugin := range []host.Plugin{
-		&persist.Plugin{Dir: home + "/.harness"},
-		&session.Plugin{},
-		&llm.Plugin{},
-		tools.NewPlugin(),
-		machinelocal.New(),
-		events.NewPlugin(),
-		loops.NewPlugin(),
-		New(),
-	} {
-		err = h.Install(plugin)
-		if err != nil {
-			t.Fatal(err)
-		}
+	files, err := persist.NewFiles(home + "/.harness")
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	toolRegistry, err := host.Resolve[tools.Tools](h, "tools")
+	disk := persist.NewStore(files)
+	sessions := session.NewStore(disk)
+	settingsStore := disk
+	models, err := llm.New(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	machineService, err := machinelocal.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = machineService.Close() })
+	eventRegistry := events.NewRegistry()
+	loopRegistry := loops.NewRegistry()
+	toolRegistry := tools.NewRegistry()
+	err = loopRegistry.Register(New(models, toolRegistry))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -607,26 +602,16 @@ func TestReactCancellingOneOfMultipleToolCallsPersistsEveryResult(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, plugin := range []host.Plugin{
-		skills.NewPlugin(),
-		agents.NewPlugin(),
-		runner.NewPlugin(),
-	} {
-		err = h.Install(plugin)
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	sessions, err := host.Resolve[*session.Store](h, "sessions")
+	agentService, err := agents.NewService(disk, disk, loopRegistry, toolRegistry, skills.NewRegistry())
 	if err != nil {
 		t.Fatal(err)
 	}
+	r, err := runner.NewRunner(sessions, disk, agentService, loopRegistry, eventRegistry, models, toolRegistry, disk, files, machineService)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(r.Close)
 	sess, err := sessions.Create("session-1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	settingsStore, err := host.Resolve[settings.SessionSettingsStore](h, "sessionSettings")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -636,10 +621,6 @@ func TestReactCancellingOneOfMultipleToolCallsPersistsEveryResult(t *testing.T) 
 		ReasoningEffort: "off",
 		Workspace:       "/workspace",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	r, err := host.Resolve[*runner.Runner](h, "runner")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -668,10 +649,6 @@ func TestReactCancellingOneOfMultipleToolCallsPersistsEveryResult(t *testing.T) 
 		t.Fatal("cancelled run did not finish")
 	}
 
-	disk, err := host.Resolve[persist.Persistence](h, "sessionPersistence")
-	if err != nil {
-		t.Fatal(err)
-	}
 	reloaded, err := session.NewStore(disk).Get("session-1")
 	if err != nil {
 		t.Fatal(err)
@@ -787,29 +764,16 @@ func installReact(t *testing.T, baseURL string) (loops.Loop, tools.Tools) {
 		t.Fatal(err)
 	}
 
-	h := host.NewHost()
-	t.Cleanup(func() {
-		if err := h.Close(); err != nil {
-			t.Error(err)
-		}
-	})
-	for _, plugin := range []host.Plugin{&persist.Plugin{Dir: home + "/.harness"}, &llm.Plugin{}, tools.NewPlugin(), loops.NewPlugin(), New()} {
-		if err := h.Install(plugin); err != nil {
-			t.Fatal(err)
-		}
-	}
-	loopRegistry, err := host.Resolve[loops.Loops](h, "loops")
+	files, err := persist.NewFiles(home + "/.harness")
 	if err != nil {
 		t.Fatal(err)
 	}
-	loop, err := loopRegistry.Get("react")
+	client, err := llm.New(files)
 	if err != nil {
 		t.Fatal(err)
 	}
-	toolRegistry, err := host.Resolve[tools.Tools](h, "tools")
-	if err != nil {
-		t.Fatal(err)
-	}
+	toolRegistry := tools.NewRegistry()
+	loop := New(client, toolRegistry)
 	return loop, toolRegistry
 }
 

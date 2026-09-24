@@ -36,7 +36,7 @@ let chatSendParams: (
   expectedRunID?: string;
 };
 let shouldClearSubmittedDraft: (
-  versions: Map<string, number>,
+  versions: Map<string, { version: number }>,
   sessionID: string,
   submittedVersion: number,
 ) => boolean;
@@ -176,13 +176,13 @@ test("send carries only content and expected run identity", () => {
 });
 
 test("send confirmation only clears the submitted draft version", () => {
-  const versions = new Map<string, number>([
-    ["one", 2],
-    ["two", 4],
+  const versions = new Map<string, { version: number }>([
+    ["one", { version: 2 }],
+    ["two", { version: 4 }],
   ]);
   assert.equal(shouldClearSubmittedDraft(versions, "one", 2), true);
   assert.equal(shouldClearSubmittedDraft(versions, "one", 1), false);
-  versions.set("one", 3);
+  versions.set("one", { version: 3 });
   assert.equal(shouldClearSubmittedDraft(versions, "one", 2), false);
   assert.equal(shouldClearSubmittedDraft(versions, "two", 4), true);
 });

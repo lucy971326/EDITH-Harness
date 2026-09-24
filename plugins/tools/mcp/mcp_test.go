@@ -16,7 +16,6 @@ import (
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"harness/kernel/approvals"
-	"harness/kernel/host"
 	"harness/kernel/llm"
 	"harness/kernel/permissions"
 	"harness/kernel/persist"
@@ -54,20 +53,11 @@ func TestProvider_projectTrustAndToolApproval(t *testing.T) {
 	if err := files.Write("config.yaml", []byte("jev: {}\n")); err != nil {
 		t.Fatal(err)
 	}
-	h := host.NewHost()
-	for name, service := range map[string]any{"persist": files, "llm": &llm.Client{}, "sessions": &session.Store{}} {
-		if err := h.RegisterService(name, service); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := h.Install(approvals.NewPlugin()); err != nil {
-		t.Fatal(err)
-	}
-	defer h.Close()
-	approval, err := host.Resolve[*approvals.Service](h, "approvals")
+	approval, err := approvals.Open(files, &llm.Client{}, &session.Store{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer approval.Close()
 	provider, err := newProvider(t.Context(), configFile{}, workspace)
 	if err != nil {
 		t.Fatal(err)

@@ -3,8 +3,9 @@ package llm
 import (
 	"fmt"
 
-	"gopkg.in/yaml.v3"
 	"harness/kernel/persist"
+
+	"gopkg.in/yaml.v3"
 )
 
 // 数据。本机部署配置。API key 只放本地 YAML，不进 models.json。

@@ -7,7 +7,7 @@ import (
 
 func TestRecoveredTaskGraphDepthAndCycles(t *testing.T) {
 	f := newSubagentsFixture(t)
-	defer f.host.Close()
+	defer f.close()
 
 	validStore, err := newTaskStore(t.TempDir())
 	if err != nil {

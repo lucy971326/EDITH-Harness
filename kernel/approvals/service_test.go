@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"harness/kernel/host"
 	"harness/kernel/llm"
 	"harness/kernel/permissions"
 	"harness/kernel/persist"
@@ -229,19 +228,15 @@ func reviewFixture(t *testing.T, endpoint string) (*Service, *persist.Files) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dir, _ := files.Path()
-	h := host.NewHost()
-	t.Cleanup(func() { _ = h.Close() })
-	for _, plugin := range []host.Plugin{&persist.Plugin{Dir: dir}, &session.Plugin{}, &llm.Plugin{}, NewPlugin()} {
-		err = h.Install(plugin)
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	service, err := host.Resolve[*Service](h, "approvals")
+	models, err := llm.New(files)
 	if err != nil {
 		t.Fatal(err)
 	}
+	service, err := Open(files, models, session.NewStore(persist.NewStore(files)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = service.Close() })
 	sess, err := service.sessions.Create("root")
 	if err != nil {
 		t.Fatal(err)

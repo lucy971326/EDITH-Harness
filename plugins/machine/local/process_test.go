@@ -192,7 +192,7 @@ func TestCloseStopsRunningProcess(t *testing.T) {
 	}
 
 	done := make(chan error, 1)
-	go func() { done <- m.close() }()
+	go func() { done <- m.Close() }()
 	select {
 	case err = <-done:
 		if err != nil {

@@ -3,10 +3,10 @@ package appserver
 import (
 	"time"
 
+	"harness/kernel/conversations"
 	"harness/kernel/permissions"
 	"harness/kernel/runner"
 	"harness/kernel/session/settings"
-	"harness/products/harness"
 )
 
 // 数据。读取一个 Run Diff 文件的接口输入。
@@ -115,8 +115,8 @@ type StopResult struct{}
 
 // 数据。订阅先登记，再读快照；后续通知可能与快照重叠，账本按 Entry.ID 去重。
 type SubscribeResult struct {
-	SubscriptionID string           `json:"subscriptionID"`
-	Snapshot       harness.Snapshot `json:"snapshot"`
+	SubscriptionID string                 `json:"subscriptionID"`
+	Snapshot       conversations.Snapshot `json:"snapshot"`
 }
 
 // 对外 Subagent 接口：直属父会话与任务共同定位；父会话本身可以是 Subagent。
@@ -134,15 +134,15 @@ type SubagentListParams struct {
 
 // 数据。子任务列表结果。
 type SubagentListResult struct {
-	Tasks []harness.SubagentInfo `json:"tasks"`
+	Tasks []conversations.SubagentInfo `json:"tasks"`
 }
 
 // 数据。子任务订阅先返回快照，后续复用 harness/run/event 通知。
 type SubagentSubscribeResult struct {
-	SubscriptionID string               `json:"subscriptionID"`
-	Task           harness.SubagentInfo `json:"task"`
-	Snapshot       harness.Snapshot     `json:"snapshot"`
-	ChildSessionID string               `json:"childSessionID" jsonschema:"minLength=1"`
+	SubscriptionID string                     `json:"subscriptionID"`
+	Task           conversations.SubagentInfo `json:"task"`
+	Snapshot       conversations.Snapshot     `json:"snapshot"`
+	ChildSessionID string                     `json:"childSessionID" jsonschema:"minLength=1"`
 }
 
 // 数据。用户从子任务页面发送文字或图片。
@@ -170,7 +170,7 @@ type SubagentSettingsParams struct {
 
 // 数据。子任务设置更新后返回任务投影。
 type SubagentSettingsResult struct {
-	Task harness.SubagentInfo `json:"task"`
+	Task conversations.SubagentInfo `json:"task"`
 }
 
 // 数据。读取一个子任务 Run Diff 文件。

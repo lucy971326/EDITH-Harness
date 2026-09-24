@@ -47,7 +47,7 @@ type localProcess struct {
 	cleanup         func()
 }
 
-func (m *local) StartTerminal(request machine.TerminalRequest) (machine.TerminalProcess, error) {
+func (m *Local) StartTerminal(request machine.TerminalRequest) (machine.TerminalProcess, error) {
 	if request.Dir == "" || len(request.Argv) == 0 || request.Rows <= 0 || request.Cols <= 0 {
 		return nil, fmt.Errorf("machine-local: terminal directory, argv and positive size required")
 	}
@@ -78,7 +78,7 @@ func (m *local) StartTerminal(request machine.TerminalRequest) (machine.Terminal
 	return process, nil
 }
 
-func (m *local) AgentExec(ctx context.Context, policy permissions.Policy, request machine.ProcessRequest) (machine.ProcessOutput, error) {
+func (m *Local) AgentExec(ctx context.Context, policy permissions.Policy, request machine.ProcessRequest) (machine.ProcessOutput, error) {
 	err := ctx.Err()
 	if err != nil {
 		return machine.ProcessOutput{}, err
@@ -142,7 +142,7 @@ func (m *local) AgentExec(ctx context.Context, policy permissions.Policy, reques
 	return output, nil
 }
 
-func (m *local) AgentInteract(ctx context.Context, interaction machine.ProcessInteraction) (machine.ProcessOutput, error) {
+func (m *Local) AgentInteract(ctx context.Context, interaction machine.ProcessInteraction) (machine.ProcessOutput, error) {
 	err := ctx.Err()
 	if err != nil {
 		return machine.ProcessOutput{}, err
@@ -190,7 +190,7 @@ func (m *local) AgentInteract(ctx context.Context, interaction machine.ProcessIn
 	return output, nil
 }
 
-func (m *local) startProcess(request machine.ProcessRequest, cols int, rows int, streamOutput bool) (*localProcess, error) {
+func (m *Local) startProcess(request machine.ProcessRequest, cols int, rows int, streamOutput bool) (*localProcess, error) {
 	program := request.Argv[0]
 	if program == "bash" {
 		program = m.bash
@@ -204,7 +204,7 @@ func (m *local) startProcess(request machine.ProcessRequest, cols int, rows int,
 	return m.startPreparedProcess(request, cmd, cols, rows, streamOutput, nil)
 }
 
-func (m *local) startPreparedProcess(request machine.ProcessRequest, cmd *exec.Cmd, cols, rows int, streamOutput bool, cleanup func()) (*localProcess, error) {
+func (m *Local) startPreparedProcess(request machine.ProcessRequest, cmd *exec.Cmd, cols, rows int, streamOutput bool, cleanup func()) (*localProcess, error) {
 	platform, err := newPlatformProcess()
 	if err != nil {
 		return nil, fmt.Errorf("machine-local: prepare process: %w", err)
@@ -440,7 +440,7 @@ func (p *localProcess) waitUntil(deadline time.Time) error {
 	}
 }
 
-func (m *local) removeProcess(processID int64, process *localProcess) {
+func (m *Local) removeProcess(processID int64, process *localProcess) {
 	m.mu.Lock()
 	if m.processes[processID] == process {
 		delete(m.processes, processID)
@@ -448,7 +448,7 @@ func (m *local) removeProcess(processID int64, process *localProcess) {
 	m.mu.Unlock()
 }
 
-func (m *local) pruneExitedProcessLocked() {
+func (m *Local) pruneExitedProcessLocked() {
 	var oldestID int64
 	var oldestTime time.Time
 	for processID, process := range m.processes {
@@ -466,7 +466,7 @@ func (m *local) pruneExitedProcessLocked() {
 	}
 }
 
-func (m *local) newProcessIDLocked() (int64, error) {
+func (m *Local) newProcessIDLocked() (int64, error) {
 	var bytes [8]byte
 	for range 32 {
 		_, err := rand.Read(bytes[:])

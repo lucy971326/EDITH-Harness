@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
+	"harness/kernel/conversations"
 	"harness/kernel/events"
 	"harness/kernel/runner"
-	"harness/products/harness"
 )
 
 type testRunSubscription struct {
@@ -31,7 +31,7 @@ func newOrderTestListener(t *testing.T) *runListener {
 
 func TestRunListenerOrdersReentrantEvents(t *testing.T) {
 	listener := newOrderTestListener(t)
-	listener.start(harness.Snapshot{SeqEpoch: "epoch", UpdateSeq: 3})
+	listener.start(conversations.Snapshot{SeqEpoch: "epoch", UpdateSeq: 3})
 	registry := events.NewRegistry()
 	// 第一个监听在处理 4 时同步发出 5，模拟子任务协作回调重入。
 	_, err := events.Subscribe(registry, func(ctx context.Context, event runner.RunEvent) error {
@@ -68,7 +68,7 @@ func TestRunListenerSnapshotBoundaryAndDuplicate(t *testing.T) {
 	for _, seq := range []uint64{6, 4, 5} {
 		listener.receive(context.Background(), runner.RunEvent{SessionID: "s", SeqEpoch: "epoch", UpdateSeq: seq})
 	}
-	listener.start(harness.Snapshot{SeqEpoch: "epoch", UpdateSeq: 5})
+	listener.start(conversations.Snapshot{SeqEpoch: "epoch", UpdateSeq: 5})
 	listener.receive(context.Background(), runner.RunEvent{SessionID: "s", SeqEpoch: "epoch", UpdateSeq: 6})
 	if len(listener.subscription.(*testRunSubscription).notifications) != 1 || listener.through != 6 || len(listener.pending) != 0 {
 		t.Fatalf("boundary/duplicate mismatch: %+v", listener)
@@ -78,7 +78,7 @@ func TestRunListenerSnapshotBoundaryAndDuplicate(t *testing.T) {
 func TestRunListenerBoundedGapAndEpoch(t *testing.T) {
 	for _, epochChanged := range []bool{false, true} {
 		listener := newOrderTestListener(t)
-		listener.start(harness.Snapshot{SeqEpoch: "epoch"})
+		listener.start(conversations.Snapshot{SeqEpoch: "epoch"})
 		if epochChanged {
 			listener.receive(context.Background(), runner.RunEvent{SessionID: "s", SeqEpoch: "other", UpdateSeq: 1})
 		} else {

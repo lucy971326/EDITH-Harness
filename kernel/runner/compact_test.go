@@ -13,7 +13,6 @@ import (
 
 	"harness/kernel/agents"
 	"harness/kernel/events"
-	"harness/kernel/host"
 	"harness/kernel/llm"
 	"harness/kernel/loops"
 	"harness/kernel/persist"
@@ -222,21 +221,11 @@ func newCompactFixture(t *testing.T, handler http.HandlerFunc) runnerFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := host.NewHost()
-	t.Cleanup(func() {
-		if err := h.Close(); err != nil {
-			t.Error(err)
-		}
-	})
-	err = h.Install(&persist.Plugin{Dir: home + "/.harness"})
+	files, err := persist.NewFiles(home + "/.harness")
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = h.Install(&llm.Plugin{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	client, err := host.Resolve[*llm.Client](h, "llm")
+	client, err := llm.New(files)
 	if err != nil {
 		t.Fatal(err)
 	}

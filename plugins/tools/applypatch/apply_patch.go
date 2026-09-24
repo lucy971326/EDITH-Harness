@@ -239,3 +239,8 @@ func formatPartialFailure(delta tools.AppliedFileDelta, err error) string {
 	}
 	return strings.Join(lines, "\n")
 }
+
+// New 创建结构化文件修改工具。
+func New(files machine.FileSystem, agent machine.AgentFiles, approval *approvals.Service) tools.Tool {
+	return newTool(files, agent, approval)
+}

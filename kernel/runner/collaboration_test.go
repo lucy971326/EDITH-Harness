@@ -39,7 +39,7 @@ func TestCollaborationWaitsUntilToolResultsArePersisted(t *testing.T) {
 		}
 		return nil
 	}})
-	defer f.runner.close()
+	defer f.runner.Close()
 
 	handle, err := f.runner.Start(context.Background(), "session-1", textInput("question"))
 	if err != nil {
@@ -83,7 +83,7 @@ func TestReceiveDeduplicatesAndRespectsFinalBoundary(t *testing.T) {
 			return ctx.Err()
 		}
 	}})
-	defer f.runner.close()
+	defer f.runner.Close()
 	handle, err := f.runner.Start(context.Background(), "session-1", textInput("initial"))
 	if err != nil {
 		t.Fatal(err)
@@ -150,7 +150,7 @@ func TestReceiveDuringStartupEntersHistoryOnce(t *testing.T) {
 		}
 		return err
 	}})
-	defer f.runner.close()
+	defer f.runner.Close()
 	_, err := events.Subscribe(f.events, func(_ context.Context, event RunEvent) error {
 		if event.Kind != RunStarted {
 			return nil
@@ -188,7 +188,7 @@ func TestReceiveAppendFailureFailsRun(t *testing.T) {
 		_, err := invocation.Checkpoint(ctx, loops.CheckpointContinue)
 		return err
 	}})
-	defer f.runner.close()
+	defer f.runner.Close()
 	handle, err := f.runner.Start(context.Background(), "session-1", textInput("question"))
 	if err != nil {
 		t.Fatal(err)
@@ -223,7 +223,7 @@ func TestReceiveLatePublishFailureCannotReportSuccess(t *testing.T) {
 		_, err := invocation.Checkpoint(ctx, loops.CheckpointContinue)
 		return err
 	}})
-	defer f.runner.close()
+	defer f.runner.Close()
 	publishErr := errors.New("collaboration publish failed")
 	_, err := events.Subscribe(f.events, func(_ context.Context, event RunEvent) error {
 		if event.Entry == nil || event.Entry.Message.Role != session.RoleCollaboration {

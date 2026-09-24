@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"harness/kernel/approvals"
-	"harness/kernel/host"
 	"harness/kernel/machine"
 	"harness/kernel/permissions"
 	kerneltools "harness/kernel/tools"
@@ -100,26 +99,10 @@ func TestApplyPatchToolRegistrationAndCall(t *testing.T) {
 		"/work/update.txt": []byte("before\n"),
 		"/work/delete.txt": []byte("remove\n"),
 	}}
-	h := host.NewHost()
-	if err := h.RegisterService("machine", m); err != nil {
-		t.Fatal(err)
-	}
 	service := approvals.New()
 	t.Cleanup(func() { _ = service.Close() })
-	if err := h.RegisterService("approvals", service); err != nil {
-		t.Fatal(err)
-	}
-	for _, plugin := range []host.Plugin{kerneltools.NewPlugin(), applypatch.New()} {
-		if err := h.Install(plugin); err != nil {
-			t.Fatal(err)
-		}
-	}
-	t.Cleanup(func() {
-		if err := h.Close(); err != nil {
-			t.Fatal(err)
-		}
-	})
-	registry, err := host.Resolve[kerneltools.Tools](h, "tools")
+	registry := kerneltools.NewRegistry()
+	err := registry.Register(applypatch.New(m, m, service))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,7 +2,7 @@
 
 面向后续维护 Harness 的人和 AI。先确认一件事：数据放在哪里，取决于它是谁的事实；不是取决于它显示在哪个页面。
 
-`products/harness` 只组合现有 Session / SessionSettings / Runner / Subagents 的业务，不迁移用户数据。`clients/contracts/` 是手工维护的 TS 接口类型；appserver 的 Schema 只用于运行时校验，不提供接口目录。这些契约都不是运行状态或持久化格式；对外 Session 投影中的时间编码为 RFC 3339 字符串。
+`kernel/conversations` 只组合现有 Session / SessionSettings / Runner / Subagents 的业务，不迁移用户数据。`clients/contracts/` 是手工维护的 TS 接口类型；appserver 的 Schema 只用于运行时校验，不提供接口目录。这些契约都不是运行状态或持久化格式；对外 Session 投影中的时间编码为 RFC 3339 字符串。
 
 ## 物理位置
 
@@ -75,8 +75,8 @@ Skill 发现
 └─ 文件系统上的 Skill 定义，不复制进 Agent 或 Session
    系统、个人与当前项目 Skill 对该作用域所有 Agent 自动可用
 
-插件状态
-└─ 插件自己的业务事实
+领域服务状态
+└─ 各服务自己的业务事实
    Todo、审批、游戏状态、插件设置等
    Hook 最近故障只在服务内存；运行提示是非耐久事件，不进入 Session
 
@@ -117,7 +117,7 @@ Session
   只记对话事实
   不写 Todo、审批、Dock 状态、面板状态、运行时间
 
-插件状态
+领域服务状态
   插件自己拥有、自己保存、自己恢复
   不借 Session 当通用存储
 
@@ -208,3 +208,9 @@ messages.jsonl
 - 项目 MCP 配置确认按真实项目路径与有效配置摘要保存在 `~/.harness/approvals/mcp-trust.json`；MCP Tool 的逐次裁决和待审批请求不持久化。
 - `runs.json` 的可选 `permissionInstructions` 是该轮给模型的环境说明，沿用 Runner 的保存与分叉复制。缺字段的旧记录不补写；当前新 Run 提供基线。它不是待审批或可复用授权。
 - 模型输入按可见 Run 重建环境说明，普通对话账本和网页聊天正文不增加权限消息；客户端审批卡片仅是服务内存的投影。
+
+## 会话内协调与 Client 草稿
+
+conversations 的操作锁仅协调同一会话的设置、发送、分叉和命令，不拥有 Run；Stop 独立执行。创建复用单独协调，Runner.live 仍是活 Run 的唯一入口。
+
+Client 每个会话保存一份草稿记录（文字、图片、引用、编辑版本）。当前输入框与异步回调引用同一版本，发送确认只清理已提交部分；订阅生命周期与页面投影分开，子任务 Diff 独立续订。

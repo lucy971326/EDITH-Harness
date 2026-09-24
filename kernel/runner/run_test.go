@@ -899,7 +899,7 @@ func TestInitialMessageCloseDoesNotReopenSteering(t *testing.T) {
 	}
 	closeDone := make(chan struct{})
 	go func() {
-		fixture.runner.close()
+		fixture.runner.Close()
 		close(closeDone)
 	}()
 	deadline := time.NewTimer(time.Second)
@@ -960,7 +960,7 @@ func TestCloseWaitsUntilStartedHandleIsDone(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("loop did not start")
 	}
-	fixture.runner.close()
+	fixture.runner.Close()
 	select {
 	case <-handle.Done():
 	default:

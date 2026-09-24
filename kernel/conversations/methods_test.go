@@ -1,4 +1,4 @@
-package harness_test
+package conversations_test
 
 import (
 	"context"
@@ -11,15 +11,15 @@ import (
 	"time"
 
 	"harness/appserver"
+	"harness/kernel/conversations"
 	"harness/kernel/runner"
 	"harness/kernel/session"
 	"harness/kernel/session/settings"
-	"harness/products/harness"
 )
 
 func TestSessionMethodsUseRealProduct(t *testing.T) {
 	fixture := newTestFixture(t)
-	defer fixture.host.Close()
+	defer fixture.close()
 	server := newRPCServer(t, fixture)
 	defer server.Close()
 	raw, err := server.Call(context.Background(), "harness/session/list", json.RawMessage(`{}`))
@@ -35,7 +35,7 @@ func TestSessionMethodsUseRealProduct(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 并发接口调用仍经同一个 harness.Product 的空会话复用锁。
+	// 并发接口调用仍经同一个 conversations.Service 的空会话复用锁。
 	var wg sync.WaitGroup
 	ids := make(chan string, 8)
 	for range 8 {
@@ -121,7 +121,7 @@ func TestSessionMethodsUseRealProduct(t *testing.T) {
 
 func TestSettingsUpdateRejectsInvalidChoicesWithoutStartingOrSaving(t *testing.T) {
 	fixture := newTestFixture(t)
-	defer fixture.host.Close()
+	defer fixture.close()
 	created, err := fixture.service.Create(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -142,7 +142,7 @@ func TestSettingsUpdateRejectsInvalidChoicesWithoutStartingOrSaving(t *testing.T
 			AgentID: input.AgentID, Model: input.Model, ReasoningEffort: input.ReasoningEffort,
 			PermissionMode: input.PermissionMode,
 		})
-		if !errors.Is(err, harness.ErrInvalidRunSettings) {
+		if !errors.Is(err, conversations.ErrInvalidRunSettings) {
 			t.Fatalf("settings error classification lost: %v", err)
 		}
 	}
@@ -164,7 +164,7 @@ func TestSettingsUpdateRejectsInvalidChoicesWithoutStartingOrSaving(t *testing.T
 
 func TestSettingsUpdatePersistsAndRejectsWhileRunning(t *testing.T) {
 	fixture := newTestFixture(t)
-	defer fixture.host.Close()
+	defer fixture.close()
 	server := newRPCServer(t, fixture)
 	created, err := fixture.service.Create(t.TempDir())
 	if err != nil {
@@ -206,7 +206,7 @@ func TestSettingsUpdatePersistsAndRejectsWhileRunning(t *testing.T) {
 
 func TestSendAcceptsValidatedImageAndRejectsBadImage(t *testing.T) {
 	fixture := newTestFixture(t)
-	defer fixture.host.Close()
+	defer fixture.close()
 	server := newRPCServer(t, fixture)
 	created, err := fixture.service.Create(t.TempDir())
 	if err != nil {
@@ -285,7 +285,7 @@ func waitIdle(t *testing.T, runner *runner.Runner, sessionID string) {
 
 func TestSendExpectedRunDoesNotStartOrSteerAnotherRun(t *testing.T) {
 	fixture := newTestFixture(t)
-	defer fixture.host.Close()
+	defer fixture.close()
 	server := newRPCServer(t, fixture)
 	created, err := fixture.service.Create(t.TempDir())
 	if err != nil {
@@ -352,17 +352,12 @@ func TestSendExpectedRunDoesNotStartOrSteerAnotherRun(t *testing.T) {
 	assertMethodError(t, err, appserver.CodeInvalidParams)
 }
 
-func TestProductInstallFailureCleanupClosesCalls(t *testing.T) {
+func TestServerCloseRejectsCalls(t *testing.T) {
 	fixture := newTestFixture(t)
-	defer fixture.host.Close()
+	defer fixture.close()
 	server := newRPCServer(t, fixture)
 	defer server.Close()
-	// 真实产品重复安装失败后，由入口关闭 app-server。
-	err := fixture.host.Install(harness.NewPlugin())
-	if err == nil {
-		t.Fatal("duplicate product installed")
-	}
-	err = server.Close()
+	err := server.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -372,7 +367,7 @@ func TestProductInstallFailureCleanupClosesCalls(t *testing.T) {
 
 func TestModelListUsesPublicServiceWithoutSecrets(t *testing.T) {
 	fixture := newTestFixture(t)
-	defer fixture.host.Close()
+	defer fixture.close()
 	server := newRPCServer(t, fixture)
 	err := server.BindModels(fixture.models)
 	if err != nil {
@@ -404,7 +399,7 @@ func TestModelListUsesPublicServiceWithoutSecrets(t *testing.T) {
 
 func TestAgentMethodsUsePublicServiceAndProtectDeletes(t *testing.T) {
 	fixture := newTestFixture(t)
-	defer fixture.host.Close()
+	defer fixture.close()
 	server := newRPCServer(t, fixture)
 	err := server.BindAgents(fixture.agents)
 	if err != nil {

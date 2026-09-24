@@ -7,10 +7,10 @@ import (
 	"sync"
 
 	"harness/appserver/internal/clientconn"
+	"harness/kernel/conversations"
 	"harness/kernel/events"
 	"harness/kernel/runner"
 	"harness/kernel/session"
-	"harness/products/harness"
 )
 
 const (
@@ -29,7 +29,7 @@ func (s *Server) handleSend(ctx context.Context, input SendParams) (SendResult, 
 	if err != nil {
 		return SendResult{}, err
 	}
-	mode, err := s.harnessProduct.Send(ctx, harness.RunInput{
+	mode, err := s.conversations.Send(ctx, conversations.RunInput{
 		SessionID: input.SessionID, ExpectedRunID: input.ExpectedRunID, Message: message,
 	})
 	return SendResult{Mode: mode}, methodError(err)
@@ -64,17 +64,17 @@ func invalidImage(message string, cause error) error {
 	return &Error{Code: CodeInvalidParams, Message: message, Cause: cause}
 }
 
-func (s *Server) handleSnapshot(_ context.Context, input SessionIDParams) (harness.Snapshot, error) {
-	snapshot, err := s.harnessProduct.Snapshot(input.SessionID)
+func (s *Server) handleSnapshot(_ context.Context, input SessionIDParams) (conversations.Snapshot, error) {
+	snapshot, err := s.conversations.Snapshot(input.SessionID)
 	return snapshot, methodError(err)
 }
 
 func (s *Server) handleStop(_ context.Context, input SessionIDParams) (StopResult, error) {
-	return StopResult{}, methodError(s.harnessProduct.Stop(input.SessionID))
+	return StopResult{}, methodError(s.conversations.Stop(input.SessionID))
 }
 
 func (s *Server) handleReadRunDiff(_ context.Context, input ReadRunDiffParams) (ReadRunDiffResult, error) {
-	if _, err := s.harnessProduct.Session(input.SessionID); err != nil {
+	if _, err := s.conversations.Session(input.SessionID); err != nil {
 		return ReadRunDiffResult{}, methodError(err)
 	}
 	result, err := s.runner.ReadRunDiffFile(input.SessionID, input.RunID, input.Path)
@@ -82,7 +82,7 @@ func (s *Server) handleReadRunDiff(_ context.Context, input ReadRunDiffParams) (
 }
 
 func (s *Server) handleRevertRunDiff(_ context.Context, input RevertRunDiffParams) (RevertRunDiffResult, error) {
-	if _, err := s.harnessProduct.Session(input.SessionID); err != nil {
+	if _, err := s.conversations.Session(input.SessionID); err != nil {
 		return RevertRunDiffResult{}, methodError(err)
 	}
 	result, err := s.runner.RevertRunDiffFile(input.SessionID, input.RunID, input.Path, input.ExpectedRevision)
@@ -107,7 +107,7 @@ func (s *Server) handleSubscribe(ctx context.Context, input SessionIDParams) (Su
 	subscription.SetCleanup(unlisten)
 	// 监听已生效，读快照期间的事件先缓冲；响应入队之后连接才发送它们。
 	// 快照已含当时的账本、草稿和运行状态；Client 用 updateSeq / Entry.ID 丢掉重叠。
-	snapshot, err := s.harnessProduct.Snapshot(input.SessionID)
+	snapshot, err := s.conversations.Snapshot(input.SessionID)
 	if err != nil {
 		subscription.Close()
 		return SubscribeResult{}, methodError(err)
@@ -162,7 +162,7 @@ func (l *runListener) receive(_ context.Context, event runner.RunEvent) error {
 	return nil
 }
 
-func (l *runListener) start(snapshot harness.Snapshot) {
+func (l *runListener) start(snapshot conversations.Snapshot) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.ready = true

@@ -1,3 +1,4 @@
+import { runSubscription } from "./run-subscription.ts";
 import type { Snapshot } from "../../../contracts/run.ts";
 import { applyRunEvent } from "../state/chat.ts";
 import {
@@ -37,8 +38,7 @@ export class ChatConnection {
   client: RPCClient | null = null;
   state: ChatConnectionState = { ...initialChatState };
 
-  private subscriptionID: string | null = null;
-  private revision = 0;
+  private subscription: ReturnType<typeof runSubscription> | null = null;
   private attempt = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private noticeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -71,8 +71,8 @@ export class ChatConnection {
     const previous = this.client;
     this.client = null;
     previous?.close();
-    this.subscriptionID = null;
-    this.revision++;
+    this.subscription?.close();
+    this.subscription = null;
     this.update({
       connection: "connecting",
       syncing: this.state.sessionID !== null,
@@ -85,8 +85,8 @@ export class ChatConnection {
         if (this.client !== client || this.closed) return;
         this.update({ connection: status, detail: detail ?? "" });
         if (status !== "disconnected") return;
-        this.revision++;
-        this.subscriptionID = null;
+        this.subscription?.close();
+        this.subscription = null;
         this.update({ syncing: this.state.sessionID !== null });
         const delay =
           reconnectDelays[Math.min(this.attempt++, reconnectDelays.length - 1)];
@@ -95,35 +95,6 @@ export class ChatConnection {
       this.socketFactory,
     );
     this.client = client;
-    client.onRun = ({ subscriptionID, event }) => {
-      if (
-        this.client !== client ||
-        subscriptionID !== this.subscriptionID ||
-        event.sessionID !== this.state.sessionID ||
-        !this.state.snapshot ||
-        this.state.syncing
-      )
-        return;
-      const snapshot = applyRunEvent(this.state.snapshot, event);
-      if (!snapshot) {
-        void this.synchronize();
-        return;
-      }
-      if (snapshot === this.state.snapshot) return;
-      if (event.kind === "notice" && event.text) {
-        if (this.noticeTimer) clearTimeout(this.noticeTimer);
-        this.update({ notice: event.text });
-        this.noticeTimer = setTimeout(() => this.update({ notice: "" }), 8000);
-      }
-      // 模型可能在一帧内送来许多很小的增量。内部投影立即前进，画面每帧最多刷新一次。
-      this.update({ snapshot }, true);
-      if (
-        (event.kind === "message" && event.entry?.message.role === "user") ||
-        event.kind === "run-ended"
-      ) {
-        this.metadata(client);
-      }
-    };
     void client
       .connect()
       .then(() => {
@@ -139,7 +110,6 @@ export class ChatConnection {
 
   select(sessionID: string | null): void {
     if (sessionID === this.state.sessionID) return;
-    this.revision++;
     this.update({
       sessionID,
       snapshot: null,
@@ -154,42 +124,61 @@ export class ChatConnection {
   async synchronize(): Promise<void> {
     const client = this.client;
     const sessionID = this.state.sessionID;
-    const revision = ++this.revision;
-    const previous = this.subscriptionID;
-    this.subscriptionID = null;
+    this.subscription?.close();
+    this.subscription = null;
     if (!client?.connected || this.closed) return;
     this.update({ syncing: sessionID !== null, error: "", missing: false });
-    try {
-      if (previous) await client.unsubscribe(previous);
-      if (!sessionID || revision !== this.revision || this.client !== client)
-        return;
-      await client.subscribe(sessionID, (result) => {
-        if (
-          this.closed ||
-          revision !== this.revision ||
-          this.client !== client
-        ) {
-          // 切走后才拿到 ID，也要解除；不能把它留到连接关闭才清理。
-          void client.unsubscribe(result.subscriptionID).catch(() => {});
-          return;
-        }
-        this.subscriptionID = result.subscriptionID;
-        this.update({ snapshot: result.snapshot, syncing: false });
-      });
-    } catch (error) {
-      if (this.closed || revision !== this.revision || this.client !== client)
-        return;
-      this.update({
-        syncing: false,
-        error: formatRPCError(error, "历史同步失败"),
-        missing: isSessionNotFound(error),
-      });
-    }
+    if (!sessionID) return;
+    const subscription = runSubscription(
+      client,
+      (accept) => client.subscribe(sessionID, accept),
+      {
+        syncing: () =>
+          this.update({ syncing: true, error: "", missing: false }),
+        snapshot: (result) =>
+          this.update({ snapshot: result.snapshot, syncing: false }),
+        event: (event) => {
+          if (!this.state.snapshot || event.sessionID !== sessionID) return;
+          const snapshot = applyRunEvent(this.state.snapshot, event);
+          if (!snapshot) {
+            void this.synchronize();
+            return;
+          }
+          if (snapshot === this.state.snapshot) return;
+          if (event.kind === "notice" && event.text) {
+            if (this.noticeTimer) clearTimeout(this.noticeTimer);
+            this.update({ notice: event.text });
+            this.noticeTimer = setTimeout(
+              () => this.update({ notice: "" }),
+              8000,
+            );
+          }
+          // 模型可能在一帧内送来许多很小的增量。内部投影立即前进，画面每帧最多刷新一次。
+          this.update({ snapshot }, true);
+          if (
+            (event.kind === "message" &&
+              event.entry?.message.role === "user") ||
+            event.kind === "run-ended"
+          ) {
+            this.metadata(client);
+          }
+        },
+        error: (error) =>
+          this.update({
+            syncing: false,
+            error: formatRPCError(error, "历史同步失败"),
+            missing: isSessionNotFound(error),
+          }),
+      },
+    );
+    this.subscription = subscription;
+    await subscription.synchronize();
   }
 
   close(): void {
     this.closed = true;
-    this.revision++;
+    this.subscription?.close();
+    this.subscription = null;
     if (this.timer) clearTimeout(this.timer);
     if (this.noticeTimer) clearTimeout(this.noticeTimer);
     this.timer = null;

@@ -1,5 +1,5 @@
-// Package harness 定义 Harness 产品业务。
-package harness
+// Package conversations 定义会话操作与运行协调。
+package conversations
 
 import (
 	"harness/kernel/runner"

@@ -19,7 +19,7 @@ import (
 const watchDebounce = 200 * time.Millisecond
 
 type localWatch struct {
-	owner     *local
+	owner     *Local
 	watcher   *fsnotify.Watcher
 	target    string
 	source    string
@@ -30,7 +30,7 @@ type localWatch struct {
 	closeOnce sync.Once
 }
 
-func (m *local) Watch(path string) (machine.FileWatch, error) {
+func (m *Local) Watch(path string) (machine.FileWatch, error) {
 	target, err := filepath.Abs(path)
 	if err != nil {
 		return nil, fmt.Errorf("machine-local: watch %q: %w", path, err)

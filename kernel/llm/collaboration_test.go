@@ -4,8 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zendev-sh/goai/provider"
 	"harness/kernel/session"
+
+	"github.com/zendev-sh/goai/provider"
 )
 
 func TestCollaborationIsSourcedOrdinaryInput(t *testing.T) {

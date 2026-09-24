@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"harness/kernel/host"
 	"harness/kernel/machine"
 	"harness/kernel/persist"
 	"harness/kernel/tools"
@@ -100,14 +99,11 @@ func TestRunDiffRevertIsConflictSafe(t *testing.T) {
 
 func localTestMachine(t *testing.T) machine.FileSystem {
 	t.Helper()
-	h := host.NewHost()
-	if err := h.Install(machinelocal.New()); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = h.Close() })
-	filesystem, err := host.Resolve[machine.FileSystem](h, "machine")
+	filesystem, err := machinelocal.New()
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = filesystem.Close() })
+
 	return filesystem
 }

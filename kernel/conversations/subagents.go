@@ -1,4 +1,4 @@
-package harness
+package conversations
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 )
 
 // SubagentList 返回父会话直接创建的子任务。
-func (p *Product) SubagentList(parentSessionID string) ([]SubagentInfo, error) {
+func (p *Service) SubagentList(parentSessionID string) ([]SubagentInfo, error) {
 	_, err := p.sessions.Get(parentSessionID)
 	if err != nil {
 		return nil, err
@@ -27,7 +27,7 @@ func (p *Product) SubagentList(parentSessionID string) ([]SubagentInfo, error) {
 }
 
 // SubagentSnapshot 返回一个子任务的页面恢复投影。
-func (p *Product) SubagentSnapshot(parentSessionID, taskID string) (SubagentSnapshot, error) {
+func (p *Service) SubagentSnapshot(parentSessionID, taskID string) (SubagentSnapshot, error) {
 	_, err := p.sessions.Get(parentSessionID)
 	if err != nil {
 		return SubagentSnapshot{}, err
@@ -47,7 +47,7 @@ func (p *Product) SubagentSnapshot(parentSessionID, taskID string) (SubagentSnap
 }
 
 // SendSubagent 由用户直接续聊指定子任务。
-func (p *Product) SendSubagent(ctx context.Context, parentSessionID, taskID string, message session.UserMessage) (subagents.SendResult, error) {
+func (p *Service) SendSubagent(ctx context.Context, parentSessionID, taskID string, message session.UserMessage) (subagents.SendResult, error) {
 	_, err := p.sessions.Get(parentSessionID)
 	if err != nil {
 		return subagents.SendResult{}, err
@@ -56,7 +56,7 @@ func (p *Product) SendSubagent(ctx context.Context, parentSessionID, taskID stri
 }
 
 // UpdateSubagentSettings 在孩子空闲时更新下一轮模型和思考档位。
-func (p *Product) UpdateSubagentSettings(ctx context.Context, parentSessionID, taskID, model, effort string) (settings.SessionSettings, error) {
+func (p *Service) UpdateSubagentSettings(ctx context.Context, parentSessionID, taskID, model, effort string) (settings.SessionSettings, error) {
 	_, err := p.sessions.Get(parentSessionID)
 	if err != nil {
 		return settings.SessionSettings{}, err
@@ -67,7 +67,7 @@ func (p *Product) UpdateSubagentSettings(ctx context.Context, parentSessionID, t
 }
 
 // StopSubagent 停止指定孩子及其全部后代的当前运行。
-func (p *Product) StopSubagent(ctx context.Context, parentSessionID, taskID string) error {
+func (p *Service) StopSubagent(ctx context.Context, parentSessionID, taskID string) error {
 	_, err := p.sessions.Get(parentSessionID)
 	if err != nil {
 		return err
@@ -76,7 +76,7 @@ func (p *Product) StopSubagent(ctx context.Context, parentSessionID, taskID stri
 }
 
 // ReadSubagentRunDiff 读取指定孩子的单文件 Diff。
-func (p *Product) ReadSubagentRunDiff(parentSessionID, taskID, runID, path string) (runner.RunDiffFile, error) {
+func (p *Service) ReadSubagentRunDiff(parentSessionID, taskID, runID, path string) (runner.RunDiffFile, error) {
 	_, err := p.sessions.Get(parentSessionID)
 	if err != nil {
 		return runner.RunDiffFile{}, err
@@ -85,7 +85,7 @@ func (p *Product) ReadSubagentRunDiff(parentSessionID, taskID, runID, path strin
 }
 
 // RevertSubagentRunDiff 受版本保护地撤销指定孩子改动的一个文件。
-func (p *Product) RevertSubagentRunDiff(parentSessionID, taskID, runID, path string, revision uint64) (runner.RunDiffSummary, error) {
+func (p *Service) RevertSubagentRunDiff(parentSessionID, taskID, runID, path string, revision uint64) (runner.RunDiffSummary, error) {
 	_, err := p.sessions.Get(parentSessionID)
 	if err != nil {
 		return runner.RunDiffSummary{}, err

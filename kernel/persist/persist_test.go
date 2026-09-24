@@ -11,51 +11,9 @@ import (
 	"time"
 
 	"harness/kernel/agents/config"
-	"harness/kernel/host"
 	"harness/kernel/permissions"
 	"harness/kernel/session/settings"
 )
-
-func TestInstall_twoKeysSameStore(t *testing.T) {
-	h := host.NewHost()
-	err := h.Install(&Plugin{Dir: t.TempDir()})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	p, err := host.Resolve[Persistence](h, "sessionPersistence")
-	if err != nil {
-		t.Fatal(err)
-	}
-	s, err := host.Resolve[settings.SessionSettingsStore](h, "sessionSettings")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	jp, ok := p.(*jsonl)
-	if !ok {
-		t.Fatalf("persistence is %T", p)
-	}
-	js, ok := s.(*jsonl)
-	if !ok {
-		t.Fatalf("session settings is %T", s)
-	}
-	if jp != js {
-		t.Fatal("want the same store on both keys")
-	}
-	agentStore, err := host.Resolve[config.Store](h, "agentStore")
-	if err != nil {
-		t.Fatal(err)
-	}
-	ja, ok := agentStore.(*jsonl)
-	if !ok || ja != jp {
-		t.Fatal("want the same store on the agentStore key")
-	}
-	files, err := host.Resolve[*Files](h, "persist")
-	if err != nil || files != jp.files {
-		t.Fatal("want the shared file service")
-	}
-}
 
 func TestFilesScopeAppendAndRejectTraversal(t *testing.T) {
 	files, err := NewFiles(t.TempDir())

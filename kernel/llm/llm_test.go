@@ -6,7 +6,6 @@ import (
 
 	"github.com/zendev-sh/goai/provider"
 
-	"harness/kernel/host"
 	"harness/kernel/persist"
 	"harness/kernel/session"
 )
@@ -22,7 +21,7 @@ func TestLoadConfig(t *testing.T) {
 	}
 }
 
-func TestPluginStart(t *testing.T) {
+func TestNewLoadsConfig(t *testing.T) {
 	dataDir := t.TempDir()
 	files, err := persist.NewFiles(dataDir)
 	if err != nil {
@@ -32,26 +31,12 @@ func TestPluginStart(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	h := host.NewHost()
-	if err := h.Install(&persist.Plugin{Dir: dataDir}); err != nil {
-		t.Fatal(err)
-	}
-	plugin := &Plugin{}
-	if err := h.Install(plugin); err != nil {
-		t.Fatal(err)
-	}
-	client, err := host.Resolve[*Client](h, "llm")
+	client, err := New(files)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if client != plugin.client {
-		t.Fatal("registered client differs from plugin client")
-	}
-	if err := h.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if plugin.client != nil {
-		t.Fatal("client remains after close")
+	if len(client.Models()) == 0 {
+		t.Fatal("no model definitions")
 	}
 }
 

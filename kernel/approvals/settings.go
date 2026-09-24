@@ -8,9 +8,10 @@ import (
 	"slices"
 	"strings"
 
-	"gopkg.in/yaml.v3"
 	"harness/kernel/permissions"
 	"harness/kernel/persist"
+
+	"gopkg.in/yaml.v3"
 )
 
 // ErrSettings 表示用户提交的审核设置不可用。

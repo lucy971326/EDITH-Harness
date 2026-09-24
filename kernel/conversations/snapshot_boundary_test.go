@@ -1,8 +1,8 @@
-package harness_test
+package conversations_test
 
 import (
 	"context"
-	"harness/products/harness"
+	"harness/kernel/conversations"
 	"testing"
 	"time"
 
@@ -13,12 +13,12 @@ import (
 
 func TestSnapshotAfterEndPublicationDoesNotResurrectRun(t *testing.T) {
 	f := newTestFixture(t)
-	defer f.host.Close()
+	defer f.close()
 	info, err := f.service.Create(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	observed := make(chan harness.Snapshot, 1)
+	observed := make(chan conversations.Snapshot, 1)
 	unlisten, err := events.Subscribe(f.events, func(_ context.Context, event runner.RunEvent) error {
 		if event.Kind != runner.RunEnded {
 			return nil
@@ -32,7 +32,7 @@ func TestSnapshotAfterEndPublicationDoesNotResurrectRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer unlisten()
-	err = f.service.Start(context.Background(), harness.RunInput{SessionID: info.Meta.ID, Model: "deepseek/deepseek-flash", ReasoningEffort: "high", Message: session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "finish"}}}})
+	err = f.service.Start(context.Background(), conversations.RunInput{SessionID: info.Meta.ID, Model: "deepseek/deepseek-flash", ReasoningEffort: "high", Message: session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "finish"}}}})
 	if err != nil {
 		t.Fatal(err)
 	}

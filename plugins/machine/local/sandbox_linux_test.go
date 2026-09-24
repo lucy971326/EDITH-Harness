@@ -55,11 +55,11 @@ func TestLinuxAgentSandbox(t *testing.T) {
 	if _, err := os.Stat("/usr/bin/bwrap"); err != nil {
 		t.Skip("requires system bubblewrap")
 	}
-	m, err := newLocal()
+	m, err := New()
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = m.close() })
+	t.Cleanup(func() { _ = m.Close() })
 	root := t.TempDir()
 	workspace := filepath.Join(root, "project")
 	err = os.Mkdir(workspace, 0o755)
@@ -348,11 +348,11 @@ func TestApprovedPermissionsStaySandboxed(t *testing.T) {
 	if _, err := os.Stat("/usr/bin/bwrap"); err != nil {
 		t.Skip("requires bubblewrap")
 	}
-	m, err := newLocal()
+	m, err := New()
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer m.close()
+	defer m.Close()
 	service := approvals.New()
 	defer service.Close()
 	_, updates, unsubscribe := service.Subscribe()

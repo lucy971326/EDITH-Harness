@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"harness/kernel/hooks"
-	"harness/kernel/host"
 	"harness/kernel/machine"
 	"harness/kernel/persist"
 	"harness/kernel/tools"
@@ -24,15 +23,12 @@ func fixture(t *testing.T) (*hooks.Service, string) {
 	if runtime.GOOS == "windows" {
 		t.Skip("test commands use /bin/sh")
 	}
-	h := host.NewHost()
-	if err := h.Install(machinelocal.New()); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = h.Close() })
-	filesystem, err := host.Resolve[machine.FileSystem](h, "machine")
+	filesystem, err := machinelocal.New()
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = filesystem.Close() })
+
 	files, err := persist.NewFiles(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

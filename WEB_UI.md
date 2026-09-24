@@ -11,21 +11,21 @@ React 组件
    ↓
 WebSocket / 标准 JSON-RPC 2.0
    ↓
-app-server → Product / 公共服务 → kernel
+app-server → conversations / 公共服务 → kernel
 ```
 
 - HTTP 只提供 Vite 构建后的静态资源。
 - 所有业务调用、通知、订阅和服务端反向请求走同一条 WebSocket。
 - React 负责显示和局部交互；普通 TypeScript 负责连接、协议、状态归并与恢复。
 - Client 共用 `clients/contracts/` 中手写的 TypeScript 契约；接口修改时同步 Go 与 TS，不自动生成。
-- UI 不直接拼 JSON-RPC 封套，不知道 Go Host、Runner 或 Product 的具体实现。
+- UI 不直接拼 JSON-RPC 封套，不知道 后台组装、Runner 或 conversations 的具体实现。
 - Wails 首版承载同一套前端并连接同一 WebSocket，不另写一套 IPC 业务层。
 - 文件面板通过 `fs/readFile / writeFile / readDirectory / getMetadata / watch` 调用后台；变化由 `fs/changed` 通知，取消监听复用 `server/unsubscribe`。Diff 审查通过 `harness/run/diff/read / revertFile` 按需读取和撤销单文件。终端通过 `command/exec / write / resize / terminate` 控制后台 PTY，并接收 `command/exec/outputDelta` 实时输出。子任务工作页通过 `harness/subagent/*` 查询、订阅、发送、设置、停止和审查 Diff；操作始终使用直属父 SessionID 与 TaskID，订阅结果中的孩子 SessionID 只用于从当前面板打开下一层。
 
 ## 2. 状态边界
 
 ```text
-后台事实        Session、SessionSettings、Agent、Product 状态、Run 状态
+后台事实        Session、SessionSettings、Agent、领域状态、Run 状态
 Client 投影     从 Snapshot + 后续事件得到的当前画面
 Client 临时状态 当前路由、选择、折叠、面板宽度、主题、输入草稿
 ```
@@ -83,7 +83,7 @@ clients/web/
 - 不使用 Next.js，不引入服务端 React。
 - TypeScript 写法直白、类型明确，少语法糖和高级类型技巧。
 - 没有真实复用前，不建立通用 Store、组件框架或插件化 UI。
-- 聊天阅读路线：`src/client/rpc.ts` 收发 → `src/client/chat.ts` 订阅／恢复 → `src/state/chat.ts` 统一投影 → `src/chat-messages.tsx` 渲染。`App` 保留连接、会话选择、草稿和发送／停止流程；`sidebar.tsx` 与 `composer.tsx` 只展示并回调，不发 RPC。不为符合目标目录图预建空壳。
+- 聊天阅读路线：`src/client/rpc.ts` 收发 → `src/client/chat.ts` 连接与主聊天、`run-subscription.ts` 共用订阅／恢复 → `src/state/chat.ts` 统一投影 → `src/chat-messages.tsx` 渲染。`App` 保留连接、会话选择、草稿和发送／停止流程；`sidebar.tsx` 与 `composer.tsx` 只展示并回调，不发 RPC。不为符合目标目录图预建空壳。
 - 后台插件传数据，不传 HTML、React 组件或任意 SVG。
 - 不建立页面插件插槽；产品内部扩展由真实需求再设计。
 

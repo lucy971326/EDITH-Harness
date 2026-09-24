@@ -8,21 +8,16 @@ import (
 	"strings"
 	"testing"
 
-	"harness/kernel/host"
 	"harness/kernel/persist"
 )
 
 func newTestStore(t *testing.T) (*Store, persist.Persistence) {
 	t.Helper()
-	h := host.NewHost()
-	err := h.Install(&persist.Plugin{Dir: t.TempDir()})
+	files, err := persist.NewFiles(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := host.Resolve[persist.Persistence](h, "sessionPersistence")
-	if err != nil {
-		t.Fatal(err)
-	}
+	p := persist.NewStore(files)
 	return NewStore(p), p
 }
 
@@ -86,15 +81,11 @@ func TestFirstUserMessageNamesSessionOnlyOnce(t *testing.T) {
 
 func TestEmptySessionSurvivesNewStoreAndList(t *testing.T) {
 	dir := t.TempDir()
-	h := host.NewHost()
-	err := h.Install(&persist.Plugin{Dir: dir})
+	files, err := persist.NewFiles(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := host.Resolve[persist.Persistence](h, "sessionPersistence")
-	if err != nil {
-		t.Fatal(err)
-	}
+	p := persist.NewStore(files)
 	first := NewStore(p)
 	_, err = first.Create("empty")
 	if err != nil {
@@ -135,15 +126,11 @@ func TestDiscardEmptyRemovesSessionMeta(t *testing.T) {
 
 func TestAppendSurvivesNewStore(t *testing.T) {
 	dir := t.TempDir()
-	h := host.NewHost()
-	err := h.Install(&persist.Plugin{Dir: dir})
+	files, err := persist.NewFiles(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := host.Resolve[persist.Persistence](h, "sessionPersistence")
-	if err != nil {
-		t.Fatal(err)
-	}
+	p := persist.NewStore(files)
 	first := NewStore(p)
 	s, err := first.Create("chat1")
 	if err != nil {
@@ -341,15 +328,11 @@ func TestHistoryBranchBeforeSummaryKeepsFullPath(t *testing.T) {
 
 func TestSummarySurvivesReload(t *testing.T) {
 	dir := t.TempDir()
-	h := host.NewHost()
-	err := h.Install(&persist.Plugin{Dir: dir})
+	files, err := persist.NewFiles(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := host.Resolve[persist.Persistence](h, "sessionPersistence")
-	if err != nil {
-		t.Fatal(err)
-	}
+	p := persist.NewStore(files)
 	first := NewStore(p)
 	s, err := first.Create("chat1")
 	if err != nil {
@@ -502,25 +485,6 @@ func TestGetMissingReturnsError(t *testing.T) {
 	_, err := store.Get("missing")
 	if err == nil {
 		t.Fatal("want missing session error")
-	}
-}
-
-func TestInstallRegistersStore(t *testing.T) {
-	h := host.NewHost()
-	err := h.Install(&persist.Plugin{Dir: t.TempDir()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = h.Install(&Plugin{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	store, err := host.Resolve[*Store](h, "sessions")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if store == nil {
-		t.Fatal("nil store")
 	}
 }
 

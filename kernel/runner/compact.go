@@ -2,7 +2,6 @@ package runner
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -25,9 +24,6 @@ type compactPreparation struct {
 	settings     settings.SessionSettings
 	systemPrompt string
 	toolNames    []string
-	workspace    string
-	model        string
-	effort       string
 }
 
 // Compact 占用空闲会话，用当前模型生成摘要并落账。失败或停止不改有效上下文。
@@ -86,9 +82,6 @@ func (r *Runner) prepareCompact(ctx context.Context, sessionID string) (compactP
 		settings:     runSettings,
 		systemPrompt: prepared.SystemPrompt,
 		toolNames:    append([]string(nil), prepared.Tools...),
-		workspace:    runSettings.Workspace,
-		model:        runSettings.Model,
-		effort:       runSettings.ReasoningEffort,
 	}, nil
 }
 
@@ -116,36 +109,7 @@ func (r *Runner) runCompact(runCtx context.Context, sessionID, runID string, cur
 		current.drafts = make(map[string]*runDraft)
 		current.mu.Unlock()
 		current.handoff.Unlock()
-		status := RunSucceeded
-		if isCancellationOnly(err) {
-			status = RunCancelled
-		} else if err != nil {
-			status = RunFailed
-		}
-		endSave := r.upsertRecord(sessionID, runRecord{
-			RunID:         runID,
-			Status:        status,
-			AfterEntrySeq: current.afterSeq(),
-			Error:         errorText(err),
-			Usage:         current.usageCopy(),
-		})
-		if endSave != nil {
-			err = errors.Join(err, endSave)
-			if status == RunSucceeded {
-				status = RunFailed
-			}
-		}
-		endErr := r.publish(context.Background(), r.liveEvent(current, RunEvent{
-			SessionID:     sessionID,
-			RunID:         runID,
-			Kind:          RunEnded,
-			AfterEntrySeq: current.afterSeq(),
-			Status:        status,
-			Error:         errorText(err),
-		}))
-		if endErr != nil {
-			err = errors.Join(err, endErr)
-		}
+		err = r.finishRun(current, sessionID, runID, err, true)
 	}()
 	runStartedAttempted = true
 	err = r.publish(runCtx, r.liveEvent(current, RunEvent{
@@ -158,7 +122,7 @@ func (r *Runner) runCompact(runCtx context.Context, sessionID, runID string, cur
 		return err
 	}
 
-	definitions, err := r.tools.Definitions(tools.WithAccess(runCtx, tools.Access{Mode: permissions.ReadOnly}), prepared.workspace, prepared.toolNames)
+	definitions, err := r.tools.Definitions(tools.WithAccess(runCtx, tools.Access{Mode: permissions.ReadOnly}), prepared.settings.Workspace, prepared.toolNames)
 	if err != nil {
 		return err
 	}
@@ -176,8 +140,8 @@ func (r *Runner) runCompact(runCtx context.Context, sessionID, runID string, cur
 		input.ToolChoice = "none"
 	}
 	stream, err := r.llm.Stream(runCtx, llm.RunConfig{
-		Model:           prepared.model,
-		ReasoningEffort: prepared.effort,
+		Model:           prepared.settings.Model,
+		ReasoningEffort: prepared.settings.ReasoningEffort,
 	}, input)
 	if err != nil {
 		return err
@@ -202,7 +166,7 @@ func (r *Runner) runCompact(runCtx context.Context, sessionID, runID string, cur
 			return runCtx.Err()
 		case chunk, ok := <-stream:
 			if !ok {
-				return r.finishCompact(runCtx, sessionID, runID, sess, current, prepared.model, entryID, text, sawToolCall, finishReason, usage)
+				return r.finishCompact(runCtx, sessionID, runID, sess, current, prepared.settings.Model, entryID, text, sawToolCall, finishReason, usage)
 			}
 			switch chunk.Type {
 			case provider.ChunkReasoning:

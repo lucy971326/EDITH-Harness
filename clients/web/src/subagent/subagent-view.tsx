@@ -1,3 +1,4 @@
+import { runSubscription } from "../client/run-subscription";
 import { useEffect, useRef, useState } from "react";
 import { ChatMessages } from "../chat-messages";
 import { Composer, type Attachment } from "../composer";
@@ -6,7 +7,10 @@ import { activeRun, applyRunEvent, latestUsage } from "../state/chat";
 import { formatRPCError, type RPCClient } from "../client/rpc";
 import type { ModelSelection } from "../model-menu";
 import type { AgentView, ModelChoice } from "../../../contracts/appserver";
-import type { SubagentInfo } from "../../../contracts/harness";
+import type {
+  SubagentInfo,
+  SubagentSubscribeResult,
+} from "../../../contracts/harness";
 import type { RunDiffSummary, Snapshot } from "../../../contracts/run";
 import type { FileLocation } from "../editor/links";
 
@@ -53,8 +57,6 @@ export function SubagentView({
   const [compressingImages, setCompressingImages] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
-  const [generation, setGeneration] = useState(0);
-  const subscription = useRef("");
   const childSessionID = useRef("");
   const compressionPending = useRef(false);
   const snapshotRef = useRef<Snapshot | null>(null);
@@ -84,100 +86,90 @@ export function SubagentView({
       setSyncing(true);
       return;
     }
-    let cancelled = false;
-    let subscriptionID = "";
-    setSyncing(true);
-    setNotice("");
-    const removeListener = client.onRunEvent(
-      ({ subscriptionID: incoming, event }) => {
-        if (cancelled || incoming !== subscription.current) return;
-        const current = snapshotRef.current;
-        if (!current) return;
-        const next = applyRunEvent(current, event);
-        if (!next) {
-          setGeneration((value) => value + 1);
-          return;
-        }
-        if (next !== current) {
-          snapshotRef.current = next;
-          publishSnapshot();
-        }
-        if (event.kind === "notice" && event.text) {
-          if (hookNoticeTimer.current) clearTimeout(hookNoticeTimer.current);
-          setNotice(event.text);
-          hookNoticeTimer.current = setTimeout(() => {
-            setNotice((value) => value === event.text ? "" : value);
-          }, 8000);
-        }
-        if (event.kind === "run-started")
-          updateTaskStatus("running", event.runID);
-        if (event.kind === "run-ended") setStopping(false);
-        if (event.kind === "run-ended" && event.status) {
-          updateTaskStatus(
-            event.status === "success" ? "completed" : event.status,
-            event.runID,
-          );
-        }
-        if (event.kind === "run-diff-updated" && event.diff)
-          onDiffUpdateRef.current(
-            event.runID,
-            event.diff,
-            next.runs.some(
-              (item) =>
-                item.runID === event.runID && item.status === "running",
-            ),
-          );
-        if (event.kind === "run-ended") {
-          const summary = next.runs.find(
-            (item) => item.runID === event.runID,
-          )?.diff;
-          if (summary)
-            onDiffUpdateRef.current(event.runID, summary, false);
-        }
-      },
-    );
-    void client
-      .subscribeSubagent(parentSessionID, taskID, (result) => {
-        if (cancelled) {
-          void client.unsubscribe(result.subscriptionID).catch(() => {});
-          return;
-        }
-        subscriptionID = result.subscriptionID;
-        subscription.current = subscriptionID;
-        childSessionID.current = result.childSessionID;
-        taskRef.current = result.task;
-        snapshotRef.current = result.snapshot;
-        setTask(result.task);
-        onTaskRef.current(result.task);
-        setSnapshot(result.snapshot);
-        for (const item of result.snapshot.runs) {
-          if (item.diff)
-            onDiffUpdateRef.current(
-              item.runID,
-              item.diff,
-              item.status === "running",
+    const subscription = runSubscription<SubagentSubscribeResult>(
+      client,
+      (accept) => client.subscribeSubagent(parentSessionID, taskID, accept),
+      {
+        syncing: () => {
+          setSyncing(true);
+          setNotice("");
+        },
+        event: (event) => {
+          const current = snapshotRef.current;
+          if (!current) return;
+          const next = applyRunEvent(current, event);
+          if (!next) {
+            void subscription.synchronize();
+            return;
+          }
+          if (next !== current) {
+            snapshotRef.current = next;
+            publishSnapshot();
+          }
+          if (event.kind === "notice" && event.text) {
+            if (hookNoticeTimer.current) clearTimeout(hookNoticeTimer.current);
+            setNotice(event.text);
+            hookNoticeTimer.current = setTimeout(() => {
+              setNotice((value) => (value === event.text ? "" : value));
+            }, 8000);
+          }
+          if (event.kind === "run-started")
+            updateTaskStatus("running", event.runID);
+          if (event.kind === "run-ended") setStopping(false);
+          if (event.kind === "run-ended" && event.status) {
+            updateTaskStatus(
+              event.status === "success" ? "completed" : event.status,
+              event.runID,
             );
-        }
-        setSyncing(false);
-      })
-      .catch((error) => {
-        if (!cancelled) {
+          }
+          if (event.kind === "run-diff-updated" && event.diff)
+            onDiffUpdateRef.current(
+              event.runID,
+              event.diff,
+              next.runs.some(
+                (item) =>
+                  item.runID === event.runID && item.status === "running",
+              ),
+            );
+          if (event.kind === "run-ended") {
+            const summary = next.runs.find(
+              (item) => item.runID === event.runID,
+            )?.diff;
+            if (summary) onDiffUpdateRef.current(event.runID, summary, false);
+          }
+        },
+        snapshot: (result) => {
+          childSessionID.current = result.childSessionID;
+          taskRef.current = result.task;
+          snapshotRef.current = result.snapshot;
+          setTask(result.task);
+          onTaskRef.current(result.task);
+          setSnapshot(result.snapshot);
+          for (const item of result.snapshot.runs) {
+            if (item.diff)
+              onDiffUpdateRef.current(
+                item.runID,
+                item.diff,
+                item.status === "running",
+              );
+          }
+          setSyncing(false);
+        },
+        error: (error) => {
           setSyncing(false);
           setNotice(formatRPCError(error, "子任务同步失败"));
-        }
-      });
+        },
+      },
+    );
+    void subscription.synchronize();
     return () => {
-      cancelled = true;
-      removeListener();
+      subscription.close();
       if (renderFrame.current !== null)
         cancelAnimationFrame(renderFrame.current);
       if (hookNoticeTimer.current) clearTimeout(hookNoticeTimer.current);
       renderFrame.current = null;
-      if (subscription.current === subscriptionID) subscription.current = "";
-      if (subscriptionID && client.connected)
-        void client.unsubscribe(subscriptionID).catch(() => {});
     };
-  }, [client, parentSessionID, taskID, generation]);
+  }, [client, parentSessionID, taskID]);
 
   useEffect(() => {
     if (active) setSnapshot(snapshotRef.current);
@@ -214,12 +206,7 @@ export function SubagentView({
     !disabled && validModel && (draft.trim() !== "" || images.length > 0);
 
   async function send() {
-    if (
-      !client?.connected ||
-      !canSend ||
-      sending ||
-      compressionPending.current
-    )
+    if (!client?.connected || !canSend || sending || compressionPending.current)
       return;
     const text = draft;
     const submitted = images;

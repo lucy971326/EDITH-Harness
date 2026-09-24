@@ -16,12 +16,11 @@ import (
 	"harness/kernel/agents"
 	"harness/kernel/approvals"
 	"harness/kernel/commands"
+	"harness/kernel/conversations"
 	"harness/kernel/events"
 	"harness/kernel/hooks"
-	"harness/kernel/host"
 	"harness/kernel/llm"
 	"harness/kernel/loops"
-	"harness/kernel/machine"
 	"harness/kernel/persist"
 	"harness/kernel/runner"
 	"harness/kernel/session"
@@ -37,7 +36,6 @@ import (
 	exectool "harness/plugins/tools/exec"
 	mcptool "harness/plugins/tools/mcp"
 	subagenttools "harness/plugins/tools/subagents"
-	harnessproduct "harness/products/harness"
 )
 
 func main() {
@@ -59,121 +57,105 @@ func run() (result error) {
 		return err
 	}
 
-	h := host.NewHost()
+	// 依赖按使用顺序构造；每取得一份资源便安排逆序收尾。
+	files, err := persist.NewFiles(dataDir)
+	if err != nil {
+		return err
+	}
+	disk := persist.NewStore(files)
+	sessions := session.NewStore(disk)
+	models, err := llm.New(files)
+	if err != nil {
+		return err
+	}
+	machineService, err := machinelocal.New()
+	if err != nil {
+		return err
+	}
+	defer func() { result = errors.Join(result, machineService.Close()) }()
+	toolRegistry := tools.NewRegistry()
+	hookService, err := hooks.NewService(files, machineService)
+	if err != nil {
+		return err
+	}
+	toolRegistry.SetPreToolUse(hookService)
+	approvalService, err := approvals.Open(files, models, sessions)
+	if err != nil {
+		return err
+	}
+	defer func() { result = errors.Join(result, approvalService.Close()) }()
+	err = toolRegistry.Register(applypatchtool.New(machineService, machineService, approvalService))
+	if err != nil {
+		return err
+	}
+	err = exectool.Register(toolRegistry, machineService, machineService, approvalService)
+	if err != nil {
+		return err
+	}
+	mcpProvider, err := mcptool.New(files, approvalService)
+	if err != nil {
+		return err
+	}
+	defer func() { result = errors.Join(result, mcpProvider.Close()) }()
+	err = toolRegistry.RegisterProvider(mcpProvider)
+	if err != nil {
+		return err
+	}
+	registry := events.NewRegistry()
+	loopRegistry := loops.NewRegistry()
+	err = loopRegistry.Register(react.New(models, toolRegistry))
+	if err != nil {
+		return err
+	}
+	skillService := skills.NewRegistry()
+	builtinSkills, err := skillsbuiltin.New(files)
+	if err != nil {
+		return err
+	}
+	err = skillService.Register(builtinSkills)
+	if err != nil {
+		return err
+	}
+	err = skillService.Register(skillsfilesystem.New(machineService, files))
+	if err != nil {
+		return err
+	}
+	agentService, err := agents.NewService(disk, disk, loopRegistry, toolRegistry, skillService)
+	if err != nil {
+		return err
+	}
+	commandService := commands.NewRegistry()
+	runService, err := runner.NewRunner(sessions, disk, agentService, loopRegistry, registry, models, toolRegistry, disk, files, machineService)
+	if err != nil {
+		return err
+	}
+	defer runService.Close()
+	subagentFiles, err := files.Scope("subagents")
+	if err != nil {
+		return err
+	}
+	subagentService, err := subagents.NewSubagents(sessions, disk, agentService, models, runService, registry, subagentFiles)
+	if err != nil {
+		return err
+	}
+	defer func() { result = errors.Join(result, subagentService.Close()) }()
+	err = subagenttools.Register(toolRegistry, subagentService)
+	if err != nil {
+		return err
+	}
+	conversationService, err := conversations.New(sessions, disk, agentService, models, runService, commandService, subagentService, approvalService)
+	if err != nil {
+		return err
+	}
+	err = commandService.Register(compactcmd.New(runService))
+	if err != nil {
+		return err
+	}
+
+	// 接入最后创建、最先关闭；组装成功之前不开放监听。
 	server := appserver.New()
-	defer func() {
-		// 入口先关闭 Client 接入与调用，再拆产品和执行服务。
-		result = errors.Join(result, server.Close(), h.Close())
-	}()
-	err = h.Install(&persist.Plugin{Dir: dataDir})
-	if err != nil {
-		return err
-	}
-	err = h.Install(&session.Plugin{})
-	if err != nil {
-		return err
-	}
-	err = h.Install(&llm.Plugin{})
-	if err != nil {
-		return err
-	}
-	err = h.Install(machinelocal.New())
-	if err != nil {
-		return err
-	}
-	err = h.Install(tools.NewPlugin())
-	if err != nil {
-		return err
-	}
-	err = h.Install(hooks.NewPlugin())
-	if err != nil {
-		return err
-	}
-	err = h.Install(approvals.NewPlugin())
-	if err != nil {
-		return err
-	}
-	err = h.Install(applypatchtool.New())
-	if err != nil {
-		return err
-	}
-	err = h.Install(exectool.New())
-	if err != nil {
-		return err
-	}
-	err = h.Install(mcptool.New())
-	if err != nil {
-		return err
-	}
-	err = h.Install(events.NewPlugin())
-	if err != nil {
-		return err
-	}
-	err = h.Install(loops.NewPlugin())
-	if err != nil {
-		return err
-	}
-	err = h.Install(react.New())
-	if err != nil {
-		return err
-	}
-	err = h.Install(skills.NewPlugin())
-	if err != nil {
-		return err
-	}
-	err = h.Install(skillsbuiltin.New())
-	if err != nil {
-		return err
-	}
-	err = h.Install(skillsfilesystem.New())
-	if err != nil {
-		return err
-	}
-	err = h.Install(agents.NewPlugin())
-	if err != nil {
-		return err
-	}
-	err = h.Install(commands.NewPlugin())
-	if err != nil {
-		return err
-	}
-	err = h.Install(runner.NewPlugin())
-	if err != nil {
-		return err
-	}
-	err = h.Install(subagents.NewPlugin())
-	if err != nil {
-		return err
-	}
-	err = h.Install(subagenttools.New())
-	if err != nil {
-		return err
-	}
-	err = h.Install(harnessproduct.NewPlugin())
-	if err != nil {
-		return err
-	}
-	err = h.Install(compactcmd.New())
-	if err != nil {
-		return err
-	}
-	product, err := host.Resolve[*harnessproduct.Product](h, "harnessProduct")
-	if err != nil {
-		return err
-	}
-	registry, err := host.Resolve[*events.Registry](h, "events")
-	if err != nil {
-		return err
-	}
-	runService, err := host.Resolve[*runner.Runner](h, "runner")
-	if err != nil {
-		return err
-	}
-	err = server.BindHarness(product, runService, registry)
-	if err != nil {
-		return err
-	}
-	approvalService, err := host.Resolve[*approvals.Service](h, "approvals")
+	defer func() { result = errors.Join(result, server.Close()) }()
+	err = server.BindHarness(conversationService, runService, registry)
 	if err != nil {
 		return err
 	}
@@ -181,15 +163,7 @@ func run() (result error) {
 	if err != nil {
 		return err
 	}
-	hookService, err := host.Resolve[*hooks.Service](h, "hooks")
-	if err != nil {
-		return err
-	}
 	err = server.BindHooks(hookService)
-	if err != nil {
-		return err
-	}
-	machineService, err := host.Resolve[machine.FileSystem](h, "machine")
 	if err != nil {
 		return err
 	}
@@ -197,15 +171,7 @@ func run() (result error) {
 	if err != nil {
 		return err
 	}
-	terminalService, ok := machineService.(machine.TerminalSystem)
-	if !ok {
-		return fmt.Errorf("machine service does not provide terminal support")
-	}
-	err = server.BindCommandExec(terminalService)
-	if err != nil {
-		return err
-	}
-	models, err := host.Resolve[*llm.Client](h, "llm")
+	err = server.BindCommandExec(machineService)
 	if err != nil {
 		return err
 	}
@@ -213,23 +179,11 @@ func run() (result error) {
 	if err != nil {
 		return err
 	}
-	agentService, err := host.Resolve[*agents.Service](h, "agents")
-	if err != nil {
-		return err
-	}
 	err = server.BindAgents(agentService)
 	if err != nil {
 		return err
 	}
-	skillService, err := host.Resolve[skills.Skills](h, "skills")
-	if err != nil {
-		return err
-	}
 	err = server.BindSkills(skillService)
-	if err != nil {
-		return err
-	}
-	commandService, err := host.Resolve[commands.Commands](h, "commands")
 	if err != nil {
 		return err
 	}

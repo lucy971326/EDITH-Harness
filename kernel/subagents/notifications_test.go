@@ -62,7 +62,7 @@ func collaborationEntries(t *testing.T, f subagentsFixture, parent string) []ses
 
 func TestCompletedChildrenEnterParentAtCheckpointOnce(t *testing.T) {
 	f := newSubagentsFixture(t)
-	defer f.host.Close()
+	defer f.close()
 	_, parent := notificationParent(t, f)
 	first := notificationChild(t, f, parent)
 	second := notificationChild(t, f, parent)
@@ -127,7 +127,7 @@ func TestCompletedChildrenEnterParentAtCheckpointOnce(t *testing.T) {
 
 func TestFinalCheckpointRetainsNotificationUntilUserStarts(t *testing.T) {
 	f := newSubagentsFixture(t)
-	defer f.host.Close()
+	defer f.close()
 	handle, parent := notificationParent(t, f)
 	child := notificationChild(t, f, parent)
 	messages, err := parent.Checkpoint(context.Background(), loops.CheckpointFinal)
@@ -196,7 +196,7 @@ func TestFinalCheckpointRetainsNotificationUntilUserStarts(t *testing.T) {
 
 func TestGrandchildResultEntersDirectParentOnNextRun(t *testing.T) {
 	f := newSubagentsFixture(t)
-	defer f.host.Close()
+	defer f.close()
 	_, parent := notificationParent(t, f)
 	child := notificationChild(t, f, parent)
 	f.loop.release()
@@ -278,7 +278,7 @@ func TestGrandchildResultEntersDirectParentOnNextRun(t *testing.T) {
 
 func TestWaitUserInputAndCancellationDoNotStopChildren(t *testing.T) {
 	f := newSubagentsFixture(t)
-	defer f.host.Close()
+	defer f.close()
 	_, parent := notificationParent(t, f)
 	child := notificationChild(t, f, parent)
 	ctx := &observedWaitContext{Context: context.Background(), entered: make(chan struct{})}

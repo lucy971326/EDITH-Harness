@@ -25,7 +25,7 @@ func (l *agentLaunch) close() {
 	}
 }
 
-func (m *local) prepareAgentLaunch(policy permissions.Policy, request machine.ProcessRequest) (*agentLaunch, error) {
+func (m *Local) prepareAgentLaunch(policy permissions.Policy, request machine.ProcessRequest) (*agentLaunch, error) {
 	if len(request.Argv) == 0 {
 		return nil, fmt.Errorf("machine: empty command")
 	}

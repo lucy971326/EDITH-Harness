@@ -4,15 +4,15 @@ import (
 	"context"
 
 	"harness/appserver/internal/clientconn"
+	"harness/kernel/conversations"
 	"harness/kernel/events"
 	"harness/kernel/runner"
-	"harness/products/harness"
 )
 
 func (s *Server) handleSubagentList(_ context.Context, input SubagentListParams) (SubagentListResult, error) {
-	tasks, err := s.harnessProduct.SubagentList(input.ParentSessionID)
+	tasks, err := s.conversations.SubagentList(input.ParentSessionID)
 	if tasks == nil {
-		tasks = []harness.SubagentInfo{}
+		tasks = []conversations.SubagentInfo{}
 	}
 	return SubagentListResult{Tasks: tasks}, methodError(err)
 }
@@ -26,7 +26,7 @@ func (s *Server) handleSubagentSubscribe(ctx context.Context, input SubagentPara
 	if err != nil {
 		return SubagentSubscribeResult{}, err
 	}
-	snapshot, err := s.harnessProduct.SubagentSnapshot(input.ParentSessionID, input.TaskID)
+	snapshot, err := s.conversations.SubagentSnapshot(input.ParentSessionID, input.TaskID)
 	if err != nil {
 		subscription.Close()
 		return SubagentSubscribeResult{}, methodError(err)
@@ -39,7 +39,7 @@ func (s *Server) handleSubagentSubscribe(ctx context.Context, input SubagentPara
 	}
 	subscription.SetCleanup(unlisten)
 	// 安装监听后再重取快照，补上首次查询与监听之间的变化。
-	snapshot, err = s.harnessProduct.SubagentSnapshot(input.ParentSessionID, input.TaskID)
+	snapshot, err = s.conversations.SubagentSnapshot(input.ParentSessionID, input.TaskID)
 	if err != nil {
 		subscription.Close()
 		return SubagentSubscribeResult{}, methodError(err)
@@ -56,7 +56,7 @@ func (s *Server) handleSubagentSend(ctx context.Context, input SubagentSendParam
 	if err != nil {
 		return SubagentSendResult{}, err
 	}
-	result, err := s.harnessProduct.SendSubagent(ctx, input.ParentSessionID, input.TaskID, message)
+	result, err := s.conversations.SendSubagent(ctx, input.ParentSessionID, input.TaskID, message)
 	mode := "started"
 	if result.Steered {
 		mode = "steered"
@@ -65,24 +65,24 @@ func (s *Server) handleSubagentSend(ctx context.Context, input SubagentSendParam
 }
 
 func (s *Server) handleSubagentSettings(ctx context.Context, input SubagentSettingsParams) (SubagentSettingsResult, error) {
-	_, err := s.harnessProduct.UpdateSubagentSettings(ctx, input.ParentSessionID, input.TaskID, input.Model, input.ReasoningEffort)
+	_, err := s.conversations.UpdateSubagentSettings(ctx, input.ParentSessionID, input.TaskID, input.Model, input.ReasoningEffort)
 	if err != nil {
 		return SubagentSettingsResult{}, methodError(err)
 	}
-	snapshot, err := s.harnessProduct.SubagentSnapshot(input.ParentSessionID, input.TaskID)
+	snapshot, err := s.conversations.SubagentSnapshot(input.ParentSessionID, input.TaskID)
 	return SubagentSettingsResult{Task: snapshot.Task}, methodError(err)
 }
 
 func (s *Server) handleSubagentStop(ctx context.Context, input SubagentParams) (StopResult, error) {
-	return StopResult{}, methodError(s.harnessProduct.StopSubagent(ctx, input.ParentSessionID, input.TaskID))
+	return StopResult{}, methodError(s.conversations.StopSubagent(ctx, input.ParentSessionID, input.TaskID))
 }
 
 func (s *Server) handleReadSubagentRunDiff(_ context.Context, input ReadSubagentRunDiffParams) (ReadRunDiffResult, error) {
-	result, err := s.harnessProduct.ReadSubagentRunDiff(input.ParentSessionID, input.TaskID, input.RunID, input.Path)
+	result, err := s.conversations.ReadSubagentRunDiff(input.ParentSessionID, input.TaskID, input.RunID, input.Path)
 	return result, methodError(err)
 }
 
 func (s *Server) handleRevertSubagentRunDiff(_ context.Context, input RevertSubagentRunDiffParams) (RevertRunDiffResult, error) {
-	result, err := s.harnessProduct.RevertSubagentRunDiff(input.ParentSessionID, input.TaskID, input.RunID, input.Path, input.ExpectedRevision)
+	result, err := s.conversations.RevertSubagentRunDiff(input.ParentSessionID, input.TaskID, input.RunID, input.Path, input.ExpectedRevision)
 	return result, methodError(err)
 }

@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
-
 )
 
 func TestSearchPathsNestedIgnoreAndMatching(t *testing.T) {

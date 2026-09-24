@@ -107,7 +107,7 @@ func fileHash(data []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func (m *local) ReadFile(path string) ([]byte, error) {
+func (m *Local) ReadFile(path string) ([]byte, error) {
 	content, err := m.ReadFileVersion(path, 0)
 	if err != nil {
 		return nil, err
@@ -115,7 +115,7 @@ func (m *local) ReadFile(path string) ([]byte, error) {
 	return content.Data, nil
 }
 
-func (m *local) ReadFileVersion(path string, maxBytes int64) (machine.FileContent, error) {
+func (m *Local) ReadFileVersion(path string, maxBytes int64) (machine.FileContent, error) {
 	unlock := m.fileLocks.lock(path)
 	defer unlock()
 	return readFileVersion(path, maxBytes)
@@ -153,7 +153,7 @@ func readFileVersion(path string, maxBytes int64) (machine.FileContent, error) {
 	return machine.FileContent{Data: data, Hash: fileHash(data)}, nil
 }
 
-func (m *local) ReadDir(path string) ([]machine.DirEntry, error) {
+func (m *Local) ReadDir(path string) ([]machine.DirEntry, error) {
 	entries, err := os.ReadDir(path)
 	if err != nil {
 		return nil, fmt.Errorf("machine-local: read directory %q: %w", path, err)
@@ -169,7 +169,7 @@ func (m *local) ReadDir(path string) ([]machine.DirEntry, error) {
 	return out, nil
 }
 
-func (m *local) Metadata(path string) (machine.FileMetadata, error) {
+func (m *Local) Metadata(path string) (machine.FileMetadata, error) {
 	unlock := m.fileLocks.lock(path)
 	defer unlock()
 
@@ -193,7 +193,7 @@ func (m *local) Metadata(path string) (machine.FileMetadata, error) {
 	}, nil
 }
 
-func (m *local) WriteFile(path string, data []byte) error {
+func (m *Local) WriteFile(path string, data []byte) error {
 	unlock := m.fileLocks.lock(path)
 	defer unlock()
 
@@ -209,7 +209,7 @@ func (m *local) WriteFile(path string, data []byte) error {
 	return nil
 }
 
-func (m *local) WriteFileIfUnchanged(path string, data []byte, expectedHash string) (string, error) {
+func (m *Local) WriteFileIfUnchanged(path string, data []byte, expectedHash string) (string, error) {
 	unlock := m.fileLocks.lock(path)
 	defer unlock()
 
@@ -249,7 +249,7 @@ func (m *local) WriteFileIfUnchanged(path string, data []byte, expectedHash stri
 	return fileHash(data), nil
 }
 
-func (m *local) RemoveFileIfUnchanged(path string, expectedHash string) error {
+func (m *Local) RemoveFileIfUnchanged(path string, expectedHash string) error {
 	unlock := m.fileLocks.lock(path)
 	defer unlock()
 

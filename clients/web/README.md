@@ -40,7 +40,7 @@ composer.tsx           输入区
 仓库根目录的 `make test` 执行前后端测试、契约检查、网络验收、Go vet 和相关 race。隔离浏览器后台仍可运行：
 
 ```sh
-HARNESS_WEB_QA=1 go test ./products/harness -run '^TestTypeScriptClient$' -count=1 -v -timeout=0
+HARNESS_WEB_QA=1 go test ./kernel/conversations -run '^TestTypeScriptClient$' -count=1 -v -timeout=0
 ```
 
 它使用临时数据与本机模型替身，不读取用户会话。Windows 原生目录选择器仍需在交互式 Windows 桌面人工验收。
