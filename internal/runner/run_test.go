@@ -201,10 +201,11 @@ func newRunnerFixtureWithLLM(t *testing.T, loop loops.Loop, client *llm.Client) 
 		t.Fatal(err)
 	}
 	settingsStore := &memorySettings{value: settings.SessionSettings{
-		AgentID:         agents.DefaultID,
-		Model:           "model-a",
+		AgentID: agents.DefaultID,
+		Model:   "model-a",
+		// workspace 必须是本平台干净绝对路径，与真实运行一致。
 		ReasoningEffort: "high",
-		Workspace:       "/workspace/a",
+		Workspace:       t.TempDir(),
 	}}
 	loopRegistry := loops.NewRegistry()
 	err = loopRegistry.Register(loop)
@@ -347,6 +348,7 @@ func TestRunBuildsInvocationPersistsMessagesAndPublishesInOrder(t *testing.T) {
 		return invocation.Emit(ctx, loops.Event{Kind: loops.EventMessage, Message: &toolResult})
 	}}
 	fixture := newRunnerFixture(t, loop)
+	workspace := fixture.settings.value.Workspace
 
 	var kinds []RunEventKind
 	var durableLengths []int
@@ -391,13 +393,13 @@ func TestRunBuildsInvocationPersistsMessagesAndPublishesInOrder(t *testing.T) {
 	if gotInvocation.LLMConfig.Model != "model-a" || gotInvocation.LLMConfig.ReasoningEffort != "high" {
 		t.Fatalf("llm config = %#v", gotInvocation.LLMConfig)
 	}
-	if gotInvocation.Policy.Unrestricted || gotInvocation.Policy.Network || len(gotInvocation.Policy.WriteRoots) == 0 || gotInvocation.Policy.WriteRoots[0] != "/workspace/a" {
+	if gotInvocation.Policy.Unrestricted || gotInvocation.Policy.Network || len(gotInvocation.Policy.WriteRoots) == 0 || gotInvocation.Policy.WriteRoots[0] != workspace {
 		t.Fatalf("unexpected run policy: %+v", gotInvocation.Policy)
 	}
-	if gotInvocation.Workspace != "/workspace/a" {
+	if gotInvocation.Workspace != workspace {
 		t.Fatalf("workspace = %q", gotInvocation.Workspace)
 	}
-	if !strings.Contains(gotInvocation.SystemPrompt, "/workspace/a") {
+	if !strings.Contains(gotInvocation.SystemPrompt, workspace) {
 		t.Fatalf("system prompt = %q", gotInvocation.SystemPrompt)
 	}
 	wantKinds := []RunEventKind{
@@ -974,7 +976,7 @@ func TestRunSettingsUsesLiveRunSnapshot(t *testing.T) {
 		AgentID:         agents.DefaultID,
 		Model:           "model-b",
 		ReasoningEffort: "low",
-		Workspace:       "/workspace/b",
+		Workspace:       t.TempDir(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1268,6 +1270,7 @@ func TestRunDoesNotPublishMessageThatFailedToAppend(t *testing.T) {
 func TestRunReadsNewSettingsOnlyOnTheNextRun(t *testing.T) {
 	var invocations []loops.Invocation
 	var fixture runnerFixture
+	secondWorkspace := t.TempDir()
 	loop := &runnerTestLoop{run: func(_ context.Context, invocation loops.Invocation) error {
 		invocations = append(invocations, invocation)
 		if len(invocations) == 1 {
@@ -1275,12 +1278,13 @@ func TestRunReadsNewSettingsOnlyOnTheNextRun(t *testing.T) {
 				AgentID:         agents.DefaultID,
 				Model:           "model-b",
 				ReasoningEffort: "low",
-				Workspace:       "/workspace/b",
+				Workspace:       secondWorkspace,
 			})
 		}
 		return nil
 	}}
 	fixture = newRunnerFixture(t, loop)
+	firstWorkspace := fixture.settings.value.Workspace
 
 	err := fixture.runner.Run(context.Background(), "session-1", textInput("first"))
 	if err != nil {
@@ -1294,10 +1298,10 @@ func TestRunReadsNewSettingsOnlyOnTheNextRun(t *testing.T) {
 	if len(invocations) != 2 {
 		t.Fatalf("invocations = %d", len(invocations))
 	}
-	if invocations[0].LLMConfig.Model != "model-a" || invocations[0].Workspace != "/workspace/a" {
+	if invocations[0].LLMConfig.Model != "model-a" || invocations[0].Workspace != firstWorkspace {
 		t.Fatalf("first invocation = %#v", invocations[0])
 	}
-	if invocations[1].LLMConfig.Model != "model-b" || invocations[1].Workspace != "/workspace/b" {
+	if invocations[1].LLMConfig.Model != "model-b" || invocations[1].Workspace != secondWorkspace {
 		t.Fatalf("second invocation = %#v", invocations[1])
 	}
 }

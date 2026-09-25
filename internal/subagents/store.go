@@ -19,6 +19,9 @@ type taskStore struct {
 	files *persist.Files
 	dir   string
 	mu    sync.Mutex
+
+	// 仅供测试注入的写失败；非测试代码不得设置。
+	writeFail error
 }
 
 func newTaskStore(dir string) (*taskStore, error) {
@@ -103,7 +106,7 @@ func decodeTask(data []byte, expectedID string) (TaskRecord, error) {
 	return record, nil
 }
 
-// saveTask 原子保存一条关系记录。
+// saveTask 原子保存一条关系记录。writeFail 仅供测试注入写失败；Windows 只读位不阻止写入。
 func (s *taskStore) saveTask(record TaskRecord) error {
 	err := validateTask(record, "")
 	if err != nil {
@@ -120,6 +123,9 @@ func (s *taskStore) saveTask(record TaskRecord) error {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.writeFail != nil {
+		return s.writeFail
+	}
 	err = s.files.Write(name, data)
 	if err != nil {
 		return fmt.Errorf("subagents store: save task %q: %w", record.ID, err)

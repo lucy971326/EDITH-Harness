@@ -1180,29 +1180,27 @@ func TestSpawnInitialPersistFailureConsistency(t *testing.T) {
 	parentSessionID, parentRunID := createParentRun(t, f, workspace)
 	defer f.loop.releaseParent()
 
-	tasksDir := filepath.Join(f.dataDir, "subagents", "tasks")
-	err := os.Chmod(tasksDir, 0o555)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = os.Chmod(tasksDir, 0o755) }()
+	// Windows 目录只读位不阻止写入，用注入的写失败模拟落盘失败。
+	diskErr := errors.New("task relation write failed")
+	f.subagents.store.mu.Lock()
+	f.subagents.store.writeFail = diskErr
+	f.subagents.store.mu.Unlock()
 
 	// 初始落盘失败
-	_, err = f.subagents.Spawn(context.Background(), SpawnInput{
+	_, err := f.subagents.Spawn(context.Background(), SpawnInput{
 		TaskName:        "test",
 		ParentSessionID: parentSessionID,
 		ParentRunID:     parentRunID,
 		Description:     "initial save fail test",
 	})
-	if err == nil {
-		t.Fatal("expected Spawn to fail when directory is not writable")
-	}
 	if !errors.Is(err, ErrPersistFailed) {
 		t.Fatalf("expected ErrPersistFailed, got %v", err)
 	}
 
-	// 恢复目录可写
-	_ = os.Chmod(tasksDir, 0o755)
+	// 恢复可写
+	f.subagents.store.mu.Lock()
+	f.subagents.store.writeFail = nil
+	f.subagents.store.mu.Unlock()
 
 	// 关系未落盘就不能对外发布内存幽灵任务。
 	taskList, err := f.subagents.List(parentSessionID, "")

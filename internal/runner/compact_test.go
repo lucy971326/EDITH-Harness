@@ -249,7 +249,7 @@ func newCompactFixture(t *testing.T, handler http.HandlerFunc) runnerFixture {
 		AgentID:         agents.DefaultID,
 		Model:           "deepseek/deepseek-flash",
 		ReasoningEffort: "off",
-		Workspace:       "/workspace/a",
+		Workspace:       t.TempDir(),
 	})
 	if err != nil {
 		t.Fatal(err)

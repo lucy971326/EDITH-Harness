@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -28,10 +29,8 @@ func (m *fakeMachine) ReadDir(string) ([]machine.DirEntry, error) {
 }
 
 func (m *fakeMachine) ResolvePath(workspace, path string) string {
-	if strings.HasPrefix(path, "/") {
-		return path
-	}
-	return workspace + "/" + path
+	// 测试 workspace 用真实系统路径；Join 保证结果在本平台是干净绝对路径。
+	return filepath.Join(workspace, path)
 }
 
 func (m *fakeMachine) ReadFile(path string) ([]byte, error) {
@@ -95,9 +94,10 @@ func (m *fakeMachine) RemoveFileIfUnchanged(path string, expectedHash string) er
 }
 
 func TestApplyPatchToolRegistrationAndCall(t *testing.T) {
+	workspace := t.TempDir()
 	m := &fakeMachine{files: map[string][]byte{
-		"/work/update.txt": []byte("before\n"),
-		"/work/delete.txt": []byte("remove\n"),
+		filepath.Join(workspace, "update.txt"): []byte("before\n"),
+		filepath.Join(workspace, "delete.txt"): []byte("remove\n"),
 	}}
 	service := approvals.New()
 	t.Cleanup(func() { _ = service.Close() })
@@ -119,7 +119,7 @@ func TestApplyPatchToolRegistrationAndCall(t *testing.T) {
 	result, err := registry.Call(context.Background(), kerneltools.Call{Policy: permissions.Policy{Unrestricted: true},
 		Name:      "apply_patch",
 		Arguments: json.RawMessage(`{"patch":` + mustJSON(t, patch) + `}`),
-		Workspace: "/work",
+		Workspace: workspace,
 		Allow:     []string{"apply_patch"},
 	})
 	if err != nil {
@@ -128,10 +128,10 @@ func TestApplyPatchToolRegistrationAndCall(t *testing.T) {
 	if result.IsError || !strings.Contains(result.Content, "A nested/add.txt") || !strings.Contains(result.Content, "M update.txt") || !strings.Contains(result.Content, "D delete.txt") {
 		t.Fatalf("result = %#v", result)
 	}
-	if string(m.files["/work/nested/add.txt"]) != "added\n" || string(m.files["/work/update.txt"]) != "after\n" {
+	if string(m.files[filepath.Join(workspace, "nested", "add.txt")]) != "added\n" || string(m.files[filepath.Join(workspace, "update.txt")]) != "after\n" {
 		t.Fatalf("files = %#v", m.files)
 	}
-	if _, exists := m.files["/work/delete.txt"]; exists {
+	if _, exists := m.files[filepath.Join(workspace, "delete.txt")]; exists {
 		t.Fatal("delete.txt still exists")
 	}
 }

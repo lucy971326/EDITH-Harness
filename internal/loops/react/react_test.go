@@ -619,7 +619,7 @@ func TestReactCancellingOneOfMultipleToolCallsPersistsEveryResult(t *testing.T) 
 		AgentID:         agents.DefaultID,
 		Model:           "deepseek/deepseek-flash",
 		ReasoningEffort: "off",
-		Workspace:       "/workspace",
+		Workspace:       t.TempDir(),
 	})
 	if err != nil {
 		t.Fatal(err)

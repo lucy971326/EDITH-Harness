@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"harness/internal/events"
 	"harness/internal/loops"
@@ -45,7 +46,11 @@ func TestCollaborationWaitsUntilToolResultsArePersisted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	<-toolCallPersisted
+	select {
+	case <-toolCallPersisted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("tool call did not persist in time")
+	}
 
 	accepted, err := f.runner.Receive("session-1", collaborationMessage())
 	if accepted || err != nil {

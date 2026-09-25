@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -28,10 +29,8 @@ func (m *memoryMachine) ReadDir(string) ([]machine.DirEntry, error) {
 	return nil, errors.New("not implemented")
 }
 func (m *memoryMachine) ResolvePath(workspace, path string) string {
-	if strings.HasPrefix(path, "/") {
-		return path
-	}
-	return workspace + "/" + path
+	// 测试 workspace 用真实系统路径；Join 保证结果在本平台是干净绝对路径。
+	return filepath.Join(workspace, path)
 }
 func (m *memoryMachine) ReadFile(path string) ([]byte, error) {
 	data, ok := m.files[path]
@@ -99,10 +98,12 @@ func TestApplyPatchMissingProtectedDirectory(t *testing.T) {
 	for _, name := range []string{".harness", ".agents", ".git"} {
 		for _, exists := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/exists=%t", name, exists), func(t *testing.T) {
-				m := &memoryMachine{files: map[string][]byte{}, directories: map[string]bool{"/work": true, "/work/" + name: exists}}
+				workspace := t.TempDir()
+				protected := filepath.Join(workspace, name)
+				m := &memoryMachine{files: map[string][]byte{}, directories: map[string]bool{workspace: true, protected: exists}}
 				service := approvals.New()
 				defer service.Close()
-				call := tools.Call{Policy: permissions.Policy{WriteRoots: []string{"/work"}}, Workspace: "/work"}
+				call := tools.Call{Policy: permissions.Policy{WriteRoots: []string{workspace}}, Workspace: workspace}
 				patch := "*** Begin Patch\n*** Add File: " + name + "/probe.txt\n+probe\n*** End Patch"
 				_, _, err := applyPatch(t.Context(), m, testAgentFiles{m}, service, call, patch)
 				want := "ask the user to create the protected directory first"
@@ -137,7 +138,11 @@ func (m *changingMachine) WriteFileIfUnchanged(path string, data []byte, expecte
 }
 
 func TestApplyPatchValidatesEverythingBeforeWriting(t *testing.T) {
-	m := &memoryMachine{files: map[string][]byte{"/work/first.txt": []byte("before\n"), "/work/second.txt": []byte("actual\n")}}
+	workspace := t.TempDir()
+	m := &memoryMachine{files: map[string][]byte{
+		filepath.Join(workspace, "first.txt"):  []byte("before\n"),
+		filepath.Join(workspace, "second.txt"): []byte("actual\n"),
+	}}
 	patch := `*** Begin Patch
 *** Update File: first.txt
 @@
@@ -149,17 +154,19 @@ func TestApplyPatchValidatesEverythingBeforeWriting(t *testing.T) {
 +changed
 *** End Patch`
 
-	delta, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, approvals.New(), tools.Call{Policy: permissions.Policy{Unrestricted: true}, Workspace: "/work"}, patch)
+	delta, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, approvals.New(), tools.Call{Policy: permissions.Policy{Unrestricted: true}, Workspace: workspace}, patch)
 	if err == nil || !strings.Contains(err.Error(), "failed to find expected lines") {
 		t.Fatalf("error = %v", err)
 	}
-	if len(delta.Changes) != 0 || string(m.files["/work/first.txt"]) != "before\n" {
+	if len(delta.Changes) != 0 || string(m.files[filepath.Join(workspace, "first.txt")]) != "before\n" {
 		t.Fatalf("partial write before validation: delta=%#v files=%#v", delta, m.files)
 	}
 }
 
 func TestApplyPatchRejectsConcurrentChange(t *testing.T) {
-	m := &changingMachine{memoryMachine: &memoryMachine{files: map[string][]byte{"/work/text.txt": []byte("before\n")}}}
+	workspace := t.TempDir()
+	textPath := filepath.Join(workspace, "text.txt")
+	m := &changingMachine{memoryMachine: &memoryMachine{files: map[string][]byte{textPath: []byte("before\n")}}}
 	patch := `*** Begin Patch
 *** Update File: text.txt
 @@
@@ -167,18 +174,20 @@ func TestApplyPatchRejectsConcurrentChange(t *testing.T) {
 +after
 *** End Patch`
 
-	delta, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, approvals.New(), tools.Call{Policy: permissions.Policy{Unrestricted: true}, Workspace: "/work"}, patch)
+	delta, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, approvals.New(), tools.Call{Policy: permissions.Policy{Unrestricted: true}, Workspace: workspace}, patch)
 	if !errors.Is(err, machine.ErrFileConflict) || len(delta.Changes) != 0 {
 		t.Fatalf("delta = %#v, error = %v", delta, err)
 	}
-	if got := string(m.files["/work/text.txt"]); got != "changed elsewhere\n" {
+	if got := string(m.files[textPath]); got != "changed elsewhere\n" {
 		t.Fatalf("concurrent content was overwritten: %q", got)
 	}
 }
 
 func TestApplyPatchKeepsMarkerLikeContextInCurrentFile(t *testing.T) {
+	workspace := t.TempDir()
+	docPath := filepath.Join(workspace, "doc.md")
 	m := &memoryMachine{files: map[string][]byte{
-		"/work/doc.md": []byte("before\n*** Update File: literal\nold\n"),
+		docPath: []byte("before\n*** Update File: literal\nold\n"),
 	}}
 	patch := `*** Begin Patch
 *** Update File: doc.md
@@ -189,18 +198,20 @@ func TestApplyPatchKeepsMarkerLikeContextInCurrentFile(t *testing.T) {
 +new
 *** End Patch`
 
-	_, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, approvals.New(), tools.Call{Policy: permissions.Policy{Unrestricted: true}, Workspace: "/work"}, patch)
+	_, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, approvals.New(), tools.Call{Policy: permissions.Policy{Unrestricted: true}, Workspace: workspace}, patch)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := string(m.files["/work/doc.md"]); got != "before\n*** Update File: literal\nnew\n" {
+	if got := string(m.files[docPath]); got != "before\n*** Update File: literal\nnew\n" {
 		t.Fatalf("content = %q", got)
 	}
 }
 
 func TestApplyPatchPreservesLineEndingsAndMatchesUnicodePunctuation(t *testing.T) {
+	workspace := t.TempDir()
+	textPath := filepath.Join(workspace, "text.txt")
 	m := &memoryMachine{files: map[string][]byte{
-		"/work/text.txt": []byte("start\r\nsmart — quote “x”\r\nend\r\n"),
+		textPath: []byte("start\r\nsmart — quote “x”\r\nend\r\n"),
 	}}
 	patch := `*** Begin Patch
 *** Update File: text.txt
@@ -209,18 +220,20 @@ func TestApplyPatchPreservesLineEndingsAndMatchesUnicodePunctuation(t *testing.T
 +changed
 *** End Patch`
 
-	_, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, approvals.New(), tools.Call{Policy: permissions.Policy{Unrestricted: true}, Workspace: "/work"}, patch)
+	_, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, approvals.New(), tools.Call{Policy: permissions.Policy{Unrestricted: true}, Workspace: workspace}, patch)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := string(m.files["/work/text.txt"]); got != "start\r\nchanged\r\nend\r\n" {
+	if got := string(m.files[textPath]); got != "start\r\nchanged\r\nend\r\n" {
 		t.Fatalf("content = %q", got)
 	}
 }
 
 func TestApplyPatchSupportsOrderedChunksAndEndOfFile(t *testing.T) {
+	workspace := t.TempDir()
+	textPath := filepath.Join(workspace, "text.txt")
 	m := &memoryMachine{files: map[string][]byte{
-		"/work/text.txt": []byte("header\nfirst\nmiddle\nlast\n"),
+		textPath: []byte("header\nfirst\nmiddle\nlast\n"),
 	}}
 	patch := `*** Begin Patch
 *** Update File: text.txt
@@ -234,17 +247,18 @@ func TestApplyPatchSupportsOrderedChunksAndEndOfFile(t *testing.T) {
 *** End of File
 *** End Patch`
 
-	_, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, approvals.New(), tools.Call{Policy: permissions.Policy{Unrestricted: true}, Workspace: "/work"}, patch)
+	_, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, approvals.New(), tools.Call{Policy: permissions.Policy{Unrestricted: true}, Workspace: workspace}, patch)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := string(m.files["/work/text.txt"]); got != "header\nFIRST\nMIDDLE\nlast\n" {
+	if got := string(m.files[textPath]); got != "header\nFIRST\nMIDDLE\nlast\n" {
 		t.Fatalf("content = %q", got)
 	}
 }
 
 func TestApplyPatchReportsCommittedPrefix(t *testing.T) {
-	m := &memoryMachine{files: make(map[string][]byte), failWritePath: "/work/second.txt"}
+	workspace := t.TempDir()
+	m := &memoryMachine{files: make(map[string][]byte), failWritePath: filepath.Join(workspace, "second.txt")}
 	patch := `*** Begin Patch
 *** Add File: first.txt
 +first
@@ -252,17 +266,19 @@ func TestApplyPatchReportsCommittedPrefix(t *testing.T) {
 +second
 *** End Patch`
 
-	delta, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, approvals.New(), tools.Call{Policy: permissions.Policy{Unrestricted: true}, Workspace: "/work"}, patch)
-	if err == nil || len(delta.Changes) != 1 || delta.Changes[0].Path != "/work/first.txt" || delta.Exact {
+	delta, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, approvals.New(), tools.Call{Policy: permissions.Policy{Unrestricted: true}, Workspace: workspace}, patch)
+	if err == nil || len(delta.Changes) != 1 || delta.Changes[0].Path != filepath.Join(workspace, "first.txt") || delta.Exact {
 		t.Fatalf("delta = %#v, error = %v", delta, err)
 	}
-	if string(m.files["/work/first.txt"]) != "first\n" {
-		t.Fatalf("first.txt = %q", m.files["/work/first.txt"])
+	if string(m.files[filepath.Join(workspace, "first.txt")]) != "first\n" {
+		t.Fatalf("first.txt = %q", m.files[filepath.Join(workspace, "first.txt")])
 	}
 }
 
 func TestApplyPatchToolReturnsAppliedFileDelta(t *testing.T) {
-	m := &memoryMachine{files: map[string][]byte{"/work/text.txt": []byte("before\n")}}
+	workspace := t.TempDir()
+	textPath := filepath.Join(workspace, "text.txt")
+	m := &memoryMachine{files: map[string][]byte{textPath: []byte("before\n")}}
 	registry := tools.NewRegistry()
 	if err := registry.Register(newTool(m, testAgentFiles{m}, approvals.New())); err != nil {
 		t.Fatal(err)
@@ -270,7 +286,7 @@ func TestApplyPatchToolReturnsAppliedFileDelta(t *testing.T) {
 	result, err := registry.Call(t.Context(), tools.Call{
 		Name:      "apply_patch",
 		Policy:    permissions.Policy{Unrestricted: true},
-		Workspace: "/work",
+		Workspace: workspace,
 		Allow:     []string{"apply_patch"},
 		Arguments: []byte(`{"patch":"*** Begin Patch\n*** Update File: text.txt\n@@\n-before\n+after\n*** End Patch"}`),
 	})
@@ -281,7 +297,7 @@ func TestApplyPatchToolReturnsAppliedFileDelta(t *testing.T) {
 		t.Fatalf("file delta = %#v", result.FileDelta)
 	}
 	change := result.FileDelta.Changes[0]
-	if change.Path != "/work/text.txt" || change.Operation != tools.FileOperationUpdate || *change.OldContent != "before\n" || *change.NewContent != "after\n" {
+	if change.Path != textPath || change.Operation != tools.FileOperationUpdate || *change.OldContent != "before\n" || *change.NewContent != "after\n" {
 		t.Fatalf("change = %#v", change)
 	}
 }
@@ -296,7 +312,7 @@ func TestApplyPatchToolReturnsCommittedDeltaWhenCancelled(t *testing.T) {
 	result, err := registry.Call(ctx, tools.Call{
 		Name:      "apply_patch",
 		Policy:    permissions.Policy{Unrestricted: true},
-		Workspace: "/work",
+		Workspace: t.TempDir(),
 		Allow:     []string{"apply_patch"},
 		Arguments: []byte(`{"patch":"*** Begin Patch\n*** Add File: first.txt\n+first\n*** Add File: second.txt\n+second\n*** End Patch"}`),
 	})
@@ -309,17 +325,19 @@ func TestApplyPatchToolReturnsCommittedDeltaWhenCancelled(t *testing.T) {
 }
 
 func TestApplyPatchRejectsInvalidUTF8BeforeWriting(t *testing.T) {
+	workspace := t.TempDir()
+	goodPath := filepath.Join(workspace, "good.txt")
 	m := &memoryMachine{files: map[string][]byte{
-		"/work/bad.txt":  {0xff},
-		"/work/good.txt": []byte("before\n"),
+		filepath.Join(workspace, "bad.txt"): {0xff},
+		goodPath:                            []byte("before\n"),
 	}}
 	patch := "*** Begin Patch\n*** Update File: good.txt\n@@\n-before\n+after\n*** Delete File: bad.txt\n*** End Patch"
 
-	delta, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, approvals.New(), tools.Call{Policy: permissions.Policy{Unrestricted: true}, Workspace: "/work"}, patch)
+	delta, _, err := applyPatch(context.Background(), m, testAgentFiles{m}, approvals.New(), tools.Call{Policy: permissions.Policy{Unrestricted: true}, Workspace: workspace}, patch)
 	if err == nil || !strings.Contains(err.Error(), "not valid UTF-8") {
 		t.Fatalf("delta = %#v, error = %v", delta, err)
 	}
-	if got := string(m.files["/work/good.txt"]); got != "before\n" {
+	if got := string(m.files[goodPath]); got != "before\n" {
 		t.Fatalf("good.txt was written before UTF-8 validation: %q", got)
 	}
 }
