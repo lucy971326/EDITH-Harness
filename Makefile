@@ -1,4 +1,5 @@
-.PHONY: run build desktop-run desktop-build test web agent-check agent-web-build agent-go agent-race agent-contracts agent-web-test
+# Web
+.PHONY: web run build
 
 web:
 	npm --prefix clients/web ci
@@ -11,11 +12,22 @@ build: web
 	mkdir -p .build
 	go build -o .build/harness ./cmd/harness
 
+# Desktop
+.PHONY: desktop-run desktop-build
+
 desktop-run:
 	wails3 dev
 
 desktop-build:
 	wails3 build
+
+# 验收：日常快速检查 / 发布前完整检查
+.PHONY: agent-check test
+
+# Agent 日常快速回归：依赖按需安装，页面只构建一次，其余检查并行执行。
+# 发布前或干净环境的最终验收仍使用 make test。
+agent-check: agent-web-build
+	@$(MAKE) --no-print-directory -j4 agent-go agent-race agent-contracts agent-web-test
 
 test: web
 	npm --prefix clients ci
@@ -27,10 +39,8 @@ test: web
 	npm --prefix clients run rpc:test
 	npm --prefix clients/web test
 
-# Agent 日常快速回归：依赖按需安装，页面只构建一次，其余检查并行执行。
-# 发布前或干净环境的最终验收仍使用 make test。
-agent-check: agent-web-build
-	@$(MAKE) --no-print-directory -j4 agent-go agent-race agent-contracts agent-web-test
+# agent-check 的子任务
+.PHONY: agent-web-build agent-go agent-race agent-contracts agent-web-test
 
 agent-web-build: clients/web/node_modules/.package-lock.json
 	npm --prefix clients/web run build
@@ -49,6 +59,7 @@ agent-contracts: clients/node_modules/.package-lock.json
 agent-web-test: clients/web/node_modules/.package-lock.json
 	npm --prefix clients/web test
 
+# 按需安装 npm 依赖
 clients/node_modules/.package-lock.json: clients/package.json clients/package-lock.json
 	npm --prefix clients ci --no-audit --no-fund
 
