@@ -17,9 +17,9 @@
 ## 架构边界
 
 ```text
-cmd/harness → 显式构造、登记、启动、逆序关闭
-React → appserver → conversations → Runner → Loop → Tools
-               └→ 各领域公共服务
+cmd/harness / cmd/harness-desktop → backend 显式构造、登记、逆序关闭
+React → WebSocket / Wails Stream → appserver → conversations → Runner → Loop → Tools
+                                    └→ 各领域公共服务
 ```
 
 - 单一 Go module；后台按领域放 `internal`，具体实现归领域子包，入口接线。定义契约的包不得反向 import 实现；执行与数据领域不得 import appserver 或 Client。`appserver/internal` 仅供接入层使用。
@@ -42,7 +42,7 @@ React → appserver → conversations → Runner → Loop → Tools
 
 - 可读性优先；标识符英文、注释中文、commit 双语。不创建 `manager.go`、`utils.go`、`common.go`。
 - 一个领域默认同包分文件；只有独立职责、稳定边界和实际替换需求才拆子包，不为缩短函数建立 helper 链。
-- 每包一个主要公开构造入口，只校验依赖与组装。接口处理用依赖结构体与具名方法，避免捕获服务的匿名 Handler；方法登记留在 appserver，main 只组装。
+- 每包一个主要公开构造入口，只校验依赖与组装。接口处理用依赖结构体与具名方法，避免捕获服务的匿名 Handler；方法登记留在 appserver，backend 只组装。
 - 数据与契约放定义者 `types.go`；活对象与方法同文件；包内类型放使用处。导出类型注释首句标明“数据。/ 契约。/ 活对象。”。
 - 结构体字段与接口方法按职责用空行和简短中文注释分组；锁说明保护范围。字段能少则少，不能硬少。
 - 流程按执行顺序展开，错误就地返回，循环用 continue 跳过无关项；允许函数稍长。检查与修改保持原子性，锁、错误优先级和 defer 收尾直接可见。

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"harness/internal/approvals"
 	"harness/internal/permissions"
+	"net"
 	"net/http"
 	"strings"
 	"testing"
@@ -13,7 +14,45 @@ import (
 	"harness/internal/appserver/internal/clientconn"
 
 	"github.com/coder/websocket"
+	"github.com/sourcegraph/jsonrpc2"
 )
+
+func TestServeStreamUsesSameProtocol(t *testing.T) {
+	server := newEchoServer(t)
+	client, remote := net.Pipe()
+	client.SetDeadline(time.Now().Add(3 * time.Second))
+	done := make(chan struct{})
+	go func() {
+		server.ServeStream(jsonrpc2.NewPlainObjectStream(remote))
+		close(done)
+	}()
+	stream := jsonrpc2.NewPlainObjectStream(client)
+	defer stream.Close()
+	for _, request := range []string{
+		`{"jsonrpc":"2.0","id":"init","method":"initialize","params":{"protocolVersion":1}}`,
+		`{"jsonrpc":"2.0","id":"echo","method":"echo","params":{"value":"desktop"}}`,
+	} {
+		var response rpcResponse
+		if err := stream.WriteObject(json.RawMessage(request)); err != nil {
+			t.Fatal(err)
+		}
+		if err := stream.ReadObject(&response); err != nil {
+			t.Fatal(err)
+		}
+		if response.JSONRPC != "2.0" || response.Error != nil {
+			t.Fatal(response)
+		}
+		if string(response.ID) == `"echo"` && string(response.Result) != `{"value":"desktop"}` {
+			t.Fatal(response)
+		}
+	}
+	stream.Close()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("stream did not close")
+	}
+}
 
 func startTestSocket(t *testing.T, server *Server) (*Server, string) {
 	t.Helper()

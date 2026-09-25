@@ -1,6 +1,6 @@
 # internal
 
-后台的执行、数据与协调能力。入口显式传入依赖，运行时直接调用。
+后台的执行、数据与协调能力。`backend` 显式传入依赖，运行时直接调用。
 
 ```text
 appserver
@@ -14,6 +14,7 @@ appserver
 
 ## 阅读地图
 
+- [`backend`](backend/README.md)：Web 与 Desktop 共用的组装与逆序关闭。
 - [`appserver`](appserver/README.md)：协议与连接，内部细节只供接入层使用。
 
 - [`conversations`](conversations/README.md)：会话操作；[`runner`](runner/README.md)：一轮执行与收尾。
@@ -35,4 +36,4 @@ commands/ compact
 machine/  local
 ```
 
-具体实现依赖所属领域的契约，由 `cmd/harness` 构造、登记和关闭。目录嵌套不增加调用层级；构造失败清理与正常关闭责任不变。
+具体实现依赖所属领域的契约，由 `backend` 构造、登记和关闭。目录嵌套不增加调用层级；构造失败清理与正常关闭责任不变。

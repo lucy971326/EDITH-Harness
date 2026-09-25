@@ -1,16 +1,16 @@
 # appserver
 
-网络入口：校验请求、调用领域服务、返回结果与通知。
+接入入口：校验请求、调用领域服务、返回结果与通知。
 
 ```text
-Client -> WebSocket -> clientconn -> rpc.Registry -> 具名 Handler
-                                                   +-> conversations
-                                                   +-> 公共服务
+WebSocket ───┐
+Wails Stream ┴→ ServeStream → clientconn → rpc.Registry → 具名 Handler
+                                                  └→ conversations / 公共服务
 ```
 
 ## 从哪里读
 
-- `server.go / listener.go / lifecycle.go / websocket.go`：组装、监听、接入与关闭。
+- `server.go / listener.go / lifecycle.go / websocket.go`：方法表、Web 监听、通用连接入口与关闭。
 - `harness.go / harness_types.go`：会话方法与契约；`harness_run.go`：运行订阅；`harness_subagents.go`：子任务接口。
 - `agents.go / models.go / skills.go / commands.go`：公共能力接口。
 - `approvals.go / approval_types.go / hooks.go`：审批与 Hook 配置。

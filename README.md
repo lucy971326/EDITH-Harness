@@ -2,16 +2,16 @@
 
 **面向软件开发的本地多 Agent 工作台。**
 
-EDITH-Harness 将 Agent 运行时、文件编辑、终端、Diff 审查和 Subagent 协作放进同一个桌面式工作区。后台由 Go 单进程承载，Web 界面通过 WebSocket + JSON-RPC 2.0 使用统一能力。
+EDITH-Harness 将 Agent 运行时、文件编辑、终端、Diff 审查和 Subagent 协作放进同一个工作区。Go 后台同时支持浏览器 Web 和 Wails Desktop，业务消息保持 JSON-RPC 2.0。
 
 ## 架构
 
 ```text
-cmd/harness 显式装配、启动与逆序关闭
+cmd/harness / cmd/harness-desktop → backend 显式装配与逆序关闭
 
-React Client -> WebSocket JSON-RPC -> appserver
-                                       +-> conversations -> Runner -> Loop / Tools
-                                       +-> 公共服务           +-> Session
+React Web     → WebSocket ─┐
+React Desktop → Wails Stream┴→ appserver → conversations → Runner → Loop / Tools
+                                                   └→ 公共服务 / Session
 ```
 
 `appserver` 负责协议与连接，`conversations` 编排会话操作，`internal` 按领域归拢执行、数据与具体实现。没有 Host 服务表或 Product 层。
@@ -49,22 +49,24 @@ Agent 的提示词、执行类型和工具权限在同一处配置。
 
 ## 运行
 
-环境要求：Go、Node.js、npm、Make，以及 Windows 上的 Git Bash。
+Web 需要 Go、Node.js、npm、Make；Desktop 还需要 Wails v3 CLI。Windows 还需要 Git Bash。
 
 ```bash
 make run
+make desktop-run  # wails3 dev：前端热更新，Go 改动后重启 Desktop
 ```
 
 其他常用命令：
 
 ```bash
 make build        # 构建前端并产出 .build/harness
+make desktop-build # 经 wails3 build 产出 .build/harness-desktop
 make agent-check  # 日常快速回归
 make test         # 完整串行验收
 ```
 
-启动后访问 `http://127.0.0.1:8888/`。本机数据保存在 `~/.harness`。
+Web 启动后访问 `http://127.0.0.1:8888/`。两端共用 `~/.harness`，同一时间只能运行一个后台；Desktop 不开放业务端口。
 
 ## 技术栈
 
-Go · React · TypeScript · Vite · WebSocket · JSON-RPC 2.0 · Monaco Editor · xterm.js · ConPTY
+Go · React · TypeScript · Vite · Wails v3 · WebSocket · JSON-RPC 2.0 · Monaco Editor · xterm.js · ConPTY

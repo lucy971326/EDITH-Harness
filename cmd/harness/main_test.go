@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"harness/internal/backend"
 )
 
 func TestUserDataDir(t *testing.T) {
@@ -11,7 +13,7 @@ func TestUserDataDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dir, err := userDataDir()
+	dir, err := backend.UserDataDir()
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -15,7 +15,7 @@ import type { RunNotification } from "../../../contracts/run.ts";
 type Calls = Methods & ServerMethods;
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected";
-export type SocketFactory = (url: string) => WebSocket;
+export type SocketFactory = (url: string) => WebSocket | Promise<WebSocket>;
 export type StatusListener = (
   status: ConnectionStatus,
   detail?: string,
@@ -109,9 +109,13 @@ export class RPCClient {
     this.started = true;
     this.status = "connecting";
     this.onStatus("connecting");
-    const socket = this.openSocket(this.url);
-    this.socket = socket;
     try {
+      const socket = await this.openSocket(this.url);
+      if (this.closed) {
+        socket.close();
+        throw new Error("连接已关闭");
+      }
+      this.socket = socket;
       await waitForOpen(socket);
       if (this.closed || this.socket !== socket) throw new Error("连接已关闭");
       socket.addEventListener("message", this.receive);
@@ -434,7 +438,11 @@ export class RPCClient {
 
   private receive = (event: MessageEvent): void => {
     try {
-      const envelope = JSON.parse(String(event.data));
+      const raw =
+        event.data instanceof ArrayBuffer
+          ? new TextDecoder().decode(event.data)
+          : String(event.data);
+      const envelope = JSON.parse(raw);
       if (envelope.jsonrpc !== "2.0")
         throw new Error("Invalid JSON-RPC version");
       if (typeof envelope.method === "string") {

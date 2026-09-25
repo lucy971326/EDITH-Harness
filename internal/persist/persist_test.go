@@ -27,3 +27,24 @@ func TestFilesScopeAppendAndRejectTraversal(t *testing.T) {
 		t.Fatal("Scope accepted traversal")
 	}
 }
+
+func TestLockRootExclusiveAndReleased(t *testing.T) {
+	root := t.TempDir()
+	first, err := LockRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second, err := LockRoot(root); err == nil {
+		second.Close()
+		first.Close()
+		t.Fatal("second backend acquired the same data directory")
+	}
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	second, err := LockRoot(root)
+	if err != nil {
+		t.Fatalf("lock was not released: %v", err)
+	}
+	defer second.Close()
+}

@@ -53,6 +53,7 @@ import {
   shouldClearSessionOnGetError,
 } from "./client/rpc";
 import { ChatConnection, initialChatState } from "./client/chat";
+import { socketFactory } from "./client/transport";
 import { activeRun, latestUsage } from "./state/chat";
 import { ChatMessages } from "./chat/chat-messages";
 import { type ModelSelection } from "./components/model-menu";
@@ -928,6 +929,7 @@ export default function App() {
       (client) => {
         void loadSessions(client);
       },
+      socketFactory,
     );
     chatRef.current = chat;
     chat.select(selectedIDRef.current);

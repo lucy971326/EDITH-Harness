@@ -1,0 +1,28 @@
+version: '3'
+
+tasks:
+  build:
+    desc: Build the Wails Desktop binary with the shared React assets.
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '{{if eq OS "darwin"}}13.0{{end}}'
+      CGO_CFLAGS: '{{if eq OS "darwin"}}-mmacosx-version-min=13.0{{end}}'
+      CGO_LDFLAGS: '{{if eq OS "darwin"}}-mmacosx-version-min=13.0{{end}}'
+    cmds:
+      - make agent-web-build
+      - mkdir -p .build
+      - go build -tags production -trimpath -o .build/harness-desktop ./cmd/harness-desktop
+
+  run:
+    desc: Run the built Desktop app.
+    cmds:
+      - .build/harness-desktop
+
+  build:dev:
+    desc: Rebuild the Desktop backend for Wails dev mode.
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '{{if eq OS "darwin"}}13.0{{end}}'
+      CGO_CFLAGS: '{{if eq OS "darwin"}}-mmacosx-version-min=13.0{{end}}'
+      CGO_LDFLAGS: '{{if eq OS "darwin"}}-mmacosx-version-min=13.0{{end}}'
+    cmds:
+      - mkdir -p .build
+      - go build -o .build/harness-desktop ./cmd/harness-desktop

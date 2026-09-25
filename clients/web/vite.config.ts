@@ -18,6 +18,8 @@ export default defineConfig({
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   server: {
     host: "127.0.0.1",
+    port: Number(process.env.WAILS_VITE_PORT) || 5173,
+    strictPort: process.env.WAILS_VITE_PORT !== undefined,
     proxy: { "/rpc": rpcProxy },
   },
   preview: {

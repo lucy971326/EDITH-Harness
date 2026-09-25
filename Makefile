@@ -1,4 +1,4 @@
-.PHONY: run build test web agent-check agent-web-build agent-go agent-race agent-contracts agent-web-test
+.PHONY: run build desktop-run desktop-build test web agent-check agent-web-build agent-go agent-race agent-contracts agent-web-test
 
 web:
 	npm --prefix clients/web ci
@@ -10,6 +10,12 @@ run: web
 build: web
 	mkdir -p .build
 	go build -o .build/harness ./cmd/harness
+
+desktop-run:
+	wails3 dev
+
+desktop-build:
+	wails3 build
 
 test: web
 	npm --prefix clients ci

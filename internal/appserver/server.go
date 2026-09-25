@@ -20,9 +20,9 @@ import (
 	"harness/internal/skills"
 )
 
-// 活对象。应用唯一的接入服务，拥有方法表、页面监听和当前连接。
+// 活对象。应用唯一的接入服务，拥有方法表、可选的 Web 监听和当前连接。
 type Server struct {
-	// 产品入口与公共能力；业务状态由产品和内核管理。
+	// 会话入口与公共能力；业务状态由各领域管理。
 	conversations   *conversations.Service
 	approvals       *approvals.Service
 	hooks           *hooks.Service
@@ -45,7 +45,7 @@ type Server struct {
 	closeOnce sync.Once
 	closeErr  error
 
-	// React 页面与 WebSocket 监听。
+	// Web 页面与 WebSocket 监听；桌面入口无需监听器。
 	listener serverListener
 }
 

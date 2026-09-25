@@ -12,9 +12,25 @@ import (
 	"harness/internal/appserver/internal/clientconn"
 
 	"github.com/coder/websocket"
+	"github.com/sourcegraph/jsonrpc2"
 )
 
-const maxRPCMessageBytes = 16 << 20
+const MaxRPCMessageBytes = 16 << 20
+
+// ServeStream 让非 WebSocket 传输复用相同的连接、初始化与订阅生命周期。
+func (s *Server) ServeStream(stream jsonrpc2.ObjectStream) {
+	if !s.lifecycle.begin() {
+		stream.Close()
+		return
+	}
+	defer s.lifecycle.end()
+	s.serveStream(stream)
+}
+
+func (s *Server) serveStream(stream jsonrpc2.ObjectStream) {
+	connection := clientconn.New(s.lifecycle.context(), stream, s.prepareCall)
+	connection.Run()
+}
 
 // serveHTTP 只区分 RPC 与静态页面。
 func (s *Server) serveHTTP(web http.Handler, w http.ResponseWriter, request *http.Request) {
@@ -53,10 +69,9 @@ func (s *Server) serveRPC(w http.ResponseWriter, request *http.Request) {
 	if err != nil {
 		return
 	}
-	socket.SetReadLimit(maxRPCMessageBytes)
+	socket.SetReadLimit(MaxRPCMessageBytes)
 	stream := &websocketObjectStream{ctx: request.Context(), socket: socket}
-	connection := clientconn.New(s.lifecycle.context(), stream, s.prepareCall)
-	connection.Run()
+	s.serveStream(stream)
 }
 
 // websocketObjectStream 只把 coder/websocket 消息交给 JSON-RPC 库。

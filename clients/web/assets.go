@@ -11,8 +11,8 @@ import (
 //go:embed dist
 var assets embed.FS
 
-// Handler 返回只读的 React 静态页面处理器。
-func Handler() (http.Handler, error) {
+// AssetsFS 返回同一份 React 构建产物，供 Web 与桌面资源服务使用。
+func AssetsFS() (fs.FS, error) {
 	root, err := fs.Sub(assets, "dist")
 	if err != nil {
 		return nil, fmt.Errorf("web client assets: %w", err)
@@ -20,6 +20,15 @@ func Handler() (http.Handler, error) {
 	_, err = fs.Stat(root, "index.html")
 	if err != nil {
 		return nil, fmt.Errorf("web client is not built: run make build: %w", err)
+	}
+	return root, nil
+}
+
+// Handler 返回只读的 React 静态页面处理器。
+func Handler() (http.Handler, error) {
+	root, err := AssetsFS()
+	if err != nil {
+		return nil, err
 	}
 	return http.FileServerFS(root), nil
 }

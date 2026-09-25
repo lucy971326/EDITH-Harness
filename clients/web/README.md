@@ -10,7 +10,7 @@
 make run
 ```
 
-Make 会安装前端依赖、构建 `dist/` 并启动 Harness。浏览器打开 `http://127.0.0.1:8888`，业务 WebSocket 使用同源 `/rpc`。
+Make 会安装前端依赖、构建 `dist/` 并启动 Harness。浏览器打开 `http://127.0.0.1:8888`，业务 WebSocket 使用同源 `/rpc`。Desktop 加载同一份 `dist/`，业务走 Wails Stream。
 
 开发页面时可另开终端运行：
 
@@ -20,6 +20,7 @@ npm run dev
 ```
 
 Vite 页面位于 `http://127.0.0.1:5173`，仅把同源 `/rpc` 代理到正式后台 `127.0.0.1:8888`。
+Desktop 开发模式由根目录的 `make desktop-run` 启动同一份 Vite 页面，Wails 默认使用 9245 端口并在 WebView 内代理它。
 
 ## 阅读路线
 
@@ -27,13 +28,13 @@ Vite 页面位于 `http://127.0.0.1:5173`，仅把同源 `/rpc` 代理到正式�
 
 ```text
 App -> 页面 / 草稿 / 操作
-  -> client/rpc -> WebSocket -> appserver
+  -> client/rpc -> WebSocket / Wails Stream -> appserver
 快照 + 事件 -> state/chat -> 聊天 / 过程 / 子任务页面
 workspace/workspace-tabs -> editor / review / terminal / subagent
 ```
 
 - `App.tsx`：页面装配；`workspace/sidebar.tsx / chat/composer.tsx`：会话导航与输入。
-- `client/rpc.ts`：类型化 RPC；`client/chat.ts`：主会话连接；`client/run-subscription.ts`：共用订阅、补快照与清理。
+- `client/rpc.ts`：类型化 RPC；`client/transport.ts`：按环境选择传输；`client/chat.ts`：主会话连接；`client/run-subscription.ts`：共用订阅、补快照与清理。
 - `state/chat.ts / state/chat-process.ts`：事件归并与只读分轮；`chat/chat-messages.tsx / chat/work-process.tsx`：呈现结果和过程。
 - `workspace/workspace-tabs.tsx / workspace/auxiliary-panel.tsx`：辅助面板与标签编排；[`editor/`](src/editor/README.md)：文件草稿、保存、冲突和监听。
 - `review/ / terminal/ / subagent/`：Diff、终端与子任务工作页。

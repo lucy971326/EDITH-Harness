@@ -1,0 +1,29 @@
+version: '3'
+
+dev_mode:
+  root_path: .
+  log_level: warn
+  debounce: 1000
+  ignore:
+    dir:
+      - .git
+      - .build
+      - clients/web/node_modules
+      - clients/web/dist
+      - reference
+      - node_modules
+    file:
+      - '*_test.go'
+    watched_extension:
+      - '*.go'
+    git_ignore: true
+  executes:
+    - cmd: make agent-web-build
+      type: once
+    - cmd: npm --prefix clients/web run dev
+      type: background
+    - cmd: wails3 task build:dev
+      type: blocking
+    - cmd: wails3 task run
+      type: primary
+      exit_policy: shutdown
