@@ -23,7 +23,8 @@ tasks:
       - task: deps
       - npm --prefix clients/web run build
       # Windows 直接 exec 需要可执行文件带 .exe 后缀。
-      - go build -tags production -trimpath -o .build/harness-desktop{{exeExt}} ./cmd/harness-desktop
+      # 正式版在 Windows 使用 GUI 子系统，双击时不弹控制台；开发版保留控制台日志。
+      - go build -tags production -trimpath {{if eq OS "windows"}}-ldflags="-H windowsgui" {{end}}-o .build/harness-desktop{{exeExt}} ./cmd/harness-desktop
 
   run:
     desc: Run the built Desktop app.
