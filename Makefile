@@ -1,15 +1,24 @@
 # Harness 开发命令入口。日常命令都在这里；Desktop 构建钩子在 Taskfile.yml（wails3 约定，不回调本文件）。
 # 本机 LLM 密钥在 ~/.harness/config.yaml（用户数据，与构建无关）。
 
-# Web：运行与构建
-.PHONY: web run build
+# Web：开发模式由 Vite 热更新页面，Go 后台提供 /rpc。
+.PHONY: web run run-backend run-frontend build
 
 web:
 	npm --prefix clients/web ci
 	npm --prefix clients/web run build
 
-run: web
-	go run ./cmd/harness
+run: clients/web/node_modules/.package-lock.json clients/web/dist/index.html
+	@$(MAKE) --no-print-directory -j2 run-backend run-frontend
+
+clients/web/dist/index.html: clients/web/node_modules/.package-lock.json
+	npm --prefix clients/web run build
+
+run-backend:
+	go run ./cmd/harness --no-browser
+
+run-frontend:
+	npm --prefix clients/web run dev -- --open --strictPort
 
 build: web
 	mkdir -p .build

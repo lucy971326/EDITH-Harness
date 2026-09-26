@@ -10,9 +10,9 @@
 make run
 ```
 
-Make 会安装前端依赖、构建 `dist/` 并启动 Harness。浏览器打开 `http://127.0.0.1:8888`，业务 WebSocket 使用同源 `/rpc`。Desktop 加载同一份 `dist/`，业务走 Wails Stream。
+`make run` 会在需要时安装前端依赖和首次构建 `dist/`，然后同时启动 Go 后台与 Vite。浏览器打开 `http://127.0.0.1:5173`，前端改动由 Vite 热更新；Go 改动后重启命令。业务 WebSocket 使用同源 `/rpc` 并代理到后台 `127.0.0.1:8888`。Desktop 正式版加载构建后的 `dist/`，业务走 Wails Stream。
 
-开发页面时可另开终端运行：
+如果后台已经启动，也可只运行前端开发服务器：
 
 ```sh
 cd clients/web

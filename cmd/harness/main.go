@@ -28,6 +28,10 @@ func run() (result error) {
 	if handled {
 		return workerErr
 	}
+	noBrowser := len(os.Args) == 2 && os.Args[1] == "--no-browser"
+	if len(os.Args) > 1 && !noBrowser {
+		return fmt.Errorf("usage: harness [--no-browser]")
+	}
 
 	dataDir, err := backend.UserDataDir()
 	if err != nil {
@@ -47,11 +51,13 @@ func run() (result error) {
 	if err != nil {
 		return err
 	}
-	err = openBrowser(url)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "无法自动打开浏览器：%v\n", err)
+	if !noBrowser {
+		err = openBrowser(url)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "无法自动打开浏览器：%v\n", err)
+		}
 	}
-	fmt.Printf("Harness 已启动：%s\n", url)
+	fmt.Printf("Harness 后台已启动：%s\n", url)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

@@ -54,7 +54,7 @@ Agent 的提示词、执行类型和工具权限在同一处配置。
 Web 需要 Go、Node.js、npm、Make；Desktop 还需要 Wails v3 CLI。Windows 还需要 Git Bash。
 
 ```bash
-make run
+make run          # Web 开发：Vite 热更新，浏览器打开 5173
 make desktop-run  # wails3 dev：前端热更新，Go 改动后重启 Desktop
 ```
 
@@ -67,7 +67,7 @@ make agent-check  # 日常快速回归
 make test         # 完整串行验收
 ```
 
-Web 启动后访问 `http://127.0.0.1:8888/`。两端共用 `~/.harness`，同一时间只能运行一个后台；Desktop 不开放业务端口。
+Web 开发页位于 `http://127.0.0.1:5173/`，Vite 将 `/rpc` 代理到 `127.0.0.1:8888`。Go 后台改动后需重启 `make run`。两端共用 `~/.harness`，同一时间只能运行一个后台；Desktop 不开放业务端口。
 
 ## 技术栈
 
