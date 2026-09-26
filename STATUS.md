@@ -33,7 +33,7 @@ Web 页面 `http://127.0.0.1:8888/`，业务连接 `ws://127.0.0.1:8888/rpc`。D
 ## 限制与未验证项
 
 - Windows 受限 Agent 沙箱未实现，Full Access 可用；原生目录选择仍需交互式 Windows 验收。
-- Desktop 已通过构建与连接入口检查；Windows 用户实机确认可双击启动且无控制台，聊天／终端等交互未逐项验收；macOS 窗口交互待实机验收。关闭最后窗口即退出，暂不做签名、安装包或托盘。
+- Desktop 已通过构建与连接入口检查；Windows 用户实机确认可双击启动且无控制台，Agent 命令不再弹窗仍待用户实机验收，聊天／终端等交互未逐项验收；macOS 窗口交互待实机验收。关闭最后窗口即退出，暂不做签名、安装包或托盘。
 - macOS Seatbelt 已在 macOS 27.0 arm64 验证，其他版本与 Intel 未验证。Linux 需要支持相应 namespace、seccomp 与挂载能力的 bwrap。
 - 沙箱不隔离硬链接别名；受保护目录内部的细粒度子路径授权暂时拒绝。异常断电／强杀可能留下 Linux 挂载占位空目录，不自动删除来源不明目录。
 - MCP 与 Hook 在宿主或远端执行，不在 Agent 命令沙箱内；Hook 信任仅覆盖配置，不跟踪脚本内容。
@@ -50,6 +50,7 @@ headless CLI、通用服务端反向请求、业务操作防重与完整多 Clie
 
 ## 最近验证
 
+- 2026-09-26 Windows Desktop 的管道命令启动时使用 `CREATE_NO_WINDOW`，交互终端仍走 ConPTY；GUI 父进程探针确认 Bash 启动的命令及下一层子命令均无可见控制台，输出与退出码正常。`make agent-check`、`make desktop-build` 通过。
 - 2026-09-26 Windows 正式桌面构建增加 GUI 子系统标志；新二进制的 PE 子系统为 Windows GUI，文件助手的标准输入输出正常，`make agent-check` 通过。用户确认双击启动无控制台、首页正常。
 - 2026-09-26 新会话默认模型只选密钥可用的 Provider；无可用密钥时创建失败并清理空会话。`make agent-check`、`wails3 task deps` 和 `wails3 task build` 通过；Desktop 交互的逐项验收仍待完成。
 - 2026-09-25 Wails 开发模式：`wails3 task build:dev`、`make agent-check` 通过；Vite 按 `WAILS_VITE_PORT` 启动且返回 HTTP 200。窗口内热更新仍待实机确认。

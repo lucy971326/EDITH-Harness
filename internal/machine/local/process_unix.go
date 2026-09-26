@@ -18,7 +18,7 @@ func newPlatformProcess() (*platformProcess, error) {
 	return &platformProcess{}, nil
 }
 
-func (p *platformProcess) prepare(cmd *exec.Cmd) {
+func (p *platformProcess) prepare(cmd *exec.Cmd, _ bool) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 }
 

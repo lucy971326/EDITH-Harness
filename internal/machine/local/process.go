@@ -209,7 +209,7 @@ func (m *Local) startPreparedProcess(request machine.ProcessRequest, cmd *exec.C
 	if err != nil {
 		return nil, fmt.Errorf("machine-local: prepare process: %w", err)
 	}
-	platform.prepare(cmd)
+	platform.prepare(cmd, request.TTY)
 
 	process := &localProcess{
 		ownerID:    request.OwnerID,

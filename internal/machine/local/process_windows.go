@@ -41,7 +41,16 @@ func newPlatformProcess() (*platformProcess, error) {
 	return &platformProcess{job: job}, nil
 }
 
-func (p *platformProcess) prepare(_ *exec.Cmd) {}
+func (p *platformProcess) prepare(cmd *exec.Cmd, tty bool) {
+	if tty {
+		return
+	}
+	// GUI 主进程没有控制台；管道命令启动 Bash 时不能为其创建可见终端。
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+	}
+	cmd.SysProcAttr.CreationFlags |= windows.CREATE_NO_WINDOW
+}
 
 func (p *platformProcess) started(cmd *exec.Cmd) error {
 	p.mu.Lock()
