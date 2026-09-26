@@ -146,6 +146,7 @@ export default function App() {
   const [panel, setPanel] = useState(
     () => preference("panel", "false") === "true",
   );
+  const panelOpen = panel && !settings;
   const [panelWidth, setPanelWidth] = useState(() =>
     Math.max(
       320,
@@ -347,6 +348,7 @@ export default function App() {
   }
 
   function openSettings() {
+    setPanel(false);
     setSettings(true);
     if (window.innerWidth < 760) setSidebar(false);
   }
@@ -972,7 +974,7 @@ export default function App() {
           } as CSSProperties
         }
       >
-        {sidebar && (
+        {sidebar && !settings && (
           <Sidebar
             connection={connection}
             backendBusy={backendBusy}
@@ -992,7 +994,7 @@ export default function App() {
             onReconnect={reconnect}
           />
         )}
-        {sidebar && (
+        {sidebar && !settings && (
           <ResizeHandle
             label="调整项目侧栏宽度"
             value={sidebarWidth}
@@ -1010,7 +1012,7 @@ export default function App() {
           />
         )}
         <main className="main">
-          <header className="topbar">
+          <header className="topbar" hidden={settings}>
             <div className="topbar-title">
               {!sidebar && (
                 <Button
@@ -1035,36 +1037,40 @@ export default function App() {
                 <span>聊天</span>
               )}
             </div>
-            <div className="topbar-actions">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={panel ? "收起辅助工作区" : "打开辅助工作区"}
-                    onClick={() => setPanel(!panel)}
-                  >
-                    <PanelRight />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>辅助工作区</TooltipContent>
-              </Tooltip>
-            </div>
+            {!settings && (
+              <div className="topbar-actions">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={panel ? "收起辅助工作区" : "打开辅助工作区"}
+                      onClick={() => setPanel(!panel)}
+                    >
+                      <PanelRight />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>辅助工作区</TooltipContent>
+                </Tooltip>
+              </div>
+            )}
           </header>
           <div className="workspace">
             {settings ? (
               <SettingsPage
-                hookSettings={
+                hookSettings={(onStateChange) =>
                   <HookSettingsPanel
                     client={approvalClient}
                     currentWorkspace={selected?.settings.workspace ?? ""}
+                    onStateChange={onStateChange}
                   />
                 }
-                approvalSettings={
+                approvalSettings={(onStateChange) =>
                   <ApprovalSettingsPanel
                     client={approvalClient}
                     models={models}
                     modelError={modelError}
+                    onStateChange={onStateChange}
                     onReloadModels={() => {
                       const client = clientRef.current;
                       if (client?.connected) void loadModels(client);
@@ -1300,14 +1306,14 @@ export default function App() {
           </div>
         </main>
         <>
-          {panel && (
+          {panelOpen && (
             <button
               className="panel-scrim"
               aria-label="关闭辅助区覆盖层"
               onClick={() => setPanel(false)}
             />
           )}
-          <aside className="aux-panel" aria-label="辅助工作区" hidden={!panel}>
+          <aside className="aux-panel" aria-label="辅助工作区" hidden={!panelOpen}>
             <ResizeHandle
               label="调整辅助工作区宽度"
               value={visiblePanelWidth}
@@ -1341,7 +1347,7 @@ export default function App() {
         </>
         <AppContextMenu
           onAddReference={
-            selected && selectedID === selected.sessionID
+            !settings && selected && selectedID === selected.sessionID
               ? addContextReference
               : undefined
           }

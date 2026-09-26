@@ -31,7 +31,7 @@ export function TerminalView({
       cursorStyle: "bar",
       convertEol: false,
       fontFamily: terminalFont(),
-      fontSize: 13,
+      fontSize: Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--font-size-code")),
       lineHeight: 1.18,
       scrollback: 5000,
       theme: terminalTheme(),
@@ -148,11 +148,30 @@ export function TerminalView({
 
 function terminalTheme() {
   const style = getComputedStyle(document.documentElement);
+  const color = (name: string) => style.getPropertyValue(name).trim();
   return {
-    background: style.getPropertyValue("--card").trim(),
-    foreground: style.getPropertyValue("--foreground").trim(),
-    cursor: style.getPropertyValue("--foreground").trim(),
-    selectionBackground: style.getPropertyValue("--secondary").trim(),
+    background: color("--card"),
+    foreground: color("--foreground"),
+    cursor: color("--ring"),
+    cursorAccent: color("--card"),
+    selectionBackground: color("--selection"),
+    selectionInactiveBackground: color("--selection-inactive"),
+    black: color("--terminal-black"),
+    red: color("--terminal-red"),
+    green: color("--terminal-green"),
+    yellow: color("--terminal-yellow"),
+    blue: color("--terminal-blue"),
+    magenta: color("--terminal-magenta"),
+    cyan: color("--terminal-cyan"),
+    white: color("--terminal-white"),
+    brightBlack: color("--terminal-bright-black"),
+    brightRed: color("--terminal-bright-red"),
+    brightGreen: color("--terminal-bright-green"),
+    brightYellow: color("--terminal-bright-yellow"),
+    brightBlue: color("--terminal-bright-blue"),
+    brightMagenta: color("--terminal-bright-magenta"),
+    brightCyan: color("--terminal-bright-cyan"),
+    brightWhite: color("--terminal-bright-white"),
   };
 }
 

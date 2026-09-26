@@ -5,9 +5,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronRight } from "../icons";
+import { ChevronRight, Command, Plus, RefreshCw } from "../icons";
 import type { HookConfig, HookView } from "../../../contracts/appserver.ts";
 import { RPCClient, formatRPCError } from "../client/rpc";
+import type { SettingsDraftState } from "./settings-page";
 
 type Scope = "global" | "project";
 type Draft = Omit<HookConfig, "args" | "tools"> & { argsText: string; toolsText: string };
@@ -16,9 +17,10 @@ function toDraft(hook: HookConfig): Draft {
   return { ...hook, argsText: JSON.stringify(hook.args), toolsText: hook.tools.join("\n") };
 }
 
-export function HookSettingsPanel({ client, currentWorkspace }: {
+export function HookSettingsPanel({ client, currentWorkspace, onStateChange }: {
   client: RPCClient | null;
   currentWorkspace: string;
+  onStateChange: (state: SettingsDraftState) => void;
 }) {
   const [scope, setScope] = useState<Scope>("global");
   const [workspace, setWorkspace] = useState(currentWorkspace);
@@ -31,6 +33,8 @@ export function HookSettingsPanel({ client, currentWorkspace }: {
   const [dirty, setDirty] = useState(false);
   const [reload, setReload] = useState(0);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
+
+  useEffect(() => { onStateChange({ dirty, saving }); }, [dirty, saving, onStateChange]);
 
   useEffect(() => {
     if (dirty) return;
@@ -135,19 +139,29 @@ export function HookSettingsPanel({ client, currentWorkspace }: {
   }
 
   const source = view?.[scope];
+  function addHook() {
+    setDraft((items) => [...items, {
+      name: "", enabled: true, command: "", argsText: "[]", toolsText: "", timeoutSeconds: 0,
+    }]);
+    setOpenIndex(draft.length);
+    changed();
+  }
+
   return <>
-    <h2>Hooks</h2>
-    <div className="effort-options" role="group" aria-label="Hook 来源">
+    <header className="settings-heading"><h2>Hooks</h2><p>在工具调用前执行脚本，用于检查、记录或拦截操作。</p></header>
+    <section className="settings-section">
+    <div className="settings-section-header"><div><h3>生效范围</h3><p>{scope === "global" ? "全局配置对所有项目生效。" : "项目配置只对指定工作区生效，使用前需要信任。"}</p></div></div>
+    <div className="settings-segmented" role="group" aria-label="Hook 来源">
       {(["global", "project"] as const).map((item) => <Button key={item}
-        variant={scope === item ? "default" : "outline"} size="sm" disabled={saving}
+        variant="ghost" aria-pressed={scope === item} size="sm" disabled={saving}
         onClick={() => { if (item !== scope && !protectDraft()) setScope(item); }}>
         {item === "global" ? "全局" : "项目"}
       </Button>)}
     </div>
-    {scope === "project" && <div className="agent-form">
+    {scope === "project" && <div className="settings-field hook-workspace">
       <Label htmlFor="hook-workspace">工作区</Label>
-      <Input id="hook-workspace" value={workspaceText} onChange={(event) => setWorkspaceText(event.target.value)} />
-      <div className="effort-options">
+      <Input id="hook-workspace" value={workspaceText} disabled={saving} placeholder="选择或输入项目目录" onChange={(event) => setWorkspaceText(event.target.value)} />
+      <div className="settings-actions">
         <Button size="sm" variant="outline" disabled={saving} onClick={() => {
           if (protectDraft()) return;
           if (workspace === workspaceText) setReload((value) => value + 1);
@@ -156,8 +170,11 @@ export function HookSettingsPanel({ client, currentWorkspace }: {
         <Button size="sm" variant="outline" disabled={saving} onClick={() => void pickWorkspace()}>选择文件夹</Button>
       </div>
     </div>}
+    </section>
     {!client?.connected && <p className="inline-notice">连接后台后可修改。</p>}
-    {error && <p className="inline-notice" role="alert">{error}</p>}
+    {error && <div className="inline-notice" role="alert">{error}
+      {!view && <Button size="sm" variant="ghost" disabled={saving || !client?.connected} onClick={() => setReload((value) => value + 1)}>重新加载</Button>}
+    </div>}
     {!view && client?.connected && !error && <p className="metadata">正在加载…</p>}
     {view && source && <>
       {source.error && <p className="inline-notice" role="alert">配置读取失败：{source.error}</p>}
@@ -165,6 +182,15 @@ export function HookSettingsPanel({ client, currentWorkspace }: {
         <p className="inline-notice">项目配置已改变，项目 Hook 已暂停。</p>
         <Button size="sm" variant="outline" disabled={saving || dirty || !!source.error} onClick={() => void trust()}>信任当前项目配置</Button>
       </>}
+      <section className="settings-section">
+      <div className="settings-section-header"><div><h3>工具调用前 <span className="settings-badge">{draft.length}</span></h3><p>多个 Hook 按列表顺序执行。</p></div>
+        {draft.length > 0 && <Button size="sm" variant="outline" disabled={saving || !client?.connected} onClick={addHook}><Plus />新增 Hook</Button>}
+      </div>
+      {draft.length === 0 && <div className="settings-empty">
+        <Command /><h3>还没有{scope === "global" ? "全局" : "项目"} Hook</h3>
+        <p>添加脚本，让工具执行遵循你的工作流程。</p>
+        <Button size="sm" variant="outline" disabled={saving || !client?.connected || (!!source.error && !source.hash) || (scope === "project" && !workspace)} onClick={addHook}><Plus />添加第一个 Hook</Button>
+      </div>}
       <div className="hook-list">
         {draft.map((hook, index) => <Collapsible
           key={index}
@@ -178,7 +204,7 @@ export function HookSettingsPanel({ client, currentWorkspace }: {
             <span className="metadata">{hook.enabled ? "已启用" : "已停用"}</span>
           </CollapsibleTrigger>
           <CollapsibleContent className="agent-form hook-form">
-            <div className="effort-options">
+            <div className="settings-actions">
               <Switch
                 aria-label={`${hook.name || `Hook ${index + 1}`}启用状态`}
                 checked={hook.enabled}
@@ -223,19 +249,13 @@ export function HookSettingsPanel({ client, currentWorkspace }: {
           </CollapsibleContent>
         </Collapsible>)}
       </div>
-      <div className="effort-options">
-        <Button variant="outline" disabled={saving} onClick={() => {
-          setDraft((items) => [...items, {
-            name: "", enabled: true, command: "", argsText: "[]", toolsText: "", timeoutSeconds: 0,
-          }]);
-          setOpenIndex(draft.length);
-          changed();
-        }}>新增 Hook</Button>
-        <Button disabled={saving || !client?.connected || (!!source.error && !source.hash) || (scope === "project" && !workspace)} onClick={() => void save()}>
-          {saving ? "正在保存…" : "保存"}
+      </section>
+      <div className="settings-savebar">
+        <span className="settings-save-status" role="status">{dirty ? "有未保存的更改" : source.error ? "配置读取失败" : saved ? "已保存" : "所有更改已保存"}</span>
+        <Button variant="ghost" disabled={saving || !client?.connected} onClick={() => setReload((value) => value + 1)}><RefreshCw />{dirty ? "放弃更改" : "重新加载"}</Button>
+        <Button disabled={!dirty || saving || !client?.connected || (!!source.error && !source.hash) || (scope === "project" && !workspace)} onClick={() => void save()}>
+          {saving ? "保存中…" : "保存更改"}
         </Button>
-        {saved && <span className="metadata" role="status">已保存</span>}
-        <Button variant="ghost" disabled={saving} onClick={() => setReload((value) => value + 1)}>{dirty ? "放弃修改并重新加载" : "重新加载"}</Button>
       </div>
       {view.lastError && <p className="inline-notice" role="status">最近一次 Hook 问题：{view.lastError}</p>}
     </>}

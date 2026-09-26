@@ -7,6 +7,7 @@ import { ContextMenu } from "../components/context-menu";
 import {
   defineEditorThemes,
   editorFontFamily,
+  editorFontSize,
   editorLanguage,
   useEditorTheme,
 } from "./monaco";
@@ -117,7 +118,7 @@ export function CodeEditor({
             automaticLayout: true,
             contextmenu: false,
             fontFamily: editorFontFamily,
-            fontSize: 13,
+            fontSize: editorFontSize,
             lineHeight: 21,
             minimap: { enabled: false },
             overviewRulerBorder: false,

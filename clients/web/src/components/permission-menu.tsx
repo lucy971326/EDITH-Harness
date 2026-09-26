@@ -25,13 +25,17 @@ export function PermissionMenu({ modes, value, disabled, onChange }: {
           <span className="permission-label">{label}</span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" side="top">
+      <DropdownMenuContent className="permission-popover" align="start" side="top" collisionPadding={12} aria-label="权限模式">
+        <div className="picker-heading">
+          <h3>权限模式</h3>
+          <p>选择 Agent 可执行操作的范围。</p>
+        </div>
         {modes.map((mode) => (
-          <DropdownMenuItem key={mode.id} disabled={disabled || !mode.available}
+          <DropdownMenuItem className="permission-option" key={mode.id} disabled={disabled || !mode.available}
+            data-selected={mode.id === value}
             onSelect={() => onChange(mode.id)}>
-            <span>{mode.label}</span>
-            {!mode.available && <span className="muted">暂不可用</span>}
-            {mode.id === value && <Check className="ml-auto" />}
+            <span>{mode.label}{!mode.available && <small>暂不可用</small>}</span>
+            {mode.id === value && <Check />}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>

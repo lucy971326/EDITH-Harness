@@ -34,12 +34,15 @@ export function AgentMenu({
           <span className="agent-label">{selected?.name ?? (value || "选择 Agent")}</span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="agent-popover" align="start" side="top">
-        <h3>Agent</h3>
-        <p className="metadata">选择后立即保存，用于下一轮。</p>
+      <PopoverContent className="agent-popover" align="start" side="top" collisionPadding={12} aria-label="选择 Agent">
+        <div className="picker-heading">
+          <h3>Agent</h3>
+          <p>选择后立即保存，用于下一轮。</p>
+        </div>
         <div className="agent-options" role="group" aria-label="Agent">
           {agents?.map((agent) => (
             <button
+              className="ui-menu-item"
               key={agent.id}
               aria-pressed={agent.id === value}
               onClick={() => {

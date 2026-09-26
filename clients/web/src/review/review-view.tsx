@@ -7,6 +7,7 @@ import { Columns2, FileText, PanelRight, Rows3, Undo2 } from "../icons";
 import {
   defineEditorThemes,
   editorFontFamily,
+  editorFontSize,
   editorLanguage,
   useEditorTheme,
 } from "../editor/monaco";
@@ -277,7 +278,7 @@ export function ReviewView({
                 automaticLayout: true,
                 contextmenu: true,
                 fontFamily: editorFontFamily,
-                fontSize: 13,
+                fontSize: editorFontSize,
                 lineHeight: 21,
                 minimap: { enabled: false },
                 readOnly: true,

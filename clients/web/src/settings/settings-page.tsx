@@ -43,6 +43,9 @@ import type {
 
 type AgentDraft = AgentSaveParams & { id?: string };
 
+// 数据。设置表单向页面报告的编辑与保存状态。
+export type SettingsDraftState = { dirty: boolean; saving: boolean };
+
 function draftFrom(agent: AgentView): AgentDraft {
   return {
     id: agent.id,
@@ -81,12 +84,15 @@ export function SettingsPage({
   onReload: () => void;
   onSave: (agent: AgentSaveParams) => Promise<AgentView | null>;
   onDelete: (agentID: string) => Promise<boolean>;
-  approvalSettings: ReactNode;
-  hookSettings: ReactNode;
+  approvalSettings: (onStateChange: (state: SettingsDraftState) => void) => ReactNode;
+  hookSettings: (onStateChange: (state: SettingsDraftState) => void) => ReactNode;
 }) {
   const [selectedID, setSelectedID] = useState<string | null>(null);
   const [draft, setDraft] = useState<AgentDraft | null>(null);
   const [saved, setSaved] = useState("");
+  const [approvalState, setApprovalState] = useState<SettingsDraftState>({ dirty: false, saving: false });
+  const [hookState, setHookState] = useState<SettingsDraftState>({ dirty: false, saving: false });
+  const [confirmBack, setConfirmBack] = useState(false);
 
   useEffect(() => {
     if (draft || !agents?.length) return;
@@ -96,6 +102,15 @@ export function SettingsPage({
 
   const selected = agents?.find((agent) => agent.id === selectedID);
   const cannotDelete = !selected || selected.id === "default" || selected.inUse;
+  const dirty = !!draft && (!selected || draft.name !== selected.name ||
+    draft.kind !== selected.kind || draft.systemPrompt !== selected.systemPrompt ||
+    draft.tools.length !== selected.tools.length || draft.tools.some((name) => !selected.tools.includes(name)));
+
+  function updateDraft(change: Partial<AgentDraft>) {
+    if (!draft) return;
+    setDraft({ ...draft, ...change });
+    setSaved("");
+  }
 
   function edit(agent: AgentView) {
     setSelectedID(agent.id);
@@ -105,17 +120,22 @@ export function SettingsPage({
 
   return (
     <section className="settings-page">
-      <Button variant="ghost" onClick={onBack}>
-        <ArrowLeft />
-        返回聊天
-      </Button>
-      <h1>设置</h1>
       <Tabs
         defaultValue="appearance"
         orientation="vertical"
         className="settings-layout"
       >
-        <TabsList className="settings-nav">
+        <div className="settings-rail">
+          <Button variant="ghost" className="settings-back"
+            disabled={saving || approvalState.saving || hookState.saving}
+            onClick={() => {
+              if (dirty || approvalState.dirty || hookState.dirty) setConfirmBack(true);
+              else onBack();
+            }}>
+            <ArrowLeft />返回聊天
+          </Button>
+          <h1>设置</h1>
+        <TabsList className="settings-nav" aria-label="设置分类">
           <TabsTrigger value="appearance">
             <Sun />
             外观
@@ -127,13 +147,22 @@ export function SettingsPage({
           <TabsTrigger value="approvals"><Shield />智能审批</TabsTrigger>
           <TabsTrigger value="hooks"><Command />Hooks</TabsTrigger>
         </TabsList>
+          <span className="settings-rail-caption">Harness · 工作台偏好</span>
+        </div>
         <div className="settings-content">
-          <TabsContent value="approvals">{approvalSettings}</TabsContent>
-          <TabsContent value="hooks">{hookSettings}</TabsContent>
-          <TabsContent value="appearance">
-            <h2>外观</h2>
-            <h3 className="section-label">主题</h3>
-            <div className="theme-grid">
+          <TabsContent value="approvals" forceMount>{approvalSettings(setApprovalState)}</TabsContent>
+          <TabsContent value="hooks" forceMount>{hookSettings(setHookState)}</TabsContent>
+          <TabsContent value="appearance" forceMount>
+            <header className="settings-heading">
+              <h2>外观</h2>
+              <p>让工作台适合你的使用习惯。</p>
+            </header>
+            <section className="settings-section">
+              <div className="settings-section-header">
+                <div><h3>界面主题</h3><p>选择明暗风格，或随系统自动切换。</p></div>
+                <span className="settings-badge">即时生效</span>
+              </div>
+            <div className="theme-grid" role="group" aria-label="界面主题">
               {[
                 { id: "light", name: "浅色", icon: Sun },
                 { id: "dark", name: "深色", icon: Moon },
@@ -145,21 +174,26 @@ export function SettingsPage({
                   onClick={() => setTheme(item.id)}
                   aria-pressed={theme === item.id}
                 >
-                  <item.icon />
-                  <span>{item.name}</span>
-                  {theme === item.id && <Check />}
+                  <span className={`theme-preview theme-preview-${item.id}`} aria-hidden="true">
+                    <span className="theme-preview-sidebar"><i /><i /><i /></span>
+                    <span className="theme-preview-content"><i /><i /><span /></span>
+                  </span>
+                  <span className="theme-option-label"><item.icon /><span>{item.name}</span>
+                    <span className="theme-check">{theme === item.id && <Check />}</span>
+                  </span>
                 </button>
               ))}
             </div>
+            </section>
           </TabsContent>
 
-          <TabsContent value="agents">
-            <div className="settings-section-header">
-              <h2>Agent</h2>
+          <TabsContent value="agents" forceMount>
+            <header className="settings-heading settings-section-header">
+              <div><h2>Agent</h2><p>为不同任务配置提示词与可用工具。</p></div>
               <Button
                 size="sm"
                 variant="outline"
-                disabled={loading || saving || kinds.length === 0}
+                disabled={loading || saving || dirty || kinds.length === 0}
                 onClick={() => {
                   setSelectedID(null);
                   setDraft({
@@ -172,9 +206,9 @@ export function SettingsPage({
                 }}
               >
                 <Plus />
-                新建
+                新建 Agent
               </Button>
-            </div>
+            </header>
 
             {error && (
               <div role="status" className="inline-notice">
@@ -185,60 +219,77 @@ export function SettingsPage({
               </div>
             )}
             {loading && <p className="metadata">正在加载 Agent…</p>}
-            <div className="agent-chips">
+            <div className="agent-chips" role="group" aria-label="选择 Agent">
               {agents?.map((agent) => (
                 <Button
                   key={agent.id}
                   variant={selectedID === agent.id ? "secondary" : "ghost"}
+                  aria-pressed={selectedID === agent.id}
+                  disabled={saving || dirty}
                   onClick={() => edit(agent)}
                 >
+                  <Bot />
                   {agent.name}
+                  {agent.id === "default" && <span className="settings-badge">默认</span>}
                 </Button>
               ))}
             </div>
 
             {draft && (
               <div className="agent-form">
+                <section className="settings-section">
+                  <div className="settings-section-header"><div><h3>基本信息</h3><p>在聊天中选择 Agent 时，会显示这个名称。</p></div></div>
+                <div className="settings-fields">
+                <div className="settings-field">
                 <Label htmlFor="agent-name">名称</Label>
                 <Input
                   id="agent-name"
                   value={draft.name}
                   disabled={saving}
                   onChange={(event) =>
-                    setDraft({ ...draft, name: event.target.value })
+                    updateDraft({ name: event.target.value })
                   }
                 />
-                <Label htmlFor="agent-kind">执行类型</Label>
+                </div>
+                {kinds.length > 1 && <div className="settings-field">
+                <Label htmlFor="agent-kind">运行方式</Label>
                 <select
                   id="agent-kind"
-                  className="agent-kind-select"
+                  className="ui-focus ui-field agent-kind-select"
                   value={draft.kind}
                   disabled={saving}
                   onChange={(event) =>
-                    setDraft({ ...draft, kind: event.target.value })
+                    updateDraft({ kind: event.target.value })
                   }
                 >
                   {kinds.map((kind) => (
                     <option key={kind.kind} value={kind.kind}>
-                      {kind.kind}
+                      {kind.kind === "react" ? "ReAct · 推理与工具调用" : kind.kind}
                     </option>
                   ))}
                 </select>
+                </div>}
+                </div>
+                </section>
+                <section className="settings-section settings-field">
                 <Label htmlFor="agent-prompt">系统提示词</Label>
+                <p className="settings-description">定义 Agent 的职责、工作方式和回答偏好。</p>
                 <Textarea
                   id="agent-prompt"
                   rows={5}
                   value={draft.systemPrompt}
                   disabled={saving}
                   onChange={(event) =>
-                    setDraft({ ...draft, systemPrompt: event.target.value })
+                    updateDraft({ systemPrompt: event.target.value })
                   }
                   placeholder="告诉 Agent 如何工作…"
                 />
-                <Collapsible className="tools-config">
+                </section>
+                <Collapsible className="tools-config settings-section">
                   <CollapsibleTrigger>
                     <ChevronRight className="disclosure-chevron" />
-                    高级配置 · 工具权限
+                    <span>可用工具</span>
+                    <span className="settings-badge">已选 {draft.tools.length} 项</span>
                   </CollapsibleTrigger>
                   <CollapsibleContent>
                     {tools.map((tool) => (
@@ -247,15 +298,15 @@ export function SettingsPage({
                           htmlFor={`tool-${tool.name}`}
                           title={tool.description}
                         >
-                          {tool.name}
+                          <span>{tool.name}</span>
+                          <span className="settings-description">{tool.description}</span>
                         </Label>
                         <Switch
                           id={`tool-${tool.name}`}
                           checked={draft.tools.includes(tool.name)}
                           disabled={saving}
                           onCheckedChange={(checked) =>
-                            setDraft({
-                              ...draft,
+                            updateDraft({
                               tools: checked
                                 ? [...draft.tools, tool.name]
                                 : draft.tools.filter(
@@ -268,9 +319,15 @@ export function SettingsPage({
                     ))}
                   </CollapsibleContent>
                 </Collapsible>
-                <div className="agent-form-footer">
+                <div className="settings-savebar">
+                  <span className="settings-save-status" role="status">{dirty ? "有未保存的更改" : saved || "所有更改已保存"}</span>
+                  <Button variant="ghost" disabled={saving || !dirty} onClick={() => {
+                    const fallback = selected ?? agents?.[0];
+                    if (fallback) edit(fallback);
+                    else { setDraft(null); setSelectedID(null); setSaved(""); }
+                  }}>放弃更改</Button>
                   <Button
-                    disabled={saving || !draft.name.trim() || !draft.kind}
+                    disabled={saving || !dirty || !draft.name.trim() || !draft.kind}
                     onClick={() =>
                       void (async () => {
                         const result = await onSave({
@@ -286,9 +343,14 @@ export function SettingsPage({
                   >
                     {saving ? "保存中…" : "保存更改"}
                   </Button>
+                </div>
+                <div className="settings-danger-row">
+                  <p className="settings-description">
+                    {selected?.id === "default" ? "默认 Agent 始终保留，可按需修改。" : selected?.inUse ? "该 Agent 正被会话使用，暂时无法删除。" : "删除 Agent 后无法恢复。"}
+                  </p>
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
-                      <Button variant="ghost" disabled={saving || cannotDelete}>
+                      <Button variant="ghost" className="settings-delete" disabled={saving || cannotDelete}>
                         <Trash2 />
                         删除
                       </Button>
@@ -323,23 +385,23 @@ export function SettingsPage({
                     </AlertDialogContent>
                   </AlertDialog>
                 </div>
-                {cannotDelete && selected && (
-                  <p className="metadata">
-                    {selected.id === "default"
-                      ? "默认 Agent 可以编辑，不能删除。"
-                      : "该 Agent 正被会话使用，不能删除。"}
-                  </p>
-                )}
-                {saved && (
-                  <p role="status" className="muted">
-                    {saved}
-                  </p>
-                )}
               </div>
             )}
           </TabsContent>
         </div>
       </Tabs>
+      <AlertDialog open={confirmBack} onOpenChange={setConfirmBack}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>放弃更改并返回聊天？</AlertDialogTitle>
+            <AlertDialogDescription>设置中还有未保存的修改。你可以继续编辑，或放弃这些修改。</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>继续编辑</AlertDialogCancel>
+            <AlertDialogAction onClick={onBack}>放弃并返回</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 }
