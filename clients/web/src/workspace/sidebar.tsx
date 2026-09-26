@@ -56,12 +56,6 @@ export function Sidebar({
 }) {
   const connected = connection === "connected";
   const projects = sessions ? groupSessions(sessions) : [];
-  const connectionLabel =
-    connection === "connecting"
-      ? "正在连接"
-      : connection === "connected"
-        ? "已连接"
-        : "已断开";
 
   function navigationItem(entry: NavigationEntry) {
     const Icon = entry.icon;
@@ -187,10 +181,9 @@ export function Sidebar({
         </nav>
         <div className="sidebar-bottom">
           <nav aria-label="应用导航">{navigation.filter((entry) => entry.placement === "footer").map(navigationItem)}</nav>
-          <div className="local-caption" data-connected={connected}>
-            <Circle />
-            本地工作台<span>{connectionLabel}</span>
-          </div>
+          {connection === "connecting" && (
+            <div className="connection-status"><Circle />正在连接</div>
+          )}
           {connection === "disconnected" && (
             <Button variant="ghost" size="sm" onClick={onReconnect}>
               <RefreshCw />

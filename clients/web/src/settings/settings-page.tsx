@@ -58,7 +58,6 @@ export function SettingsPage({ onBack, setNavigationGuard, ...contentProps }: Se
               <section.icon />{section.label}
             </TabsTrigger>)}
           </TabsList>
-          <span className="settings-rail-caption">Harness · 工作台偏好</span>
         </div>
         <div className="settings-content">
           {sections.map((section) => <SectionContent key={section.id} section={section} onStateChange={reportState} />)}
