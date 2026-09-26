@@ -2,6 +2,11 @@ import { Approvals } from "./chat/approvals";
 import { ApprovalSettingsPanel } from "./settings/approval-settings";
 import { HookSettingsPanel } from "./settings/hook-settings";
 import { ModelSettingsPanel } from "./settings/model-settings";
+import { ArchivedSettingsPanel } from "./settings/archived-settings";
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
+} from "@/components/ui/alert-dialog";
 import type { PermissionModeChoice } from "../../contracts/approvals.ts";
 import type { PermissionMode } from "../../contracts/harness.ts";
 import {
@@ -197,7 +202,15 @@ export default function App() {
     runID: string;
   } | null>(null);
   const [sessions, setSessions] = useState<SessionView[] | null>(null);
+  const [archivedSessions, setArchivedSessions] = useState<SessionView[] | null>(null);
   const [listError, setListError] = useState("");
+  const [archiveError, setArchiveError] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<
+    { kind: "session"; id: string; title: string } |
+    { kind: "project"; workspace: string; count: number } | null
+  >(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const [selectedID, setSelectedID] = useState<string | null>(restoredSession);
   const [selected, setSelected] = useState<SessionView | null>(null);
   const [opening, setOpening] = useState(false);
@@ -271,6 +284,7 @@ export default function App() {
   const settingsDisabled =
     !connected ||
     !selected ||
+    !!selected.archivedAt ||
     !synchronized ||
     !!currentRun ||
     busySending ||
@@ -278,6 +292,7 @@ export default function App() {
   const canSend =
     synchronized &&
     !!selected &&
+    !selected.archivedAt &&
     !busySending &&
     !stoppingCurrent &&
     !commandBusy &&
@@ -406,7 +421,7 @@ export default function App() {
     const generation = ++listGeneration.current;
     setListError("");
     try {
-      const result = await client.list();
+      const [result, archived] = await Promise.all([client.list(), client.archived()]);
       if (
         generation !== listGeneration.current ||
         client !== clientRef.current ||
@@ -414,9 +429,16 @@ export default function App() {
       )
         return;
       setSessions(result.sessions);
+      setArchivedSessions(archived.sessions);
+      setArchiveError("");
       const currentID = selectedIDRef.current;
       if (!currentID) {
         setSelected(null);
+        return;
+      }
+      if (![...result.sessions, ...archived.sessions].some((item) => item.sessionID === currentID)) {
+        setCurrentSession(null, null);
+        applyDraft(null);
         return;
       }
       await loadSelected(client, currentID);
@@ -424,6 +446,7 @@ export default function App() {
       if (generation !== listGeneration.current || client !== clientRef.current)
         return;
       setListError(formatRPCError(error, "无法加载项目列表"));
+      setArchiveError(formatRPCError(error, "无法加载已归档会话"));
     }
   }
 
@@ -515,6 +538,84 @@ export default function App() {
     // 历史会话可以保留已移动的目录；新会话必须重新定位到真实目录。
     setNotice("项目目录已移动或删除，请重新选择目录。历史会话仍会保留。");
     await openProject();
+  }
+
+  async function viewArchivedSession(sessionID: string) {
+    setCurrentSession(sessionID, archivedSessions?.find((item) => item.sessionID === sessionID) ?? null);
+    applyDraft(sessionID);
+    setNotice("");
+    navigate("/");
+    const client = clientRef.current;
+    if (client?.connected) await loadSelected(client, sessionID);
+  }
+
+  function forgetDrafts(ids: string[]) {
+    for (const id of ids) {
+      const old = drafts.current.get(id);
+      for (const image of old?.images ?? []) URL.revokeObjectURL(image.url);
+      drafts.current.delete(id);
+    }
+    if (ids.includes(selectedIDRef.current ?? "")) {
+      setCurrentSession(null, null);
+      applyDraft(null);
+    }
+  }
+
+  async function archiveSession(sessionID: string) {
+    const client = clientRef.current;
+    if (!client?.connected) return;
+    try {
+      await client.archive(sessionID);
+      forgetDrafts([sessionID]);
+      await loadSessions(client);
+    } catch (error) {
+      setNotice(formatRPCError(error, "归档失败"));
+    }
+  }
+
+  async function restoreSession(sessionID: string) {
+    const client = clientRef.current;
+    if (!client?.connected) return;
+    try {
+      await client.restore(sessionID);
+      await loadSessions(client);
+    } catch (error) {
+      setArchiveError(formatRPCError(error, "恢复失败"));
+    }
+  }
+
+  function requestDeleteSession(sessionID: string) {
+    const item = [...(sessions ?? []), ...(archivedSessions ?? [])].find((entry) => entry.sessionID === sessionID);
+    if (!item) return;
+    setDeleteError("");
+    setDeleteTarget({ kind: "session", id: sessionID, title: item.title });
+  }
+
+  function requestDeleteProject(workspace: string) {
+    const count = [...(sessions ?? []), ...(archivedSessions ?? [])]
+      .filter((item) => item.settings.workspace === workspace).length;
+    setDeleteError("");
+    setDeleteTarget({ kind: "project", workspace, count });
+  }
+
+  async function confirmDelete() {
+    const client = clientRef.current;
+    const target = deleteTarget;
+    if (!client?.connected || !target || deleteBusy) return;
+    setDeleteBusy(true);
+    setDeleteError("");
+    try {
+      const result = target.kind === "session"
+        ? await client.deleteSession(target.id)
+        : await client.deleteProject(target.workspace);
+      forgetDrafts(result.sessionIDs);
+      setDeleteTarget(null);
+      await loadSessions(client);
+    } catch (error) {
+      setDeleteError(formatRPCError(error, "永久删除失败"));
+    } finally {
+      setDeleteBusy(false);
+    }
   }
 
   async function openProject() {
@@ -993,6 +1094,9 @@ export default function App() {
         models={models} modelError={modelError} onStateChange={onStateChange}
         onReloadModels={() => { if (clientRef.current?.connected) void loadModels(clientRef.current); }}
         onSaved={() => { if (clientRef.current?.connected) void loadPermissionModes(clientRef.current); }} />,
+      archivedSettings: () => <ArchivedSettingsPanel sessions={archivedSessions} error={archiveError}
+        onView={(id) => void viewArchivedSession(id)} onRestore={(id) => void restoreSession(id)} onDeleteSession={requestDeleteSession}
+        onDeleteProject={requestDeleteProject} />,
     },
   });
   const activePage = navigation.find((entry) => entry.kind === "page" && entry.path === path);
@@ -1039,6 +1143,9 @@ export default function App() {
             onSelect={(sessionID) => void selectSession(sessionID)}
             onCreate={(workspace) => void createInWorkspace(workspace)}
             onReconnect={reconnect}
+            onArchiveSession={(id) => void archiveSession(id)}
+            onDeleteSession={requestDeleteSession}
+            onDeleteProject={requestDeleteProject}
           />
         )}
         {sidebar && !page?.standalone && (
@@ -1331,6 +1438,23 @@ export default function App() {
               : undefined
           }
         />
+        <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open && !deleteBusy) setDeleteTarget(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>永久删除{deleteTarget?.kind === "project" ? "项目" : "会话"}？</AlertDialogTitle>
+              <AlertDialogDescription>
+                {deleteTarget?.kind === "project"
+                  ? <><strong>{deleteTarget.workspace}</strong><br />将删除 Harness 内的 {deleteTarget.count} 个会话及其子任务；项目目录和代码文件保留。</>
+                  : <>“{deleteTarget?.title}”及其子任务将永久删除。</>}
+              </AlertDialogDescription>
+              {deleteError && <p className="inline-notice" role="alert">{deleteError}</p>}
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleteBusy}>取消</AlertDialogCancel>
+              <AlertDialogAction disabled={deleteBusy} onClick={(event) => { event.preventDefault(); void confirmDelete(); }}>永久删除</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </TooltipProvider>
   );

@@ -28,6 +28,34 @@ const (
 	defaultTimeout = 10
 )
 
+// ForgetProjectTrust 删除指定真实工作区的 Hook 配置信任，不修改项目配置文件。
+func ForgetProjectTrust(files *persist.Files, realWorkspace string) error {
+	scope, err := files.Scope("hooks")
+	if err != nil {
+		return err
+	}
+	body, err := scope.Read("trust.json")
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var trusted map[string]string
+	if err := json.Unmarshal(body, &trusted); err != nil {
+		return err
+	}
+	if _, exists := trusted[realWorkspace]; !exists {
+		return nil
+	}
+	delete(trusted, realWorkspace)
+	body, err = json.Marshal(trusted)
+	if err != nil {
+		return err
+	}
+	return scope.Write("trust.json", body)
+}
+
 // ErrSettings 表示提交的 Hook 设置不合法。
 var ErrSettings = errors.New("hooks: invalid settings")
 

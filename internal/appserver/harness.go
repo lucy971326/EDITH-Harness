@@ -15,6 +15,11 @@ import (
 const (
 	createMethod             = "harness/session/create"
 	listMethod               = "harness/session/list"
+	archivedListMethod       = "harness/session/archived/list"
+	archiveMethod            = "harness/session/archive"
+	restoreMethod            = "harness/session/restore"
+	deleteSessionMethod      = "harness/session/delete"
+	deleteProjectMethod      = "harness/project/delete"
 	getMethod                = "harness/session/get"
 	updateSettingsMethod     = "harness/session/settings/update"
 	forkMethod               = "harness/session/fork"
@@ -54,6 +59,25 @@ func (s *Server) BindHarness(product *conversations.Service, runService *runner.
 	}
 	err = Register(s, listMethod, s.handleList)
 	if err != nil {
+		return err
+	}
+	for _, registration := range []struct {
+		method  string
+		handler func(context.Context, SessionIDParams) (SessionResult, error)
+	}{
+		{archiveMethod, s.handleArchive}, {restoreMethod, s.handleRestore},
+	} {
+		if err = registerSession(s, registration.method, func(input SessionIDParams) string { return input.SessionID }, registration.handler); err != nil {
+			return err
+		}
+	}
+	if err = Register(s, archivedListMethod, s.handleArchivedList); err != nil {
+		return err
+	}
+	if err = registerSession(s, deleteSessionMethod, func(input SessionIDParams) string { return input.SessionID }, s.handleDeleteSession); err != nil {
+		return err
+	}
+	if err = Register(s, deleteProjectMethod, s.handleDeleteProject); err != nil {
 		return err
 	}
 	err = Register(s, getMethod, s.handleGet)
@@ -143,6 +167,38 @@ func (s *Server) handleList(_ context.Context, _ ListParams) (ListResult, error)
 	return result, nil
 }
 
+func (s *Server) handleArchivedList(_ context.Context, _ ListParams) (ListResult, error) {
+	infos, err := s.conversations.Archived()
+	if err != nil {
+		return ListResult{}, methodError(err)
+	}
+	result := ListResult{Sessions: make([]SessionView, 0, len(infos))}
+	for _, info := range infos {
+		result.Sessions = append(result.Sessions, sessionView(info))
+	}
+	return result, nil
+}
+
+func (s *Server) handleArchive(_ context.Context, input SessionIDParams) (SessionResult, error) {
+	info, err := s.conversations.Archive(input.SessionID)
+	return SessionResult{Session: sessionView(info)}, methodError(err)
+}
+
+func (s *Server) handleRestore(_ context.Context, input SessionIDParams) (SessionResult, error) {
+	info, err := s.conversations.Restore(input.SessionID)
+	return SessionResult{Session: sessionView(info)}, methodError(err)
+}
+
+func (s *Server) handleDeleteSession(_ context.Context, input SessionIDParams) (DeleteResult, error) {
+	ids, err := s.conversations.DeleteSession(input.SessionID)
+	return DeleteResult{SessionIDs: ids}, methodError(err)
+}
+
+func (s *Server) handleDeleteProject(_ context.Context, input DeleteProjectParams) (DeleteResult, error) {
+	ids, err := s.conversations.DeleteProject(input.Workspace)
+	return DeleteResult{SessionIDs: ids}, methodError(err)
+}
+
 func (s *Server) handleGet(_ context.Context, input SessionIDParams) (SessionResult, error) {
 	info, err := s.conversations.Session(input.SessionID)
 	return SessionResult{Session: sessionView(info)}, methodError(err)
@@ -173,10 +229,11 @@ func (s *Server) handleFork(_ context.Context, input ForkParams) (SessionResult,
 
 func sessionView(info conversations.SessionInfo) SessionView {
 	return SessionView{
-		SessionID: info.Meta.ID,
-		Title:     info.Meta.Title,
-		CreatedAt: info.Meta.CreatedAt,
-		Settings:  info.Settings,
+		SessionID:  info.Meta.ID,
+		Title:      info.Meta.Title,
+		CreatedAt:  info.Meta.CreatedAt,
+		ArchivedAt: info.Meta.ArchivedAt,
+		Settings:   info.Settings,
 	}
 }
 
@@ -219,6 +276,9 @@ func methodError(err error) error {
 	}
 	if errors.Is(err, conversations.ErrRunActive) {
 		return &Error{Code: CodeConflict, Message: "session has an active run", Cause: err}
+	}
+	if errors.Is(err, conversations.ErrArchived) {
+		return &Error{Code: CodeConflict, Message: "restore archived session before starting another run", Cause: err}
 	}
 	if errors.Is(err, conversations.ErrInvalidCommand) {
 		return &Error{Code: CodeInvalidParams, Message: "command is unavailable", Cause: err}

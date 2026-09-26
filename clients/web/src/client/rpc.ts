@@ -189,6 +189,26 @@ export class RPCClient {
     return this.call("harness/session/list", {});
   }
 
+  archived() {
+    return this.call("harness/session/archived/list", {});
+  }
+
+  archive(sessionID: string) {
+    return this.call("harness/session/archive", { sessionID });
+  }
+
+  restore(sessionID: string) {
+    return this.call("harness/session/restore", { sessionID });
+  }
+
+  deleteSession(sessionID: string) {
+    return this.call("harness/session/delete", { sessionID });
+  }
+
+  deleteProject(workspace: string) {
+    return this.call("harness/project/delete", { workspace });
+  }
+
   create(workspace: string) {
     return this.call("harness/session/create", { workspace });
   }

@@ -5,12 +5,41 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"harness/internal/persist"
 	"os"
 
 	"harness/internal/permissions"
 )
 
 const mcpTrustFile = "mcp-trust.json"
+
+// ForgetWorkspaceTrust 删除一个项目的 MCP 配置确认，不影响其他工作区。
+func ForgetWorkspaceTrust(files *persist.Files, workspace string) error {
+	scope, err := files.Scope("approvals")
+	if err != nil {
+		return err
+	}
+	body, err := scope.Read(mcpTrustFile)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var trusted map[string]string
+	if err := json.Unmarshal(body, &trusted); err != nil {
+		return err
+	}
+	if _, exists := trusted[workspace]; !exists {
+		return nil
+	}
+	delete(trusted, workspace)
+	body, err = json.Marshal(trusted)
+	if err != nil {
+		return err
+	}
+	return scope.Write(mcpTrustFile, body)
+}
 
 // ErrMCPConfigDenied 表示用户本轮不启用项目 MCP；全局 MCP 仍可使用。
 var ErrMCPConfigDenied = errors.New("approvals: project MCP configuration denied")

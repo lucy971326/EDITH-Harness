@@ -17,6 +17,7 @@ var (
 	ErrInvalidRunSettings = errors.New("conversation: invalid run settings")
 	// ErrRunActive 标记运行中的会话不接受当前操作。
 	ErrRunActive = errors.New("conversation: run is active")
+	ErrArchived  = errors.New("conversation: session archived")
 	// ErrRunStart 标记 Runner 未能启动新一轮。
 	ErrRunStart = errors.New("conversation: start run")
 	// ErrRunSteer 标记 Runner 未能接受 Steer。

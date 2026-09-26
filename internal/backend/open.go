@@ -65,6 +65,9 @@ func Open(dataDir string) (backend *Backend, result error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := conversations.RecoverDeletions(files); err != nil {
+		return nil, err
+	}
 	disk := session.NewPersistence(files)
 	settingsStore := settings.NewStore(files)
 	sessions := session.NewStore(disk)
@@ -147,7 +150,7 @@ func Open(dataDir string) (backend *Backend, result error) {
 	if err != nil {
 		return nil, err
 	}
-	conversationService, err := conversations.New(sessions, settingsStore, agentService, models, runService, commandService, subagentService, approvalService)
+	conversationService, err := conversations.New(sessions, settingsStore, agentService, models, runService, commandService, subagentService, approvalService, files)
 	if err != nil {
 		return nil, err
 	}

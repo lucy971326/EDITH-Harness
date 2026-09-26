@@ -191,7 +191,7 @@ func newNetworkServices(t *testing.T, data string) (func() error, *appserver.Ser
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = approvalService.Close() })
-	service, err := conversations.New(sessions, settingsStore, agentService, models, runService, commandService, subagentService, approvalService)
+	service, err := conversations.New(sessions, settingsStore, agentService, models, runService, commandService, subagentService, approvalService, files)
 	if err != nil {
 		t.Fatal(err)
 	}

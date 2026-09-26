@@ -14,6 +14,7 @@ export type ContextMenuItem =
       label: string;
       action: () => void | Promise<void>;
       disabled?: boolean;
+      icon?: ReactNode;
     }
   | { type: "separator" };
 
@@ -132,6 +133,7 @@ export function ContextMenu({
               void item.action();
             }}
           >
+            {item.icon}
             {item.label}
           </button>
         ),

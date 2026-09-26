@@ -141,7 +141,7 @@ func TestProductRunsWithoutWebAndForksCompletedSegment(t *testing.T) {
 func TestProductCreateDiscardsSessionWhenSettingsSaveFails(t *testing.T) {
 	fixture := newTestFixture(t)
 	defer fixture.close()
-	service, err := conversations.New(fixture.sessions, failingSettings{store: fixture.settings}, fixture.agents, fixture.models, fixture.runner, fixture.commands, fixture.subagents, approvals.New())
+	service, err := conversations.New(fixture.sessions, failingSettings{store: fixture.settings}, fixture.agents, fixture.models, fixture.runner, fixture.commands, fixture.subagents, approvals.New(), fixture.files)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +185,7 @@ func TestProductCreateSelectsConfiguredModel(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			service, err := conversations.New(fixture.sessions, fixture.settings, fixture.agents, models, fixture.runner, fixture.commands, fixture.subagents, approvals.New())
+			service, err := conversations.New(fixture.sessions, fixture.settings, fixture.agents, models, fixture.runner, fixture.commands, fixture.subagents, approvals.New(), fixture.files)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -233,7 +233,7 @@ func TestProductSessionDoesNotReadOtherSessionSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service, err := conversations.New(fixture.sessions, selectiveFailSettings{store: fixture.settings, badID: "bad"}, fixture.agents, fixture.models, fixture.runner, fixture.commands, fixture.subagents, approvals.New())
+	service, err := conversations.New(fixture.sessions, selectiveFailSettings{store: fixture.settings, badID: "bad"}, fixture.agents, fixture.models, fixture.runner, fixture.commands, fixture.subagents, approvals.New(), fixture.files)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,6 +248,7 @@ func TestProductSessionDoesNotReadOtherSessionSettings(t *testing.T) {
 
 type testFixture struct {
 	close     func() error
+	files     *persist.Files
 	service   *conversations.Service
 	sessions  *session.Store
 	settings  settings.SessionSettingsStore
@@ -332,11 +333,11 @@ func newTestFixture(t *testing.T) testFixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = approvalService.Close() })
-	service, err := conversations.New(sessions, settingsStore, agentService, models, runService, commandService, subagentService, approvalService)
+	service, err := conversations.New(sessions, settingsStore, agentService, models, runService, commandService, subagentService, approvalService, files)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return testFixture{close: closeServices, service: service, sessions: sessions, settings: settingsStore, agents: agentService, models: models, runner: runService, commands: commandService, events: eventRegistry, subagents: subagentService, loop: loop}
+	return testFixture{close: closeServices, files: files, service: service, sessions: sessions, settings: settingsStore, agents: agentService, models: models, runner: runService, commands: commandService, events: eventRegistry, subagents: subagentService, loop: loop}
 }
 
 type testLoop struct {
@@ -744,4 +745,221 @@ func (c *blockingCommand) Run(_ context.Context, sessionID string) error {
 		<-c.release
 	}
 	return nil
+}
+
+func TestArchiveAndProjectDeletionKeepWorkspaceAndSibling(t *testing.T) {
+	fixture := newTestFixture(t)
+	defer fixture.close()
+	base := t.TempDir()
+	workspace := filepath.Join(base, "first", "Play")
+	sibling := filepath.Join(base, "second", "Play")
+	for _, path := range []string{workspace, sibling} {
+		if err := os.MkdirAll(path, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first, err := fixture.service.Create(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.service.Archive(first.Meta.ID); err != nil {
+		t.Fatal(err)
+	}
+	second, err := fixture.service.Create(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := fixture.service.Create(sibling)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Meta.ID == second.Meta.ID {
+		t.Fatal("archived empty session was reused")
+	}
+
+	err = fixture.service.Start(t.Context(), conversations.RunInput{SessionID: second.Meta.ID,
+		Message: session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "root"}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.loop.waitStarted(t)
+	state, active := fixture.runner.State(second.Meta.ID)
+	if !active {
+		t.Fatal("root not running")
+	}
+	child, err := fixture.subagents.Spawn(t.Context(), subagents.SpawnInput{
+		TaskName: "child", ParentSessionID: second.Meta.ID, ParentRunID: state.RunID, Description: "delegate",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.loop.waitStarted(t)
+	if _, err := fixture.service.Archive(second.Meta.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, active := fixture.runner.State(second.Meta.ID); !active {
+		t.Fatal("archive stopped the run")
+	}
+	if _, err := fixture.service.DeleteProject(workspace); !errors.Is(err, subagents.ErrTaskActive) {
+		t.Fatalf("active project deletion = %v", err)
+	}
+	if err := fixture.service.Stop(second.Meta.ID); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, fixture.runner, second.Meta.ID)
+	waitIdle(t, fixture.runner, child.ChildSessionID)
+	listed, err := fixture.service.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 1 || listed[0].Meta.ID != other.Meta.ID {
+		t.Fatalf("active list = %+v", listed)
+	}
+	archived, err := fixture.service.Archived()
+	if err != nil || len(archived) != 2 {
+		t.Fatalf("archived = %+v, %v", archived, err)
+	}
+	if _, err := fixture.service.Restore(first.Meta.ID); err != nil {
+		t.Fatal(err)
+	}
+	visible, err := fixture.service.List()
+	if err != nil || len(visible) != 2 {
+		t.Fatalf("restored list = %+v, %v", visible, err)
+	}
+	if _, err := fixture.service.Archive(first.Meta.ID); err != nil {
+		t.Fatal(err)
+	}
+	_, err = fixture.service.Send(t.Context(), conversations.RunInput{SessionID: second.Meta.ID,
+		Message: session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "again"}}}})
+	if !errors.Is(err, conversations.ErrArchived) {
+		t.Fatalf("send to archived = %v", err)
+	}
+
+	deleted, err := fixture.service.DeleteProject(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deleted) != 3 {
+		t.Fatalf("deleted IDs = %v", deleted)
+	}
+	for _, id := range deleted {
+		if _, err := fixture.sessions.Get(id); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("session %s survived: %v", id, err)
+		}
+	}
+	if _, err := fixture.service.Session(other.Meta.ID); err != nil {
+		t.Fatalf("same-name sibling removed: %v", err)
+	}
+	if _, err := fixture.service.DeleteSession(other.Meta.ID); err != nil {
+		t.Fatalf("delete one session: %v", err)
+	}
+	if _, err := fixture.service.Session(other.Meta.ID); !errors.Is(err, conversations.ErrSessionNotFound) {
+		t.Fatalf("deleted sibling session visible: %v", err)
+	}
+	if _, err := os.Stat(workspace); err != nil {
+		t.Fatalf("project files removed: %v", err)
+	}
+	tasks, err := fixture.files.Scope("subagents", "tasks")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tasks.Read(child.TaskID + ".json"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("task file survived: %v", err)
+	}
+}
+
+func TestDeletionRecoveryFinishesPartialCleanup(t *testing.T) {
+	files, err := persist.NewFiles(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := t.TempDir()
+	sessions, err := files.Scope("sessions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"root", "child"} {
+		entry, err := sessions.Scope(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := entry.Write("meta.json", []byte(`{}`)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := sessions.RemoveDir("root"); err != nil {
+		t.Fatal(err)
+	}
+	tasks, err := files.Scope("subagents", "tasks")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tasks.Write("task-one.json", []byte(`{}`)); err != nil {
+		t.Fatal(err)
+	}
+	for _, scope := range []struct{ dir, name string }{{"approvals", "mcp-trust.json"}, {"hooks", "trust.json"}} {
+		dir, err := files.Scope(scope.dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := json.Marshal(map[string]string{workspace: "hash", "other": "keep"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := dir.Write(scope.name, body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	deletions, err := files.Scope("deletions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	intent, err := json.Marshal(map[string]any{"version": 1, "workspace": workspace,
+		"sessionIDs": []string{"root", "child"}, "taskIDs": []string{"task-one"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := deletions.Write("pending.json", intent); err != nil {
+		t.Fatal(err)
+	}
+	if err := conversations.RecoverDeletions(files); err != nil {
+		t.Fatal(err)
+	}
+	if err := conversations.RecoverDeletions(files); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := deletions.List()
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("pending intents = %v, %v", entries, err)
+	}
+	child, err := sessions.Scope("child")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := child.Read("meta.json"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("child survived: %v", err)
+	}
+	if _, err := tasks.Read("task-one.json"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("task survived: %v", err)
+	}
+	for _, scope := range []struct{ dir, name string }{{"approvals", "mcp-trust.json"}, {"hooks", "trust.json"}} {
+		dir, err := files.Scope(scope.dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := dir.Read(scope.name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var values map[string]string
+		if err := json.Unmarshal(body, &values); err != nil {
+			t.Fatal(err)
+		}
+		if values[workspace] != "" || values["other"] != "keep" {
+			t.Fatalf("trust = %v", values)
+		}
+	}
+	if _, err := os.Stat(workspace); err != nil {
+		t.Fatalf("workspace removed: %v", err)
+	}
 }

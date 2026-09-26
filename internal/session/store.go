@@ -165,6 +165,47 @@ func (s *Store) List() ([]SessionMeta, error) {
 	return s.persist.List()
 }
 
+// SetArchived 更新会话归档时间；与首条消息自动命名使用同一本账的锁。
+func (s *Store) SetArchived(id string, archived bool) (SessionMeta, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sess := s.live[id]
+	if sess != nil {
+		sess.mu.Lock()
+		defer sess.mu.Unlock()
+	}
+	meta, err := s.persist.LoadMeta(id)
+	if err != nil {
+		return SessionMeta{}, err
+	}
+	if archived {
+		if meta.ArchivedAt != nil {
+			return meta, nil
+		}
+		now := time.Now().UTC()
+		meta.ArchivedAt = &now
+	} else {
+		if meta.ArchivedAt == nil {
+			return meta, nil
+		}
+		meta.ArchivedAt = nil
+	}
+	err = s.persist.SaveMeta(meta)
+	if err != nil {
+		return SessionMeta{}, err
+	}
+	return meta, nil
+}
+
+// Forget 删除永久删除后仍缓存的活对象。
+func (s *Store) Forget(ids []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, id := range ids {
+		delete(s.live, id)
+	}
+}
+
 // Rename 修改一本会话的显示标题。
 func (s *Store) Rename(id string, title string) error {
 	if id == "" {

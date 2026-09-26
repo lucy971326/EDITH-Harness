@@ -17,6 +17,8 @@ import {
   ChevronRight,
   Circle,
   RefreshCw,
+  Archive,
+  Trash2,
 } from "../icons";
 import type { ConnectionStatus } from "../client/rpc";
 import { groupSessions } from "../state/projects";
@@ -38,6 +40,9 @@ export function Sidebar({
   onSelect,
   onCreate,
   onReconnect,
+  onArchiveSession,
+  onDeleteSession,
+  onDeleteProject,
 }: {
   connection: ConnectionStatus;
   backendBusy: boolean;
@@ -53,6 +58,9 @@ export function Sidebar({
   onSelect: (sessionID: string) => void;
   onCreate: (workspace: string) => void;
   onReconnect: () => void;
+  onArchiveSession: (sessionID: string) => void;
+  onDeleteSession: (sessionID: string) => void;
+  onDeleteProject: (workspace: string) => void;
 }) {
   const connected = connection === "connected";
   const projects = sessions ? groupSessions(sessions) : [];
@@ -154,6 +162,9 @@ export function Sidebar({
                   <Folder />
                   <span title={project.workspace}>{project.name}</span>
                 </CollapsibleTrigger>
+                <Button variant="ghost" size="icon-sm" className="sidebar-row-action"
+                  aria-label={`永久删除项目 ${project.name}`} disabled={!connected}
+                  onClick={() => onDeleteProject(project.workspace)}><Trash2 /></Button>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -166,14 +177,22 @@ export function Sidebar({
               </div>
               <CollapsibleContent className="project-sessions">
                 {project.sessions.map((item) => (
-                  <button
+                  <div
                     key={item.sessionID}
                     className={`session-row ${item.sessionID === selectedID && activePath === "/" ? "selected" : ""}`}
-                    aria-current={item.sessionID === selectedID && activePath === "/" ? "page" : undefined}
-                    onClick={() => onSelect(item.sessionID)}
                   >
-                    <span>{item.title}</span>
-                  </button>
+                    <button className="session-link"
+                      aria-current={item.sessionID === selectedID && activePath === "/" ? "page" : undefined}
+                      onClick={() => onSelect(item.sessionID)}><span>{item.title}</span></button>
+                    <div className="session-actions">
+                      <Button variant="ghost" size="icon-sm" className="sidebar-row-action"
+                        aria-label={`归档会话 ${item.title}`}
+                        disabled={!connected} onClick={() => onArchiveSession(item.sessionID)}><Archive /></Button>
+                      <Button variant="ghost" size="icon-sm" className="sidebar-row-action"
+                        aria-label={`永久删除会话 ${item.title}`}
+                        disabled={!connected} onClick={() => onDeleteSession(item.sessionID)}><Trash2 /></Button>
+                    </div>
+                  </div>
                 ))}
               </CollapsibleContent>
             </Collapsible>

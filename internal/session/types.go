@@ -7,9 +7,10 @@ import (
 
 // 数据。一本会话在账本外的元数据。元数据文件是会话存在的依据。
 type SessionMeta struct {
-	ID        string    `json:"id"`
-	Title     string    `json:"title"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID         string     `json:"id"`
+	Title      string     `json:"title"`
+	CreatedAt  time.Time  `json:"createdAt"`
+	ArchivedAt *time.Time `json:"archivedAt,omitempty"`
 }
 
 // 数据。账本里一句话的身份。

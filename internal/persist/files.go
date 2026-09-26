@@ -204,6 +204,21 @@ func (f *Files) Remove(name string) error {
 	return syncDirectory(f.root)
 }
 
+// RemoveDir 删除当前作用域的一个直接子目录及其内容；不会沿符号链接进入其他目录。
+func (f *Files) RemoveDir(name string) error {
+	path, err := f.childPath(name)
+	if err != nil {
+		return err
+	}
+	f.state.mu.Lock()
+	defer f.state.mu.Unlock()
+	err = os.RemoveAll(path)
+	if err != nil {
+		return err
+	}
+	return syncDirectory(f.root)
+}
+
 func (f *Files) childPath(name string) (string, error) {
 	if f == nil || f.state == nil {
 		return "", fmt.Errorf("persist: nil files")

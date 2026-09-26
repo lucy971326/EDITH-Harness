@@ -114,6 +114,23 @@ func newSubagentsFixture(t *testing.T) subagentsFixture {
 	}
 }
 
+func TestUpdateSettingsRejectsDeletedTask(t *testing.T) {
+	f := newSubagentsFixture(t)
+	defer func() { _ = f.close() }()
+	coord := &taskCoord{record: TaskRecord{ID: "task", ParentSessionID: "parent", ChildSessionID: "child"}}
+	f.subagents.mu.Lock()
+	f.subagents.coords["task"] = coord
+	f.subagents.deletedSessions["child"] = struct{}{}
+	f.subagents.mu.Unlock()
+
+	_, err := f.subagents.UpdateSettings(context.Background(), "parent", "task", TaskSettingsInput{
+		Model: "deepseek/deepseek-flash", ReasoningEffort: "high",
+	})
+	if !errors.Is(err, ErrTaskNotFound) {
+		t.Fatalf("update deleted task = %v", err)
+	}
+}
+
 // 活对象。测试用 Loop 实现。
 type testLoop struct {
 	parentInvocations chan loops.Invocation

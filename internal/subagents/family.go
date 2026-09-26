@@ -68,6 +68,9 @@ func (s *Subagents) admit(parentSessionID, parentRunID string) (admission, error
 	if parentSessionID == "" || parentRunID == "" {
 		return admission{}, ErrParentRequired
 	}
+	if _, deleted := s.deletedSessions[parentSessionID]; deleted {
+		return admission{}, ErrTaskStopped
+	}
 	family := s.families[parentSessionID]
 	if family.stoppedRunID == parentRunID {
 		return admission{}, ErrFamilyStopped
@@ -83,6 +86,9 @@ func (s *Subagents) admit(parentSessionID, parentRunID string) (admission, error
 func (s *Subagents) admissionErrorLocked(permit admission) error {
 	if s.ctx.Err() != nil {
 		return ErrClosed
+	}
+	if _, deleted := s.deletedSessions[permit.parentSessionID]; deleted {
+		return ErrTaskStopped
 	}
 	family := s.families[permit.parentSessionID]
 	if family.generation != permit.generation || (permit.parentRunID != "" && family.stoppedRunID == permit.parentRunID) {

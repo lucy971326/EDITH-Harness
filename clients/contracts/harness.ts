@@ -14,6 +14,9 @@ export interface ListResult {
   sessions: SessionView[];
 }
 
+export interface DeleteProjectParams { workspace: string; }
+export interface DeleteResult { sessionIDs: string[]; }
+
 // 查询、快照、订阅和停止共用的会话定位参数。
 export interface SessionIDParams {
   sessionID: string;
@@ -28,6 +31,7 @@ export interface SessionView {
   sessionID: string;
   title: string;
   createdAt: string; // RFC 3339，不是 Date 对象。
+  archivedAt?: string;
   settings: SessionSettings;
 }
 
@@ -141,6 +145,11 @@ export interface RevertSubagentRunDiffParams extends ReadSubagentRunDiffParams {
 export interface Methods {
   "harness/session/create": { params: CreateParams; result: SessionResult };
   "harness/session/list": { params: ListParams; result: ListResult };
+  "harness/session/archived/list": { params: ListParams; result: ListResult };
+  "harness/session/archive": { params: SessionIDParams; result: SessionResult };
+  "harness/session/restore": { params: SessionIDParams; result: SessionResult };
+  "harness/session/delete": { params: SessionIDParams; result: DeleteResult };
+  "harness/project/delete": { params: DeleteProjectParams; result: DeleteResult };
   "harness/session/get": { params: SessionIDParams; result: SessionResult };
   "harness/session/settings/update": {
     params: UpdateSettingsParams;

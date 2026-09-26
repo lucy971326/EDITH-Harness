@@ -47,6 +47,16 @@ type ListResult struct {
 	Sessions []SessionView `json:"sessions"`
 }
 
+// 数据。项目删除按完整工作区路径定位。
+type DeleteProjectParams struct {
+	Workspace string `json:"workspace" jsonschema:"minLength=1"`
+}
+
+// 数据。永久删除结果用于前端清理选择与草稿。
+type DeleteResult struct {
+	SessionIDs []string `json:"sessionIDs"`
+}
+
 // 对外会话接口：按会话 ID 操作
 
 // 数据。查询、快照、订阅和停止共用的会话定位参数。
@@ -63,10 +73,11 @@ type SessionResult struct {
 
 // 数据。对外会话投影；复用设置数据，不改变持久化格式。
 type SessionView struct {
-	SessionID string                   `json:"sessionID" jsonschema:"minLength=1"`
-	Title     string                   `json:"title"`
-	CreatedAt time.Time                `json:"createdAt"`
-	Settings  settings.SessionSettings `json:"settings"`
+	SessionID  string                   `json:"sessionID" jsonschema:"minLength=1"`
+	Title      string                   `json:"title"`
+	CreatedAt  time.Time                `json:"createdAt"`
+	ArchivedAt *time.Time               `json:"archivedAt,omitempty"`
+	Settings   settings.SessionSettings `json:"settings"`
 }
 
 // 对外会话接口：下一轮设置

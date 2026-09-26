@@ -52,6 +52,15 @@ func (s *Subagents) UpdateSettings(ctx context.Context, parentSessionID, taskID 
 
 	coord.mu.Lock()
 	defer coord.mu.Unlock()
+	// 删除在关系锁下冻结整个任务族；设置读写必须与该边界互斥。
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.coords[taskID] != coord {
+		return TaskSettingsResult{}, ErrTaskNotFound
+	}
+	if _, deleted := s.deletedSessions[coord.record.ChildSessionID]; deleted {
+		return TaskSettingsResult{}, ErrTaskNotFound
+	}
 	if coord.record.ParentSessionID != parentSessionID {
 		return TaskSettingsResult{}, ErrOwnershipMismatch
 	}

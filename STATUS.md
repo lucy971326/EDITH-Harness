@@ -4,7 +4,7 @@
 
 ## 当前能力
 
-- React Web：项目与会话、文字／图片聊天、实时过程、Steer、停止、分叉、压缩、上下文引用。
+- React Web：项目与会话、归档与恢复、永久删除、文字／图片聊天、实时过程、Steer、停止、分叉、压缩、上下文引用。
 - 模型选择：供应商二级列表与独立思考滑块，档位沿用用户目录 models.json 配置顺序；新会话默认取第一档。设置页可配置 DeepSeek、Google、OpenAI Chat Completions／Responses、Anthropic 的供应商密钥和模型能力。
 - Wails v3 Desktop：复用同一份 React 构建产物与后台，业务通过 Stream 传完整 JSON-RPC 2.0 消息；使用系统标题栏，关闭最后窗口即退出；同一份用户数据只允许一个后台运行。
 - 设置：独立导航、主题预览、Agent 分组表单、模型与供应商、智能审批方式选择和可折叠 Hooks 列表；分类切换保留草稿，离开前确认未保存修改。

@@ -40,11 +40,12 @@ type Subagents struct {
 	store    *taskStore
 
 	// 父子关系与停止边界。
-	mu            sync.RWMutex
-	childSessions map[string]string   // childSessionID -> taskID
-	parentTasks   map[string][]string // parentSessionID -> []taskID
-	coords        map[string]*taskCoord
-	families      map[string]familyState
+	mu              sync.RWMutex
+	childSessions   map[string]string   // childSessionID -> taskID
+	parentTasks     map[string][]string // parentSessionID -> []taskID
+	coords          map[string]*taskCoord
+	families        map[string]familyState
+	deletedSessions map[string]struct{} // 已持久登记删除的会话，拒绝迟到的委派操作。
 
 	// 回报投递与状态变化通知；changed 由 mu 保护。
 	deliveryMu sync.Mutex
@@ -112,20 +113,21 @@ func newSubagentsWithStore(
 
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Subagents{
-		sessions:      sessions,
-		settings:      settingsStore,
-		agents:        agentService,
-		models:        modelClient,
-		runner:        runnerService,
-		store:         store,
-		ctx:           ctx,
-		childSessions: make(map[string]string),
-		parentTasks:   make(map[string][]string),
-		coords:        make(map[string]*taskCoord),
-		families:      make(map[string]familyState),
-		confirmed:     make(map[string]struct{}),
-		pending:       make(map[string]struct{}),
-		changed:       make(chan struct{}),
+		sessions:        sessions,
+		settings:        settingsStore,
+		agents:          agentService,
+		models:          modelClient,
+		runner:          runnerService,
+		store:           store,
+		ctx:             ctx,
+		childSessions:   make(map[string]string),
+		parentTasks:     make(map[string][]string),
+		coords:          make(map[string]*taskCoord),
+		families:        make(map[string]familyState),
+		deletedSessions: make(map[string]struct{}),
+		confirmed:       make(map[string]struct{}),
+		pending:         make(map[string]struct{}),
+		changed:         make(chan struct{}),
 	}
 
 	// 启动只恢复父子关系。运行中断与结果继续由 Runner 和子账本恢复。

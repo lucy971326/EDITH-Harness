@@ -14,6 +14,7 @@ import (
 	"harness/internal/commands"
 	"harness/internal/llm"
 	"harness/internal/permissions"
+	"harness/internal/persist"
 	"harness/internal/runner"
 	"harness/internal/session"
 	"harness/internal/session/settings"
@@ -37,10 +38,13 @@ type Service struct {
 	// 创建协调与会话内操作锁；不持锁等待 Steer 落账，Stop 不取操作锁。
 	createMu   sync.Mutex
 	operations sync.Map // Session ID → *sync.Mutex；仅保存实际存在的会话。
+	files      *persist.Files
+	deletedMu  sync.RWMutex
+	deleted    map[string]struct{}
 }
 
 // New 组装聊天业务服务。
-func New(sessions *session.Store, settingsStore settings.SessionSettingsStore, agentService *agents.Service, modelClient *llm.Client, runService *runner.Runner, commandService commands.Commands, subagentService *subagents.Subagents, approvalService *approvals.Service) (*Service, error) {
+func New(sessions *session.Store, settingsStore settings.SessionSettingsStore, agentService *agents.Service, modelClient *llm.Client, runService *runner.Runner, commandService commands.Commands, subagentService *subagents.Subagents, approvalService *approvals.Service, files *persist.Files) (*Service, error) {
 	if sessions == nil {
 		return nil, fmt.Errorf("conversation: nil sessions")
 	}
@@ -65,7 +69,10 @@ func New(sessions *session.Store, settingsStore settings.SessionSettingsStore, a
 	if approvalService == nil {
 		return nil, fmt.Errorf("conversation: nil approvals")
 	}
-	return &Service{sessions: sessions, settings: settingsStore, agents: agentService, models: modelClient, runner: runService, commands: commandService, subagents: subagentService, approvals: approvalService}, nil
+	if files == nil {
+		return nil, fmt.Errorf("conversation: nil files")
+	}
+	return &Service{sessions: sessions, settings: settingsStore, agents: agentService, models: modelClient, runner: runService, commands: commandService, subagents: subagentService, approvals: approvalService, files: files, deleted: make(map[string]struct{})}, nil
 }
 
 // Send 闲时启动、忙时插话；已接受的运行由 Runner 管理生命周期。
@@ -80,7 +87,7 @@ func (p *Service) Send(ctx context.Context, input RunInput) (string, error) {
 		operation.Unlock()
 		return "", err
 	}
-	_, err = p.Session(input.SessionID)
+	info, err := p.Session(input.SessionID)
 	if err != nil {
 		operation.Unlock()
 		return "", err
@@ -95,6 +102,10 @@ func (p *Service) Send(ctx context.Context, input RunInput) (string, error) {
 		operation.Unlock()
 		err = p.steer(ctx, input.SessionID, input.ExpectedRunID, input.Message)
 		return "steered", err
+	}
+	if info.Meta.ArchivedAt != nil {
+		operation.Unlock()
+		return "", ErrArchived
 	}
 	// 接受之后由 Runner 的 Stop / Close 管生命周期，不继承连接取消。
 	err = p.start(context.Background(), input)
@@ -121,6 +132,9 @@ func (p *Service) UpdateSettings(ctx context.Context, sessionID string, next set
 	info, err := p.Session(sessionID)
 	if err != nil {
 		return SessionInfo{}, err
+	}
+	if info.Meta.ArchivedAt != nil {
+		return SessionInfo{}, ErrArchived
 	}
 	if _, running := p.runner.State(sessionID); running {
 		return SessionInfo{}, ErrRunActive
@@ -227,13 +241,17 @@ func (s *Service) defaultRunSettings(workspace string) (settings.SessionSettings
 
 // List 返回全部会话及其运行设置；页面分组和排序由调用方决定。
 func (s *Service) List() ([]SessionInfo, error) {
+	return s.list(false)
+}
+
+func (s *Service) allRoots() ([]SessionInfo, error) {
 	metas, err := s.sessions.List()
 	if err != nil {
-		return nil, fmt.Errorf("conversation: list sessions: %w", err)
+		return nil, err
 	}
 	out := make([]SessionInfo, 0, len(metas))
 	for _, meta := range metas {
-		if s.subagents.IsChildSession(meta.ID) {
+		if s.subagents.IsChildSession(meta.ID) || s.isDeleted(meta.ID) {
 			continue
 		}
 		setup, err := s.settings.For(meta.ID)
@@ -245,9 +263,30 @@ func (s *Service) List() ([]SessionInfo, error) {
 	return out, nil
 }
 
+func (s *Service) list(archived bool) ([]SessionInfo, error) {
+	all, err := s.allRoots()
+	if err != nil {
+		return nil, fmt.Errorf("conversation: list sessions: %w", err)
+	}
+	out := make([]SessionInfo, 0, len(all))
+	for _, info := range all {
+		if (info.Meta.ArchivedAt != nil) == archived {
+			out = append(out, info)
+		}
+	}
+	return out, nil
+}
+
+func (s *Service) isDeleted(id string) bool {
+	s.deletedMu.RLock()
+	defer s.deletedMu.RUnlock()
+	_, found := s.deleted[id]
+	return found
+}
+
 // Session 返回一场已存在会话的元数据与运行设置。
 func (s *Service) Session(id string) (SessionInfo, error) {
-	if s.subagents.IsChildSession(id) {
+	if s.subagents.IsChildSession(id) || s.isDeleted(id) {
 		return SessionInfo{}, fmt.Errorf("%w: %w: session %q", ErrSessionNotFound, os.ErrNotExist, id)
 	}
 	metas, err := s.sessions.List()
@@ -300,6 +339,13 @@ func (s *Service) start(ctx context.Context, input RunInput) error {
 	_, err := s.sessions.Get(input.SessionID)
 	if err != nil {
 		return err
+	}
+	info, err := s.Session(input.SessionID)
+	if err != nil {
+		return err
+	}
+	if info.Meta.ArchivedAt != nil {
+		return ErrArchived
 	}
 	err = checkMessage(input.Message)
 	if err != nil {
@@ -451,9 +497,12 @@ func (s *Service) CallCommand(ctx context.Context, name, sessionID string) error
 	if err != nil {
 		return err
 	}
-	_, err = s.Session(sessionID)
+	info, err := s.Session(sessionID)
 	if err != nil {
 		return err
+	}
+	if info.Meta.ArchivedAt != nil {
+		return ErrArchived
 	}
 	if _, running := s.runner.State(sessionID); running {
 		return ErrRunActive

@@ -201,7 +201,7 @@ func TestRealReactWaitReceivesCompletionOrUserInput(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = approvalService.Close() })
-			service, err := conversations.New(sessions, settingsStore, agentService, models, runService, commandService, subagentService, approvalService)
+			service, err := conversations.New(sessions, settingsStore, agentService, models, runService, commandService, subagentService, approvalService, files)
 			if err != nil {
 				t.Fatal(err)
 			}

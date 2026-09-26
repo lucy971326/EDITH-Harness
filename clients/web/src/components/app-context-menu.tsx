@@ -26,17 +26,21 @@ export function AppContextMenu({ onAddReference }: {
       if (!target) return;
       // Monaco 自带菜单使用它自己的 Command API，保留其完整编辑能力。
       if (target.closest(".monaco-editor")) return;
+      const next = createMenu(target, event.clientX, event.clientY, onAddReference);
+      if (!next.items.length) { setMenu(null); return; }
       event.preventDefault();
-      setMenu(createMenu(target, event.clientX, event.clientY, onAddReference));
+      setMenu(next);
     }
     function openFromKeyboard(event: KeyboardEvent) {
       if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10"))
         return;
       const target = document.activeElement;
       if (!(target instanceof HTMLElement) || target.closest(".monaco-editor")) return;
-      event.preventDefault();
       const bounds = target.getBoundingClientRect();
-      setMenu(createMenu(target, bounds.left + 12, bounds.top + 12, onAddReference));
+      const next = createMenu(target, bounds.left + 12, bounds.top + 12, onAddReference);
+      if (!next.items.length) { setMenu(null); return; }
+      event.preventDefault();
+      setMenu(next);
     }
     window.addEventListener("contextmenu", open);
     window.addEventListener("keydown", openFromKeyboard);
@@ -59,6 +63,7 @@ export function AppContextMenu({ onAddReference }: {
 
 function createMenu(target: HTMLElement, x: number, y: number,
   onAddReference?: (reference: ContextReference) => void): MenuState {
+  if (target.closest(".sidebar")) return { x, y, items: [] };
   const editable = editableElement(target);
   const selected = window.getSelection()?.toString() ?? "";
   const pathElement = target.closest<HTMLElement>("[data-file-path]");
@@ -116,9 +121,6 @@ function createMenu(target: HTMLElement, x: number, y: number,
     items.push({ label: "复制路径", action: () => navigator.clipboard.writeText(path) });
   }
 
-  if (items.length === 0) {
-    items.push({ label: "没有可用操作", action: () => {}, disabled: true });
-  }
   return { x, y, items };
 }
 
