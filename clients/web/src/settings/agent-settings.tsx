@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import {
   Collapsible,
@@ -25,6 +26,7 @@ import {
   Plus,
   ChevronRight,
   Trash2,
+  Wrench,
 } from "../icons";
 import type {
   AgentKindChoice,
@@ -166,9 +168,9 @@ export function AgentSettingsPanel({ agents, kinds, tools, loading, error, savin
         <div className="settings-detail-pane">
       {draft && (
         <div className="agent-form">
-          <div className="settings-detail-title-row"><h3>{selected ? selected.name : "新建 Agent"}</h3></div>
+          <div className="settings-detail-title-row"><div className="settings-identity"><span className="settings-identity-icon"><Bot /></span><h3>{selected ? selected.name : "新建 Agent"}</h3></div></div>
           <section className="settings-section">
-            <div className="settings-section-header"><div><h3>基本信息</h3><p>在聊天中选择 Agent 时，会显示这个名称。</p></div></div>
+            <div className="settings-section-header"><div><h3>基本信息</h3></div></div>
           <div className="settings-fields">
           <div className="settings-field">
           <Label htmlFor="agent-name">名称</Label>
@@ -183,27 +185,17 @@ export function AgentSettingsPanel({ agents, kinds, tools, loading, error, savin
           </div>
           {kinds.length > 1 && <div className="settings-field">
           <Label htmlFor="agent-kind">运行方式</Label>
-          <select
-            id="agent-kind"
-            className="ui-focus ui-field agent-kind-select"
-            value={draft.kind}
-            disabled={saving}
-            onChange={(event) =>
-              updateDraft({ kind: event.target.value })
-            }
-          >
-            {kinds.map((kind) => (
-              <option key={kind.kind} value={kind.kind}>
-                {kind.kind === "react" ? "ReAct · 推理与工具调用" : kind.kind}
-              </option>
-            ))}
-          </select>
+          <Select value={draft.kind} disabled={saving} onValueChange={(kind) => updateDraft({ kind })}>
+            <SelectTrigger id="agent-kind" className="w-full"><SelectValue /></SelectTrigger>
+            <SelectContent>{kinds.map((kind) => <SelectItem key={kind.kind} value={kind.kind}>
+              {kind.kind === "react" ? "ReAct · 推理与工具调用" : kind.kind}
+            </SelectItem>)}</SelectContent>
+          </Select>
           </div>}
           </div>
           </section>
           <section className="settings-section settings-field">
           <Label htmlFor="agent-prompt">系统提示词</Label>
-          <p className="settings-description">定义 Agent 的职责、工作方式和回答偏好。</p>
           <Textarea
             id="agent-prompt"
             rows={5}
@@ -216,23 +208,22 @@ export function AgentSettingsPanel({ agents, kinds, tools, loading, error, savin
           />
           </section>
           <Collapsible className="tools-config settings-section">
-            <CollapsibleTrigger>
-              <ChevronRight className="disclosure-chevron" />
+            <CollapsibleTrigger className="ui-focus">
+              <Wrench />
               <span>可用工具</span>
               <span className="settings-badge">已选 {draft.tools.length} 项</span>
+              <ChevronRight className="disclosure-chevron" />
             </CollapsibleTrigger>
-            <CollapsibleContent>
+            <CollapsibleContent className="tool-permission-list">
               {tools.map((tool) => (
-                <div className="tool-permission" key={tool.name}>
-                  <Label
-                    htmlFor={`tool-${tool.name}`}
-                    title={tool.description}
-                  >
-                    <span>{tool.name}</span>
-                    <span className="settings-description">{tool.description}</span>
-                  </Label>
+                <Collapsible className="tool-permission" key={tool.name}>
+                  <div className="tool-permission-row">
+                    <CollapsibleTrigger className="tool-permission-summary ui-focus" aria-label={`查看 ${tool.name} 的说明`}>
+                      <Wrench /><span>{tool.name}</span><ChevronRight className="disclosure-chevron" />
+                    </CollapsibleTrigger>
                   <Switch
                     id={`tool-${tool.name}`}
+                    aria-label={`启用工具 ${tool.name}`}
                     checked={draft.tools.includes(tool.name)}
                     disabled={saving}
                     onCheckedChange={(checked) =>
@@ -245,27 +236,17 @@ export function AgentSettingsPanel({ agents, kinds, tools, loading, error, savin
                       })
                     }
                   />
-                </div>
+                  </div>
+                  <CollapsibleContent className="tool-permission-description">
+                    <p>{tool.description}</p>
+                  </CollapsibleContent>
+                </Collapsible>
               ))}
             </CollapsibleContent>
           </Collapsible>
-          <div className="settings-savebar">
-            <span className="settings-save-status" role="status">{dirty ? "有未保存的更改" : saved || "所有更改已保存"}</span>
-            <Button variant="ghost" disabled={saving || !dirty} onClick={() => {
-              const fallback = selected ?? agents?.[0];
-              if (fallback) edit(fallback);
-              else { setDraft(null); setSelectedID(null); setSaved(""); }
-            }}>放弃更改</Button>
-            <Button
-              disabled={saving || !dirty || !draft.name.trim() || !draft.kind}
-              onClick={() => void save()}
-            >
-              {saving ? "保存中…" : "保存更改"}
-            </Button>
-          </div>
           <div className="settings-danger-row">
             <p className="settings-description">
-              {selected?.id === "default" ? "默认 Agent 始终保留，可按需修改。" : selected?.inUse ? "该 Agent 正被会话使用，暂时无法删除。" : "删除 Agent 后无法恢复。"}
+              {selected?.id === "default" ? "默认 Agent 不可删除。" : selected?.inUse ? "该 Agent 正被会话使用，暂时无法删除。" : ""}
             </p>
             <AlertDialog>
               <AlertDialogTrigger asChild>
@@ -304,6 +285,21 @@ export function AgentSettingsPanel({ agents, kinds, tools, loading, error, savin
               </AlertDialogContent>
             </AlertDialog>
           </div>
+          <div className="settings-savebar">
+            <span className="settings-save-status" role="status">{dirty ? "有未保存的更改" : saved || "所有更改已保存"}</span>
+            <Button variant="ghost" disabled={saving || !dirty} onClick={() => {
+              const fallback = selected ?? agents?.[0];
+              if (fallback) edit(fallback);
+              else { setDraft(null); setSelectedID(null); setSaved(""); }
+            }}>放弃</Button>
+            <Button
+              disabled={saving || !dirty || !draft.name.trim() || !draft.kind}
+              onClick={() => void save()}
+            >
+              {saving ? "保存中…" : "保存"}
+            </Button>
+          </div>
+
         </div>
       )}
         </div>

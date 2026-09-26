@@ -103,6 +103,7 @@ type Tools interface {
 	// 本轮查询与调用
 	Definitions(ctx context.Context, workspace string, allow []string) ([]Definition, error)
 	Call(ctx context.Context, call Call) (Result, error)
+	ReleaseRun(sessionID, runID string)
 }
 
 // 契约。工具分发前的检查；空原因表示继续执行。

@@ -30,6 +30,7 @@ type configFile struct {
 // 数据。一条 MCP Server 的静态配置。
 type serverConfig struct {
 	Type         string            `json:"type"`
+	Enabled      *bool             `json:"enabled,omitempty"`
 	Command      string            `json:"command,omitempty"`
 	Args         []string          `json:"args,omitempty"`
 	Env          map[string]string `json:"env,omitempty"`
@@ -39,6 +40,8 @@ type serverConfig struct {
 	IncludeTools *[]string         `json:"includeTools,omitempty"`
 	ExcludeTools []string          `json:"excludeTools,omitempty"`
 }
+
+func (c serverConfig) isEnabled() bool { return c.Enabled == nil || *c.Enabled }
 
 // 数据。一条已确定来源目录、变量和 transport 的 Server 配置。
 type serverSpec struct {
@@ -182,7 +185,7 @@ func normalizeServer(name string, config serverConfig, baseDir string) (serverSp
 	}
 	parsed, err := url.Parse(endpoint)
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
-		return serverSpec{}, fmt.Errorf("mcp: HTTP server %q has invalid url %q", name, endpoint)
+		return serverSpec{}, fmt.Errorf("mcp: HTTP server %q has invalid url", name)
 	}
 	if command != "" || len(args) > 0 || len(environment) > 0 || cwd != "" {
 		return serverSpec{}, fmt.Errorf("mcp: HTTP server %q cannot set command, args, env, or cwd", name)

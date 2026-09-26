@@ -1,4 +1,4 @@
-import { Check, Monitor, Moon, Sun } from "../icons";
+import { Check, Monitor, Moon, Palette, Sun } from "../icons";
 
 export function AppearanceSettingsPanel({ theme, setTheme }: {
   theme: string;
@@ -12,13 +12,13 @@ export function AppearanceSettingsPanel({ theme, setTheme }: {
           <h3>外观</h3>
           <div className="settings-subnav-list">
             <div className="settings-subnav-item" aria-current="page">
-              <Sun />
+              <Palette />
               <span className="settings-subnav-copy"><span className="settings-subnav-name">界面主题</span></span>
             </div>
           </div>
         </aside>
         <section className="settings-detail-pane">
-          <div className="settings-detail-title-row"><h3>界面主题</h3></div>
+          <div className="settings-detail-title-row"><div className="settings-identity"><span className="settings-identity-icon"><Palette /></span><h3>界面主题</h3></div></div>
           <div className="theme-grid" role="group" aria-label="界面主题">
           {[
             { id: "light", name: "浅色", Icon: Sun },
@@ -27,7 +27,7 @@ export function AppearanceSettingsPanel({ theme, setTheme }: {
           ].map((item) => (
             <button
               key={item.id}
-              className={`theme-option ${theme === item.id ? "active" : ""}`}
+              className={`theme-option ui-focus ${theme === item.id ? "active" : ""}`}
               onClick={() => setTheme(item.id)}
               aria-pressed={theme === item.id}
             >

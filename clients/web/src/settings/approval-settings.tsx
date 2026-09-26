@@ -4,7 +4,7 @@ import type { ApprovalSettings, ApprovalSettingsView } from "../../../contracts/
 import type { ModelChoice } from "../../../contracts/appserver";
 import { RPCClient, formatRPCError } from "../client/rpc";
 import { ModelMenu } from "../components/model-menu";
-import { Bot, Shield, Check } from "../icons";
+import { Brain, Plug, Shield, Check, ChevronRight } from "../icons";
 import type { SettingsDraftState } from "./types";
 
 export function ApprovalSettingsPanel({ client, models, modelError, onReloadModels, onSaved, onStateChange }: {
@@ -83,29 +83,33 @@ export function ApprovalSettingsPanel({ client, models, modelError, onReloadMode
           </Button>
           <Button variant="ghost" className="settings-subnav-item" aria-pressed={detail === "target"}
             onClick={() => setDetail("target")}>
-            <Bot /><span className="settings-subnav-copy"><span className="settings-subnav-name">
+            {draft.engine === "llm" ? <Brain /> : <Plug />}<span className="settings-subnav-copy"><span className="settings-subnav-name">
               {draft.engine === "llm" ? "审核模型" : "服务连接"}</span></span>
           </Button>
         </div>
       </aside>
       <div className="settings-detail-pane">
       {detail === "method" && <section className="settings-section">
-      <div className="settings-detail-title-row"><h3>审核方式</h3></div>
+      <div className="settings-detail-title-row"><div className="settings-identity"><span className="settings-identity-icon"><Shield /></span><h3>审核方式</h3></div></div>
       <div className="settings-choice-grid" role="group" aria-label="审核方式">
         {(["llm", "jev"] as const).map((engine) => <button key={engine}
-          className="settings-choice"
+          className="settings-choice ui-focus"
           aria-pressed={draft.engine === engine} disabled={saving || !client?.connected}
           onClick={() => edit({ ...draft, engine })}>
-          {engine === "llm" ? <Bot /> : <Shield />}
+          {engine === "llm" ? <Brain /> : <Plug />}
           <span><strong>{engine === "llm" ? "常规 LLM" : "Jev"}</strong>
             <span className="settings-description">{engine === "llm" ? "使用已配置的模型进行审核" : "使用 Jev 服务，需要独立密钥"}</span>
           </span>
           <span className="theme-check">{draft.engine === engine && <Check />}</span>
         </button>)}
       </div>
+      <Button variant="outline" className="settings-next-step" disabled={saving} onClick={() => setDetail("target")}>
+        {draft.engine === "llm" ? <Brain /> : <Plug />}<span>{draft.engine === "llm" ? "审核模型" : "服务连接"}</span>
+        <span className="metadata">{draft.engine === "llm" ? (modelValid ? draft.model : "待选择") : (view.jevConfigured ? "已配置" : "待配置")}</span><ChevronRight />
+      </Button>
       </section>}
       {detail === "target" && <section className="settings-section">
-      <div className="settings-detail-title-row"><h3>{draft.engine === "llm" ? "审核模型" : "服务连接"}</h3></div>
+      <div className="settings-detail-title-row"><div className="settings-identity"><span className="settings-identity-icon">{draft.engine === "llm" ? <Brain /> : <Plug />}</span><h3>{draft.engine === "llm" ? "审核模型" : "服务连接"}</h3></div></div>
       {draft.engine === "llm" ? <div className="settings-model-field"><ModelMenu
         models={models} value={draft} disabled={saving || !client?.connected}
         error={modelError} onRetry={onReloadModels} requiresVision={false}
@@ -118,9 +122,9 @@ export function ApprovalSettingsPanel({ client, models, modelError, onReloadMode
       </section>}
       <div className="settings-savebar">
       <span className="settings-save-status" role="status">{dirty ? "有未保存的更改" : saved ? "已保存" : view.available ? "当前配置可用" : "当前配置尚未就绪"}</span>
-      <Button variant="ghost" disabled={saving || !dirty} onClick={() => edit(view.settings)}>放弃更改</Button>
+      <Button variant="ghost" disabled={saving || !dirty} onClick={() => edit(view.settings)}>放弃</Button>
       <Button disabled={!client?.connected || saving || !dirty || !canSave} onClick={() => void save()}>
-        {saving ? "保存中…" : "保存更改"}
+        {saving ? "保存中…" : "保存"}
       </Button>
       </div>
       </div>

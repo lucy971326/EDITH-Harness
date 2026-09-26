@@ -1,5 +1,5 @@
 import type { ComponentProps, ReactNode } from "react";
-import { Sun, Bot, Shield, Command, Brain, Archive } from "../icons";
+import { Palette, Bot, Shield, Webhook, Brain, Archive, Server } from "../icons";
 import { AgentSettingsPanel } from "./agent-settings";
 import { AppearanceSettingsPanel } from "./appearance-settings";
 import type { SettingsDraftState } from "./types";
@@ -8,7 +8,7 @@ import type { SettingsDraftState } from "./types";
 export type SettingsSection = {
   id: string;
   label: string;
-  icon: typeof Sun;
+  icon: typeof Palette;
   render: (onStateChange: (state: SettingsDraftState) => void) => ReactNode;
 };
 
@@ -17,13 +17,14 @@ export type SettingsContentProps = Omit<ComponentProps<typeof AgentSettingsPanel
     approvalSettings: SettingsSection["render"];
     hookSettings: SettingsSection["render"];
     modelSettings: SettingsSection["render"];
+    mcpSettings: SettingsSection["render"];
     archivedSettings: SettingsSection["render"];
   };
 
 // 唯一分类登记入口；顺序同时决定导航和面板，不在外壳添加分类分支。
 export function createSettingsSections(props: SettingsContentProps): SettingsSection[] {
   return [
-    { id: "appearance", label: "外观", icon: Sun,
+    { id: "appearance", label: "外观", icon: Palette,
       render: () => <AppearanceSettingsPanel theme={props.theme} setTheme={props.setTheme} /> },
     { id: "agents", label: "Agent", icon: Bot,
       render: (onStateChange) => <AgentSettingsPanel
@@ -32,7 +33,8 @@ export function createSettingsSections(props: SettingsContentProps): SettingsSec
         onSave={props.onSave} onDelete={props.onDelete} onStateChange={onStateChange} /> },
     { id: "models", label: "模型与供应商", icon: Brain, render: props.modelSettings },
     { id: "approvals", label: "智能审批", icon: Shield, render: props.approvalSettings },
-    { id: "hooks", label: "Hooks", icon: Command, render: props.hookSettings },
+    { id: "hooks", label: "Hooks", icon: Webhook, render: props.hookSettings },
+    { id: "mcp", label: "MCP", icon: Server, render: props.mcpSettings },
     { id: "archived", label: "已归档会话", icon: Archive, render: props.archivedSettings },
   ];
 }

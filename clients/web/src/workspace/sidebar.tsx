@@ -94,7 +94,7 @@ export function Sidebar({
           <Button
             variant="ghost"
             size="icon"
-            aria-label="收起项目侧栏"
+            aria-label="收起项目侧栏" title="收起项目侧栏"
             onClick={onClose}
           >
             <PanelLeft />
@@ -157,18 +157,18 @@ export function Sidebar({
               className="project-group"
             >
               <div className="project-heading">
-                <CollapsibleTrigger className="project-trigger">
+                <CollapsibleTrigger className="project-trigger ui-focus">
                   <ChevronRight className="disclosure-chevron" />
                   <Folder />
                   <span title={project.workspace}>{project.name}</span>
                 </CollapsibleTrigger>
                 <Button variant="ghost" size="icon-sm" className="sidebar-row-action"
-                  aria-label={`永久删除项目 ${project.name}`} disabled={!connected}
+                  title="永久删除项目" aria-label={`永久删除项目 ${project.name}`} disabled={!connected}
                   onClick={() => onDeleteProject(project.workspace)}><Trash2 /></Button>
                 <Button
                   variant="ghost"
-                  size="icon"
-                  aria-label={`在 ${project.name} 新建会话`}
+                  size="icon-sm"
+                  title="新建会话" aria-label={`在 ${project.name} 新建会话`}
                   disabled={!connected || backendBusy}
                   onClick={() => onCreate(project.workspace)}
                 >
@@ -181,15 +181,15 @@ export function Sidebar({
                     key={item.sessionID}
                     className={`session-row ${item.sessionID === selectedID && activePath === "/" ? "selected" : ""}`}
                   >
-                    <button className="session-link"
+                    <button className="session-link ui-focus" title={item.title}
                       aria-current={item.sessionID === selectedID && activePath === "/" ? "page" : undefined}
                       onClick={() => onSelect(item.sessionID)}><span>{item.title}</span></button>
                     <div className="session-actions">
                       <Button variant="ghost" size="icon-sm" className="sidebar-row-action"
-                        aria-label={`归档会话 ${item.title}`}
+                        title="归档会话" aria-label={`归档会话 ${item.title}`}
                         disabled={!connected} onClick={() => onArchiveSession(item.sessionID)}><Archive /></Button>
                       <Button variant="ghost" size="icon-sm" className="sidebar-row-action"
-                        aria-label={`永久删除会话 ${item.title}`}
+                        title="永久删除会话" aria-label={`永久删除会话 ${item.title}`}
                         disabled={!connected} onClick={() => onDeleteSession(item.sessionID)}><Trash2 /></Button>
                     </div>
                   </div>

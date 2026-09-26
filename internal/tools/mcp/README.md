@@ -7,9 +7,11 @@
   -> Provider -> 工具目录 -> tools.Registry -> Provider.Call
 ```
 
-- `construct.go`：`New` 读取全局配置并创建 Provider。
-- `config.go`：配置解析、合并与校验。
-- `provider.go`：工作区发现、配置快照、连接、调用和 Close。
+- `construct.go`：`New` 创建 Provider，不在启动时连接 Server。
+- `config.go`：配置解析与展开。
+- `settings.go`：全局配置版本保护、读写与安全状态视图；项目配置只读。
+- `runtime.go`：按 Run 固定连接、项目信任、失败隔离和释放。
+- `provider.go`：MCP 连接、工具发现与快照组装。
 - `result.go`：MCP 结果转成 Harness 工具结果。
 
 项目来源是 `.mcp.json` 与 `.harness/mcp.json`。只读模式禁用 MCP；其他模式按规则确认配置、审核调用。Server 在宿主或远端运行，不自动进入 Agent 命令沙箱。入口负责 Close；结果经 Loop 交给 Runner 落账。

@@ -186,6 +186,10 @@ func Open(dataDir string) (backend *Backend, result error) {
 	if err != nil {
 		return nil, err
 	}
+	err = server.BindMCP(mcpProvider)
+	if err != nil {
+		return nil, err
+	}
 	err = server.BindAgents(agentService)
 	if err != nil {
 		return nil, err

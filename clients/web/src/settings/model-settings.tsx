@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { ModelSettings, ModelSettingsView, ProviderSettings, ReasoningSettings, SaveProviderSettings } from "../../../contracts/appserver";
 import { RPCClient, formatRPCError } from "../client/rpc";
-import { ArrowLeft, ArrowUp, ArrowDown, Plus, X } from "../icons";
+import { ArrowLeft, ArrowUp, ArrowDown, Brain, Building2, ChevronRight, Plus, Pencil, Trash2, X } from "../icons";
 import type { SettingsDraftState } from "./types";
 
 type ProviderDraft = SaveProviderSettings;
@@ -275,23 +275,23 @@ export function ModelSettingsPanel({ client, onSaved, onStateChange }: {
         <div className="model-provider-list">
           {view.providers.map((item) => {
             const count = view.models.filter((entry) => entry.provider === item.id).length;
-            return <Button key={item.id} variant="ghost" className="model-provider-row"
+            return <Button key={item.id} variant="ghost" className="settings-subnav-item"
               aria-pressed={selectedProvider?.id === item.id} disabled={saving}
               onClick={() => requestTarget({ kind: "provider", id: item.id })}>
-              <span className="model-provider-name">{item.id}</span>
-              <span className="model-provider-meta">{count} 个模型 · {item.hasAPIKey ? "密钥已设置" : "未设置密钥"}</span>
+              <Building2 /><span className="settings-subnav-copy"><span className="settings-subnav-name">{item.id}</span>
+              <span className="settings-subnav-meta">{count} 个模型</span></span>
             </Button>;
           })}
         </div>
       </aside>
       <div className="model-settings-detail">
         {editor === "overview" && selectedProvider && <>
-          <div className="model-settings-title-row">
-            <div><h3>{selectedProvider.id}</h3>
+          <div className="settings-detail-title-row">
+            <div className="settings-identity"><span className="settings-identity-icon"><Building2 /></span><div><h3>{selectedProvider.id}</h3>
               <p className="model-settings-summary">{protocolLabel} · {selectedProvider.hasAPIKey ? "密钥已设置" : "未设置密钥"}</p>
-            </div>
+            </div></div>
             <Button size="sm" variant="outline" disabled={saving}
-              onClick={() => requestTarget({ kind: "edit-provider", id: selectedProvider.id })}>编辑连接</Button>
+              onClick={() => requestTarget({ kind: "edit-provider", id: selectedProvider.id })}><Pencil />编辑连接</Button>
           </div>
           <p className="model-settings-address">{selectedProvider.baseURL || protocols.find((item) => item.id === selectedProtocol)?.address}</p>
           <section className="model-settings-models">
@@ -312,8 +312,8 @@ export function ModelSettingsPanel({ client, onSaved, onStateChange }: {
             <div className="model-entry-list">
               {providerModels.map((item) => <Button key={item.key} variant="ghost" className="model-entry-row" disabled={saving}
                 onClick={() => requestTarget({ kind: "model", key: item.key })}>
-                <span className="model-entry-name">{item.id}</span>
-                <span className="model-entry-meta">{windowLabel(item.contextWindow)}{item.vision ? " · 支持图片" : ""}</span>
+                <Brain /><span className="model-entry-name">{item.id}</span>
+                <span className="model-entry-meta">{windowLabel(item.contextWindow)}{item.vision ? " · 支持图片" : ""}</span><ChevronRight />
               </Button>)}
               {providerModels.length === 0 && <p className="metadata">暂无模型</p>}
             </div>
@@ -358,7 +358,7 @@ export function ModelSettingsPanel({ client, onSaved, onStateChange }: {
           {storedProvider && <div className="settings-danger-row">
             <Button variant="ghost" className="settings-delete" disabled={saving}
               onClick={() => void deleteProvider()}>
-              {providerModels.length > 0 ? `删除供应商及 ${providerModels.length} 个模型` : "删除供应商"}
+              <Trash2 />{providerModels.length > 0 ? `删除供应商及 ${providerModels.length} 个模型` : "删除供应商"}
             </Button>
           </div>}
           <div className="settings-savebar">
@@ -366,7 +366,7 @@ export function ModelSettingsPanel({ client, onSaved, onStateChange }: {
             <Button variant="ghost" disabled={saving} onClick={() => {
               showTarget({ kind: "overview", id: provider.id }, view); setError("");
             }}>{providerDirty ? "放弃更改" : "返回概况"}</Button>
-            <Button disabled={saving || !canSaveCurrent} onClick={() => void saveProvider()}>保存供应商</Button>
+            <Button disabled={saving || !canSaveCurrent} onClick={() => void saveProvider()}>保存</Button>
           </div>
         </>}
         {editor === "model" && model && provider && <>
@@ -412,14 +412,14 @@ export function ModelSettingsPanel({ client, onSaved, onStateChange }: {
           </div>
           {!!model.key && <div className="settings-danger-row">
             <Button variant="ghost" className="settings-delete" disabled={saving}
-              onClick={() => void deleteModel()}>删除模型</Button>
+              onClick={() => void deleteModel()}><Trash2 />删除模型</Button>
           </div>}
           <div className="settings-savebar">
             <span className="settings-save-status" role="status">{modelDirty ? "有未保存的更改" : "尚无更改"}</span>
             <Button variant="ghost" disabled={saving} onClick={() => {
               showTarget({ kind: "overview", id: provider.id }, view); setError("");
             }}>{modelDirty ? "放弃更改" : "返回概况"}</Button>
-            <Button disabled={saving || !canSaveCurrent} onClick={() => void saveModel()}>保存模型</Button>
+            <Button disabled={saving || !canSaveCurrent} onClick={() => void saveModel()}>保存</Button>
           </div>
         </>}
       </div>

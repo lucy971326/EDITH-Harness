@@ -505,6 +505,7 @@ func (r *Runner) begin(sessionID string, current *liveRun) error {
 }
 
 func (r *Runner) release(sessionID string, current *liveRun) {
+	r.tools.ReleaseRun(sessionID, current.runID)
 	current.finishInputs()
 	current.mu.Lock()
 	seq := current.updateSeq

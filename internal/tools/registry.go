@@ -122,7 +122,8 @@ func (r *Registry) Prepare(ctx context.Context, workspace string, selected []str
 	if len(access) > 0 {
 		ctx = WithAccess(ctx, access[0])
 	}
-	_, err := r.definitions(ctx, "", selected)
+	// 先校验普通 Tool；这一步不能提前把本轮 MCP 固定到空工作区。
+	_, err := r.definitions(WithAccess(ctx, Access{Mode: permissions.ReadOnly}), "", selected)
 	if err != nil {
 		return Prepared{}, err
 	}
@@ -162,6 +163,18 @@ func (r *Registry) Prepare(ctx context.Context, workspace string, selected []str
 // Definitions 按 Allow 的顺序取出本轮可交给模型的工具定义。
 func (r *Registry) Definitions(ctx context.Context, workspace string, allow []string) ([]Definition, error) {
 	return r.definitions(ctx, workspace, allow)
+}
+
+// ReleaseRun 通知动态来源释放本轮固定的资源。
+func (r *Registry) ReleaseRun(sessionID, runID string) {
+	r.mu.RLock()
+	providers := append([]providerEntry(nil), r.providers...)
+	r.mu.RUnlock()
+	for _, entry := range providers {
+		if releaser, ok := entry.provider.(interface{ ReleaseRun(string, string) }); ok {
+			releaser.ReleaseRun(sessionID, runID)
+		}
+	}
 }
 
 func (r *Registry) definitions(ctx context.Context, workspace string, allow []string) ([]Definition, error) {

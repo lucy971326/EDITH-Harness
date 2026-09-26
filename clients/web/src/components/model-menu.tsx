@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Slider } from "radix-ui";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Brain, Check, ChevronRight, Globe } from "../icons";
+import { Brain, Building2, Check, ChevronRight } from "../icons";
 import type { ModelChoice } from "../../../contracts/appserver.ts";
 
 export interface ModelSelection {
@@ -98,7 +98,7 @@ export function ModelMenu({
             <Popover key={provider} open={providerOpen === provider} onOpenChange={(next) => setProviderOpen(next ? provider : null)}>
               <PopoverTrigger asChild>
                 <button className="ui-menu-item model-provider" aria-label={`${provider} 模型`}>
-                  <Globe />
+                  <Building2 />
                   <span>{provider}</span>
                   {model?.provider === provider && <Check className="model-provider-check" />}
                   <ChevronRight />

@@ -1,6 +1,7 @@
 import { Approvals } from "./chat/approvals";
 import { ApprovalSettingsPanel } from "./settings/approval-settings";
 import { HookSettingsPanel } from "./settings/hook-settings";
+import { MCPSettingsPanel } from "./settings/mcp-settings";
 import { ModelSettingsPanel } from "./settings/model-settings";
 import { ArchivedSettingsPanel } from "./settings/archived-settings";
 import {
@@ -1090,6 +1091,15 @@ export default function App() {
         }} />,
       hookSettings: (onStateChange) => <HookSettingsPanel client={approvalClient}
         currentWorkspace={selected?.settings.workspace ?? ""} onStateChange={onStateChange} />,
+      mcpSettings: (onStateChange) => <MCPSettingsPanel client={approvalClient}
+        currentWorkspace={selected?.settings.workspace ?? ""} onStateChange={onStateChange}
+        onOpenFile={(path) => {
+          const workspace = selected?.settings.workspace;
+          if (!workspace) return;
+          setPanel(true);
+          navigate("/");
+          setFileOpenRequest({ path, workspace, requestID: ++fileOpenRequestID.current });
+        }} />,
       approvalSettings: (onStateChange) => <ApprovalSettingsPanel client={approvalClient}
         models={models} modelError={modelError} onStateChange={onStateChange}
         onReloadModels={() => { if (clientRef.current?.connected) void loadModels(clientRef.current); }}

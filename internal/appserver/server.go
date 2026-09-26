@@ -18,6 +18,7 @@ import (
 	"harness/internal/machine"
 	"harness/internal/runner"
 	"harness/internal/skills"
+	"harness/internal/tools/mcp"
 )
 
 // 活对象。应用唯一的接入服务，拥有方法表、可选的 Web 监听和当前连接。
@@ -29,6 +30,7 @@ type Server struct {
 	runner          *runner.Runner
 	events          *events.Registry
 	models          *llm.Client
+	mcp             *mcp.Provider
 	agents          *agents.Service
 	skills          skills.Skills
 	commands        commands.Commands

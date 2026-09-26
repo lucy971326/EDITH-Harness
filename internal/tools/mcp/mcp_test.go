@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -64,6 +65,10 @@ func TestProvider_projectTrustAndToolApproval(t *testing.T) {
 	}
 	provider.approvals = approval
 	defer provider.Close()
+	settingsView, err := provider.ReadSettings(workspace)
+	if err != nil || len(settingsView.Project) != 1 || connections.Load() != 0 {
+		t.Fatalf("read-only settings connected project server: %#v, %v", settingsView, err)
+	}
 	registry := tools.NewRegistry()
 	if err := registry.RegisterProvider(provider); err != nil {
 		t.Fatal(err)
@@ -72,6 +77,10 @@ func TestProvider_projectTrustAndToolApproval(t *testing.T) {
 	readOnly, err := registry.Prepare(t.Context(), workspace, nil, tools.Access{Mode: permissions.ReadOnly})
 	if err != nil || len(readOnly.Names) != 0 || connections.Load() != 0 {
 		t.Fatalf("read-only discovery = %#v, %v, connections=%d", readOnly, err, connections.Load())
+	}
+	plan, err := provider.plan(workspace)
+	if err != nil || plan.projectError != "" || len(plan.entries) != 1 || !plan.entries[0].project {
+		t.Fatalf("project plan = %#v, %v", plan, err)
 	}
 
 	type preparation struct {
@@ -115,8 +124,8 @@ func TestProvider_projectTrustAndToolApproval(t *testing.T) {
 	}
 	first := prepare()
 	pending := waitPending("config")
-	if len(pending.MCP.Servers) != 1 || pending.MCP.Servers[0].Target != endpoint {
-		t.Fatalf("approval does not show the full endpoint: %#v", pending.MCP.Servers)
+	if len(pending.MCP.Servers) != 1 || strings.Contains(pending.MCP.Servers[0].Target, endpoint) {
+		t.Fatalf("approval exposed the endpoint: %#v", pending.MCP.Servers)
 	}
 	if connections.Load() != 0 {
 		t.Fatal("project server connected before confirmation")
@@ -199,8 +208,23 @@ func TestProvider_projectTrustAndToolApproval(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err = registry.Call(t.Context(), call)
-	if err != nil || !got.IsError || calls.Load() != 2 {
-		t.Fatalf("changed configuration call = %#v, %v, calls=%d", got, err, calls.Load())
+	if err != nil || got.IsError || calls.Load() != 3 {
+		t.Fatalf("old run lost its approved connection: %#v, %v, calls=%d", got, err, calls.Load())
+	}
+	if err := os.WriteFile(configPath, []byte(`{"mcpServers":{"demo":{"type":"http","url":`+strconv.Quote(endpoint)+`,"includeTools":["ping"]}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	access.RunID = "changed-run"
+	third := prepare()
+	pending = waitPending("config")
+	if connections.Load() == 0 {
+		t.Fatal("old connection unexpectedly closed")
+	}
+	if err := approval.Respond(pending.ID, permissions.Decision{Approved: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got := <-third; got.err != nil || len(got.tools.Names) != 1 {
+		t.Fatalf("changed project config did not reapprove: %#v", got)
 	}
 }
 
@@ -223,6 +247,10 @@ func TestProvider_rejectsRetargetedWorkspace(t *testing.T) {
 	}
 	defer provider.Close()
 	access := tools.WithAccess(t.Context(), tools.Access{Mode: permissions.FullAccess})
+	before, err := provider.plan(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := provider.Snapshot(access, workspace); err != nil {
 		t.Fatal(err)
 	}
@@ -232,8 +260,12 @@ func TestProvider_rejectsRetargetedWorkspace(t *testing.T) {
 	if err := os.Symlink(second, workspace); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := provider.Snapshot(access, workspace); err == nil || !strings.Contains(err.Error(), "project path changed") {
-		t.Fatalf("retargeted workspace reused old MCP connection: %v", err)
+	after, err := provider.plan(workspace)
+	if err != nil || before.version == after.version {
+		t.Fatalf("retargeted workspace kept the old source version: %v", err)
+	}
+	if _, err := provider.Snapshot(access, workspace); err != nil {
+		t.Fatalf("retargeted workspace could not be refreshed: %v", err)
 	}
 }
 
@@ -270,10 +302,11 @@ func TestProvider_retriesFailedWorkspaceAndKeepsSuccessfulSnapshot(t *testing.T)
 	defer p.Close()
 	accessCtx := tools.WithAccess(t.Context(), tools.Access{Mode: permissions.FullAccess})
 	_, err = p.Snapshot(accessCtx, workspace)
-	if err == nil {
-		t.Fatal("first discovery should fail")
+	if err != nil {
+		t.Fatalf("one failed server should be isolated: %v", err)
 	}
 	available.Store(true)
+	p.invalidate(workspace)
 	snapshot, err := p.Snapshot(accessCtx, workspace)
 	if err != nil {
 		t.Fatalf("discovery after server recovery: %v", err)
@@ -437,5 +470,237 @@ func TestProvider_projectToolsAreAutomaticAndCallable(t *testing.T) {
 	}
 	if result.IsError || !strings.Contains(result.Content, "hello Lucy") || !strings.Contains(result.Content, `"name":"Lucy"`) {
 		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestSettings_versionRepairAndSecretView(t *testing.T) {
+	t.Setenv("MCP_TEST_SECRET", "not-for-the-browser")
+	files, err := persist.NewFiles(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := New(files, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer provider.Close()
+	view, err := provider.ReadSettings("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	protocol := "http"
+	endpoint := "http://127.0.0.1:1/${MCP_TEST_SECRET}"
+	view, err = provider.Save(t.Context(), SaveInput{Name: "demo", Revision: view.Revision,
+		Create: true, Type: &protocol, URL: &endpoint})
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(view)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "not-for-the-browser") || strings.Contains(string(encoded), endpoint) {
+		t.Fatalf("settings view disclosed URL or expanded secret: %s", encoded)
+	}
+	if len(view.Global) != 1 || view.Global[0].Status != "failed" {
+		t.Fatalf("saved configuration should report connection failure: %#v", view.Global)
+	}
+	stale := view.Revision
+	if err := files.Write("mcp.json", []byte(`{"mcpServers":{}}`)); err != nil {
+		t.Fatal(err)
+	}
+	_, err = provider.Delete(t.Context(), "demo", stale)
+	if !errors.Is(err, ErrChanged) {
+		t.Fatalf("stale delete = %v", err)
+	}
+	if err := files.Write("mcp.json", []byte(`{broken`)); err != nil {
+		t.Fatal(err)
+	}
+	broken, err := provider.ReadSettings("")
+	if err != nil || broken.GlobalError == "" {
+		t.Fatalf("broken config = %#v, %v", broken, err)
+	}
+	view, err = provider.ResetInvalid(t.Context(), broken.Revision)
+	if err != nil || view.GlobalError != "" {
+		t.Fatalf("reset = %#v, %v", view, err)
+	}
+	data, err := os.ReadDir(filepath.Dir(view.GlobalPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	backedUp := false
+	for _, entry := range data {
+		if strings.HasPrefix(entry.Name(), "mcp.json.backup-") {
+			backedUp = true
+		}
+	}
+	if !backedUp {
+		t.Fatal("damaged config was not backed up")
+	}
+}
+
+func TestProvider_projectDisabledNameDoesNotFallBack(t *testing.T) {
+	server := sdk.NewServer(&sdk.Implementation{Name: "global", Version: "v1"}, nil)
+	server.AddTool(&sdk.Tool{Name: "ping", InputSchema: json.RawMessage(`{"type":"object"}`)},
+		func(context.Context, *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
+			return &sdk.CallToolResult{}, nil
+		})
+	remote := httptest.NewServer(sdk.NewStreamableHTTPHandler(func(*http.Request) *sdk.Server { return server },
+		&sdk.StreamableHTTPOptions{Stateless: true, JSONResponse: true}))
+	defer remote.Close()
+	provider, err := newProvider(t.Context(), configFile{MCPServers: map[string]serverConfig{
+		"demo": {Type: "http", URL: remote.URL},
+	}}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer provider.Close()
+	workspace := t.TempDir()
+	if err := os.WriteFile(filepath.Join(workspace, ".mcp.json"),
+		[]byte(`{"mcpServers":{"demo":{"type":"http","url":"http://127.0.0.1:1","enabled":false}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := provider.Snapshot(tools.WithAccess(t.Context(), tools.Access{Mode: permissions.FullAccess}), workspace)
+	if err != nil || len(snapshot.Definitions) != 0 {
+		t.Fatalf("disabled project override = %#v, %v", snapshot, err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, ".mcp.json"),
+		[]byte(`{"mcpServers":{"demo":{"type":"http","url":"http://127.0.0.1:1"}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err = provider.Snapshot(tools.WithAccess(t.Context(), tools.Access{Mode: permissions.FullAccess}), workspace)
+	if err != nil || len(snapshot.Definitions) != 0 {
+		t.Fatalf("failed project override fell back: %#v, %v", snapshot, err)
+	}
+}
+
+func TestProvider_newRunUsesNewConnectionAndOldRunKeepsOld(t *testing.T) {
+	makeRemote := func(label string, count *atomic.Int32) *httptest.Server {
+		server := sdk.NewServer(&sdk.Implementation{Name: label, Version: "v1"}, nil)
+		server.AddTool(&sdk.Tool{Name: "ping", InputSchema: json.RawMessage(`{"type":"object"}`)},
+			func(context.Context, *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
+				count.Add(1)
+				return &sdk.CallToolResult{}, nil
+			})
+		return httptest.NewServer(sdk.NewStreamableHTTPHandler(func(*http.Request) *sdk.Server { return server },
+			&sdk.StreamableHTTPOptions{Stateless: true, JSONResponse: true}))
+	}
+	var oldCalls, newCalls atomic.Int32
+	oldRemote := makeRemote("old", &oldCalls)
+	defer oldRemote.Close()
+	newRemote := makeRemote("new", &newCalls)
+	defer newRemote.Close()
+	files, err := persist.NewFiles(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := New(files, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer provider.Close()
+	view, err := provider.ReadSettings("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	protocol := "http"
+	oldURL := oldRemote.URL
+	view, err = provider.Save(t.Context(), SaveInput{Name: "demo", Revision: view.Revision,
+		Create: true, Type: &protocol, URL: &oldURL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldAccess := tools.Access{Mode: permissions.FullAccess, SessionID: "s", RunID: "old"}
+	_, err = provider.Snapshot(tools.WithAccess(t.Context(), oldAccess), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldState := provider.runs[runKey("s", "old")]
+	newURL := newRemote.URL
+	allTools := []string{}
+	_, err = provider.Save(t.Context(), SaveInput{Name: "demo", Revision: view.Revision,
+		Create: false, URL: &newURL, IncludeTools: &allTools})
+	if err != nil {
+		t.Fatal(err)
+	}
+	newAccess := tools.Access{Mode: permissions.FullAccess, SessionID: "s", RunID: "new"}
+	_, err = provider.Snapshot(tools.WithAccess(t.Context(), newAccess), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"old", "new"} {
+		_, err = provider.Call(t.Context(), tools.Call{Name: "mcp__demo__ping", Arguments: json.RawMessage(`{}`),
+			Mode: permissions.FullAccess, SessionID: "s", RunID: id})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if oldCalls.Load() != 1 || newCalls.Load() != 1 {
+		t.Fatalf("runs used wrong connections: old=%d new=%d", oldCalls.Load(), newCalls.Load())
+	}
+	provider.ReleaseRun("s", "old")
+	if !oldState.closed {
+		t.Fatal("retired connection was not released after old run")
+	}
+	provider.ReleaseRun("s", "new")
+}
+
+func TestMCPStdioHelper(t *testing.T) {
+	if os.Getenv("HARNESS_MCP_STDIO_HELPER") != "1" {
+		return
+	}
+	server := sdk.NewServer(&sdk.Implementation{Name: "stdio-helper", Version: "v1"}, nil)
+	server.AddTool(&sdk.Tool{Name: "ping", InputSchema: json.RawMessage(`{"type":"object"}`)},
+		func(context.Context, *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
+			return &sdk.CallToolResult{}, nil
+		})
+	if err := server.Run(t.Context(), &sdk.StdioTransport{}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestProvider_stdioConnection(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := newProvider(t.Context(), configFile{MCPServers: map[string]serverConfig{
+		"local": {Type: "stdio", Command: executable, Args: []string{"-test.run=^TestMCPStdioHelper$"},
+			Env: map[string]string{"HARNESS_MCP_STDIO_HELPER": "1"}},
+	}}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer provider.Close()
+	snapshot, err := provider.Snapshot(tools.WithAccess(t.Context(), tools.Access{Mode: permissions.FullAccess}), "")
+	if err != nil || len(snapshot.Definitions) != 1 || snapshot.Definitions[0].Name != "mcp__local__ping" {
+		t.Fatalf("stdio discovery = %#v, %v", snapshot, err)
+	}
+}
+
+func TestProvider_oneFailedServerDoesNotHideOthers(t *testing.T) {
+	server := sdk.NewServer(&sdk.Implementation{Name: "healthy", Version: "v1"}, nil)
+	server.AddTool(&sdk.Tool{Name: "ping", InputSchema: json.RawMessage(`{"type":"object"}`)},
+		func(context.Context, *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
+			return &sdk.CallToolResult{}, nil
+		})
+	remote := httptest.NewServer(sdk.NewStreamableHTTPHandler(func(*http.Request) *sdk.Server { return server },
+		&sdk.StreamableHTTPOptions{Stateless: true, JSONResponse: true}))
+	defer remote.Close()
+	provider, err := newProvider(t.Context(), configFile{MCPServers: map[string]serverConfig{
+		"broken":  {Type: "http", URL: "http://127.0.0.1:1"},
+		"healthy": {Type: "http", URL: remote.URL},
+	}}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer provider.Close()
+	snapshot, err := provider.Snapshot(tools.WithAccess(t.Context(), tools.Access{Mode: permissions.FullAccess}), "")
+	if err != nil || len(snapshot.Definitions) != 1 || snapshot.Definitions[0].Name != "mcp__healthy__ping" {
+		t.Fatalf("failed server hid healthy tool: %#v, %v", snapshot, err)
+	}
+	view, err := provider.ReadSettings("")
+	if err != nil || len(view.Global) != 2 || view.Global[0].Status != "failed" || view.Global[1].Status != "connected" {
+		t.Fatalf("connection statuses = %#v, %v", view.Global, err)
 	}
 }

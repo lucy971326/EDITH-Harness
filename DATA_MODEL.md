@@ -24,7 +24,7 @@ Web 与 Desktop 启动前都独占 `.lock` 文件的操作系统锁；同一份�
 │  用户可编辑的模型 ID、上下文窗口、看图能力与有序思考档位；首次缺失时复制内置目录
 │
 ├─ mcp.json
-│  用户级 MCP Server 配置；项目级配置仍放在项目目录
+│  用户级 MCP Server 配置（enabled 缺省为启用）；项目级配置仍放在项目目录
 │
 ├─ approvals/{settings.json,mcp-trust.json}
 │  审核设置与项目 MCP 配置信任

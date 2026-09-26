@@ -147,7 +147,58 @@ export interface HookView {
   lastError: string;
 }
 
+export interface MCPServerView {
+  name: string;
+  scope: 'global' | 'project';
+  source: string;
+  type: string;
+  enabled: boolean;
+  overridden: boolean;
+  hasCommand: boolean;
+  hasURL: boolean;
+  hasCWD: boolean;
+  argCount: number;
+  envKeys: string[];
+  headerKeys: string[];
+  includeTools: string[];
+  excludeTools: string[];
+  status: 'saved' | 'connected' | 'failed' | 'invalid' | 'disabled';
+  error?: string;
+  tools: string[];
+}
+
+export interface MCPSettingsView {
+  revision: string;
+  global: MCPServerView[];
+  project: MCPServerView[];
+  globalError?: string;
+  projectError?: string;
+  globalPath: string;
+  projectPaths: string[];
+}
+
+export interface MCPSaveInput {
+  name: string;
+  revision: string;
+  create: boolean;
+  type?: string;
+  enabled?: boolean;
+  command?: string;
+  args?: string[];
+  env?: Record<string, string | null>;
+  cwd?: string;
+  url?: string;
+  headers?: Record<string, string | null>;
+  includeTools?: string[];
+  excludeTools?: string[];
+}
+
 export interface ServerMethods {
+	'mcp/read': { params: { workspace: string }; result: MCPSettingsView };
+	'mcp/save': { params: MCPSaveInput; result: MCPSettingsView };
+	'mcp/delete': { params: { name: string; revision: string }; result: MCPSettingsView };
+	'mcp/retry': { params: { name: string }; result: MCPSettingsView };
+	'mcp/resetInvalid': { params: { revision: string }; result: MCPSettingsView };
   'hooks/read': { params: { workspace: string }; result: HookView };
   'hooks/save': { params: { scope: 'global' | 'project'; workspace: string; hash: string; hooks: HookConfig[] }; result: HookView };
   'hooks/trust': { params: { workspace: string; hash: string }; result: HookView };

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -8,7 +9,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ArrowDown, ArrowUp, ChevronRight, Folder, FolderOpen, Globe, Plus, RefreshCw, Trash2 } from "../icons";
+import { ArrowDown, ArrowUp, ChevronRight, Folder, FolderOpen, Globe, Plus, RefreshCw, Trash2, Webhook } from "../icons";
 import type { HookConfig, HookView } from "../../../contracts/appserver.ts";
 import { RPCClient, formatRPCError } from "../client/rpc";
 import type { SettingsDraftState } from "./types";
@@ -237,22 +238,28 @@ export function HookSettingsPanel({ client, currentWorkspace, onStateChange }: {
           onCheckedChange={(enabled) => update({ enabled })} />
         <Label htmlFor={id + "-enabled"}>{draft.enabled ? "已启用" : "已停用"}</Label>
       </div>
-      <Label htmlFor={id + "-name"}>名称</Label>
-      <Input id={id + "-name"} value={draft.name} disabled={saving}
-        onChange={(event) => update({ name: event.target.value })} />
-      <Label htmlFor={id + "-command"}>命令</Label>
-      <Input id={id + "-command"} value={draft.command} disabled={saving} placeholder="/usr/bin/python3"
-        onChange={(event) => update({ command: event.target.value })} />
-      <Label htmlFor={id + "-args"}>参数（JSON 字符串数组）</Label>
-      <Textarea id={id + "-args"} rows={2} value={draft.argsText} disabled={saving}
-        onChange={(event) => update({ argsText: event.target.value })} />
-      <Label htmlFor={id + "-tools"}>匹配工具（每行一个，留空匹配全部）</Label>
-      <Textarea id={id + "-tools"} rows={2} value={draft.toolsText} disabled={saving}
-        onChange={(event) => update({ toolsText: event.target.value })} />
-      <Label htmlFor={id + "-timeout"}>超时秒数（0 使用默认 10 秒）</Label>
-      <Input id={id + "-timeout"} type="number" min={0} max={60}
-        value={draft.timeoutSeconds} disabled={saving}
-        onChange={(event) => update({ timeoutSeconds: Number(event.target.value) })} />
+      <div className="settings-field"><Label htmlFor={id + "-name"}>名称</Label>
+        <Input id={id + "-name"} value={draft.name} disabled={saving}
+          onChange={(event) => update({ name: event.target.value })} /></div>
+      <div className="settings-field"><Label htmlFor={id + "-command"}>命令</Label>
+        <Input id={id + "-command"} value={draft.command} disabled={saving} placeholder="/usr/bin/python3"
+          onChange={(event) => update({ command: event.target.value })} /></div>
+      <div className="settings-field"><Label htmlFor={id + "-args"}>参数（JSON 字符串数组）</Label>
+        <Textarea id={id + "-args"} rows={2} value={draft.argsText} disabled={saving}
+          onChange={(event) => update({ argsText: event.target.value })} /></div>
+      <Collapsible className="settings-advanced" key={id}>
+        <CollapsibleTrigger className="settings-advanced-trigger ui-focus"><ChevronRight className="disclosure-chevron" />高级设置</CollapsibleTrigger>
+        <CollapsibleContent className="settings-advanced-content">
+          <div className="settings-field"><Label htmlFor={id + "-tools"}>匹配工具</Label>
+            <Textarea id={id + "-tools"} rows={2} value={draft.toolsText} disabled={saving} placeholder="每行一个，留空匹配全部"
+              onChange={(event) => update({ toolsText: event.target.value })} /></div>
+          <div className="settings-field"><Label htmlFor={id + "-timeout"}>超时秒数</Label>
+            <Input id={id + "-timeout"} type="number" min={0} max={60}
+              value={draft.timeoutSeconds} disabled={saving}
+              onChange={(event) => update({ timeoutSeconds: Number(event.target.value) })} />
+            <span className="settings-description">0 使用默认 10 秒</span></div>
+        </CollapsibleContent>
+      </Collapsible>
       <div className="hook-form-footer">
         {editor.index !== null && source && <Button type="button" size="sm" variant="ghost"
           className="settings-delete" disabled={saving || !projectReady || (!!source.error && !source.hash)}
@@ -260,11 +267,11 @@ export function HookSettingsPanel({ client, currentWorkspace, onStateChange }: {
           <Trash2 />删除 Hook
         </Button>}
         <Button type="button" size="sm" variant="ghost" disabled={saving}
-          onClick={() => setEditor(null)}>放弃更改</Button>
+          onClick={() => setEditor(null)}>放弃</Button>
         <Button type="submit" size="sm" disabled={saving || !dirty || !draft.name.trim() ||
           !draft.command.trim() || !client?.connected || (!!source?.error && !source.hash) ||
           !projectReady}>
-          {saving ? "保存中…" : editor.index === null ? "添加 Hook" : "保存更改"}
+          {saving ? "保存中…" : editor.index === null ? "添加 Hook" : "保存"}
         </Button>
       </div>
     </form>;
@@ -289,7 +296,7 @@ export function HookSettingsPanel({ client, currentWorkspace, onStateChange }: {
       </aside>
       <div className="settings-detail-pane">
         <div className="settings-detail-title-row">
-          <h3>{scope === "global" ? "全局 Hooks" : "项目 Hooks"}</h3>
+          <div className="settings-identity"><span className="settings-identity-icon"><Webhook /></span><h3>{scope === "global" ? "全局 Hooks" : "项目 Hooks"}</h3></div>
           <Button size="icon-sm" variant="ghost" aria-label="重新加载 Hook 配置"
             title="重新加载" disabled={saving || !client?.connected}
             onClick={() => requestTarget({ kind: "reload" })}><RefreshCw /></Button>
