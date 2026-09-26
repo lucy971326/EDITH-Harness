@@ -186,13 +186,43 @@ func (s *Service) Create(workspace string) (SessionInfo, error) {
 	if err != nil {
 		return SessionInfo{}, fmt.Errorf("conversation: create session: %w", err)
 	}
-	setup := settings.SessionSettings{AgentID: agents.DefaultID, Workspace: workspace}
+	setup, err := s.defaultRunSettings(workspace)
+	if err != nil {
+		discardErr := s.sessions.DiscardEmpty(id)
+		return SessionInfo{}, fmt.Errorf("conversation: default run settings: %w", errors.Join(err, discardErr))
+	}
 	err = s.settings.Put(id, setup)
 	if err != nil {
 		discardErr := s.sessions.DiscardEmpty(id)
 		return SessionInfo{}, fmt.Errorf("conversation: save session settings: %w", errors.Join(err, discardErr))
 	}
 	return s.Session(id)
+}
+
+// defaultRunSettings 由后端确定新会话的默认运行设置：默认 Agent 与首个密钥可用的模型档位。
+// 前端不传模型，settings 是唯一事实来源；发送时校验要求模型非空，创建时不填就会断链。
+func (s *Service) defaultRunSettings(workspace string) (settings.SessionSettings, error) {
+	setup := settings.SessionSettings{AgentID: agents.DefaultID, Workspace: workspace}
+	for _, choice := range s.models.Models() {
+		if len(choice.ReasoningEfforts) == 0 {
+			continue
+		}
+		if err := s.models.ValidateConfig(choice.ID); err != nil {
+			continue
+		}
+		setup.Model = choice.ID
+		setup.ReasoningEffort = choice.ReasoningEfforts[0]
+		break
+	}
+	if setup.Model == "" {
+		return settings.SessionSettings{}, fmt.Errorf("没有已配置密钥的模型，请先在配置中填写 Provider 密钥")
+	}
+	mode, err := permissions.NormalizeMode("")
+	if err != nil {
+		return settings.SessionSettings{}, err
+	}
+	setup.PermissionMode = mode
+	return setup, nil
 }
 
 // List 返回全部会话及其运行设置；页面分组和排序由调用方决定。

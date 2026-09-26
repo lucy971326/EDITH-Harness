@@ -158,6 +158,65 @@ func TestProductCreateDiscardsSessionWhenSettingsSaveFails(t *testing.T) {
 	}
 }
 
+func TestProductCreateSelectsConfiguredModel(t *testing.T) {
+	fixture := newTestFixture(t)
+	defer fixture.close()
+
+	cases := []struct {
+		name       string
+		config     string
+		wantModel  string
+		wantFailed bool
+	}{
+		{name: "skip empty key", config: "providers:\n  deepseek:\n    apiKey: \"\"\n  google:\n    apiKey: test-key\n", wantModel: "google/gemini-3.5-flash-lite"},
+		{name: "no usable key", config: "providers:\n  deepseek:\n    apiKey: \"\"\n", wantFailed: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			files, err := persist.NewFiles(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = files.Write("config.yaml", []byte(tc.config))
+			if err != nil {
+				t.Fatal(err)
+			}
+			models, err := llm.New(files)
+			if err != nil {
+				t.Fatal(err)
+			}
+			service, err := conversations.New(fixture.sessions, fixture.settings, fixture.agents, models, fixture.runner, fixture.commands, fixture.subagents, approvals.New())
+			if err != nil {
+				t.Fatal(err)
+			}
+			before, err := fixture.sessions.List()
+			if err != nil {
+				t.Fatal(err)
+			}
+			created, err := service.Create(t.TempDir())
+			if tc.wantFailed {
+				if err == nil {
+					t.Fatal("want missing key error")
+				}
+				after, listErr := fixture.sessions.List()
+				if listErr != nil {
+					t.Fatal(listErr)
+				}
+				if len(after) != len(before) {
+					t.Fatalf("failed create left session: before=%d after=%d", len(before), len(after))
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if created.Settings.Model != tc.wantModel {
+				t.Fatalf("model = %q, want %q", created.Settings.Model, tc.wantModel)
+			}
+		})
+	}
+}
+
 func TestProductSessionDoesNotReadOtherSessionSettings(t *testing.T) {
 	fixture := newTestFixture(t)
 	defer fixture.close()
