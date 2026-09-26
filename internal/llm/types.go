@@ -8,6 +8,7 @@ import (
 // 数据。当前本机配置可供会话选择的一种模型。
 type ModelChoice struct {
 	ID               string   `json:"id"`
+	Provider         string   `json:"provider"`
 	ContextWindow    int      `json:"contextWindow"`
 	Vision           bool     `json:"vision"`
 	ReasoningEfforts []string `json:"reasoningEfforts"`

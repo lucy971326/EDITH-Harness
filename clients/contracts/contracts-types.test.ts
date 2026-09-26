@@ -90,6 +90,7 @@ const modelList: ModelList["result"] = {
   models: [
     {
       id: "test",
+      provider: "test",
       contextWindow: 1000,
       vision: false,
       reasoningEfforts: ["off"],

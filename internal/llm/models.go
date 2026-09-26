@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"bytes"
 	_ "embed"
 	"encoding/json"
 	"fmt"
@@ -20,11 +21,55 @@ type modelFile struct {
 
 // 数据。一条模型定义。
 type model struct {
-	Provider      string                    `json:"provider"`
-	ID            string                    `json:"id"`
-	ContextWindow int                       `json:"contextWindow"`
-	Vision        bool                      `json:"vision"`
-	Reasoning     map[string]map[string]any `json:"reasoning"`
+	Provider      string          `json:"provider"`
+	ID            string          `json:"id"`
+	ContextWindow int             `json:"contextWindow"`
+	Vision        bool            `json:"vision"`
+	Reasoning     reasoningLevels `json:"reasoning"`
+}
+
+// reasoningLevels 保留配置中的档位顺序，供界面从低到高展示。
+type reasoningLevels []reasoningLevel
+
+type reasoningLevel struct {
+	Effort  string
+	Options map[string]any
+}
+
+func (levels *reasoningLevels) UnmarshalJSON(data []byte) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	token, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	if token != json.Delim('{') {
+		return fmt.Errorf("reasoning must be an object")
+	}
+	var ordered reasoningLevels
+	for decoder.More() {
+		token, err = decoder.Token()
+		if err != nil {
+			return err
+		}
+		effort := token.(string)
+		for _, level := range ordered {
+			if level.Effort == effort {
+				return fmt.Errorf("duplicate reasoning effort %q", effort)
+			}
+		}
+		var options map[string]any
+		err = decoder.Decode(&options)
+		if err != nil {
+			return err
+		}
+		ordered = append(ordered, reasoningLevel{Effort: effort, Options: options})
+	}
+	_, err = decoder.Token()
+	if err != nil {
+		return err
+	}
+	*levels = ordered
+	return nil
 }
 
 func loadModels() (map[string]model, error) {
@@ -49,11 +94,12 @@ func reasoningOptions(definition model, effort string) (map[string]any, error) {
 	if effort == "" {
 		return nil, nil
 	}
-	options, ok := definition.Reasoning[effort]
-	if !ok {
-		return nil, fmt.Errorf("llm: model %q does not support reasoning effort %q", definition.ID, effort)
+	for _, level := range definition.Reasoning {
+		if level.Effort == effort {
+			return level.Options, nil
+		}
 	}
-	return options, nil
+	return nil, fmt.Errorf("llm: model %q does not support reasoning effort %q", definition.ID, effort)
 }
 
 func newModel(definition model, config providerConfig) (provider.LanguageModel, error) {

@@ -389,7 +389,7 @@ func TestModelListUsesPublicServiceWithoutSecrets(t *testing.T) {
 		t.Fatalf("empty fixture models: %s %v", raw, err)
 	}
 	for _, model := range data.Models {
-		if len(model) != 4 || model["id"] == nil || model["contextWindow"] == nil || model["vision"] == nil || model["reasoningEfforts"] == nil {
+		if len(model) != 5 || model["id"] == nil || model["provider"] == nil || model["contextWindow"] == nil || model["vision"] == nil || model["reasoningEfforts"] == nil {
 			t.Fatalf("unexpected public model fields: %s", raw)
 		}
 	}

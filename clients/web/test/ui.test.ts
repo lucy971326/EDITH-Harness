@@ -122,7 +122,7 @@ const idleComposer = {
   stopDisabled: true,
   modelDisabled: false,
   validModel: true,
-  models: [{ id: "demo", reasoningEfforts: ["high"] }] as ModelChoice[],
+  models: [{ id: "demo", provider: "demo", reasoningEfforts: ["high"] }] as ModelChoice[],
   modelSelection: { model: "demo", reasoningEffort: "high" },
   modelError: "",
   imageDisabled: false,

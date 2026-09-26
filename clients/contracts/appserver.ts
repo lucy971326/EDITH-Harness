@@ -4,6 +4,7 @@ export interface InitializeResult { protocolVersion: number }
 // 手工对应 internal/llm.ModelChoice；只有目录数据，没有 Provider 密钥。
 export interface ModelChoice {
   id: string;
+  provider: string;
   contextWindow: number;
   vision: boolean;
   reasoningEfforts: string[];

@@ -17,12 +17,12 @@ func (c *Client) Models() []ModelChoice {
 			continue
 		}
 		efforts := make([]string, 0, len(definition.Reasoning))
-		for effort := range definition.Reasoning {
-			efforts = append(efforts, effort)
+		for _, level := range definition.Reasoning {
+			efforts = append(efforts, level.Effort)
 		}
-		sort.Strings(efforts)
 		out = append(out, ModelChoice{
 			ID:               id,
+			Provider:         definition.Provider,
 			ContextWindow:    definition.ContextWindow,
 			Vision:           definition.Vision,
 			ReasoningEfforts: efforts,

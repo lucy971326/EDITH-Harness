@@ -107,14 +107,14 @@ func TestModelsExposesWindowAndVision(t *testing.T) {
 		},
 	}
 	got := client.Models()
-	if len(got) != 1 || got[0].ID != "deepseek/a" || got[0].ContextWindow != 1000 || !got[0].Vision {
+	if len(got) != 1 || got[0].ID != "deepseek/a" || got[0].Provider != "deepseek" || got[0].ContextWindow != 1000 || !got[0].Vision {
 		t.Fatalf("models = %#v", got)
 	}
 }
 
 func TestReasoningOptions(t *testing.T) {
-	definition := model{ID: "chat", Reasoning: map[string]map[string]any{
-		"off": {"thinking": map[string]any{"type": "disabled"}},
+	definition := model{ID: "chat", Reasoning: reasoningLevels{
+		{Effort: "off", Options: map[string]any{"thinking": map[string]any{"type": "disabled"}}},
 	}}
 
 	got, err := reasoningOptions(definition, "off")
@@ -127,6 +127,42 @@ func TestReasoningOptions(t *testing.T) {
 	}
 	if _, err := reasoningOptions(definition, "high"); err == nil {
 		t.Fatal("want unsupported effort error")
+	}
+}
+
+func TestModelsPreservesReasoningOrder(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		reasoning string
+		want      []string
+	}{
+		{"configured", `{"off":{},"low":{},"high":{},"max":{}}`, []string{"off", "low", "high", "max"}},
+		{"custom", `{"quick":{},"balanced":{},"deep":{}}`, []string{"quick", "balanced", "deep"}},
+		{"single", `{"off":{}}`, []string{"off"}},
+		{"empty", `{}`, []string{}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			models, err := parseModels([]byte(`{"models":{"x":{"provider":"deepseek","id":"x","contextWindow":100,"reasoning":` + test.reasoning + `}}}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			client := &Client{config: config{Providers: map[string]providerConfig{"deepseek": {APIKey: "k"}}}, models: models}
+			got := client.Models()[0].ReasoningEfforts
+			if !reflect.DeepEqual(got, test.want) {
+				t.Fatalf("efforts = %v, want %v", got, test.want)
+			}
+			for _, effort := range got {
+				if _, err := reasoningOptions(models["x"], effort); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
+	}
+	for _, reasoning := range []string{`[]`, `{"off":{},"off":{}}`, `{"off":42}`} {
+		_, err := parseModels([]byte(`{"models":{"x":{"contextWindow":100,"reasoning":` + reasoning + `}}}`))
+		if err == nil {
+			t.Fatalf("want error for reasoning %s", reasoning)
+		}
 	}
 }
 
