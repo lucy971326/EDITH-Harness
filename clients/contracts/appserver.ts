@@ -10,6 +10,42 @@ export interface ModelChoice {
   reasoningEfforts: string[];
 }
 
+export interface ProviderSettings {
+  id: string;
+  protocol: 'deepseek' | 'google' | 'openai-chat' | 'openai-responses' | 'anthropic';
+  baseURL: string;
+  hasAPIKey: boolean;
+}
+export interface ReasoningSettings {
+  name: string;
+  mode: 'off' | 'enabled' | 'adaptive';
+  effort: string;
+  budgetTokens: number;
+}
+export interface ModelSettings {
+  key: string;
+  provider: string;
+  id: string;
+  contextWindow: number;
+  vision: boolean;
+  reasoning: ReasoningSettings[];
+}
+export interface ModelSettingsView {
+  providers: ProviderSettings[];
+  models: ModelSettings[];
+  presets: ModelSettings[];
+  providerRevision: string;
+  modelRevision: string;
+}
+export interface SaveProviderSettings {
+  id: string;
+  protocol: ProviderSettings['protocol'];
+  baseURL: string;
+  apiKey: string;
+  clearAPIKey: boolean;
+  revision: string;
+}
+
 export interface SelectWorkspaceResult {
   canceled: boolean;
   workspace: string;
@@ -88,6 +124,7 @@ export interface CommandExecOutputDeltaNotification {
 
 export interface HookConfig {
   name: string;
+  flow: string;
   enabled: boolean;
   tools: string[];
   command: string;
@@ -102,6 +139,7 @@ export interface HookSource {
 }
 
 export interface HookView {
+  flows: string[];
   global: HookSource;
   project: HookSource;
   workspace: string;
@@ -122,6 +160,11 @@ export interface ServerMethods {
   'server/unsubscribe': { params: { subscriptionID: string }; result: Record<string, never> };
   'workspace/select': { params: Record<string, never>; result: SelectWorkspaceResult };
   'model/list': { params: Record<string, never>; result: { models: ModelChoice[] } };
+  'model/config/read': { params: Record<string, never>; result: ModelSettingsView };
+  'model/provider/save': { params: SaveProviderSettings; result: ModelSettingsView };
+  'model/provider/delete': { params: { id: string; providerRevision: string; modelRevision: string }; result: ModelSettingsView };
+  'model/definition/save': { params: { model: ModelSettings; revision: string }; result: ModelSettingsView };
+  'model/definition/delete': { params: { key: string; revision: string }; result: ModelSettingsView };
   'agent/list': { params: Record<string, never>; result: AgentListResult };
   'agent/save': { params: AgentSaveParams; result: { agent: AgentView } };
   'agent/delete': { params: { agentID: string }; result: Record<string, never> };

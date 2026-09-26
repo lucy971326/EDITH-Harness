@@ -1,9 +1,12 @@
 // Package hooks 实现工具执行前的本地命令 Hook 与配置管理。
 package hooks
 
+const preToolUseFlow = "PreToolUse"
+
 // 数据。一条 PreToolUse 命令；Tools 为空时匹配全部工具。
 type Hook struct {
 	Name           string   `json:"name" jsonschema:"minLength=1"`
+	Flow           string   `json:"flow,omitempty"`
 	Enabled        bool     `json:"enabled"`
 	Tools          []string `json:"tools"`
 	Command        string   `json:"command" jsonschema:"minLength=1"`
@@ -20,11 +23,12 @@ type Source struct {
 
 // 数据。全局和当前项目的 Hook 设置投影。
 type View struct {
-	Global    Source `json:"global"`
-	Project   Source `json:"project"`
-	Workspace string `json:"workspace"`
-	Trusted   bool   `json:"trusted"`
-	LastError string `json:"lastError"`
+	Flows     []string `json:"flows"`
+	Global    Source   `json:"global"`
+	Project   Source   `json:"project"`
+	Workspace string   `json:"workspace"`
+	Trusted   bool     `json:"trusted"`
+	LastError string   `json:"lastError"`
 }
 
 // 数据。保存指定来源；Hash 防止覆盖读取后被修改的版本。

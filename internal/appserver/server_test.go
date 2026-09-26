@@ -39,15 +39,40 @@ func TestHookSettingsMethodsBindAndValidate(t *testing.T) {
 		input  string
 	}{
 		{"hooks/read", `{"workspace":""}`},
-		{"hooks/save", `{"scope":"global","workspace":"","hash":"","hooks":[]}`},
+		{"hooks/save", `{"scope":"global","workspace":"","hash":"","hooks":[{"name":"audit","enabled":true,"tools":[],"command":"noop","args":[],"timeoutSeconds":0}]}`},
 	} {
 		if _, err := server.Call(context.Background(), request.method, json.RawMessage(request.input)); err != nil {
 			t.Fatalf("%s: %v", request.method, err)
 		}
 	}
+	response, err := server.Call(context.Background(), "hooks/read", json.RawMessage(`{"workspace":""}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var view hooks.View
+	if err := json.Unmarshal(response, &view); err != nil {
+		t.Fatal(err)
+	}
+	if len(view.Flows) != 1 || view.Flows[0] != "PreToolUse" || len(view.Global.Hooks) != 1 || view.Global.Hooks[0].Name != "audit" || view.Global.Hooks[0].Flow != "PreToolUse" {
+		t.Fatalf("hooks/read flows and configured hooks = %#v", view)
+	}
+	_, err = server.Call(context.Background(), "hooks/save", json.RawMessage(`{"scope":"global","workspace":"","hash":"","hooks":[{"name":"unsupported","flow":"PostToolUse","enabled":true,"tools":[],"command":"noop","args":[],"timeoutSeconds":0}]}`))
+	if err == nil {
+		t.Fatal("unsupported Hook flow must be rejected")
+	}
 	scope, err := files.Scope("hooks")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if err := scope.Write("settings.json", []byte(`{"hooks":[{"name":"existing","enabled":true,"tools":[],"command":"noop","args":[],"timeoutSeconds":0}]}`)); err != nil {
+		t.Fatal(err)
+	}
+	response, err = server.Call(context.Background(), "hooks/read", json.RawMessage(`{"workspace":""}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(response, &view); err != nil || len(view.Global.Hooks) != 1 || view.Global.Hooks[0].Flow != "PreToolUse" {
+		t.Fatalf("existing Hook flow = %#v, %v", view.Global.Hooks, err)
 	}
 	if err := scope.Write("settings.json", []byte("bad JSON")); err != nil {
 		t.Fatal(err)

@@ -530,7 +530,7 @@ export function Composer({
                     ? "直接插话，不排队"
                     : validModel
                       ? "发送消息"
-                      : "请先选择模型和思考档位"}
+                      : "当前模型不可用，请重新选择模型和思考档位"}
                 </TooltipContent>
               </Tooltip>
             </div>

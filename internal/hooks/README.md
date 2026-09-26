@@ -1,6 +1,7 @@
 # hooks
 
 工具执行前运行用户配置的本地命令，目前只有 PreToolUse。
+设置页通过 `hooks/read` 获取后端支持的点位及全局／项目 Hook 列表；页面不维护点位名副本。每条 Hook 记录所属 `flow`；现有未写该字段的配置归入 `PreToolUse`，未知点位拒绝保存和加载。
 
 ```text
 Registry.Call -> Check -> 全局 Hook -> 已信任项目 Hook

@@ -1,5 +1,5 @@
 import type { ComponentProps, ReactNode } from "react";
-import { Sun, Bot, Shield, Command } from "../icons";
+import { Sun, Bot, Shield, Command, Brain } from "../icons";
 import { AgentSettingsPanel } from "./agent-settings";
 import { AppearanceSettingsPanel } from "./appearance-settings";
 import type { SettingsDraftState } from "./types";
@@ -16,6 +16,7 @@ export type SettingsContentProps = Omit<ComponentProps<typeof AgentSettingsPanel
   ComponentProps<typeof AppearanceSettingsPanel> & {
     approvalSettings: SettingsSection["render"];
     hookSettings: SettingsSection["render"];
+    modelSettings: SettingsSection["render"];
   };
 
 // 唯一分类登记入口；顺序同时决定导航和面板，不在外壳添加分类分支。
@@ -28,6 +29,7 @@ export function createSettingsSections(props: SettingsContentProps): SettingsSec
         agents={props.agents} kinds={props.kinds} tools={props.tools} loading={props.loading}
         error={props.error} saving={props.saving} onReload={props.onReload}
         onSave={props.onSave} onDelete={props.onDelete} onStateChange={onStateChange} /> },
+    { id: "models", label: "模型与供应商", icon: Brain, render: props.modelSettings },
     { id: "approvals", label: "智能审批", icon: Shield, render: props.approvalSettings },
     { id: "hooks", label: "Hooks", icon: Command, render: props.hookSettings },
   ];

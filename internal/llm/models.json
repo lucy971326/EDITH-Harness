@@ -54,10 +54,7 @@
       "reasoning": {
         "off": {
           "google": {
-            "thinkingConfig": {
-              "thinkingLevel": "minimal",
-              "includeThoughts": false
-            }
+            "thinkingConfig": false
           }
         },
         "low": {

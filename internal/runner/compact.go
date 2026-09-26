@@ -86,6 +86,7 @@ func (r *Runner) prepareCompact(ctx context.Context, sessionID string) (compactP
 }
 
 func (r *Runner) runCompact(runCtx context.Context, sessionID, runID string, current *liveRun, prepared compactPreparation) (err error) {
+	modelClient := r.llm.Pin()
 
 	sess := prepared.sess
 	entries := sess.Entries()
@@ -139,7 +140,7 @@ func (r *Runner) runCompact(runCtx context.Context, sessionID, runID string, cur
 	if len(definitions) > 0 {
 		input.ToolChoice = "none"
 	}
-	stream, err := r.llm.Stream(runCtx, llm.RunConfig{
+	stream, err := modelClient.Stream(runCtx, llm.RunConfig{
 		Model:           prepared.settings.Model,
 		ReasoningEffort: prepared.settings.ReasoningEffort,
 	}, input)
@@ -166,7 +167,7 @@ func (r *Runner) runCompact(runCtx context.Context, sessionID, runID string, cur
 			return runCtx.Err()
 		case chunk, ok := <-stream:
 			if !ok {
-				return r.finishCompact(runCtx, sessionID, runID, sess, current, prepared.settings.Model, entryID, text, sawToolCall, finishReason, usage)
+				return r.finishCompact(runCtx, sessionID, runID, sess, current, modelClient, prepared.settings.Model, entryID, text, sawToolCall, finishReason, usage)
 			}
 			switch chunk.Type {
 			case provider.ChunkReasoning:
@@ -208,6 +209,7 @@ func (r *Runner) finishCompact(
 	sessionID, runID string,
 	sess *session.Session,
 	current *liveRun,
+	modelClient *llm.Client,
 	model, entryID, text string,
 	sawToolCall bool,
 	finishReason provider.FinishReason,
@@ -269,7 +271,7 @@ func (r *Runner) finishCompact(
 		Usage: &Usage{
 			InputTokens:     usage.InputTokens,
 			CacheReadTokens: usage.CacheReadTokens,
-			ContextWindow:   r.llm.ContextWindow(model),
+			ContextWindow:   modelClient.ContextWindow(model),
 		},
 	})
 }

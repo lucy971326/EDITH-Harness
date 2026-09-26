@@ -1,6 +1,7 @@
 import { Approvals } from "./chat/approvals";
 import { ApprovalSettingsPanel } from "./settings/approval-settings";
 import { HookSettingsPanel } from "./settings/hook-settings";
+import { ModelSettingsPanel } from "./settings/model-settings";
 import type { PermissionModeChoice } from "../../contracts/approvals.ts";
 import type { PermissionMode } from "../../contracts/harness.ts";
 import {
@@ -228,6 +229,7 @@ export default function App() {
   const draftRef = useRef(composerDraft);
   const selectGeneration = useRef(0);
   const listGeneration = useRef(0);
+  const modelGeneration = useRef(0);
 
   const connected = connection === "connected";
   const sidebarSpace = sidebar ? sidebarWidth : 0;
@@ -549,13 +551,14 @@ export default function App() {
   }
 
   async function loadModels(client: RPCClient) {
+    const generation = ++modelGeneration.current;
     setModelError("");
     try {
       const result = await client.models();
-      if (client !== clientRef.current || !client.connected) return;
+      if (generation !== modelGeneration.current || client !== clientRef.current || !client.connected) return;
       setModels(result.models);
     } catch (error) {
-      if (client !== clientRef.current) return;
+      if (generation !== modelGeneration.current || client !== clientRef.current) return;
       setModelError(formatRPCError(error, "模型目录加载失败"));
     }
   }
@@ -977,6 +980,13 @@ export default function App() {
       tools: agentCatalog?.tools ?? [], loading: agentLoading, error: agentError,
       saving: agentSaving, onSave: saveAgent, onDelete: deleteAgent,
       onReload: () => { if (clientRef.current?.connected) void loadAgents(clientRef.current); },
+      modelSettings: (onStateChange) => <ModelSettingsPanel client={approvalClient}
+        onStateChange={onStateChange} onSaved={() => {
+          if (clientRef.current?.connected) {
+            void loadModels(clientRef.current);
+            void loadPermissionModes(clientRef.current);
+          }
+        }} />,
       hookSettings: (onStateChange) => <HookSettingsPanel client={approvalClient}
         currentWorkspace={selected?.settings.workspace ?? ""} onStateChange={onStateChange} />,
       approvalSettings: (onStateChange) => <ApprovalSettingsPanel client={approvalClient}

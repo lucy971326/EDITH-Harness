@@ -5,13 +5,14 @@ import { createElement, type ComponentType, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createServer, type ViteDevServer } from "vite";
 import type { SessionView } from "../../contracts/harness.ts";
-import type { ModelChoice } from "../../contracts/appserver.ts";
+import type { ModelChoice, ProviderSettings, SaveProviderSettings } from "../../contracts/appserver.ts";
 import type { Attachment } from "../src/chat/composer.tsx";
 
 let server: ViteDevServer;
 let TooltipProvider: ComponentType<{ children?: ReactNode }>;
 let Sidebar: ComponentType<Record<string, unknown>>;
 let Composer: ComponentType<Record<string, unknown>>;
+let providerDraft: (provider: ProviderSettings, revision: string) => SaveProviderSettings;
 let composerTrigger: (value: string, cursor: number) => {
   prefix: "/" | "$";
   query: string;
@@ -54,9 +55,21 @@ before(async () => {
     await server.ssrLoadModule("/src/chat/composer.tsx"));
   ({ chatSendParams, shouldClearSubmittedDraft } =
     await server.ssrLoadModule("/src/App.tsx"));
+  ({ providerDraft } = await server.ssrLoadModule("/src/settings/model-settings.tsx"));
 });
 after(async () => {
   await server?.close();
+});
+
+test("provider edit draft excludes read-only fields from the save contract", () => {
+  for (const hasAPIKey of [false, true]) {
+    const draft = providerDraft({ id: "custom", protocol: "openai-responses",
+      baseURL: "https://example.test/v1", hasAPIKey }, "revision-1");
+    assert.deepEqual(draft, {
+      id: "custom", protocol: "openai-responses", baseURL: "https://example.test/v1",
+      apiKey: "", clearAPIKey: false, revision: "revision-1",
+    });
+  }
 });
 
 function session(id: string, workspace: string, title = id): SessionView {

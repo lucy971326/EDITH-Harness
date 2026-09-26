@@ -1,4 +1,4 @@
-import { Check } from "../icons";
+import { Check, Monitor, Moon, Sun } from "../icons";
 
 export function AppearanceSettingsPanel({ theme, setTheme }: {
   theme: string;
@@ -6,20 +6,24 @@ export function AppearanceSettingsPanel({ theme, setTheme }: {
 }) {
   return (
     <>
-      <header className="settings-heading">
-        <h2>外观</h2>
-        <p>调整工作台的显示方式。</p>
-      </header>
-      <section className="settings-preference-row">
-        <div className="settings-preference-label">
-          <h3>界面主题</h3>
-          <p>选择明暗风格，或随系统自动切换。</p>
-        </div>
-        <div className="theme-grid" role="group" aria-label="界面主题">
+      <header className="settings-heading"><h2>外观</h2></header>
+      <div className="settings-two-pane">
+        <aside className="settings-subnav" aria-label="外观项目">
+          <h3>外观</h3>
+          <div className="settings-subnav-list">
+            <div className="settings-subnav-item" aria-current="page">
+              <Sun />
+              <span className="settings-subnav-copy"><span className="settings-subnav-name">界面主题</span></span>
+            </div>
+          </div>
+        </aside>
+        <section className="settings-detail-pane">
+          <div className="settings-detail-title-row"><h3>界面主题</h3></div>
+          <div className="theme-grid" role="group" aria-label="界面主题">
           {[
-            { id: "light", name: "浅色" },
-            { id: "dark", name: "深色" },
-            { id: "system", name: "跟随系统" },
+            { id: "light", name: "浅色", Icon: Sun },
+            { id: "dark", name: "深色", Icon: Moon },
+            { id: "system", name: "跟随系统", Icon: Monitor },
           ].map((item) => (
             <button
               key={item.id}
@@ -31,13 +35,14 @@ export function AppearanceSettingsPanel({ theme, setTheme }: {
                 <span className="theme-preview-sidebar"><i /><i /><i /></span>
                 <span className="theme-preview-content"><i /><i /><span /></span>
               </span>
-              <span className="theme-option-label"><span>{item.name}</span>
+              <span className="theme-option-label"><item.Icon /><span>{item.name}</span>
                 <span className="theme-check">{theme === item.id && <Check />}</span>
               </span>
             </button>
           ))}
-        </div>
-      </section>
+          </div>
+        </section>
+      </div>
     </>
   );
 }

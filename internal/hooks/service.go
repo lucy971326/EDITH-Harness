@@ -68,13 +68,13 @@ func decode(body []byte) ([]Hook, error) {
 	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("invalid Hook configuration: trailing content")
 	}
-	if err := validate(config.Hooks); err != nil {
-		return nil, err
-	}
 	if config.Hooks == nil {
 		config.Hooks = []Hook{}
 	}
 	for index := range config.Hooks {
+		if config.Hooks[index].Flow == "" {
+			config.Hooks[index].Flow = preToolUseFlow
+		}
 		if config.Hooks[index].Tools == nil {
 			config.Hooks[index].Tools = []string{}
 		}
@@ -82,12 +82,18 @@ func decode(body []byte) ([]Hook, error) {
 			config.Hooks[index].Args = []string{}
 		}
 	}
+	if err := validate(config.Hooks); err != nil {
+		return nil, err
+	}
 	return config.Hooks, nil
 }
 
 func validate(hooks []Hook) error {
 	seen := make(map[string]bool, len(hooks))
 	for _, hook := range hooks {
+		if hook.Flow != preToolUseFlow {
+			return fmt.Errorf("hooks: unsupported flow %q", hook.Flow)
+		}
 		if strings.TrimSpace(hook.Name) == "" || strings.TrimSpace(hook.Command) == "" {
 			return fmt.Errorf("hooks: name and command are required")
 		}
@@ -203,6 +209,7 @@ func (s *Service) View(workspace string) (View, error) {
 		return View{}, err
 	}
 	return View{
+		Flows:  []string{preToolUseFlow},
 		Global: global, Project: project, Workspace: real,
 		Trusted:   project.Hash == "" || trusted[real] == project.Hash,
 		LastError: s.last,
@@ -211,19 +218,22 @@ func (s *Service) View(workspace string) (View, error) {
 
 // Save 用读取时的哈希写入配置；项目页面保存同时信任新版本。
 func (s *Service) Save(input SaveInput) (View, error) {
-	if err := validate(input.Hooks); err != nil {
-		return View{}, fmt.Errorf("%w: %v", ErrSettings, err)
-	}
 	if input.Hooks == nil {
 		input.Hooks = []Hook{}
 	}
 	for index := range input.Hooks {
+		if input.Hooks[index].Flow == "" {
+			input.Hooks[index].Flow = preToolUseFlow
+		}
 		if input.Hooks[index].Tools == nil {
 			input.Hooks[index].Tools = []string{}
 		}
 		if input.Hooks[index].Args == nil {
 			input.Hooks[index].Args = []string{}
 		}
+	}
+	if err := validate(input.Hooks); err != nil {
+		return View{}, fmt.Errorf("%w: %v", ErrSettings, err)
 	}
 	body, err := json.MarshalIndent(struct {
 		Hooks []Hook `json:"hooks"`
@@ -277,7 +287,7 @@ func (s *Service) Save(input SaveInput) (View, error) {
 	if err != nil {
 		return View{}, err
 	}
-	return View{Global: global, Project: project, Workspace: real, Trusted: project.Hash == "" || trusted[real] == project.Hash, LastError: s.last}, nil
+	return View{Flows: []string{preToolUseFlow}, Global: global, Project: project, Workspace: real, Trusted: project.Hash == "" || trusted[real] == project.Hash, LastError: s.last}, nil
 }
 
 // Trust 确认页面刚读到的项目配置版本。
@@ -300,7 +310,7 @@ func (s *Service) Trust(input TrustInput) (View, error) {
 	if err := s.files.Write("trust.json", body); err != nil {
 		return View{}, err
 	}
-	return View{Global: s.readGlobal(), Project: project, Workspace: real, Trusted: true, LastError: s.last}, nil
+	return View{Flows: []string{preToolUseFlow}, Global: s.readGlobal(), Project: project, Workspace: real, Trusted: true, LastError: s.last}, nil
 }
 
 func (s *Service) failure(message string, report func(string)) {

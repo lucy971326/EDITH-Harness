@@ -43,9 +43,10 @@ func (l *reactLoop) Run(ctx context.Context, invocation loops.Invocation) error 
 		return err
 	}
 	history := append([]session.Message(nil), invocation.History...)
+	modelClient := l.llm.Pin()
 
 	for {
-		assistant, assistantID, calls, err := l.request(ctx, invocation, history, definitions)
+		assistant, assistantID, calls, err := l.request(ctx, modelClient, invocation, history, definitions)
 		if err != nil {
 			return err
 		}
@@ -91,13 +92,14 @@ func (l *reactLoop) Run(ctx context.Context, invocation loops.Invocation) error 
 
 func (l *reactLoop) request(
 	ctx context.Context,
+	modelClient *llm.Client,
 	invocation loops.Invocation,
 	history []session.Message,
 	definitions []tools.Definition,
 ) (session.Message, string, []session.ToolCall, error) {
 	requestCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	stream, err := l.llm.Stream(requestCtx, invocation.LLMConfig, llm.Input{
+	stream, err := modelClient.Stream(requestCtx, invocation.LLMConfig, llm.Input{
 		System:  invocation.SystemPrompt,
 		History: history,
 		Tools:   definitions,
@@ -133,7 +135,7 @@ func (l *reactLoop) request(
 				if len(message.Blocks) == 0 && len(calls) == 0 {
 					return session.Message{}, "", nil, nil
 				}
-				err = l.emitUsage(ctx, invocation, entryID, usage)
+				err = l.emitUsage(ctx, modelClient, invocation, entryID, usage)
 				if err != nil {
 					return session.Message{}, "", nil, err
 				}
@@ -187,14 +189,14 @@ func (l *reactLoop) failRequest(ctx context.Context, invocation loops.Invocation
 	return session.Message{}, "", nil, cause
 }
 
-func (l *reactLoop) emitUsage(ctx context.Context, invocation loops.Invocation, entryID string, usage provider.Usage) error {
+func (l *reactLoop) emitUsage(ctx context.Context, modelClient *llm.Client, invocation loops.Invocation, entryID string, usage provider.Usage) error {
 	return invocation.Emit(ctx, loops.Event{
 		Kind:    loops.EventUsage,
 		EntryID: entryID,
 		Usage: &loops.Usage{
 			InputTokens:     usage.InputTokens,
 			CacheReadTokens: usage.CacheReadTokens,
-			ContextWindow:   l.llm.ContextWindow(invocation.LLMConfig.Model),
+			ContextWindow:   modelClient.ContextWindow(invocation.LLMConfig.Model),
 		},
 	})
 }

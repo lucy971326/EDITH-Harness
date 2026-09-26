@@ -5,9 +5,9 @@
 ## 当前能力
 
 - React Web：项目与会话、文字／图片聊天、实时过程、Steer、停止、分叉、压缩、上下文引用。
-- 模型选择：供应商二级列表与独立思考滑块，档位沿用 models.json 配置顺序；新会话默认取第一档。
+- 模型选择：供应商二级列表与独立思考滑块，档位沿用用户目录 models.json 配置顺序；新会话默认取第一档。设置页可配置 DeepSeek、Google、OpenAI Chat Completions／Responses、Anthropic 的供应商密钥和模型能力。
 - Wails v3 Desktop：复用同一份 React 构建产物与后台，业务通过 Stream 传完整 JSON-RPC 2.0 消息；使用系统标题栏，关闭最后窗口即退出；同一份用户数据只允许一个后台运行。
-- 设置：独立导航、主题预览、Agent 分组表单、智能审批方式选择和可折叠 Hooks 列表；分类切换保留草稿，离开前确认未保存修改。
+- 设置：独立导航、主题预览、Agent 分组表单、模型与供应商、智能审批方式选择和可折叠 Hooks 列表；分类切换保留草稿，离开前确认未保存修改。
 - 工作区：Monaco 编辑器、自动保存与冲突保护、文件监听、Run Diff 与受版本保护的撤销、真实 PTY 终端。
 - Agent 能力：命令／持续进程、补丁、MCP、Skills；子任务支持主会话 → 孩子 → 孙子，独立页面、续聊与递归停止。
 - 安全：四档权限、人工／LLM／Jev 审批、项目 MCP 配置信任与逐次工具审批；Linux bwrap + seccomp、macOS Seatbelt。
@@ -29,7 +29,7 @@ make test          # 完整串行验收
 
 Web 开发页 `http://127.0.0.1:5173/`，业务连接同源 `/rpc` 并代理到 Go 后台 `127.0.0.1:8888`；Go 改动后重启 `make run`。Desktop 不开放业务 TCP 端口。前端 dist 由 Go embed 打包，不提交 Git。`make build` 仍完整构建前端并产出二进制。
 
-模型与 Jev 密钥由 `~/.harness/config.yaml` 配置；其他数据位置与所有者见 DATA_MODEL。没有旧数据迁移，升级开发版本前自行决定是否清理数据。
+模型供应商密钥与 Jev 密钥保存在 `~/.harness/config.yaml`；模型目录保存在 `~/.harness/models.json`，也可在设置页编辑。其他数据位置与所有者见 DATA_MODEL。没有旧数据迁移，升级开发版本前自行决定是否清理数据。
 
 ## 限制与未验证项
 

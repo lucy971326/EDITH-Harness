@@ -20,6 +20,10 @@ var ErrSettings = errors.New("approvals: invalid settings")
 func (s *Service) loadSettings(files *persist.Files) error {
 	// 与 llm 读取同一个文件，各自只解析自己的配置项。
 	body, err := files.Read("config.yaml")
+	if errors.Is(err, os.ErrNotExist) {
+		body = nil
+		err = nil
+	}
 	if err != nil {
 		return err
 	}

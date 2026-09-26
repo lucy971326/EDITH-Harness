@@ -21,6 +21,7 @@ export function ApprovalSettingsPanel({ client, models, modelError, onReloadMode
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [reload, setReload] = useState(0);
+  const [detail, setDetail] = useState<"method" | "target">("method");
 
   useEffect(() => {
     let active = true;
@@ -68,13 +69,28 @@ export function ApprovalSettingsPanel({ client, models, modelError, onReloadMode
   const dirty = !!draft && !!view && (draft.engine !== view.settings.engine || draft.model !== view.settings.model || draft.reasoningEffort !== view.settings.reasoningEffort);
   useEffect(() => { onStateChange({ dirty, saving }); }, [dirty, saving, onStateChange]);
   return <>
-    <header className="settings-heading"><h2>智能审批</h2><p>选择审核工具操作的模型或服务。</p></header>
+    <header className="settings-heading"><h2>智能审批</h2></header>
     {!client?.connected && <p className="inline-notice">连接后台后可修改。</p>}
     {error && <p className="inline-notice" role="alert">{error}</p>}
     {!view && client?.connected && !error && <p className="metadata">正在加载…</p>}
-    {view && draft && <>
-      <section className="settings-section">
-      <div className="settings-section-header"><div><h3>审核方式</h3><p>此设置独立于聊天中使用的模型。</p></div></div>
+    {view && draft && <div className="settings-two-pane">
+      <aside className="settings-subnav" aria-label="智能审批项目">
+        <h3>智能审批</h3>
+        <div className="settings-subnav-list">
+          <Button variant="ghost" className="settings-subnav-item" aria-pressed={detail === "method"}
+            onClick={() => setDetail("method")}>
+            <Shield /><span className="settings-subnav-copy"><span className="settings-subnav-name">审核方式</span></span>
+          </Button>
+          <Button variant="ghost" className="settings-subnav-item" aria-pressed={detail === "target"}
+            onClick={() => setDetail("target")}>
+            <Bot /><span className="settings-subnav-copy"><span className="settings-subnav-name">
+              {draft.engine === "llm" ? "审核模型" : "服务连接"}</span></span>
+          </Button>
+        </div>
+      </aside>
+      <div className="settings-detail-pane">
+      {detail === "method" && <section className="settings-section">
+      <div className="settings-detail-title-row"><h3>审核方式</h3></div>
       <div className="settings-choice-grid" role="group" aria-label="审核方式">
         {(["llm", "jev"] as const).map((engine) => <button key={engine}
           className="settings-choice"
@@ -87,11 +103,9 @@ export function ApprovalSettingsPanel({ client, models, modelError, onReloadMode
           <span className="theme-check">{draft.engine === engine && <Check />}</span>
         </button>)}
       </div>
-      </section>
-      <section className="settings-section">
-      <div className="settings-section-header"><div><h3>{draft.engine === "llm" ? "审核模型" : "服务连接"}</h3>
-        <p>{draft.engine === "llm" ? "选择模型与思考档位，保存后用于新的审批请求。" : "批准置信度不足时会转为人工审批。"}</p>
-      </div></div>
+      </section>}
+      {detail === "target" && <section className="settings-section">
+      <div className="settings-detail-title-row"><h3>{draft.engine === "llm" ? "审核模型" : "服务连接"}</h3></div>
       {draft.engine === "llm" ? <div className="settings-model-field"><ModelMenu
         models={models} value={draft} disabled={saving || !client?.connected}
         error={modelError} onRetry={onReloadModels} requiresVision={false}
@@ -101,7 +115,7 @@ export function ApprovalSettingsPanel({ client, models, modelError, onReloadMode
         ? "Jev 密钥已配置，可以使用。"
         : "尚未配置密钥：在 ~/.harness/config.yaml 添加 jev.apiKey，然后重启后台。"}</p>}
       {draft.engine === "llm" && !modelValid && <p className="settings-notice">{models === null ? "正在加载可用模型…" : "请选择可用的审核模型与思考档位。"}</p>}
-      </section>
+      </section>}
       <div className="settings-savebar">
       <span className="settings-save-status" role="status">{dirty ? "有未保存的更改" : saved ? "已保存" : view.available ? "当前配置可用" : "当前配置尚未就绪"}</span>
       <Button variant="ghost" disabled={saving || !dirty} onClick={() => edit(view.settings)}>放弃更改</Button>
@@ -109,7 +123,8 @@ export function ApprovalSettingsPanel({ client, models, modelError, onReloadMode
         {saving ? "保存中…" : "保存更改"}
       </Button>
       </div>
-    </>}
+      </div>
+    </div>}
     {error && <Button variant="ghost" disabled={saving || !client?.connected} onClick={() => setReload((value) => value + 1)}>重新加载</Button>}
   </>;
 }

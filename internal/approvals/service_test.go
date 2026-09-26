@@ -89,6 +89,39 @@ func TestApprovalLifecycle(t *testing.T) {
 	}
 }
 
+func TestDeletedApprovalModelBecomesUnavailable(t *testing.T) {
+	files, err := persist.NewFiles(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = files.Write("config.yaml", []byte("providers:\n  deepseek:\n    apiKey: test-key\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	models, err := llm.New(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := New()
+	defer service.Close()
+	service.models = models
+	service.settings = Settings{Engine: "llm", Model: "deepseek/deepseek-flash", ReasoningEffort: "off"}
+	if !service.Settings().Available {
+		t.Fatal("configured approval model should be available")
+	}
+	view, err := models.ReadSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = models.DeleteModel(service.settings.Model, view.ModelRevision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if service.Settings().Available {
+		t.Fatal("removed approval model remained available")
+	}
+}
+
 // 保护同一条 Authorize 闭环：两种适配、转人工、停止和配置快照。
 func TestModelApproval(t *testing.T) {
 	for _, tc := range []struct {

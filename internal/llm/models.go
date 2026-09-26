@@ -4,11 +4,17 @@ import (
 	"bytes"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
+
+	"harness/internal/persist"
 
 	"github.com/zendev-sh/goai/provider"
+	"github.com/zendev-sh/goai/provider/anthropic"
 	"github.com/zendev-sh/goai/provider/deepseek"
 	"github.com/zendev-sh/goai/provider/google"
+	"github.com/zendev-sh/goai/provider/openai"
 )
 
 //go:embed models.json
@@ -72,8 +78,44 @@ func (levels *reasoningLevels) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+func (levels reasoningLevels) MarshalJSON() ([]byte, error) {
+	var body bytes.Buffer
+	body.WriteByte('{')
+	for index, level := range levels {
+		if index > 0 {
+			body.WriteByte(',')
+		}
+		name, err := json.Marshal(level.Effort)
+		if err != nil {
+			return nil, err
+		}
+		options, err := json.Marshal(level.Options)
+		if err != nil {
+			return nil, err
+		}
+		body.Write(name)
+		body.WriteByte(':')
+		body.Write(options)
+	}
+	body.WriteByte('}')
+	return body.Bytes(), nil
+}
+
 func loadModels() (map[string]model, error) {
 	return parseModels(modelsJSON)
+}
+
+func loadModelsFile(files *persist.Files) (map[string]model, []byte, error) {
+	body, err := files.Read("models.json")
+	if errors.Is(err, os.ErrNotExist) {
+		body = modelsJSON
+		err = files.Write("models.json", body)
+	}
+	if err != nil {
+		return nil, nil, fmt.Errorf("llm: read models: %w", err)
+	}
+	models, err := parseModels(body)
+	return models, body, err
 }
 
 func parseModels(data []byte) (map[string]model, error) {
@@ -81,6 +123,9 @@ func parseModels(data []byte) (map[string]model, error) {
 	err := json.Unmarshal(data, &file)
 	if err != nil {
 		return nil, fmt.Errorf("llm: parse models.json: %w", err)
+	}
+	if file.Models == nil {
+		file.Models = map[string]model{}
 	}
 	for id, definition := range file.Models {
 		if definition.ContextWindow <= 0 {
@@ -103,7 +148,7 @@ func reasoningOptions(definition model, effort string) (map[string]any, error) {
 }
 
 func newModel(definition model, config providerConfig) (provider.LanguageModel, error) {
-	switch definition.Provider {
+	switch protocolFor(definition.Provider, config) {
 	case "deepseek":
 		options := []deepseek.Option{deepseek.WithAPIKey(config.APIKey)}
 		if config.BaseURL != "" {
@@ -116,7 +161,38 @@ func newModel(definition model, config providerConfig) (provider.LanguageModel, 
 			options = append(options, google.WithBaseURL(config.BaseURL))
 		}
 		return google.Chat(definition.ID, options...), nil
+	case "openai-chat", "openai-responses":
+		options := []openai.Option{openai.WithAPIKey(config.APIKey)}
+		if config.BaseURL != "" {
+			options = append(options, openai.WithBaseURL(config.BaseURL))
+		}
+		return openai.Chat(definition.ID, options...), nil
+	case "anthropic":
+		options := []anthropic.Option{anthropic.WithAPIKey(config.APIKey)}
+		if config.BaseURL != "" {
+			options = append(options, anthropic.WithBaseURL(config.BaseURL))
+		}
+		return anthropic.Chat(definition.ID, options...), nil
 	default:
-		return nil, fmt.Errorf("llm: provider %q is not supported", definition.Provider)
+		return nil, fmt.Errorf("llm: provider %q has unsupported protocol", definition.Provider)
+	}
+}
+
+func protocolFor(id string, config providerConfig) string {
+	if config.Protocol != "" {
+		return config.Protocol
+	}
+	if id == "deepseek" || id == "google" {
+		return id
+	}
+	return ""
+}
+
+func validProtocol(value string) bool {
+	switch value {
+	case "deepseek", "google", "openai-chat", "openai-responses", "anthropic":
+		return true
+	default:
+		return false
 	}
 }
