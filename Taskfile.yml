@@ -1,6 +1,18 @@
 version: '3'
 
 tasks:
+  deps:
+    desc: Install web dependencies when missing or changed.
+    sources:
+      - clients/web/package.json
+      - clients/web/package-lock.json
+    generates:
+      - clients/web/node_modules/.package-lock.json
+    status:
+      - test -f clients/web/node_modules/.package-lock.json
+    cmds:
+      - npm --prefix clients/web ci --no-audit --no-fund
+
   build:
     desc: Build the Wails Desktop binary with the shared React assets.
     env:
@@ -8,14 +20,15 @@ tasks:
       CGO_CFLAGS: '{{if eq OS "darwin"}}-mmacosx-version-min=13.0{{end}}'
       CGO_LDFLAGS: '{{if eq OS "darwin"}}-mmacosx-version-min=13.0{{end}}'
     cmds:
-      - make agent-web-build
-      - mkdir -p .build
-      - go build -tags production -trimpath -o .build/harness-desktop ./cmd/harness-desktop
+      - task: deps
+      - npm --prefix clients/web run build
+      # Windows 直接 exec 需要可执行文件带 .exe 后缀。
+      - go build -tags production -trimpath -o .build/harness-desktop{{exeExt}} ./cmd/harness-desktop
 
   run:
     desc: Run the built Desktop app.
     cmds:
-      - .build/harness-desktop
+      - .build/harness-desktop{{exeExt}}
 
   build:dev:
     desc: Rebuild the Desktop backend for Wails dev mode.
@@ -24,5 +37,5 @@ tasks:
       CGO_CFLAGS: '{{if eq OS "darwin"}}-mmacosx-version-min=13.0{{end}}'
       CGO_LDFLAGS: '{{if eq OS "darwin"}}-mmacosx-version-min=13.0{{end}}'
     cmds:
-      - mkdir -p .build
-      - go build -o .build/harness-desktop ./cmd/harness-desktop
+      # Windows 直接 exec 需要可执行文件带 .exe 后缀。
+      - go build -o .build/harness-desktop{{exeExt}} ./cmd/harness-desktop

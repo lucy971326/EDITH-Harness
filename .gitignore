@@ -11,6 +11,7 @@ __MACOSX/
 .harness-data/
 .agy/
 .build/
+.task/
 
 # Node 依赖。
 node_modules/

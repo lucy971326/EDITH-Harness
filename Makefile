@@ -1,4 +1,7 @@
-# Web
+# Harness 开发命令入口。日常命令都在这里；Desktop 构建钩子在 Taskfile.yml（wails3 约定，不回调本文件）。
+# 本机 LLM 密钥在 ~/.harness/config.yaml（用户数据，与构建无关）。
+
+# Web：运行与构建
 .PHONY: web run build
 
 web:
@@ -12,7 +15,7 @@ build: web
 	mkdir -p .build
 	go build -o .build/harness ./cmd/harness
 
-# Desktop
+# Desktop：Wails 开发与构建（Taskfile.yml 承接构建细节）
 .PHONY: desktop-run desktop-build
 
 desktop-run:

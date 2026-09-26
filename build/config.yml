@@ -18,7 +18,9 @@ dev_mode:
       - '*.go'
     git_ignore: true
   executes:
-    - cmd: make agent-web-build
+    - cmd: wails3 task deps
+      type: once
+    - cmd: npm --prefix clients/web run build
       type: once
     - cmd: npm --prefix clients/web run dev
       type: background
