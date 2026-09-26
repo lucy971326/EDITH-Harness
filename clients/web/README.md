@@ -1,6 +1,6 @@
-# Harness Web
+# 共用 React 前端
 
-正式 React 前端。页面规则见根目录 [WEB_UI](../../WEB_UI.md)，当前能力见 [STATUS](../../STATUS.md)。
+浏览器与 Desktop 使用同一份 React 页面和构建产物；目录名沿用 `web`。页面规则见根目录 [WEB_UI](../../WEB_UI.md)，当前能力见 [STATUS](../../STATUS.md)。
 
 ## 启动
 

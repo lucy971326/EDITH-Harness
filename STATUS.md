@@ -1,11 +1,11 @@
 # 项目状态
 
-更新：2026-09-25。架构决策见[设计书](docs/设计书.md)，数据位置见[DATA_MODEL](DATA_MODEL.md)。本篇只保留当前事实，不累计施工日志。
+更新：2026-09-26。架构决策见[设计书](docs/设计书.md)，数据位置见[DATA_MODEL](DATA_MODEL.md)。本篇只保留当前事实，不累计施工日志。
 
 ## 当前能力
 
 - React Web：项目与会话、文字／图片聊天、实时过程、Steer、停止、分叉、压缩、上下文引用。
-- Wails v3 Desktop：复用 React 与后台，业务通过 Stream 传完整 JSON-RPC 2.0 消息；同一份用户数据只允许一个后台运行。
+- Wails v3 Desktop：复用同一份 React 构建产物与后台，业务通过 Stream 传完整 JSON-RPC 2.0 消息；使用系统标题栏，关闭最后窗口即退出；同一份用户数据只允许一个后台运行。
 - 设置：Agent、模型与思考档位、权限模式、智能审批、可折叠 Hooks 列表；UI 风格已由用户确认满意。
 - 工作区：Monaco 编辑器、自动保存与冲突保护、文件监听、Run Diff 与受版本保护的撤销、真实 PTY 终端。
 - Agent 能力：命令／持续进程、补丁、MCP、Skills；子任务支持主会话 → 孩子 → 孙子，独立页面、续聊与递归停止。
@@ -46,10 +46,11 @@ Web 页面 `http://127.0.0.1:8888/`，业务连接 `ws://127.0.0.1:8888/rpc`。D
 
 headless CLI、通用服务端反向请求、业务操作防重与完整多 Client 协调、辅助浏览器、Windows 沙箱。新的 Hook 事件仅在有具体需求时设计，不预建框架。
 
-后续多端方向见[多 Client 方向书](docs/多client%20计划书.md)，桌面边界见[桌面方向](docs/plan/Wails-Desktop.md)。
+现有 Web 与 Desktop 的共用边界见[设计书](docs/设计书.md)。
 
 ## 最近验证
 
+- 2026-09-26 新会话默认模型只选密钥可用的 Provider；无可用密钥时创建失败并清理空会话。`make agent-check`、`wails3 task deps` 和 `wails3 task build` 通过；Desktop 窗口交互仍待用户实机验收。
 - 2026-09-25 Wails 开发模式：`wails3 task build:dev`、`make agent-check` 通过；Vite 按 `WAILS_VITE_PORT` 启动且返回 HTTP 200。窗口内热更新仍待实机确认。
 - 2026-09-25 Desktop 第一步：`wails3 doctor` 就绪，`make agent-check`、`wails3 build`、Windows 目标 Go 交叉编译通过；桌面二进制文件助手模式通过。连接入口与数据目录独占锁有核心测试；窗口聊天待用户实机验收。
 - 2026-09-24 工程目录整理：`make agent-check` 通过，包括前端构建、手写契约／RPC 类型检查、70 项前端测试、Go 测试（含网络验收）、vet 与指定包 race。资源随包迁移，未新增测试；此次未做浏览器视觉验收。

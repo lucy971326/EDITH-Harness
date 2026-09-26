@@ -9,12 +9,14 @@ EDITH-Harness 将 Agent 运行时、文件编辑、终端、Diff 审查和 Subag
 ```text
 cmd/harness / cmd/harness-desktop → backend 显式装配与逆序关闭
 
-React Web     → WebSocket ─┐
-React Desktop → Wails Stream┴→ appserver → conversations → Runner → Loop / Tools
-                                                   └→ 公共服务 / Session
+同一份 React（clients/web）
+  ├─ 浏览器 → WebSocket ───────────→ appserver
+  └─ Wails 窗口 → Stream → desktop/ ─→ appserver
+                                     ├→ conversations → Runner → Loop / Tools
+                                     └→ 公共服务 / Session
 ```
 
-`appserver` 负责协议与连接，`conversations` 编排会话操作，`internal` 按领域归拢执行、数据与具体实现。没有 Host 服务表或 Product 层。
+两种入口各自启动进程，共用 React 构建产物与后台业务，不能同时占用同一份用户数据。`appserver` 负责协议与连接，`conversations` 编排会话操作，`internal` 按领域归拢执行、数据与具体实现。没有 Host 服务表或 Product 层。
 
 源码地图：[`internal`](internal/README.md) · [`appserver`](internal/appserver/README.md) · [`clients`](clients/README.md) · [`集成验收`](tests/integration/README.md)。
 
