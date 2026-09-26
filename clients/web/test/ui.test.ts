@@ -85,13 +85,15 @@ function renderSidebar(props: Record<string, unknown>) {
         sessions: [session("keep", "/tmp/alpha", "保留草稿")],
         listError: "",
         selectedID: "keep",
-        settingsOpen: false,
+        activePath: "/",
+        navigation: [{ id: "settings", label: "设置", icon: () => null,
+          placement: "footer", kind: "page", path: "/settings", render: () => null }],
+        onNavigate() {},
         onClose() {},
         onOpenProject() {},
         onReload() {},
         onSelect() {},
         onCreate() {},
-        onOpenSettings() {},
         onReconnect() {},
         ...props,
       }),
@@ -232,13 +234,13 @@ test("slash offers commands and skills; dollar offers only skills", () => {
 test("sidebar highlights the selected session and disables project actions offline", () => {
   const html = renderSidebar({
     connection: "disconnected",
-    settingsOpen: false,
+    activePath: "/",
   });
   assert.match(html, /session-row selected/);
   assert.match(html, /保留草稿/);
-  assert.match(html, /disabled[^>]*>[\s\S]*打开项目/);
+  assert.match(html, /aria-label="打开项目"[^>]*disabled/);
   assert.match(html, /重新连接/);
-  const settings = renderSidebar({ settingsOpen: true });
+  const settings = renderSidebar({ activePath: "/settings" });
   assert.match(settings, /设置/);
   assert.equal(settings.includes("session-row selected"), false);
 });

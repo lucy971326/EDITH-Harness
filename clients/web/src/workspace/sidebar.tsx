@@ -15,13 +15,13 @@ import {
   FolderOpen,
   Plus,
   ChevronRight,
-  Settings,
   Circle,
   RefreshCw,
 } from "../icons";
 import type { ConnectionStatus } from "../client/rpc";
 import { groupSessions } from "../state/projects";
 import type { SessionView } from "../../../contracts/harness.ts";
+import type { NavigationEntry } from "./navigation";
 
 export function Sidebar({
   connection,
@@ -29,13 +29,14 @@ export function Sidebar({
   sessions,
   listError,
   selectedID,
-  settingsOpen,
+  navigation,
+  activePath,
+  onNavigate,
   onClose,
   onOpenProject,
   onReload,
   onSelect,
   onCreate,
-  onOpenSettings,
   onReconnect,
 }: {
   connection: ConnectionStatus;
@@ -43,13 +44,14 @@ export function Sidebar({
   sessions: SessionView[] | null;
   listError: string;
   selectedID: string | null;
-  settingsOpen: boolean;
+  navigation: NavigationEntry[];
+  activePath: string;
+  onNavigate: (path: string) => void;
   onClose: () => void;
   onOpenProject: () => void;
   onReload: () => void;
   onSelect: (sessionID: string) => void;
   onCreate: (workspace: string) => void;
-  onOpenSettings: () => void;
   onReconnect: () => void;
 }) {
   const connected = connection === "connected";
@@ -61,6 +63,22 @@ export function Sidebar({
         ? "已连接"
         : "已断开";
 
+  function navigationItem(entry: NavigationEntry) {
+    const Icon = entry.icon;
+    const active = entry.kind === "page" && activePath === entry.path;
+    return <Button key={entry.id} variant="ghost" className={`navigation-item ${active ? "selected" : ""}`}
+      data-kind={entry.kind}
+      aria-current={active ? "page" : undefined}
+      disabled={entry.kind === "action" && entry.disabled}
+      onClick={() => {
+        if (entry.kind === "action") entry.run();
+        else onNavigate(entry.path);
+        if (window.innerWidth < 760) onClose();
+      }}>
+      <Icon /><span>{entry.label}</span>
+    </Button>;
+  }
+
   return (
     <>
       <button
@@ -70,7 +88,7 @@ export function Sidebar({
       />
       <aside className="sidebar">
         <div className="brand-row">
-          <span className="brand">Harness</span>
+          <span className="brand"><span className="brand-mark" aria-hidden="true">H</span>Harness</span>
           <Button
             variant="ghost"
             size="icon"
@@ -80,24 +98,27 @@ export function Sidebar({
             <PanelLeft />
           </Button>
         </div>
+        <nav className="feature-navigation" aria-label="功能导航">
+          {navigation.filter((entry) => entry.placement === "primary").map(navigationItem)}
+        </nav>
+        <div className="sidebar-heading"><span>项目</span>
         <Tooltip>
           <TooltipTrigger asChild>
-            <span className="open-project-wrap">
+            <span>
               <Button
                 variant="ghost"
-                className="open-project"
+                size="icon-sm"
+                aria-label="打开项目"
                 disabled={!connected || backendBusy}
                 onClick={onOpenProject}
               >
                 <FolderOpen />
-                打开项目
-                <Plus className="ml-auto" />
               </Button>
             </span>
           </TooltipTrigger>
-          {!connected && <TooltipContent>尚未连接后台</TooltipContent>}
+          <TooltipContent>{connected ? "打开项目" : "尚未连接后台"}</TooltipContent>
         </Tooltip>
-        <div className="sidebar-heading">项目</div>
+        </div>
         <nav className="project-list" aria-label="项目与会话">
           {connection !== "connected" && sessions === null && !listError && (
             <p className="metadata sidebar-empty">
@@ -149,11 +170,12 @@ export function Sidebar({
                   <Plus />
                 </Button>
               </div>
-              <CollapsibleContent>
+              <CollapsibleContent className="project-sessions">
                 {project.sessions.map((item) => (
                   <button
                     key={item.sessionID}
-                    className={`session-row ${item.sessionID === selectedID && !settingsOpen ? "selected" : ""}`}
+                    className={`session-row ${item.sessionID === selectedID && activePath === "/" ? "selected" : ""}`}
+                    aria-current={item.sessionID === selectedID && activePath === "/" ? "page" : undefined}
                     onClick={() => onSelect(item.sessionID)}
                   >
                     <span>{item.title}</span>
@@ -164,17 +186,10 @@ export function Sidebar({
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <Button
-            variant="ghost"
-            className={settingsOpen ? "selected" : ""}
-            onClick={onOpenSettings}
-          >
-            <Settings />
-            设置
-          </Button>
-          <div className="local-caption">
+          <nav aria-label="应用导航">{navigation.filter((entry) => entry.placement === "footer").map(navigationItem)}</nav>
+          <div className="local-caption" data-connected={connected}>
             <Circle />
-            本机工作空间<span>{connectionLabel}</span>
+            本地工作台<span>{connectionLabel}</span>
           </div>
           {connection === "disconnected" && (
             <Button variant="ghost" size="sm" onClick={onReconnect}>

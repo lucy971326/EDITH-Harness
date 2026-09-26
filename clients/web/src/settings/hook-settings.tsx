@@ -8,7 +8,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { ChevronRight, Command, Plus, RefreshCw } from "../icons";
 import type { HookConfig, HookView } from "../../../contracts/appserver.ts";
 import { RPCClient, formatRPCError } from "../client/rpc";
-import type { SettingsDraftState } from "./settings-page";
+import type { SettingsDraftState } from "./types";
 
 type Scope = "global" | "project";
 type Draft = Omit<HookConfig, "args" | "tools"> & { argsText: string; toolsText: string };

@@ -33,6 +33,7 @@ App -> 页面 / 草稿 / 操作
 workspace/workspace-tabs -> editor / review / terminal / subagent
 ```
 
+- `workspace/navigation.tsx / settings/sections.tsx`：功能导航与设置分类登记；`workspace/use-page-navigation.ts`：页面地址与离开保护。
 - `App.tsx`：页面装配；`workspace/sidebar.tsx / chat/composer.tsx`：会话导航与输入。
 - `client/rpc.ts`：类型化 RPC；`client/transport.ts`：按环境选择传输；`client/chat.ts`：主会话连接；`client/run-subscription.ts`：共用订阅、补快照与清理。
 - `state/chat.ts / state/chat-process.ts`：事件归并与只读分轮；`chat/chat-messages.tsx / chat/work-process.tsx`：呈现结果和过程。

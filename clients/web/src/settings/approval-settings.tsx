@@ -5,7 +5,7 @@ import type { ModelChoice } from "../../../contracts/appserver";
 import { RPCClient, formatRPCError } from "../client/rpc";
 import { ModelMenu } from "../components/model-menu";
 import { Bot, Shield, Check } from "../icons";
-import type { SettingsDraftState } from "./settings-page";
+import type { SettingsDraftState } from "./types";
 
 export function ApprovalSettingsPanel({ client, models, modelError, onReloadModels, onSaved, onStateChange }: {
   client: RPCClient | null;

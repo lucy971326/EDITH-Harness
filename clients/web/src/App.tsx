@@ -33,7 +33,8 @@ import {
   WifiOff,
   RefreshCw,
 } from "./icons";
-import { SettingsPage } from "./settings/settings-page";
+import { createNavigation } from "./workspace/navigation";
+import { usePageNavigation } from "./workspace/use-page-navigation";
 import { WorkspaceTabs } from "./workspace/workspace-tabs";
 import { Sidebar } from "./workspace/sidebar";
 import { ResizeHandle } from "./components/resize-handle";
@@ -135,18 +136,19 @@ export function shouldClearSubmittedDraft(
 
 export default function App() {
   const appElement = useRef<HTMLDivElement>(null);
-  const [settings, setSettings] = useState(false);
+  const { path, navigate, setGuard } = usePageNavigation();
+  const chatPage = path === "/";
   const [sidebar, setSidebar] = useState(true);
   const [sidebarWidth, setSidebarWidth] = useState(() =>
     Math.max(
       200,
-      Math.min(420, Number(preference("sidebar-width", "210")) || 210),
+      Math.min(420, Number(preference("sidebar-width", "232")) || 232),
     ),
   );
   const [panel, setPanel] = useState(
     () => preference("panel", "false") === "true",
   );
-  const panelOpen = panel && !settings;
+  const panelOpen = panel && chatPage;
   const [panelWidth, setPanelWidth] = useState(() =>
     Math.max(
       320,
@@ -230,10 +232,10 @@ export default function App() {
   const connected = connection === "connected";
   const sidebarSpace = sidebar ? sidebarWidth : 0;
   const panelOverlay =
-    viewportWidth <= 950 || viewportWidth - sidebarSpace < 620;
+    viewportWidth <= 950 || viewportWidth - sidebarSpace < 636;
   const panelMaxWidth = panelOverlay
     ? 1200
-    : Math.min(1200, viewportWidth - sidebarSpace - 300);
+    : Math.min(1200, viewportWidth - sidebarSpace - 316);
   const visiblePanelWidth = Math.min(panelWidth, panelMaxWidth);
   const backendBusy = opening || creatingWorkspace !== null;
   const snapshot =
@@ -317,10 +319,10 @@ export default function App() {
             };
       const next = addReference(draftRef.current.references, normalized);
       updateDraft({ references: next });
-      setSettings(false);
+      navigate("/");
       requestAnimationFrame(() => composer.current?.focus());
     },
-    [selectedID, referenceWorkspace],
+    [selectedID, referenceWorkspace, navigate],
   );
 
   function removeReference(id: string) {
@@ -347,11 +349,6 @@ export default function App() {
     }
   }
 
-  function openSettings() {
-    setPanel(false);
-    setSettings(true);
-    if (window.innerWidth < 760) setSidebar(false);
-  }
   async function addImages(files: FileList | File[] | null) {
     if (!files) return;
     if (!selectedModel?.vision) {
@@ -460,7 +457,7 @@ export default function App() {
   }
 
   async function selectSession(sessionID: string) {
-    if (sessionID === selectedIDRef.current && !settings) return;
+    if (sessionID === selectedIDRef.current && chatPage) return;
 
     setCurrentSession(
       sessionID,
@@ -468,7 +465,7 @@ export default function App() {
     );
     applyDraft(sessionID);
     setNotice("");
-    setSettings(false);
+    navigate("/");
     if (window.innerWidth < 760) setSidebar(false);
     const client = clientRef.current;
     if (!client?.connected) return;
@@ -485,11 +482,17 @@ export default function App() {
       await loadSessions(client);
       if (client !== clientRef.current || !client.connected) return;
 
+      if (selectedIDRef.current === null) {
+        drafts.current.set(result.session.sessionID, draftRef.current);
+        drafts.current.delete(draftKey(null));
+      }
       setCurrentSession(result.session.sessionID, result.session);
       applyDraft(result.session.sessionID);
       void loadSkills(client, result.session.sessionID);
       setNotice("");
-      setSettings(false);
+      navigate("/");
+      if (window.innerWidth < 760) setSidebar(false);
+      requestAnimationFrame(() => composer.current?.focus());
     } finally {
       setCreatingWorkspace(null);
     }
@@ -868,7 +871,7 @@ export default function App() {
       if (selectedIDRef.current === sourceID) {
         setCurrentSession(result.session.sessionID, result.session);
         applyDraft(result.session.sessionID);
-        setSettings(false);
+        navigate("/");
         setNotice("已从该回答创建分叉会话。");
         void loadSkills(client, result.session.sessionID);
       }
@@ -961,11 +964,44 @@ export default function App() {
       setStopping(null);
   }, [chatState, stopping]);
 
+  const navigation = createNavigation({
+    newChat: {
+      disabled: !connected || backendBusy,
+      run: () => void (selected?.settings.workspace
+        ? createInWorkspace(selected.settings.workspace)
+        : openProject()),
+    },
+    settings: {
+      theme, setTheme, onBack: () => navigate("/"), setNavigationGuard: setGuard,
+      agents: agentCatalog?.agents ?? null, kinds: agentCatalog?.kinds ?? [],
+      tools: agentCatalog?.tools ?? [], loading: agentLoading, error: agentError,
+      saving: agentSaving, onSave: saveAgent, onDelete: deleteAgent,
+      onReload: () => { if (clientRef.current?.connected) void loadAgents(clientRef.current); },
+      hookSettings: (onStateChange) => <HookSettingsPanel client={approvalClient}
+        currentWorkspace={selected?.settings.workspace ?? ""} onStateChange={onStateChange} />,
+      approvalSettings: (onStateChange) => <ApprovalSettingsPanel client={approvalClient}
+        models={models} modelError={modelError} onStateChange={onStateChange}
+        onReloadModels={() => { if (clientRef.current?.connected) void loadModels(clientRef.current); }}
+        onSaved={() => { if (clientRef.current?.connected) void loadPermissionModes(clientRef.current); }} />,
+    },
+  });
+  const activePage = navigation.find((entry) => entry.kind === "page" && entry.path === path);
+  const page = activePage?.kind === "page" ? activePage : null;
+  const welcome = !selectedID || (synchronized && !snapshot?.entries.length && !snapshot?.runs.length);
+
+  useEffect(() => {
+    if (path !== "/" && !page) navigate("/", true);
+  }, [path, !!page, navigate]);
+  useEffect(() => {
+    if (!chatPage) setPanel(false);
+  }, [chatPage]);
+
   return (
     <TooltipProvider>
       <div
         ref={appElement}
         className="app"
+        data-standalone={!!page?.standalone}
         data-panel-overlay={panelOverlay}
         style={
           {
@@ -974,14 +1010,16 @@ export default function App() {
           } as CSSProperties
         }
       >
-        {sidebar && !settings && (
+        {sidebar && !page?.standalone && (
           <Sidebar
             connection={connection}
             backendBusy={backendBusy}
             sessions={sessions}
             listError={listError}
             selectedID={selectedID}
-            settingsOpen={settings}
+            navigation={navigation}
+            activePath={path}
+            onNavigate={navigate}
             onClose={() => setSidebar(false)}
             onOpenProject={() => void openProject()}
             onReload={() => {
@@ -990,11 +1028,10 @@ export default function App() {
             }}
             onSelect={(sessionID) => void selectSession(sessionID)}
             onCreate={(workspace) => void createInWorkspace(workspace)}
-            onOpenSettings={openSettings}
             onReconnect={reconnect}
           />
         )}
-        {sidebar && !settings && (
+        {sidebar && !page?.standalone && (
           <ResizeHandle
             label="调整项目侧栏宽度"
             value={sidebarWidth}
@@ -1012,7 +1049,7 @@ export default function App() {
           />
         )}
         <main className="main">
-          <header className="topbar" hidden={settings}>
+          <header className="topbar" hidden={page?.standalone}>
             <div className="topbar-title">
               {!sidebar && (
                 <Button
@@ -1024,20 +1061,14 @@ export default function App() {
                   <PanelLeft />
                 </Button>
               )}
-              <Folder />
-              {settings ? (
-                <span>设置</span>
-              ) : selected ? (
-                <>
-                  <span>{workspaceName(selected.settings.workspace)}</span>
-                  <span className="breadcrumb-divider">/</span>
-                  <span className="title-truncate">{selected.title}</span>
-                </>
-              ) : (
-                <span>聊天</span>
-              )}
+              <div className="conversation-heading">
+                <span className="conversation-title">{page?.label ?? selected?.title ?? "新建会话"}</span>
+                {!page && selected && <span className="conversation-project" title={selected.settings.workspace}>
+                  <Folder />{workspaceName(selected.settings.workspace)}
+                </span>}
+              </div>
             </div>
-            {!settings && (
+            {chatPage && (
               <div className="topbar-actions">
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -1056,49 +1087,8 @@ export default function App() {
             )}
           </header>
           <div className="workspace">
-            {settings ? (
-              <SettingsPage
-                hookSettings={(onStateChange) =>
-                  <HookSettingsPanel
-                    client={approvalClient}
-                    currentWorkspace={selected?.settings.workspace ?? ""}
-                    onStateChange={onStateChange}
-                  />
-                }
-                approvalSettings={(onStateChange) =>
-                  <ApprovalSettingsPanel
-                    client={approvalClient}
-                    models={models}
-                    modelError={modelError}
-                    onStateChange={onStateChange}
-                    onReloadModels={() => {
-                      const client = clientRef.current;
-                      if (client?.connected) void loadModels(client);
-                    }}
-                    onSaved={() => {
-                      const client = clientRef.current;
-                      if (client?.connected) void loadPermissionModes(client);
-                    }}
-                  />
-                }
-                theme={theme}
-                setTheme={setTheme}
-                onBack={() => setSettings(false)}
-                agents={agentCatalog?.agents ?? null}
-                kinds={agentCatalog?.kinds ?? []}
-                tools={agentCatalog?.tools ?? []}
-                loading={agentLoading}
-                error={agentError}
-                saving={agentSaving}
-                onReload={() => {
-                  const client = clientRef.current;
-                  if (client?.connected) void loadAgents(client);
-                }}
-                onSave={saveAgent}
-                onDelete={deleteAgent}
-              />
-            ) : (
-              <section className="chat" aria-label="聊天">
+            {page ? page.render() : (
+              <section className="chat" aria-label="聊天" data-welcome={welcome}>
                 {connection !== "connected" && (
                   <div className="connection-banner" role="status">
                     <WifiOff />
@@ -1156,7 +1146,7 @@ export default function App() {
                     const workspace = selected?.settings.workspace;
                     if (!workspace) return;
                     setPanel(true);
-                    setSettings(false);
+                    navigate("/");
                     setFileOpenRequest({
                       ...location,
                       workspace,
@@ -1166,7 +1156,7 @@ export default function App() {
                   onOpenDiff={(runID) => {
                     if (!selectedID) return;
                     setPanel(true);
-                    setSettings(false);
+                    navigate("/");
                     setReviewOpenRequest({
                       sessionID: selectedID,
                       runID,
@@ -1176,7 +1166,7 @@ export default function App() {
                   onOpenSubagent={(taskID) => {
                     if (!selectedID) return;
                     setPanel(true);
-                    setSettings(false);
+                    navigate("/");
                     setSubagentOpenRequest({
                       parentSessionID: selectedID,
                       taskID,
@@ -1190,46 +1180,19 @@ export default function App() {
                   }
                 >
                   <div className="empty-chat">
-                    <div className="empty-symbol">
-                      <Command />
+                    <div className="empty-symbol"><Command /></div>
+                    <span className="welcome-eyebrow">HARNESS WORKSPACE</span>
+                    <h1>{selectedID && !synchronized ? "正在恢复会话" : "今天，一起完成什么？"}</h1>
+                    <p>{selectedID && !synchronized
+                      ? "正在同步历史与运行状态，请稍候。"
+                      : "从一个问题、一段代码，或一个新的想法开始。"}</p>
+                    <div className="welcome-context">
+                      {selected ? <span title={selected.settings.workspace}><Folder />{workspaceName(selected.settings.workspace)}</span> :
+                        <Button variant="outline" size="sm" disabled={!connected || backendBusy} onClick={() => void openProject()}>
+                          <Folder />{backendBusy ? "正在打开项目…" : "选择项目"}
+                        </Button>}
+                      {!selected && <span className="metadata">选择工作目录后即可开始</span>}
                     </div>
-                    {selectedID ? (
-                      <>
-                        <h1>{selected?.title ?? "正在恢复会话"}</h1>
-                        <p>
-                          {!synchronized
-                            ? "正在等待后台同步，已有内容不会被当作空会话。"
-                            : "选择模型和思考档位，开始这场对话。"}
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <h1>从一个想法开始。</h1>
-                        <p>
-                          {connected
-                            ? "选择左侧会话，或打开一个项目。"
-                            : "后台尚未连接。输入会留在本页，不会发送。"}
-                        </p>
-                        <div className="starter-actions">
-                          {[
-                            "梳理项目结构",
-                            "帮我检查代码",
-                            "一起设计新功能",
-                          ].map((text) => (
-                            <Button
-                              key={text}
-                              variant="outline"
-                              onClick={() => {
-                                editDraft(text);
-                                composer.current?.focus();
-                              }}
-                            >
-                              {text}
-                            </Button>
-                          ))}
-                        </div>
-                      </>
-                    )}
                   </div>
                 </ChatMessages>
                 <Approvals client={connected ? approvalClient : null}>
@@ -1301,6 +1264,12 @@ export default function App() {
                     composerRef={composer}
                   />
                 </Approvals>
+                {welcome && <div className="welcome-suggestions" aria-label="开始一个任务">
+                  {["梳理项目结构", "帮我检查代码", "一起设计新功能"].map((text) =>
+                    <Button key={text} variant="ghost" size="sm" onClick={() => {
+                      editDraft(text); composer.current?.focus();
+                    }}>{text}</Button>)}
+                </div>}
               </section>
             )}
           </div>
@@ -1347,7 +1316,7 @@ export default function App() {
         </>
         <AppContextMenu
           onAddReference={
-            !settings && selected && selectedID === selected.sessionID
+            chatPage && selected && selectedID === selected.sessionID
               ? addContextReference
               : undefined
           }
