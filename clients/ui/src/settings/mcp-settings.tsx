@@ -58,11 +58,12 @@ function statusLabel(item: MCPServerView): string {
   }
 }
 
-export function MCPSettingsPanel({ client, currentWorkspace, onOpenFile, onStateChange }: {
+export function MCPSettingsPanel({ client, currentWorkspace, onOpenFile, onStateChange, openExternal }: {
   client: RPCClient | null;
   currentWorkspace: string;
   onOpenFile: (path: string) => void;
   onStateChange: (state: SettingsDraftState) => void;
+  openExternal: (url: string) => Promise<void>;
 }) {
   const [view, setView] = useState<MCPSettingsView | null>(null);
   const [target, setTarget] = useState<Target>({ scope: "global", name: "", edit: false, create: false });
@@ -270,15 +271,10 @@ export function MCPSettingsPanel({ client, currentWorkspace, onOpenFile, onState
   }
 
   async function openAuthorizationURL(address: string) {
-    if (window.location.protocol !== "wails:" && window.location.hostname !== "wails.localhost") {
-      window.open(address, "_blank", "noopener,noreferrer");
-      return;
-    }
     try {
-      const { Browser } = await import("@wailsio/runtime");
-      await Browser.OpenURL(address);
+      await openExternal(address);
     } catch (cause) {
-      setError(formatRPCError(cause, "打开系统浏览器失败"));
+      setError(formatRPCError(cause, "打开授权页面失败"));
     }
   }
 

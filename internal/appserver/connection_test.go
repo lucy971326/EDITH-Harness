@@ -3,17 +3,14 @@ package appserver
 import (
 	"context"
 	"encoding/json"
-	"harness/internal/approvals"
-	"harness/internal/permissions"
 	"net"
-	"net/http"
-	"strings"
 	"testing"
 	"time"
 
+	"harness/internal/approvals"
 	"harness/internal/appserver/internal/clientconn"
+	"harness/internal/permissions"
 
-	"github.com/coder/websocket"
 	"github.com/sourcegraph/jsonrpc2"
 )
 
@@ -54,14 +51,37 @@ func TestServeStreamUsesSameProtocol(t *testing.T) {
 	}
 }
 
-func startTestSocket(t *testing.T, server *Server) (*Server, string) {
+func connectTestStream(t *testing.T, server *Server) jsonrpc2.ObjectStream {
 	t.Helper()
-	url, err := server.Listen("127.0.0.1:0", nil)
+	t.Cleanup(func() { _ = server.Close() })
+	client, remote := net.Pipe()
+	client.SetDeadline(time.Now().Add(5 * time.Second))
+	stream := jsonrpc2.NewPlainObjectStream(client)
+	done := make(chan struct{})
+	go func() { server.ServeStream(jsonrpc2.NewPlainObjectStream(remote)); close(done) }()
+	t.Cleanup(func() {
+		stream.Close()
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Error("connection did not close")
+		}
+	})
+	return stream
+}
+
+func streamRequest(t *testing.T, stream jsonrpc2.ObjectStream, raw string) rpcResponse {
+	t.Helper()
+	err := stream.WriteObject(json.RawMessage(raw))
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = server.Close() })
-	return server, "ws" + strings.TrimPrefix(url, "http") + "/rpc"
+	var response rpcResponse
+	err = stream.ReadObject(&response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return response
 }
 
 type rpcResponse struct {
@@ -91,111 +111,15 @@ func newEchoServer(t *testing.T) *Server {
 	return server
 }
 
-func dialTestSocket(t *testing.T, url string) *websocket.Conn {
+func initializeStream(t *testing.T, stream jsonrpc2.ObjectStream) {
 	t.Helper()
-	ws, _, err := websocket.Dial(t.Context(), url, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = ws.CloseNow() })
-	return ws
-}
-
-func socketRequest(t *testing.T, ws *websocket.Conn, raw string) rpcResponse {
-	t.Helper()
-	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
-	defer cancel()
-	err := ws.Write(ctx, websocket.MessageText, []byte(raw))
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, data, err := ws.Read(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var result rpcResponse
-	err = json.Unmarshal(data, &result)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return result
-}
-
-func initializeSocket(t *testing.T, ws *websocket.Conn) {
-	t.Helper()
-	result := socketRequest(t, ws, `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1}}`)
+	result := streamRequest(t, stream, `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1}}`)
 	if result.Error != nil {
 		t.Fatal(result.Error)
 	}
 	if string(result.Result) != `{"protocolVersion":1}` {
 		t.Fatalf("unexpected initialization result: %s", result.Result)
 	}
-}
-
-func TestWebSocketInitializationAndOrigin(t *testing.T) {
-	rpc := newEchoServer(t)
-	s, url := startTestSocket(t, rpc)
-	ws := dialTestSocket(t, url)
-	response := socketRequest(t, ws, `{"jsonrpc":"2.0","id":1,"method":"echo","params":{"value":"private"}}`)
-	if response.Error == nil || response.Error.Code != -32001 {
-		t.Fatal(response)
-	}
-	response = socketRequest(t, ws, `{"jsonrpc":"2.0","id":2,"method":"initialize","params":{"protocolVersion":2}}`)
-	if response.Error == nil || response.Error.Code != -32001 {
-		t.Fatal(response)
-	}
-	initializeSocket(t, ws)
-	response = socketRequest(t, ws, `{"jsonrpc":"2.0","id":"echo-id","method":"echo","params":{"value":"ok"}}`)
-	if response.Error != nil || string(response.ID) != `"echo-id"` || string(response.Result) != `{"value":"ok"}` {
-		t.Fatal(response)
-	}
-	response = socketRequest(t, ws, `{"jsonrpc":"2.0","id":3,"method":"server/catalog"}`)
-	if response.Error == nil || response.Error.Code != -32601 {
-		t.Fatal("removed catalog method is still available", response)
-	}
-	_, res, err := websocket.Dial(t.Context(), url, &websocket.DialOptions{HTTPHeader: http.Header{"Origin": []string{"https://evil.example"}}})
-	if err == nil || res == nil || res.StatusCode != http.StatusForbidden {
-		t.Fatal("foreign origin accepted", err)
-	}
-	_, res, err = websocket.Dial(t.Context(), url, &websocket.DialOptions{HTTPHeader: http.Header{"Origin": []string{"http://127.0.0.1:5173"}}})
-	if err == nil || res == nil || res.StatusCode != http.StatusForbidden {
-		t.Fatal("vite origin accepted without proxy rewrite", err)
-	}
-	_, err = New().Listen("0.0.0.0:0", nil)
-	if err == nil {
-		t.Fatal("public listener accepted")
-	}
-	err = s.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = s.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestWebAndRPCShareListener(t *testing.T) {
-	server := newEchoServer(t)
-	web := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("react"))
-	})
-	url, err := server.Listen("127.0.0.1:0", web)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	response, err := http.Get(url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		t.Fatal(response.Status)
-	}
-
-	ws := dialTestSocket(t, "ws"+strings.TrimPrefix(url, "http")+"/rpc")
-	initializeSocket(t, ws)
 }
 
 type subscriptionHandler struct {
@@ -229,17 +153,15 @@ func TestSubscriptionResponsePrecedesEventsAndDisconnectCleans(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer rpc.Close()
-	s, url := startTestSocket(t, rpc)
-	ws := dialTestSocket(t, url)
-	initializeSocket(t, ws)
-	response := socketRequest(t, ws, `{"jsonrpc":"2.0","id":2,"method":"subscribe"}`)
+	stream := connectTestStream(t, rpc)
+	initializeStream(t, stream)
+	response := streamRequest(t, stream, `{"jsonrpc":"2.0","id":2,"method":"subscribe"}`)
 	if response.Error != nil || string(response.ID) != "2" {
 		t.Fatal("notification overtook response", response)
 	}
 	<-h.subscription
-	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
-	defer cancel()
-	_, raw, err := ws.Read(ctx)
+	var raw json.RawMessage
+	err = stream.ReadObject(&raw)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,8 +172,8 @@ func TestSubscriptionResponsePrecedesEventsAndDisconnectCleans(t *testing.T) {
 	if notification.Method != "test/event" {
 		t.Fatalf("bad event: %s", raw)
 	}
-	_ = ws.CloseNow()
-	_ = s.Close()
+	_ = stream.Close()
+	_ = rpc.Close()
 	select {
 	case <-h.cleaned:
 	case <-time.After(time.Second):
@@ -285,10 +207,9 @@ func TestCloseCancelsConnectionCallsAndWaits(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer rpc.Close()
-			s, url := startTestSocket(t, rpc)
-			ws := dialTestSocket(t, url)
-			initializeSocket(t, ws)
-			err = ws.Write(t.Context(), websocket.MessageText, []byte(`{"jsonrpc":"2.0","id":2,"method":"wait"}`))
+			stream := connectTestStream(t, rpc)
+			initializeStream(t, stream)
+			err = stream.WriteObject(json.RawMessage(`{"jsonrpc":"2.0","id":2,"method":"wait"}`))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -299,7 +220,7 @@ func TestCloseCancelsConnectionCallsAndWaits(t *testing.T) {
 			}
 			// 同一套连接与等待 handler，分别验收服务器关闭和客户端断线。
 			if disconnect {
-				err = ws.CloseNow()
+				err = stream.Close()
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -310,7 +231,7 @@ func TestCloseCancelsConnectionCallsAndWaits(t *testing.T) {
 				}
 			}
 			done := make(chan error, 1)
-			go func() { done <- s.Close() }()
+			go func() { done <- rpc.Close() }()
 			select {
 			case err = <-done:
 				if err != nil {
@@ -337,7 +258,7 @@ func TestApprovalReconnect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, url := startTestSocket(t, server)
+	t.Cleanup(func() { _ = server.Close() })
 	_, updates, unsubscribe := service.Subscribe()
 	defer unsubscribe()
 	ctx, cancel := context.WithCancel(t.Context())
@@ -354,9 +275,9 @@ func TestApprovalReconnect(t *testing.T) {
 	}
 	var id string
 	for i := 0; i < 2; i++ {
-		ws := dialTestSocket(t, url)
-		initializeSocket(t, ws)
-		response := socketRequest(t, ws, `{"jsonrpc":"2.0","id":2,"method":"approval/subscribe","params":{}}`)
+		stream := connectTestStream(t, server)
+		initializeStream(t, stream)
+		response := streamRequest(t, stream, `{"jsonrpc":"2.0","id":2,"method":"approval/subscribe","params":{}}`)
 		if response.Error != nil {
 			t.Fatal(response.Error)
 		}
@@ -369,7 +290,7 @@ func TestApprovalReconnect(t *testing.T) {
 			t.Fatal("reconnect replaced approval")
 		}
 		id = snapshot.Pending[0].ID
-		ws.CloseNow()
+		stream.Close()
 	}
 	_, err = server.Call(t.Context(), "approval/respond", mustJSON(t, ApprovalRespondParams{RequestID: id, Decision: permissions.Decision{Approved: true}}))
 	if err != nil {
@@ -396,9 +317,9 @@ func TestApprovalReconnect(t *testing.T) {
 			t.Fatal("MCP approval request missing")
 		}
 	}
-	ws := dialTestSocket(t, url)
-	initializeSocket(t, ws)
-	response := socketRequest(t, ws, `{"jsonrpc":"2.0","id":3,"method":"approval/subscribe","params":{}}`)
+	stream := connectTestStream(t, server)
+	initializeStream(t, stream)
+	response := streamRequest(t, stream, `{"jsonrpc":"2.0","id":3,"method":"approval/subscribe","params":{}}`)
 	if response.Error != nil {
 		t.Fatalf("MCP approval snapshot failed output validation: %#v", response.Error)
 	}

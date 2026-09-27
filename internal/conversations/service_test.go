@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	webclient "harness/clients/web"
 	"harness/internal/agents"
 	"harness/internal/approvals"
 	"harness/internal/appserver"
@@ -605,7 +606,12 @@ func TestNestedSubagentInterfacesUseDirectParent(t *testing.T) {
 	// 真实 WebSocket 订阅必须带回下一层面板继续导航所需的孩子 Session ID。
 	server := newRPCServer(t, fixture)
 	defer server.Close()
-	baseURL, err := server.Listen("127.0.0.1:0", nil)
+	web, err := webclient.New(server, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer web.Close()
+	baseURL, err := web.Listen("127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}

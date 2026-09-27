@@ -124,17 +124,16 @@ func TestSelectWorkspaceOverWebSocket(t *testing.T) {
 	}
 	workspace := t.TempDir()
 	server.workspacePicker = func(context.Context) (string, error) { return workspace, nil }
-	_, url := startTestSocket(t, server)
-	ws := dialTestSocket(t, url)
-	initializeSocket(t, ws)
-	response := socketRequest(t, ws, `{"jsonrpc":"2.0","id":"pick","method":"workspace/select","params":{}}`)
+	stream := connectTestStream(t, server)
+	initializeStream(t, stream)
+	response := streamRequest(t, stream, `{"jsonrpc":"2.0","id":"pick","method":"workspace/select","params":{}}`)
 	if response.Error != nil {
 		t.Fatal(response.Error)
 	}
 	assertSelectResult(t, response.Result, false, filepath.Clean(workspace))
 
 	server.workspacePicker = func(context.Context) (string, error) { return "", workspacepicker.ErrCanceled }
-	response = socketRequest(t, ws, `{"jsonrpc":"2.0","id":"cancel","method":"workspace/select","params":{}}`)
+	response = streamRequest(t, stream, `{"jsonrpc":"2.0","id":"cancel","method":"workspace/select","params":{}}`)
 	if response.Error != nil {
 		t.Fatal(response.Error)
 	}

@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	webclient "harness/clients/web"
 	"harness/internal/agents"
 	"harness/internal/approvals"
 	"harness/internal/appserver"
@@ -64,7 +65,12 @@ func TestTypeScriptClient(t *testing.T) {
 	if manual {
 		address = "127.0.0.1:8888"
 	}
-	webURL, err := server.Listen(address, nil)
+	web, err := webclient.New(server, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = web.Close() }()
+	webURL, err := web.Listen(address)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,6 +93,10 @@ func TestTypeScriptClient(t *testing.T) {
 			case <-ctx.Done():
 				return
 			case <-model.restart:
+				err = web.Close()
+				if err != nil {
+					t.Fatal(err)
+				}
 				err = server.Close()
 				if err != nil {
 					t.Fatal(err)
@@ -96,7 +106,11 @@ func TestTypeScriptClient(t *testing.T) {
 					t.Fatal(err)
 				}
 				h, server, product = newNetworkServices(t, data)
-				_, err = server.Listen(address, nil)
+				web, err = webclient.New(server, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, err = web.Listen(address)
 				if err != nil {
 					t.Fatal(err)
 				}

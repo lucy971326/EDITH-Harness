@@ -1,14 +1,49 @@
 {
   "name": "harness-clients",
-  "type": "module",
   "private": true,
+  "version": "0.0.0",
+  "type": "module",
   "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "node --experimental-strip-types --test ui/test/*.test.ts web/test/*.test.ts",
     "contracts:check": "tsc -p contracts/tsconfig.json",
     "rpc:check": "tsc -p test/tsconfig.json",
     "rpc:test": "go test ../tests/integration -run TestTypeScriptClient -count=1 -v"
   },
+  "dependencies": {
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@fontsource-variable/noto-sans-sc": "^5.3.0",
+    "@monaco-editor/react": "^4.7.0",
+    "@wailsio/runtime": "3.0.0-beta.25",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cn": "^0.2.6",
+    "lucide-react": "^0.468.0",
+    "monaco-editor": "^0.56.0",
+    "radix-ui": "^1.6.7",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-markdown": "^10.1.0",
+    "rehype-sanitize": "^6.0.0",
+    "remark-gfm": "^4.0.1",
+    "tailwind-merge": "^3.0.0"
+  },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.1.0",
     "@types/node": "26.5.0",
-    "typescript": "5.9.3"
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^4.4.0",
+    "tailwindcss": "^4.1.0",
+    "typescript": "5.9.3",
+    "vite": "^6.3.0"
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true,
+    "fsevents@2.3.3": true
   }
 }

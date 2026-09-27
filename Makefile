@@ -5,20 +5,20 @@
 .PHONY: web run run-backend run-frontend build
 
 web:
-	npm --prefix clients/web ci
-	npm --prefix clients/web run build
+	npm --prefix clients ci
+	npm --prefix clients run build
 
-run: clients/web/node_modules/.package-lock.json clients/web/dist/index.html
+run: clients/node_modules/.package-lock.json clients/dist/index.html
 	@$(MAKE) --no-print-directory -j2 run-backend run-frontend
 
-clients/web/dist/index.html: clients/web/node_modules/.package-lock.json
-	npm --prefix clients/web run build
+clients/dist/index.html: clients/node_modules/.package-lock.json
+	npm --prefix clients run build
 
 run-backend:
 	go run ./cmd/harness --no-browser
 
 run-frontend:
-	npm --prefix clients/web run dev -- --open --strictPort
+	npm --prefix clients run dev -- --open --strictPort
 
 build: web
 	mkdir -p .build
@@ -45,38 +45,34 @@ agent-check: agent-web-build
 	@$(MAKE) --no-print-directory -j4 agent-go agent-race agent-contracts agent-web-test
 
 test: web
-	npm --prefix clients ci
 	go test $(GO_PACKAGES)
 	go vet $(GO_PACKAGES)
-	go test -race ./internal/appserver ./internal/conversations ./internal/runner
+	go test -race ./clients/web ./internal/appserver ./internal/conversations ./internal/runner
 	npm --prefix clients run contracts:check
 	npm --prefix clients run rpc:check
 	npm --prefix clients run rpc:test
-	npm --prefix clients/web test
+	npm --prefix clients test
 
 # agent-check 的子任务
 .PHONY: agent-web-build agent-go agent-race agent-contracts agent-web-test
 
-agent-web-build: clients/web/node_modules/.package-lock.json
-	npm --prefix clients/web run build
+agent-web-build: clients/node_modules/.package-lock.json
+	npm --prefix clients run build
 
 agent-go:
 	go test $(GO_PACKAGES)
 	go vet $(GO_PACKAGES)
 
 agent-race:
-	go test -race ./internal/appserver ./internal/conversations ./internal/runner ./internal/subagents ./internal/machine/local ./internal/tools/subagents
+	go test -race ./clients/web ./internal/appserver ./internal/conversations ./internal/runner ./internal/subagents ./internal/machine/local ./internal/tools/subagents
 
 agent-contracts: clients/node_modules/.package-lock.json
 	npm --prefix clients run contracts:check
 	npm --prefix clients run rpc:check
 
-agent-web-test: clients/web/node_modules/.package-lock.json
-	npm --prefix clients/web test
+agent-web-test: clients/node_modules/.package-lock.json
+	npm --prefix clients test
 
 # 按需安装 npm 依赖
 clients/node_modules/.package-lock.json: clients/package.json clients/package-lock.json
 	npm --prefix clients ci --no-audit --no-fund
-
-clients/web/node_modules/.package-lock.json: clients/web/package.json clients/web/package-lock.json
-	npm --prefix clients/web ci --no-audit --no-fund

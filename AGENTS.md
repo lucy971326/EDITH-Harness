@@ -18,7 +18,7 @@ STATUS 只保留当前能力、未解决限制和影响使用的重要验证结�
 
 ```text
 cmd/harness / cmd/harness-desktop → backend 显式构造、登记、逆序关闭
-React → WebSocket / Wails Stream → appserver → conversations → Runner → Loop → Tools
+React → clients/web / clients/desktop → appserver → conversations → Runner → Loop → Tools
                                     └→ 各领域公共服务
 ```
 
@@ -27,7 +27,7 @@ React → WebSocket / Wails Stream → appserver → conversations → Runner �
 - appserver 只管协议、校验、分发与连接；业务判断归 conversations 或所属领域。Client 只保存投影与临时界面状态。
 - Go / TS 契约手写，修改时对照方法名、字段、可选性与返回值；TS 检查不证明两端一致。服务端仍校验输入输出。
 - 进程、会话、本轮、步骤各自拥有状态。低成本可推导的值不重复保存；不为减少字段合并无关锁、隐藏状态或削减功能。
-- 谁创建长期资源，谁负责取消、关闭、等待及初始化失败清理。取得资源立即安排收尾；某项关闭失败仍继续其余清理并汇总错误。appserver 最后启动、最先关闭。
+- 谁创建长期资源，谁负责取消、关闭、等待及初始化失败清理。取得资源立即安排收尾；某项关闭失败仍继续其余清理并汇总错误。接入层最后启动、最先关闭；Web 传输先于 appserver 关闭。
 
 ## 运行铁律
 

@@ -57,11 +57,10 @@ import {
   isWorkspaceUnavailable,
   RPCClient,
   RPCError,
-  rpcURL,
   shouldClearSessionOnGetError,
 } from "./client/rpc";
 import { ChatConnection, initialChatState } from "./client/chat";
-import { socketFactory } from "./client/transport";
+import type { Platform } from "./types";
 import { activeRun, latestUsage } from "./state/chat";
 import { ChatMessages } from "./chat/chat-messages";
 import { type ModelSelection } from "./components/model-menu";
@@ -141,7 +140,7 @@ export function shouldClearSubmittedDraft(
   return (drafts.get(sessionID)?.version ?? 0) === submittedVersion;
 }
 
-export default function App() {
+export default function App({ platform }: { platform: Platform }) {
   const appElement = useRef<HTMLDivElement>(null);
   const { path, navigate, setGuard } = usePageNavigation();
   const chatPage = path === "/";
@@ -1025,7 +1024,6 @@ export default function App() {
   );
   useEffect(() => {
     const chat = new ChatConnection(
-      rpcURL(),
       setChatState,
       (client) => {
         clientRef.current = client;
@@ -1039,7 +1037,7 @@ export default function App() {
       (client) => {
         void loadSessions(client);
       },
-      socketFactory,
+      platform.openSocket,
     );
     chatRef.current = chat;
     chat.select(selectedIDRef.current);
@@ -1092,6 +1090,7 @@ export default function App() {
       hookSettings: (onStateChange) => <HookSettingsPanel client={approvalClient}
         currentWorkspace={selected?.settings.workspace ?? ""} onStateChange={onStateChange} />,
       mcpSettings: (onStateChange) => <MCPSettingsPanel client={approvalClient}
+        openExternal={platform.openExternal}
         currentWorkspace={selected?.settings.workspace ?? ""} onStateChange={onStateChange}
         onOpenFile={(path) => {
           const workspace = selected?.settings.workspace;

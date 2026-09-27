@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
 	"runtime"
 	"syscall"
 
+	clientassets "harness/clients"
 	webclient "harness/clients/web"
 	"harness/internal/backend"
 	machinelocal "harness/internal/machine/local"
@@ -42,12 +44,16 @@ func run() (result error) {
 		return err
 	}
 	defer func() { result = errors.Join(result, services.Close()) }()
-	server := services.Server
-	webHandler, err := webclient.Handler()
+	assets, err := clientassets.AssetsFS()
 	if err != nil {
 		return err
 	}
-	url, err := server.Listen("127.0.0.1:8888", webHandler)
+	web, err := webclient.New(services.Server, http.FileServerFS(assets))
+	if err != nil {
+		return err
+	}
+	defer func() { result = errors.Join(result, web.Close()) }()
+	url, err := web.Listen("127.0.0.1:8888")
 	if err != nil {
 		return err
 	}

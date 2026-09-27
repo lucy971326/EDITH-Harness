@@ -6,8 +6,8 @@ import (
 	"html"
 	"os"
 
+	clientassets "harness/clients"
 	"harness/clients/desktop"
-	webclient "harness/clients/web"
 	"harness/internal/backend"
 	machinelocal "harness/internal/machine/local"
 
@@ -44,7 +44,7 @@ func run() (result error) {
 	}
 	defer func() { result = errors.Join(result, services.Close()) }()
 
-	assets, err := webclient.AssetsFS()
+	assets, err := clientassets.AssetsFS()
 	if err != nil {
 		return err
 	}

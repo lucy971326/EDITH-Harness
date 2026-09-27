@@ -15,7 +15,7 @@ import type { RunNotification } from "../../../contracts/run.ts";
 type Calls = Methods & ServerMethods;
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected";
-export type SocketFactory = (url: string) => WebSocket | Promise<WebSocket>;
+export type SocketFactory = () => WebSocket | Promise<WebSocket>;
 export type StatusListener = (
   status: ConnectionStatus,
   detail?: string,
@@ -78,7 +78,6 @@ export class RPCClient {
     string,
     Set<(notification: CommandExecOutputDeltaNotification) => void>
   >();
-  private readonly url: string;
   private readonly onStatus: StatusListener;
   private readonly openSocket: SocketFactory;
   private socket: WebSocket | null = null;
@@ -90,11 +89,9 @@ export class RPCClient {
   private started = false;
 
   constructor(
-    url: string,
     onStatus: StatusListener,
-    openSocket: SocketFactory = (target) => new WebSocket(target),
+    openSocket: SocketFactory,
   ) {
-    this.url = url;
     this.onStatus = onStatus;
     this.openSocket = openSocket;
   }
@@ -110,7 +107,7 @@ export class RPCClient {
     this.status = "connecting";
     this.onStatus("connecting");
     try {
-      const socket = await this.openSocket(this.url);
+      const socket = await this.openSocket();
       if (this.closed) {
         socket.close();
         throw new Error("连接已关闭");
@@ -607,11 +604,6 @@ function waitForOpen(socket: WebSocket): Promise<void> {
     socket.addEventListener("error", failed);
     socket.addEventListener("close", failed);
   });
-}
-
-export function rpcURL(): string {
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.host}/rpc`;
 }
 
 export function formatRPCError(error: unknown, fallback: string): string {

@@ -44,20 +44,17 @@ export class ChatConnection {
   private noticeTimer: ReturnType<typeof setTimeout> | null = null;
   private renderFrame: number | null = null;
   private closed = false;
-  private readonly url: string;
   private readonly change: (state: ChatConnectionState) => void;
   private readonly ready: (client: RPCClient) => void;
   private readonly metadata: (client: RPCClient) => void;
-  private readonly socketFactory?: SocketFactory;
+  private readonly socketFactory: SocketFactory;
 
   constructor(
-    url: string,
     change: (state: ChatConnectionState) => void,
     ready: (client: RPCClient) => void,
     metadata: (client: RPCClient) => void,
-    socketFactory?: SocketFactory,
+    socketFactory: SocketFactory,
   ) {
-    this.url = url;
     this.change = change;
     this.ready = ready;
     this.metadata = metadata;
@@ -80,7 +77,6 @@ export class ChatConnection {
     });
 
     const client = new RPCClient(
-      this.url,
       (status, detail) => {
         if (this.client !== client || this.closed) return;
         this.update({ connection: status, detail: detail ?? "" });

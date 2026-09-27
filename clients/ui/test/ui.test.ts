@@ -47,20 +47,20 @@ let UserMessage: ComponentType<Record<string, unknown>>;
 
 before(async () => {
   server = await createServer({
-    root: fileURLToPath(new URL("..", import.meta.url)),
+    root: fileURLToPath(new URL("../..", import.meta.url)),
     server: { middlewareMode: true, hmr: { port: 24679 }, watch: null },
   });
   ({ TooltipProvider } = await server.ssrLoadModule(
-    "/src/components/ui/tooltip.tsx",
+    "/ui/src/components/ui/tooltip.tsx",
   ));
-  ({ Sidebar } = await server.ssrLoadModule("/src/workspace/sidebar.tsx"));
+  ({ Sidebar } = await server.ssrLoadModule("/ui/src/workspace/sidebar.tsx"));
   ({ Composer, composerTrigger, isComposerSubmitKey } =
-    await server.ssrLoadModule("/src/chat/composer.tsx"));
+    await server.ssrLoadModule("/ui/src/chat/composer.tsx"));
   ({ chatSendParams, shouldClearSubmittedDraft } =
-    await server.ssrLoadModule("/src/App.tsx"));
-  ({ providerDraft } = await server.ssrLoadModule("/src/settings/model-settings.tsx"));
-  ({ skillParts, replaceSkillText } = await server.ssrLoadModule("/src/chat/skill-mentions.tsx"));
-  ({ UserMessage } = await server.ssrLoadModule("/src/chat/user-message.tsx"));
+    await server.ssrLoadModule("/ui/src/App.tsx"));
+  ({ providerDraft } = await server.ssrLoadModule("/ui/src/settings/model-settings.tsx"));
+  ({ skillParts, replaceSkillText } = await server.ssrLoadModule("/ui/src/chat/skill-mentions.tsx"));
+  ({ UserMessage } = await server.ssrLoadModule("/ui/src/chat/user-message.tsx"));
 });
 after(async () => {
   await server?.close();

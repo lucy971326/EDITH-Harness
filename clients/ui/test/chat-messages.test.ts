@@ -18,11 +18,11 @@ let ChatMessages: ComponentType<{
 before(async () => {
   // 复用项目的 TSX / 别名配置，只渲染 HTML，不启动网络监听。
   server = await createServer({
-    root: fileURLToPath(new URL("..", import.meta.url)),
+    root: fileURLToPath(new URL("../..", import.meta.url)),
     server: { middlewareMode: true, hmr: false, watch: null },
     optimizeDeps: { noDiscovery: true },
   });
-  ({ ChatMessages } = await server.ssrLoadModule("/src/chat/chat-messages.tsx"));
+  ({ ChatMessages } = await server.ssrLoadModule("/ui/src/chat/chat-messages.tsx"));
 });
 after(async () => {
   await server?.close();

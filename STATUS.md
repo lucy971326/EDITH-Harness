@@ -7,7 +7,7 @@
 - React Web：项目与会话、归档与恢复、永久删除、文字／图片聊天、实时过程、Steer、停止、分叉、压缩、上下文引用。
 - 模型选择：供应商二级列表与独立思考滑块，档位沿用用户目录 models.json 配置顺序；新会话默认取第一档。设置页可配置 DeepSeek、Google、OpenAI Chat Completions／Responses、Anthropic 的供应商密钥和模型能力。
 - Wails v3 Desktop：复用同一份 React 构建产物与后台，业务通过 Stream 传完整 JSON-RPC 2.0 消息；使用系统标题栏，关闭最后窗口即退出；同一份用户数据只允许一个后台运行。
-- 设置：独立导航、主题预览、Agent 分组表单、模型与供应商、智能审批方式、可折叠 Hooks 列表，以及全局 MCP Server 的增删改、开关、连接重试和 HTTP OAuth 登录；项目 MCP 配置只读，可确认配置后登录。分类切换保留草稿，离开前确认未保存修改。
+- 设置：独立导航、主题预览、Agent 分组表单、模型与供应商、智能审批方式、可折叠 Hooks 列表，以及全局 MCP Server 的增删改、开关、重连全部全局 Server 和 HTTP OAuth 登录；项目 MCP 配置只读，可确认配置后登录。分类切换保留草稿，离开前确认未保存修改。
 - 工作区：Monaco 编辑器、自动保存与冲突保护、文件监听、Run Diff 与受版本保护的撤销、真实 PTY 终端。
 - Agent 能力：命令／持续进程、补丁、MCP、Skills；子任务支持主会话 → 孩子 → 孙子，独立页面、续聊与递归停止。
 - 安全：四档权限、人工／LLM／Jev 审批、项目 MCP 配置信任与逐次工具审批；Linux bwrap + seccomp、macOS Seatbelt。

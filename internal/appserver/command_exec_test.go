@@ -9,8 +9,6 @@ import (
 	"time"
 
 	"harness/internal/machine"
-
-	"github.com/coder/websocket"
 )
 
 type fakeTerminalSystem struct {
@@ -76,9 +74,8 @@ func TestCommandExecDisconnectTerminatesProcess(t *testing.T) {
 	if err := server.BindCommandExec(fakeTerminalSystem{process: process}); err != nil {
 		t.Fatal(err)
 	}
-	_, url := startTestSocket(t, server)
-	ws := dialTestSocket(t, url)
-	initializeSocket(t, ws)
+	stream := connectTestStream(t, server)
+	initializeStream(t, stream)
 
 	request, err := json.Marshal(map[string]any{
 		"jsonrpc": "2.0",
@@ -93,7 +90,7 @@ func TestCommandExecDisconnectTerminatesProcess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = ws.Write(t.Context(), websocket.MessageText, request); err != nil {
+	if err = stream.WriteObject(json.RawMessage(request)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -110,7 +107,7 @@ func TestCommandExecDisconnectTerminatesProcess(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	_ = ws.CloseNow()
+	_ = stream.Close()
 	select {
 	case <-process.terminated:
 	case <-time.After(time.Second):
@@ -125,9 +122,8 @@ func TestCommandExecStreamsBeforeFinalResponse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, url := startTestSocket(t, server)
-	ws := dialTestSocket(t, url)
-	initializeSocket(t, ws)
+	stream := connectTestStream(t, server)
+	initializeStream(t, stream)
 
 	request, err := json.Marshal(map[string]any{
 		"jsonrpc": "2.0",
@@ -142,16 +138,15 @@ func TestCommandExecStreamsBeforeFinalResponse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = ws.Write(t.Context(), websocket.MessageText, request)
+	err = stream.WriteObject(json.RawMessage(request))
 	if err != nil {
 		t.Fatal(err)
 	}
 	process.output <- []byte("prompt")
 	process.finish(7)
 
-	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
-	defer cancel()
-	_, raw, err := ws.Read(ctx)
+	var raw json.RawMessage
+	err = stream.ReadObject(&raw)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +161,7 @@ func TestCommandExecStreamsBeforeFinalResponse(t *testing.T) {
 		t.Fatalf("unexpected first message: %s", raw)
 	}
 
-	_, raw, err = ws.Read(ctx)
+	err = stream.ReadObject(&raw)
 	if err != nil {
 		t.Fatal(err)
 	}

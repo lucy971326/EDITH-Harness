@@ -8,8 +8,8 @@ dev_mode:
     dir:
       - .git
       - .build
-      - clients/web/node_modules
-      - clients/web/dist
+      - clients/node_modules
+      - clients/dist
       - reference
       - node_modules
     file:
@@ -20,9 +20,9 @@ dev_mode:
   executes:
     - cmd: wails3 task deps
       type: once
-    - cmd: npm --prefix clients/web run build
+    - cmd: npm --prefix clients run build
       type: once
-    - cmd: npm --prefix clients/web run dev
+    - cmd: npm --prefix clients run dev
       type: background
     - cmd: wails3 task build:dev
       type: blocking

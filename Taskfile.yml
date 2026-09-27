@@ -4,14 +4,14 @@ tasks:
   deps:
     desc: Install web dependencies when missing or changed.
     sources:
-      - clients/web/package.json
-      - clients/web/package-lock.json
+      - clients/package.json
+      - clients/package-lock.json
     generates:
-      - clients/web/node_modules/.package-lock.json
+      - clients/node_modules/.package-lock.json
     status:
-      - test -f clients/web/node_modules/.package-lock.json
+      - test -f clients/node_modules/.package-lock.json
     cmds:
-      - npm --prefix clients/web ci --no-audit --no-fund
+      - npm --prefix clients ci --no-audit --no-fund
 
   build:
     desc: Build the Wails Desktop binary with the shared React assets.
@@ -21,7 +21,7 @@ tasks:
       CGO_LDFLAGS: '{{if eq OS "darwin"}}-mmacosx-version-min=13.0{{end}}'
     cmds:
       - task: deps
-      - npm --prefix clients/web run build
+      - npm --prefix clients run build
       # Windows 直接 exec 需要可执行文件带 .exe 后缀。
       # 正式版在 Windows 使用 GUI 子系统，双击时不弹控制台；开发版保留控制台日志。
       - go build -tags production -trimpath {{if eq OS "windows"}}-ldflags="-H windowsgui" {{end}}-o .build/harness-desktop{{exeExt}} ./cmd/harness-desktop

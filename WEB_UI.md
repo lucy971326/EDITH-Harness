@@ -1,6 +1,6 @@
 # Client UI 约束
 
-源码入口见 [Web README](clients/web/README.md)，后台架构见[设计书](docs/设计书.md)。本篇保留交互和状态边界，具体数值以 styles.css 与组件实现为准。
+源码入口见 [UI README](clients/ui/README.md)，后台架构见[设计书](docs/设计书.md)。本篇保留交互和状态边界，具体数值以 styles.css 与组件实现为准。
 
 ## 组织与调用
 
@@ -12,6 +12,8 @@ App                    页面装配、选择与会话草稿
 ├─ client              类型化 RPC、订阅、重连
 └─ state               Snapshot + 事件 → 同一份投影
 ```
+
+共用源码在 `clients/ui`；唯一入口 `clients/main.tsx` 选择 Web／Desktop，注入 `openSocket()` 与 `openExternal(url)`。平台实现分别位于 `clients/web`、`clients/desktop`，共用页面不检测 Wails、不计算 WebSocket 地址；两端构建同一份 `clients/dist`。
 
 React 管显示与局部交互，普通 TS 管连接和投影；只经手写类型化 Client 调用，不在组件拼 RPC。后台不传 HTML、React 组件或任意 SVG。不引入 Next.js、通用 Store 或无真实需求的 UI 插件框架。
 

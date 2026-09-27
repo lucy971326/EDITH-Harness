@@ -1,17 +1,24 @@
 # clients
 
-浏览器与 Desktop 共用一份 React 页面和 RPC Client；两种入口通过统一协议使用后台，只保存界面状态和服务端投影。
+一份 React UI、一份构建产物；Web 与 Desktop 各自提供接入能力。
 
 ```text
-web/（共用 React + RPC Client）
-  ├─ 浏览器 WebSocket ───────────→ appserver
-  └─ Wails Stream → desktop/ ───→ appserver
-web/、test/（网络验收）→ contracts/（手写类型）
+main.tsx -> 选择平台 -> ui/src/App
+                       |
+          openSocket / openExternal
+           |                   |
+   web/platform.ts     desktop/platform.ts
+      WebSocket           Wails Stream
+           |                   |
+      web/*.go          desktop/wails.go
+           +---------+---------+
+              appserver.ServeStream
 ```
 
-- [`contracts/`](contracts/README.md)：方法、参数、结果和事件的数据形状。
-- [`web/`](web/README.md)：浏览器与 Desktop 共用的 React 页面、通信与投影。
-- [`desktop/`](desktop/README.md)：Wails Stream 的 Go 传输适配。
-- [`test/`](test/README.md)：无界面的真实网络验收 Client，不是正式 SDK。
+- [`ui/`](ui/README.md)：共用页面、草稿、RPC、订阅和服务端投影。
+- [`web/`](web/README.md)：浏览器能力、HTTP 与 WebSocket 传输。
+- [`desktop/`](desktop/README.md)：Wails 能力与 Go 传输；窗口入口仍在 `cmd/harness-desktop`。
+- [`contracts/`](contracts/README.md)：手写 TS 契约；[`test/`](test/README.md)：无界面网络验收 Client。
+- `package.json / package-lock.json`：唯一前端依赖清单与锁文件；`vite.config.ts` 构建 `dist/`，`assets.go` 将其嵌入两端。
 
-业务事实归服务端；Client 不读取 Go 内部对象。
+业务事实归服务端。共用 UI 不判断平台、不导入两端适配器；平台只提供当前需要的连接与打开网址能力，不保存会话状态。

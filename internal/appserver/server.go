@@ -21,7 +21,7 @@ import (
 	"harness/internal/tools/mcp"
 )
 
-// 活对象。应用唯一的接入服务，拥有方法表、可选的 Web 监听和当前连接。
+// 活对象。应用唯一的接入服务，拥有方法表和当前 RPC 连接。
 type Server struct {
 	// 会话入口与公共能力；业务状态由各领域管理。
 	conversations   *conversations.Service
@@ -45,10 +45,6 @@ type Server struct {
 	// 服务生命周期。
 	lifecycle serverLifecycle
 	closeOnce sync.Once
-	closeErr  error
-
-	// Web 页面与 WebSocket 监听；桌面入口无需监听器。
-	listener serverListener
 }
 
 // New 创建空服务；不启动监听、模型或后台任务。

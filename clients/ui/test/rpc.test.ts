@@ -59,7 +59,6 @@ test("initialize must succeed before business calls", async () => {
   const socket = new FakeSocket();
   const statuses: string[] = [];
   const client = new RPCClient(
-    "ws://example/rpc",
     (status) => statuses.push(status),
     factory(socket),
   );
@@ -83,7 +82,6 @@ test("initialize failure disconnects and blocks business calls", async () => {
   );
   const statuses: string[] = [];
   const client = new RPCClient(
-    "ws://example/rpc",
     (status) => statuses.push(status),
     factory(socket),
   );
@@ -94,7 +92,7 @@ test("initialize failure disconnects and blocks business calls", async () => {
 
 test("disconnect rejects pending requests without retry", async () => {
   const socket = new FakeSocket();
-  const client = new RPCClient("ws://example/rpc", () => {}, factory(socket));
+  const client = new RPCClient(() => {}, factory(socket));
   await client.connect();
   socket.replies.push("timeout");
   const pending = client.list();
@@ -105,7 +103,7 @@ test("disconnect rejects pending requests without retry", async () => {
 
 test("request timeout says outcome is unknown", async () => {
   const socket = new FakeSocket();
-  const client = new RPCClient("ws://example/rpc", () => {}, factory(socket));
+  const client = new RPCClient(() => {}, factory(socket));
   await client.connect();
   socket.replies.push("timeout");
   await assert.rejects(
@@ -117,7 +115,7 @@ test("request timeout says outcome is unknown", async () => {
 
 test("unsupported reverse requests return method not found", async () => {
   const socket = new FakeSocket();
-  const client = new RPCClient("ws://example/rpc", () => {}, factory(socket));
+  const client = new RPCClient(() => {}, factory(socket));
   await client.connect();
   socket.dispatchEvent(
     new MessageEvent("message", {
@@ -138,7 +136,7 @@ test("unsupported reverse requests return method not found", async () => {
 
 test("unknown notifications are ignored", async () => {
   const socket = new FakeSocket();
-  const client = new RPCClient("ws://example/rpc", () => {}, factory(socket));
+  const client = new RPCClient(() => {}, factory(socket));
   await client.connect();
   socket.dispatchEvent(
     new MessageEvent("message", {
@@ -156,7 +154,7 @@ test("unknown notifications are ignored", async () => {
 
 test("file change notifications are dispatched to the editor listener", async () => {
   const socket = new FakeSocket();
-  const client = new RPCClient("ws://example/rpc", () => {}, factory(socket));
+  const client = new RPCClient(() => {}, factory(socket));
   await client.connect();
   let changedPath = "";
   client.onFileChanged = (notification) => {
@@ -180,7 +178,7 @@ test("file change notifications are dispatched to the editor listener", async ()
 
 test("terminal output is dispatched only to its process listener", async () => {
   const socket = new FakeSocket();
-  const client = new RPCClient("ws://example/rpc", () => {}, factory(socket));
+  const client = new RPCClient(() => {}, factory(socket));
   await client.connect();
   const received: string[] = [];
   client.onCommandOutput("terminal-1", (notification) => {
@@ -206,7 +204,7 @@ test("terminal output is dispatched only to its process listener", async () => {
 
 test("one websocket dispatches run events to independent view listeners", async () => {
   const socket = new FakeSocket();
-  const client = new RPCClient("ws://example/rpc", () => {}, factory(socket));
+  const client = new RPCClient(() => {}, factory(socket));
   await client.connect();
   const received: string[] = [];
   const removeFirst = client.onRunEvent(({ subscriptionID }) => {
@@ -240,7 +238,7 @@ test("one websocket dispatches run events to independent view listeners", async 
 
 test("malformed error still finishes a request that has no timeout", async () => {
   const socket = new FakeSocket();
-  const client = new RPCClient("ws://example/rpc", () => {}, factory(socket));
+  const client = new RPCClient(() => {}, factory(socket));
   await client.connect();
   socket.replies.push("timeout");
   const pending = client.selectWorkspace();
@@ -276,7 +274,7 @@ test("only session-not-found clears the current selection", () => {
 
 test("workspace select does not use the short timeout", async () => {
   const socket = new FakeSocket();
-  const client = new RPCClient("ws://example/rpc", () => {}, factory(socket));
+  const client = new RPCClient(() => {}, factory(socket));
   await client.connect();
   socket.replies.push(
     JSON.stringify({

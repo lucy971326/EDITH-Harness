@@ -1,4 +1,4 @@
-package appserver
+package webclient
 
 import (
 	"context"
@@ -9,42 +9,10 @@ import (
 	"net/netip"
 	"time"
 
-	"harness/internal/appserver/internal/clientconn"
+	"harness/internal/appserver"
 
 	"github.com/coder/websocket"
-	"github.com/sourcegraph/jsonrpc2"
 )
-
-const MaxRPCMessageBytes = 16 << 20
-
-// ServeStream 让非 WebSocket 传输复用相同的连接、初始化与订阅生命周期。
-func (s *Server) ServeStream(stream jsonrpc2.ObjectStream) {
-	if !s.lifecycle.begin() {
-		stream.Close()
-		return
-	}
-	defer s.lifecycle.end()
-	s.serveStream(stream)
-}
-
-func (s *Server) serveStream(stream jsonrpc2.ObjectStream) {
-	connection := clientconn.New(s.lifecycle.context(), stream, s.prepareCall)
-	connection.Run()
-}
-
-// serveHTTP 只区分 RPC 与静态页面。
-func (s *Server) serveHTTP(web http.Handler, w http.ResponseWriter, request *http.Request) {
-	switch request.URL.Path {
-	case "/rpc":
-		s.serveRPC(w, request)
-	default:
-		if web == nil {
-			http.NotFound(w, request)
-			return
-		}
-		web.ServeHTTP(w, request)
-	}
-}
 
 // serveRPC 校验本机入口，升级 WebSocket，并维持一个 Client 连接。
 func (s *Server) serveRPC(w http.ResponseWriter, request *http.Request) {
@@ -59,19 +27,13 @@ func (s *Server) serveRPC(w http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	if !s.lifecycle.begin() {
-		http.Error(w, "unavailable", http.StatusServiceUnavailable)
-		return
-	}
-	defer s.lifecycle.end()
-
 	socket, err := websocket.Accept(w, request, nil)
 	if err != nil {
 		return
 	}
-	socket.SetReadLimit(MaxRPCMessageBytes)
+	socket.SetReadLimit(appserver.MaxRPCMessageBytes)
 	stream := &websocketObjectStream{ctx: request.Context(), socket: socket}
-	s.serveStream(stream)
+	s.rpc.ServeStream(stream)
 }
 
 // websocketObjectStream 只把 coder/websocket 消息交给 JSON-RPC 库。
@@ -86,7 +48,7 @@ func (s *websocketObjectStream) ReadObject(value any) error {
 		return err
 	}
 	if kind != websocket.MessageText {
-		return fmt.Errorf("appserver: text message required")
+		return fmt.Errorf("web: text message required")
 	}
 	return json.Unmarshal(raw, value)
 }

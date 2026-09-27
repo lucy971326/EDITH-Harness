@@ -9,9 +9,9 @@ EDITH-Harness 将 Agent 运行时、文件编辑、终端、Diff 审查和 Subag
 ```text
 cmd/harness / cmd/harness-desktop → backend 显式装配与逆序关闭
 
-同一份 React（clients/web）
-  ├─ 浏览器 → WebSocket ───────────→ appserver
-  └─ Wails 窗口 → Stream → desktop/ ─→ appserver
+同一份 React（clients/ui）
+  ├─ 浏览器 → WebSocket → clients/web/ ────→ appserver
+  └─ Wails 窗口 → Stream → clients/desktop/ → appserver
                                      ├→ conversations → Runner → Loop / Tools
                                      └→ 公共服务 / Session
 ```

@@ -1,9 +1,9 @@
 // 被 Go 的隔离网络验收启动；使用正式 Web 的连接和投影，不使用测试 Client 的队列。
 import assert from "node:assert/strict";
 import { setTimeout as pause } from "node:timers/promises";
-import { ChatConnection } from "../src/client/chat.ts";
-import { RPCError } from "../src/client/rpc.ts";
-import { activeRun, chatMessages } from "../src/state/chat.ts";
+import { ChatConnection } from "../../ui/src/client/chat.ts";
+import { RPCError } from "../../ui/src/client/rpc.ts";
+import { activeRun, chatMessages } from "../../ui/src/state/chat.ts";
 
 async function until(predicate: () => boolean, label: string) {
   const deadline = Date.now() + 6000;
@@ -16,10 +16,10 @@ async function until(predicate: () => boolean, label: string) {
 const url = process.env.HARNESS_TEST_RPC_URL!;
 const workspace = process.env.HARNESS_TEST_WORKSPACE!;
 const chat = new ChatConnection(
-  url,
   () => {},
   () => {},
   () => {},
+  () => new WebSocket(url),
 );
 chat.connect();
 try {

@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	machinelocal "harness/internal/machine/local"
 )
@@ -65,9 +64,8 @@ func TestFilesystemReadWriteConflictAndLimit(t *testing.T) {
 
 func TestFilesystemWatchUsesSubscriptionEnvelopeAndUnsubscribe(t *testing.T) {
 	server := newFilesystemServer(t)
-	_, url := startTestSocket(t, server)
-	ws := dialTestSocket(t, url)
-	initializeSocket(t, ws)
+	stream := connectTestStream(t, server)
+	initializeStream(t, stream)
 
 	path := filepath.Join(t.TempDir(), "note.txt")
 	err := os.WriteFile(path, []byte("before"), 0o644)
@@ -76,7 +74,7 @@ func TestFilesystemWatchUsesSubscriptionEnvelopeAndUnsubscribe(t *testing.T) {
 	}
 	rawParams := mustJSON(t, FilePathParams{Path: path})
 	request := `{"jsonrpc":"2.0","id":2,"method":"fs/watch","params":` + string(rawParams) + `}`
-	response := socketRequest(t, ws, request)
+	response := streamRequest(t, stream, request)
 	if response.Error != nil {
 		t.Fatal(response.Error)
 	}
@@ -90,9 +88,8 @@ func TestFilesystemWatchUsesSubscriptionEnvelopeAndUnsubscribe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
-	defer cancel()
-	_, raw, err := ws.Read(ctx)
+	var raw json.RawMessage
+	err = stream.ReadObject(&raw)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +109,7 @@ func TestFilesystemWatchUsesSubscriptionEnvelopeAndUnsubscribe(t *testing.T) {
 	}
 
 	unsubscribe := `{"jsonrpc":"2.0","id":3,"method":"server/unsubscribe","params":{"subscriptionID":"` + watched.SubscriptionID + `"}}`
-	response = socketRequest(t, ws, unsubscribe)
+	response = streamRequest(t, stream, unsubscribe)
 	if response.Error != nil || string(response.Result) != `{}` {
 		t.Fatalf("unsubscribe = %#v", response)
 	}

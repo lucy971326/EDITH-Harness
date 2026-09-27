@@ -1,10 +1,12 @@
 # Desktop 传输
 
-`stream.go` 把 Wails Stream 的一帧字节转换成一条完整 JSON-RPC 消息，限制为 16 MiB，写入停滞时关闭连接。业务方法与订阅由 `appserver.ServeStream` 处理。
+`wails.go` 把 Wails Stream 的一帧字节转换成一条完整 JSON-RPC 消息，限制为 16 MiB，写入停滞时关闭连接。业务方法与订阅由 `appserver.ServeStream` 处理。
 
 ```text
 React RPC → Wails Stream → Stream → appserver.ServeStream
 ```
+
+`platform.ts` 提供 Wails Stream 与系统浏览器能力，由 `clients/main.tsx` 注入共用 UI。
 
 窗口与进程启动见 [`cmd/harness-desktop`](../../cmd/harness-desktop/main.go)。
 
@@ -15,6 +17,6 @@ Makefile               开发命令入口
   └─ wails3 dev/build
       ├─ Taskfile.yml  Desktop 构建与运行
       └─ build/config.yml  dev 监听与启动顺序
-clients/web/vite.config.ts  React 开发服务器
+clients/vite.config.ts  React 开发服务器
 .build/                二进制输出
 ```

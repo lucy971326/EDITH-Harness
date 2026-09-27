@@ -47,7 +47,6 @@ class Socket extends EventTarget {
 function setup(change: (state: unknown) => void = () => {}) {
   const sockets: Socket[] = [];
   const chat = new ChatConnection(
-    "ws://local/rpc",
     change,
     () => {},
     () => {},
