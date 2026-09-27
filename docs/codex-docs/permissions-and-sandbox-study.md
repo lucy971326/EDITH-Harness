@@ -1,6 +1,6 @@
 # Codex 权限与沙箱研究
 
-> 历史研究记录：Codex 源码研究参考本地 `reference/codex` 提交 ce24367；本篇仅记录当时的外部实现，不代表当前 Harness 规范。Harness 现状见 [STATUS.md](../../STATUS.md)，稳定决策见 [设计书](../设计书.md)。
+> 历史研究记录：Codex 源码研究参考本地 `reference/codex` 提交 ce24367；本篇仅记录当时的外部实现，不代表当前 Harness 规范。Harness 现状见 [STATUS.md](../AGENTS/STATUS.md)，稳定决策见 [设计书](../设计书.md)。
 
 ## 目标
 

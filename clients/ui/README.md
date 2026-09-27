@@ -1,6 +1,6 @@
 # 共用 React 前端
 
-浏览器与 Desktop 使用本目录的同一份 React 页面、连接状态和投影。页面规则见根目录 [WEB_UI](../../WEB_UI.md)，当前能力见 [STATUS](../../STATUS.md)。
+浏览器与 Desktop 使用本目录的同一份 React 页面、连接状态和投影。页面规则见 [WEB_UI](../../docs/AGENTS/WEB_UI.md)，当前能力见 [STATUS](../../docs/AGENTS/STATUS.md)。
 
 平台能力由 `clients/main.tsx` 注入，`types.ts` 只定义 `openSocket()` 与 `openExternal(url)`；本目录不导入两端适配器。
 

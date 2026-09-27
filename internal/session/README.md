@@ -21,4 +21,4 @@ Store -> 同一 ID 的 Session -> Append / History
               同一 ToolCall.ID 配对
 ```
 
-每个账本节点有自己的 ID、parent、seq 和 body；parent 表示分支关系，ToolCall.ID 只配对调用与结果，不代替消息 ID。数据格式与恢复边界见 [DATA_MODEL](../../DATA_MODEL.md)。
+每个账本节点有自己的 ID、parent、seq 和 body；parent 表示分支关系，ToolCall.ID 只配对调用与结果，不代替消息 ID。数据格式与恢复边界见 [DATA_MODEL](../../docs/AGENTS/DATA_MODEL.md)。

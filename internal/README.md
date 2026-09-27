@@ -31,7 +31,7 @@
 - [`skills`](skills/README.md)：给 Agent 准备可用技能；[`commands`](commands/README.md)：处理用户发起的命令，例如压缩。两者由 backend 登记具体实现。
 - [`machine`](machine/README.md)：定义本机操作契约，`machine/local` 实现进程、文件与沙箱；`tools/exec`、`tools/applypatch` 等工具在其上组织模型可调用的操作。
 
-读源码可沿 `backend/open.go → appserver/harness.go → conversations/service.go → runner/run.go → loops/react/react.go → tools/registry.go`。跨模块规则见[设计书](../docs/设计书.md)，数据归属见[DATA_MODEL](../DATA_MODEL.md)。
+读源码可沿 `backend/open.go → appserver/harness.go → conversations/service.go → runner/run.go → loops/react/react.go → tools/registry.go`。跨模块规则见[设计书](../docs/设计书.md)，数据归属见[DATA_MODEL](../docs/AGENTS/DATA_MODEL.md)。
 
 ## 方法表（持续维护）
 

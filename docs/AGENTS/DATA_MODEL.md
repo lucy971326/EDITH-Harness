@@ -45,6 +45,8 @@ Web 与 Desktop 启动前都独占 `.lock` 文件的操作系统锁；同一份�
 │
 ├─ skills/<skill-name>/
 │  用户安装的 Skill；正文为 SKILL.md
+├─ skills.json
+│  关闭的个人 Skill 名称；缺省启用，不移动或改写 SKILL.md
 ├─ system/skills/<skill-name>/
 │  Harness 内置 Skill；与用户可编辑内容分开
 │
