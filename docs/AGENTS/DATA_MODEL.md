@@ -17,6 +17,9 @@ Web 与 Desktop 启动前都独占 `.lock` 文件的操作系统锁；同一份�
 ├─ .lock
 │  跨进程独占锁，文件本身不保存业务数据
 │
+├─ desktop/window.json
+│  Desktop 私有窗口位置、普通尺寸和最大化状态；文件损坏时使用默认布局
+│
 ├─ config.yaml
 │  LLM 供应商协议、API 地址和密钥，以及独立的 Jev 配置
 │

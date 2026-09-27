@@ -4,4 +4,11 @@ import type { SocketFactory } from "./client/rpc.ts";
 export interface Platform {
   openSocket: SocketFactory;
   openExternal: (url: string) => Promise<void>;
+  desktop?: {
+    onCloseRequest: (
+      snapshot: () => { terminalOpen: boolean; dirty: boolean; saving: boolean },
+      confirm: (request: { id: number; running: boolean; terminalOpen: boolean; dirty: boolean }) => void,
+    ) => () => void;
+    answerExit: (id: number, confirmed: boolean) => void;
+  };
 }

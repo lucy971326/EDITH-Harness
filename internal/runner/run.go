@@ -523,6 +523,13 @@ func (r *Runner) publish(ctx context.Context, event RunEvent) error {
 	return events.Publish(ctx, r.events, event)
 }
 
+// HasActiveRuns 包括准备期和正在收尾的主任务、子任务。
+func (r *Runner) HasActiveRuns() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.live) > 0
+}
+
 // Close 拒绝新运行，取消现有运行并等待全部收尾。
 func (r *Runner) Close() {
 	r.mu.Lock()

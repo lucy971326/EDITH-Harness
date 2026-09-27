@@ -289,6 +289,15 @@ export function useEditorFiles(
   return {
     project,
     treeRevision,
+    pendingState() {
+      let dirty = false;
+      for (const item of projects.current.values()) {
+        for (const file of item.files.values()) {
+          if (file.content !== file.savedContent || file.status === "conflict") dirty = true;
+        }
+      }
+      return { dirty, saving: saving.current.size > 0 };
+    },
     openFile,
     editFile,
     saveFile,

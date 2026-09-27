@@ -15,6 +15,8 @@ App                    页面装配、选择与会话草稿
 
 共用源码在 `clients/ui`；唯一入口 `clients/main.tsx` 选择 Web／Desktop，注入 `openSocket()` 与 `openExternal(url)`。平台实现分别位于 `clients/web`、`clients/desktop`，共用页面不检测 Wails、不计算 WebSocket 地址；两端构建同一份 `clients/dist`。
 
+Desktop 关窗时由平台桥询问共用 UI 的终端标签、主／子任务草稿、编辑器和设置未保存状态；页面不持有 Wails 生命周期。Windows/macOS 的运行任务或终端标签让窗口隐藏到托盘；显式退出先确认会停止运行和丢弃草稿，保存中禁止退出。Linux 无可靠托盘探测，关窗时明确询问，不自动隐藏。
+
 React 管显示与局部交互，普通 TS 管连接和投影；只经手写类型化 Client 调用，不在组件拼 RPC。后台不传 HTML、React 组件或任意 SVG。不引入 Next.js、通用 Store 或无真实需求的 UI 插件框架。
 
 ## 导航与功能登记

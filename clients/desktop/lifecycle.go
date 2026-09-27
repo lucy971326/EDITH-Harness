@@ -1,0 +1,242 @@
+package desktop
+
+import (
+	"bytes"
+	"image"
+	"image/color"
+	"image/png"
+	"runtime"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
+)
+
+type closeRequest struct {
+	id      uint64
+	mode    string
+	phase   string
+	running bool
+	terminal bool
+	dirty    bool
+	timer   *time.Timer
+}
+
+type closeState struct {
+	running, terminalOpen, dirty, saving bool
+}
+
+func closeAction(mode string, state closeState, trayAvailable bool) string {
+	if mode == "window" && trayAvailable && (state.running || state.terminalOpen) {
+		return "hide"
+	}
+	if state.saving {
+		return "blocked"
+	}
+	if mode == "window" && !trayAvailable && (state.running || state.terminalOpen) {
+		return "native-confirm"
+	}
+	if state.running || state.terminalOpen || state.dirty {
+		return "confirm"
+	}
+	return "quit"
+}
+
+// 活对象。Desktop 窗口、托盘和退出流程；业务运行状态只从注入的查询读取。
+type Lifecycle struct {
+	app       *application.App
+	window    *application.WebviewWindow
+	activeRun func() bool
+	mu        sync.Mutex
+	nextID    uint64
+	pending   *closeRequest
+	quitting  atomic.Bool
+}
+
+func NewLifecycle(app *application.App, window *application.WebviewWindow, activeRun func() bool) *Lifecycle {
+	l := &Lifecycle{app: app, window: window, activeRun: activeRun}
+	window.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
+		event.Cancel()
+		l.request("window")
+	})
+	app.Event.On("desktop-close-state", l.onState)
+	app.Event.On("desktop-exit-decision", l.onDecision)
+	if runtime.GOOS != "linux" {
+		tray := app.SystemTray.New()
+		tray.SetIcon(trayIcon())
+		tray.SetTooltip("Harness")
+		menu := app.NewMenu()
+		menu.Add("显示窗口").OnClick(func(*application.Context) { l.Show() })
+		menu.Add("退出 Harness").OnClick(func(*application.Context) { l.request("quit") })
+		tray.SetMenu(menu)
+		tray.OnClick(l.Show)
+	}
+	return l
+}
+
+func (l *Lifecycle) Show() {
+	l.window.Show()
+	l.window.UnMinimise()
+	l.window.Focus()
+}
+
+// ShouldQuit 拦截操作系统的退出入口；确认完成后直接调用 app.Quit。
+func (l *Lifecycle) ShouldQuit() bool {
+	if l.quitting.Load() {
+		return true
+	}
+	l.request("quit")
+	return false
+}
+
+func (l *Lifecycle) request(mode string) {
+	l.mu.Lock()
+	if l.pending != nil {
+		l.mu.Unlock()
+		return
+	}
+	l.nextID++
+	request := &closeRequest{id: l.nextID, mode: mode, phase: "state"}
+	l.pending = request
+	request.timer = time.AfterFunc(2*time.Second, func() { l.fallback(request.id) })
+	l.mu.Unlock()
+	l.window.EmitEvent("desktop-close-request", map[string]any{"id": request.id})
+}
+
+func (l *Lifecycle) onState(event *application.CustomEvent) {
+	data, ok := event.Data.(map[string]any)
+	if !ok {
+		return
+	}
+	id, ok := data["id"].(float64)
+	if !ok {
+		return
+	}
+	l.mu.Lock()
+	request := l.pending
+	if request == nil || request.id != uint64(id) || request.phase != "state" {
+		l.mu.Unlock()
+		return
+	}
+	request.timer.Stop()
+	request.running = l.activeRun()
+	terminal, _ := data["terminalOpen"].(bool)
+	dirty, _ := data["dirty"].(bool)
+	saving, _ := data["saving"].(bool)
+	request.terminal, request.dirty = terminal, dirty
+	state := closeState{running: request.running, terminalOpen: terminal, dirty: dirty, saving: saving}
+	action := closeAction(request.mode, state, runtime.GOOS != "linux")
+	if action != "confirm" {
+		l.pending = nil
+	} else {
+		request.phase = "confirm"
+	}
+	l.mu.Unlock()
+
+	switch action {
+	case "hide":
+		l.window.Hide()
+		return
+	case "blocked":
+		l.Show()
+		l.app.Dialog.Info().SetTitle("正在保存").SetMessage("请等待保存完成后再退出。").AttachToWindow(l.window).Show()
+		return
+	case "native-confirm":
+		message := "当前有运行任务或打开的终端。Linux 托盘可能不可见；退出将停止这些工作。"
+		if dirty {
+			message += "未保存内容也会丢失。"
+		}
+		l.nativeConfirm(message)
+		return
+	case "quit":
+		l.quit()
+		return
+	}
+	l.Show()
+	l.window.EmitEvent("desktop-exit-confirm", map[string]any{
+		"id": request.id, "running": request.running, "terminalOpen": terminal, "dirty": dirty,
+	})
+}
+
+func (l *Lifecycle) onDecision(event *application.CustomEvent) {
+	data, ok := event.Data.(map[string]any)
+	if !ok {
+		return
+	}
+	id, ok := data["id"].(float64)
+	if !ok {
+		return
+	}
+	confirmed, _ := data["confirmed"].(bool)
+	l.mu.Lock()
+	request := l.pending
+	if request == nil || request.id != uint64(id) || request.phase != "confirm" {
+		l.mu.Unlock()
+		return
+	}
+	l.pending = nil
+	l.mu.Unlock()
+	if !confirmed {
+		return
+	}
+	saving, _ := data["saving"].(bool)
+	if saving {
+		l.Show()
+		l.app.Dialog.Info().SetTitle("正在保存").SetMessage("请等待保存完成后再退出。").AttachToWindow(l.window).Show()
+		return
+	}
+	terminal, _ := data["terminalOpen"].(bool)
+	dirty, _ := data["dirty"].(bool)
+	// 确认弹窗打开期间可能刚启动新任务；重新询问，不能静默取消它。
+	if !request.running && l.activeRun() || !request.terminal && terminal || !request.dirty && dirty {
+		l.request("quit")
+		return
+	}
+	l.quit()
+}
+
+func (l *Lifecycle) fallback(id uint64) {
+	l.mu.Lock()
+	if l.pending == nil || l.pending.id != id || l.pending.phase != "state" {
+		l.mu.Unlock()
+		return
+	}
+	l.pending = nil
+	l.mu.Unlock()
+	l.nativeConfirm("界面未响应，无法确认未保存内容。退出将停止运行任务和终端，并丢弃未保存内容。")
+}
+
+func (l *Lifecycle) nativeConfirm(message string) {
+	l.Show()
+	dialog := l.app.Dialog.Question().SetTitle("退出 Harness？").SetMessage(message).AttachToWindow(l.window)
+	dialog.AddButton("继续使用").SetAsCancel()
+	dialog.AddButton("退出 Harness").OnClick(l.quit)
+	dialog.Show()
+}
+
+func (l *Lifecycle) quit() {
+	l.quitting.Store(true)
+	l.app.Quit()
+}
+
+func trayIcon() []byte {
+	icon := image.NewRGBA(image.Rect(0, 0, 32, 32))
+	background := color.RGBA{41, 37, 36, 255}
+	foreground := color.RGBA{250, 250, 249, 255}
+	for y := 2; y < 30; y++ {
+		for x := 2; x < 30; x++ {
+			if (x < 6 || x >= 26) && (y < 6 || y >= 26) {
+				continue
+			}
+			icon.Set(x, y, background)
+			if y >= 8 && y < 24 && (x >= 9 && x < 12 || x >= 20 && x < 23 || y >= 14 && y < 18 && x >= 12 && x < 20) {
+				icon.Set(x, y, foreground)
+			}
+		}
+	}
+	var output bytes.Buffer
+	_ = png.Encode(&output, icon)
+	return output.Bytes()
+}

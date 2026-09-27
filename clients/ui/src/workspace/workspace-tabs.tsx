@@ -127,6 +127,7 @@ function WorkspaceTabsComponent({
   agents,
   onHide,
   onAddReference,
+  onDesktopState,
 }: {
   visible: boolean;
   workspace: string | null;
@@ -142,6 +143,7 @@ function WorkspaceTabsComponent({
   agents: AgentView[] | null;
   onHide: () => void;
   onAddReference: (reference: ContextReference) => void;
+  onDesktopState?: (state: { terminalOpen: boolean; dirty: boolean; saving: boolean }) => void;
 }) {
   const files = useEditorFiles(client, workspace);
   const {
@@ -163,10 +165,20 @@ function WorkspaceTabsComponent({
   const [reviewRunIDs, setReviewRunIDs] = useState<string[]>([]);
   const [terminals, setTerminals] = useState<TerminalTab[]>([]);
   const [subagentTabs, setSubagentTabs] = useState<SubagentTab[]>([]);
+  const [subagentDrafts, setSubagentDrafts] = useState<Record<string, boolean>>({});
   const [subagentReviews, setSubagentReviews] = useState<SubagentReviewTab[]>(
     [],
   );
   const [activeTabID, setActiveTabID] = useState("");
+
+  useEffect(() => {
+    const pending = files.pendingState();
+    onDesktopState?.({
+      terminalOpen: terminals.length > 0,
+      dirty: pending.dirty || subagentTabs.some((tab) => subagentDrafts[tab.id]),
+      saving: pending.saving,
+    });
+  });
 
   useEffect(() => {
     // 打开文件面板即预热，利用用户选择文件的时间加载 Monaco。
@@ -612,6 +624,9 @@ function WorkspaceTabsComponent({
                   );
                 });
               }}
+              onDraftState={(dirty) => setSubagentDrafts((current) =>
+                current[child.id] === dirty ? current : { ...current, [child.id]: dirty }
+              )}
             />
           </Suspense>
         ) : null;
@@ -742,6 +757,7 @@ export const WorkspaceTabs = memo(
     previous.subagentRequest === next.subagentRequest &&
     previous.models === next.models &&
     previous.agents === next.agents &&
+    previous.onDesktopState === next.onDesktopState &&
     previous.onAddReference === next.onAddReference,
 );
 

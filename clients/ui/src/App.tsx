@@ -211,6 +211,9 @@ export default function App({ platform }: { platform: Platform }) {
   >(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [desktopExit, setDesktopExit] = useState<{
+    id: number; running: boolean; terminalOpen: boolean; dirty: boolean;
+  } | null>(null);
   const [selectedID, setSelectedID] = useState<string | null>(restoredSession);
   const [selected, setSelected] = useState<SessionView | null>(null);
   const [opening, setOpening] = useState(false);
@@ -230,6 +233,8 @@ export default function App({ platform }: { platform: Platform }) {
   const composer = useRef<ComposerHandle>(null);
   const objectUrls = useRef<string[]>([]);
   const drafts = useRef(new Map<string, Draft>());
+  const desktopWorkspace = useRef({ terminalOpen: false, dirty: false, saving: false });
+  const desktopSettings = useRef({ dirty: false, saving: false });
   const clientRef = useRef<RPCClient | null>(null);
   const chatRef = useRef<ChatConnection | null>(null);
   const selectedIDRef = useRef<string | null>(selectedID);
@@ -244,6 +249,27 @@ export default function App({ platform }: { platform: Platform }) {
   const listGeneration = useRef(0);
   const modelGeneration = useRef(0);
   const skillGeneration = useRef(0);
+
+  const reportWorkspaceState = useCallback((state: { terminalOpen: boolean; dirty: boolean; saving: boolean }) => {
+    desktopWorkspace.current = state;
+  }, []);
+  const reportSettingsState = useCallback((state: { dirty: boolean; saving: boolean }) => {
+    desktopSettings.current = state;
+  }, []);
+
+  useEffect(() => {
+    return platform.desktop?.onCloseRequest(() => {
+      const mainDraft = [draftRef.current, ...drafts.current.values()].some(
+        (item) => item.text.length || item.images.length || item.references.length,
+      );
+      return {
+        terminalOpen: desktopWorkspace.current.terminalOpen,
+        dirty: !!mainDraft || desktopWorkspace.current.dirty || desktopSettings.current.dirty,
+        saving: desktopWorkspace.current.saving || desktopSettings.current.saving ||
+          settingsSaving || agentSaving || compressionPending.current,
+      };
+    }, setDesktopExit);
+  }, [platform.desktop, settingsSaving, agentSaving]);
 
   const connected = connection === "connected";
   const sidebarSpace = sidebar ? sidebarWidth : 0;
@@ -1079,6 +1105,7 @@ export default function App({ platform }: { platform: Platform }) {
     },
     settings: {
       theme, setTheme, onBack: () => navigate("/"), setNavigationGuard: setGuard,
+      onDesktopState: reportSettingsState,
       agents: agentCatalog?.agents ?? null, kinds: agentCatalog?.kinds ?? [],
       tools: agentCatalog?.tools ?? [], loading: agentLoading, error: agentError,
       saving: agentSaving, onSave: saveAgent, onDelete: deleteAgent,
@@ -1436,6 +1463,7 @@ export default function App({ platform }: { platform: Platform }) {
             />
             <WorkspaceTabs
               visible={panelOpen}
+              onDesktopState={reportWorkspaceState}
               onAddReference={addContextReference}
               workspace={selected?.settings.workspace ?? null}
               sessionID={selectedID}
@@ -1473,6 +1501,31 @@ export default function App({ platform }: { platform: Platform }) {
             <AlertDialogFooter>
               <AlertDialogCancel disabled={deleteBusy}>取消</AlertDialogCancel>
               <AlertDialogAction disabled={deleteBusy} onClick={(event) => { event.preventDefault(); void confirmDelete(); }}>永久删除</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+        <AlertDialog open={!!desktopExit} onOpenChange={(open) => {
+          if (!open && desktopExit) {
+            platform.desktop?.answerExit(desktopExit.id, false);
+            setDesktopExit(null);
+          }
+        }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>退出 Harness？</AlertDialogTitle>
+              <AlertDialogDescription>
+                {desktopExit?.running && "运行中的任务将停止。"}
+                {desktopExit?.terminalOpen && "打开的终端将关闭。"}
+                {desktopExit?.dirty && "未保存的内容将丢失。"}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>继续使用</AlertDialogCancel>
+              <AlertDialogAction onClick={(event) => {
+                event.preventDefault();
+                if (desktopExit) platform.desktop?.answerExit(desktopExit.id, true);
+                setDesktopExit(null);
+              }}>放弃并退出</AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>

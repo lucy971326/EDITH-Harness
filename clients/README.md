@@ -24,7 +24,7 @@ main.tsx + ui/ + web/platform.ts + desktop/platform.ts
 
 ## 2. 启动：谁先启动，谁加载页面
 
-下面是正式版的正常启动流程。两端都先由 `backend.Open` 锁定用户数据目录、构造服务并登记 RPC 方法，再开放界面接入。
+下面是正式版的正常启动流程。Web 直接打开后台；Desktop 先创建 Wails 应用以拦截第二次启动，再打开后台。
 
 ```text
 Web：启动 harness
@@ -39,14 +39,15 @@ Web：启动 harness
 Desktop：启动 harness-desktop
   |
   +-> cmd/harness-desktop/main.go（Go 进程入口）
-       1. backend.Open -> appserver + 领域服务
-       2. 创建 Wails 应用，挂载嵌入的页面，登记 rpc Stream
-       3. 创建窗口 -> app.Run -> WebView 加载页面 -> 前端启动（见下方）
+       1. 创建 Wails 应用并登记单实例唤醒
+       2. backend.Open -> 数据目录锁 + appserver + 领域服务
+       3. 挂载页面与 rpc Stream，创建窗口和托盘
+       4. app.Run -> WebView 加载页面 -> 前端启动（见下方）
 
 前端启动（两端共用，运行在浏览器 / WebView 中）
   main.tsx
     -> 选择 web/platform.ts 或 desktop/platform.ts
-    -> 注入 openSocket、openExternal
+    -> 注入 openSocket、openExternal；Desktop 另接关窗状态桥
     -> 挂载共用 ui/src/App
     -> ChatConnection 建立连接、初始化协议、读取页面数据
 ```
@@ -104,7 +105,8 @@ Desktop 自己启动 Go 后台，业务通信不需要启动 Web 的 8888 监听
 - UI 保存草稿、当前选择和服务端投影；会话、Run 与持久化数据归后台。平台适配器不保存会话状态。
 - 浏览器页面关闭或连接断开：清理该连接的订阅、用户终端等资源，已接受的 Agent Run 继续执行。
 - Web 后台退出：先关闭 HTTP／WebSocket 并等待 RPC 收尾，再关闭 appserver 和领域服务。
-- Desktop 应用退出：`app.Run` 返回后关闭后台，取消运行并释放资源。退出整个应用与单纯断线不同。
+- Desktop 点关闭：有活 Run 或终端标签时在 Windows/macOS 隐藏到托盘；其余情况按 UI 草稿和保存状态决定退出或提示。Linux 不自动驻留托盘。
+- Desktop 显式退出：保护未保存内容；确认后 `app.Run` 返回，后台取消运行并等待资源收尾。退出整个应用与单纯断线不同。
 
 ## 源码入口
 

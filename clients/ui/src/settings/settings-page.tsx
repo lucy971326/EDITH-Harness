@@ -20,15 +20,20 @@ function SectionContent({ section, onStateChange }: {
   return <TabsContent value={section.id} forceMount>{section.render(reportState)}</TabsContent>;
 }
 
-export function SettingsPage({ onBack, setNavigationGuard, ...contentProps }: SettingsContentProps & {
+export function SettingsPage({ onBack, setNavigationGuard, onDesktopState, ...contentProps }: SettingsContentProps & {
   onBack: () => void;
   setNavigationGuard: (guard: NavigationGuard | null) => void;
+  onDesktopState?: (state: SettingsDraftState) => void;
 }) {
   const sections = createSettingsSections(contentProps);
   const [states, setStates] = useState<Record<string, SettingsDraftState>>({});
   const [pendingLeave, setPendingLeave] = useState<(() => void) | null>(null);
   const dirty = Object.values(states).some((state) => state.dirty);
   const saving = Object.values(states).some((state) => state.saving);
+  useEffect(() => {
+    onDesktopState?.({ dirty, saving });
+    return () => onDesktopState?.({ dirty: false, saving: false });
+  }, [dirty, saving, onDesktopState]);
   const reportState = useCallback((id: string, state: SettingsDraftState) => {
     setStates((current) => {
       if (current[id]?.dirty === state.dirty && current[id]?.saving === state.saving) return current;

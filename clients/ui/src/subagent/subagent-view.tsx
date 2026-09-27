@@ -26,6 +26,7 @@ export function SubagentView({
   onOpenFile,
   onOpenDiff,
   onDiffUpdate,
+  onDraftState,
 }: {
   parentSessionID: string;
   taskID: string;
@@ -46,6 +47,7 @@ export function SubagentView({
     summary: RunDiffSummary,
     runActive: boolean,
   ) => void;
+  onDraftState?: (dirty: boolean) => void;
 }) {
   const [task, setTask] = useState<SubagentInfo | null>(null);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
@@ -71,6 +73,10 @@ export function SubagentView({
   activeRef.current = active;
   onTaskRef.current = onTask;
   onDiffUpdateRef.current = onDiffUpdate;
+
+  useEffect(() => {
+    onDraftState?.(draft.length > 0 || images.length > 0);
+  }, [draft, images, onDraftState]);
 
   function publishSnapshot() {
     if (!activeRef.current || renderFrame.current !== null) return;
