@@ -476,19 +476,14 @@
   align-items: center;
   gap: var(--space-2);
   font-size: var(--font-size-body);
-  font-weight: 600;
-  letter-spacing: -0.025em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
 }
 .brand-mark {
-  display: grid;
-  place-items: center;
+  display: block;
   width: 24px;
   height: 24px;
-  border-radius: var(--radius-control);
-  color: var(--primary-foreground);
-  background: var(--primary);
-  font-size: var(--font-size-label);
-  font-weight: 700;
+  flex-shrink: 0;
 }
 .feature-navigation {
   display: flex;
@@ -1138,13 +1133,8 @@
 .empty-symbol {
   width: 44px;
   height: 44px;
-  display: grid;
-  place-items: center;
+  display: block;
   margin: 0 auto var(--space-4);
-  color: var(--foreground);
-  background: var(--muted);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-floating);
 }
 .empty-chat p {
   color: var(--muted-foreground);

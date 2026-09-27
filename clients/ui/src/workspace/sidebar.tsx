@@ -90,7 +90,7 @@ export function Sidebar({
       />
       <aside className="sidebar">
         <div className="brand-row">
-          <span className="brand"><span className="brand-mark" aria-hidden="true">H</span>Harness</span>
+          <span className="brand"><img className="brand-mark" src="/edith-icon.svg" alt="" />EDITH</span>
           <Button
             variant="ghost"
             size="icon"

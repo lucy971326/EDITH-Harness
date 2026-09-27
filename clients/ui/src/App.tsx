@@ -37,7 +37,6 @@ import {
   PanelLeft,
   PanelRight,
   Folder,
-  Command,
   WifiOff,
   RefreshCw,
 } from "./icons";
@@ -1318,8 +1317,8 @@ export default function App({ platform }: { platform: Platform }) {
                   }
                 >
                   <div className="empty-chat">
-                    <div className="empty-symbol"><Command /></div>
-                    <span className="welcome-eyebrow">HARNESS WORKSPACE</span>
+                    <img className="empty-symbol" src="/edith-icon.svg" alt="" />
+                    <span className="welcome-eyebrow">EDITH WORKSPACE</span>
                     <h1>{selectedID && !synchronized ? "正在恢复会话" : "今天，一起完成什么？"}</h1>
                     <p>{selectedID && !synchronized
                       ? "正在同步历史与运行状态，请稍候。"
@@ -1466,7 +1465,7 @@ export default function App({ platform }: { platform: Platform }) {
               <AlertDialogTitle>永久删除{deleteTarget?.kind === "project" ? "项目" : "会话"}？</AlertDialogTitle>
               <AlertDialogDescription>
                 {deleteTarget?.kind === "project"
-                  ? <><strong>{deleteTarget.workspace}</strong><br />将删除 Harness 内的 {deleteTarget.count} 个会话及其子任务；项目目录和代码文件保留。</>
+                  ? <><strong>{deleteTarget.workspace}</strong><br />将删除 EDITH 中的 {deleteTarget.count} 个会话及其子任务；项目目录和代码文件保留。</>
                   : <>“{deleteTarget?.title}”及其子任务将永久删除。</>}
               </AlertDialogDescription>
               {deleteError && <p className="inline-notice" role="alert">{deleteError}</p>}
