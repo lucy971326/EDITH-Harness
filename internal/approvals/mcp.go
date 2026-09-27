@@ -46,7 +46,7 @@ var ErrMCPConfigDenied = errors.New("approvals: project MCP configuration denied
 
 // ConfirmMCPConfig 在连接项目 Server 前要求用户确认当前配置版本。
 func (s *Service) ConfirmMCPConfig(ctx context.Context, identity Identity, digest string, request MCPRequest) error {
-	if digest == "" || request.Kind != "config" || identity.SessionID == "" || identity.RunID == "" {
+	if digest == "" || request.Kind != "config" {
 		return fmt.Errorf("approvals: invalid MCP configuration approval")
 	}
 	if err := ctx.Err(); err != nil {
@@ -65,6 +65,10 @@ func (s *Service) ConfirmMCPConfig(ctx context.Context, identity Identity, diges
 	if trusted[request.Workspace] == digest {
 		s.mu.Unlock()
 		return nil
+	}
+	if identity.SessionID == "" || identity.RunID == "" {
+		s.mu.Unlock()
+		return ErrMCPConfigDenied
 	}
 	s.work.Add(1)
 	s.mu.Unlock()
@@ -100,6 +104,42 @@ func (s *Service) ConfirmMCPConfig(ctx context.Context, identity Identity, diges
 		return err
 	}
 	trusted[request.Workspace] = digest
+	body, err := json.Marshal(trusted)
+	if err != nil {
+		return err
+	}
+	return s.files.Write(mcpTrustFile, body)
+}
+
+// IsMCPConfigTrusted 供设置页登录前检查当前项目配置摘要。
+func (s *Service) IsMCPConfigTrusted(workspace, digest string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return false, context.Canceled
+	}
+	trusted, err := s.readMCPTrust()
+	if err != nil {
+		return false, err
+	}
+	return trusted[workspace] == digest, nil
+}
+
+// TrustMCPConfigFromSettings 只在设置页明确确认后保存当前项目配置摘要。
+func (s *Service) TrustMCPConfigFromSettings(workspace, digest string) error {
+	if workspace == "" || digest == "" {
+		return fmt.Errorf("approvals: invalid MCP trust")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return context.Canceled
+	}
+	trusted, err := s.readMCPTrust()
+	if err != nil {
+		return err
+	}
+	trusted[workspace] = digest
 	body, err := json.Marshal(trusted)
 	if err != nil {
 		return err

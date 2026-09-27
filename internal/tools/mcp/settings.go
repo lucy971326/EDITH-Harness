@@ -27,51 +27,61 @@ var headerNamePattern = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
 
 // 数据。设置页可见的 Server 摘要；不包含会展开或直接承载密钥的值。
 type ServerView struct {
-	Name         string   `json:"name"`
-	Scope        string   `json:"scope"`
-	Source       string   `json:"source"`
-	Type         string   `json:"type"`
-	Enabled      bool     `json:"enabled"`
-	Overridden   bool     `json:"overridden"`
-	HasCommand   bool     `json:"hasCommand"`
-	HasURL       bool     `json:"hasURL"`
-	HasCWD       bool     `json:"hasCWD"`
-	ArgCount     int      `json:"argCount"`
-	EnvKeys      []string `json:"envKeys"`
-	HeaderKeys   []string `json:"headerKeys"`
-	IncludeTools []string `json:"includeTools"`
-	ExcludeTools []string `json:"excludeTools"`
-	Status       string   `json:"status"`
-	Error        string   `json:"error,omitempty"`
-	Tools        []string `json:"tools"`
+	Name                        string   `json:"name"`
+	Scope                       string   `json:"scope"`
+	Source                      string   `json:"source"`
+	Type                        string   `json:"type"`
+	Enabled                     bool     `json:"enabled"`
+	Overridden                  bool     `json:"overridden"`
+	HasCommand                  bool     `json:"hasCommand"`
+	HasURL                      bool     `json:"hasURL"`
+	HasCWD                      bool     `json:"hasCWD"`
+	ArgCount                    int      `json:"argCount"`
+	EnvKeys                     []string `json:"envKeys"`
+	HeaderKeys                  []string `json:"headerKeys"`
+	OAuthClientID               string   `json:"oauthClientId,omitempty"`
+	OAuthClientIDMetadataURL    string   `json:"oauthClientIdMetadataUrl,omitempty"`
+	OAuthClientSecretConfigured bool     `json:"oauthClientSecretConfigured"`
+	OAuthRedirectURL            string   `json:"oauthRedirectUrl,omitempty"`
+	HasOAuthCredentials         bool     `json:"hasOAuthCredentials"`
+	IncludeTools                []string `json:"includeTools"`
+	ExcludeTools                []string `json:"excludeTools"`
+	Status                      string   `json:"status"`
+	Error                       string   `json:"error,omitempty"`
+	Tools                       []string `json:"tools"`
 }
 
 // 数据。设置页一次读取的安全视图。
 type SettingsView struct {
-	Revision     string       `json:"revision"`
-	Global       []ServerView `json:"global"`
-	Project      []ServerView `json:"project"`
-	GlobalError  string       `json:"globalError,omitempty"`
-	ProjectError string       `json:"projectError,omitempty"`
-	GlobalPath   string       `json:"globalPath"`
-	ProjectPaths []string     `json:"projectPaths"`
+	Revision       string       `json:"revision"`
+	ProjectVersion string       `json:"projectVersion"`
+	Global         []ServerView `json:"global"`
+	Project        []ServerView `json:"project"`
+	GlobalError    string       `json:"globalError,omitempty"`
+	ProjectError   string       `json:"projectError,omitempty"`
+	GlobalPath     string       `json:"globalPath"`
+	ProjectPaths   []string     `json:"projectPaths"`
 }
 
 // 数据。保存一条全局 Server；指针字段省略时保留旧值，空值为显式清除。
 type SaveInput struct {
-	Name         string             `json:"name"`
-	Revision     string             `json:"revision"`
-	Create       bool               `json:"create"`
-	Type         *string            `json:"type,omitempty"`
-	Enabled      *bool              `json:"enabled,omitempty"`
-	Command      *string            `json:"command,omitempty"`
-	Args         *[]string          `json:"args,omitempty"`
-	Env          map[string]*string `json:"env,omitempty"`
-	CWD          *string            `json:"cwd,omitempty"`
-	URL          *string            `json:"url,omitempty"`
-	Headers      map[string]*string `json:"headers,omitempty"`
-	IncludeTools *[]string          `json:"includeTools,omitempty"`
-	ExcludeTools *[]string          `json:"excludeTools,omitempty"`
+	Name                     string             `json:"name"`
+	Revision                 string             `json:"revision"`
+	Create                   bool               `json:"create"`
+	Type                     *string            `json:"type,omitempty"`
+	Enabled                  *bool              `json:"enabled,omitempty"`
+	Command                  *string            `json:"command,omitempty"`
+	Args                     *[]string          `json:"args,omitempty"`
+	Env                      map[string]*string `json:"env,omitempty"`
+	CWD                      *string            `json:"cwd,omitempty"`
+	URL                      *string            `json:"url,omitempty"`
+	Headers                  map[string]*string `json:"headers,omitempty"`
+	OAuthClientID            *string            `json:"oauthClientId,omitempty"`
+	OAuthClientIDMetadataURL *string            `json:"oauthClientIdMetadataUrl,omitempty"`
+	OAuthClientSecretEnv     *string            `json:"oauthClientSecretEnv,omitempty"`
+	OAuthRedirectURL         *string            `json:"oauthRedirectUrl,omitempty"`
+	IncludeTools             *[]string          `json:"includeTools,omitempty"`
+	ExcludeTools             *[]string          `json:"excludeTools,omitempty"`
 }
 
 type plannedServer struct {
@@ -286,6 +296,8 @@ func serverView(name, scope, source string, config serverConfig) ServerView {
 		Enabled: config.isEnabled(), HasCommand: config.Command != "", HasURL: config.URL != "",
 		HasCWD: config.CWD != "", ArgCount: len(config.Args), EnvKeys: keys(config.Env),
 		HeaderKeys: keys(config.Headers), IncludeTools: []string{}, ExcludeTools: append([]string{}, config.ExcludeTools...),
+		OAuthClientID: config.OAuthClientID, OAuthClientIDMetadataURL: config.OAuthClientIDMetadataURL,
+		OAuthClientSecretConfigured: config.OAuthClientSecretEnv != "", OAuthRedirectURL: config.OAuthRedirectURL,
 		Tools: []string{}, Status: "saved"}
 	if config.IncludeTools != nil {
 		view.IncludeTools = append([]string{}, (*config.IncludeTools)...)
@@ -316,6 +328,9 @@ func (p *Provider) ReadSettings(workspace string) (SettingsView, error) {
 	freshPlan, planErr := p.plan(workspace)
 	view := SettingsView{Revision: version, Global: []ServerView{}, Project: []ServerView{},
 		GlobalError: globalError, ProjectError: projectError, GlobalPath: path, ProjectPaths: projectPaths}
+	if planErr == nil {
+		view.ProjectVersion = freshPlan.version
+	}
 	p.mu.Lock()
 	state := p.current[workspace]
 	globalState := p.current[""]
@@ -330,6 +345,9 @@ func (p *Provider) ReadSettings(workspace string) (SettingsView, error) {
 	p.mu.Unlock()
 	for name, config := range global.MCPServers {
 		item := serverView(name, "global", path, config)
+		if key := p.globalOAuthKey(name, config); key != "" {
+			_, item.HasOAuthCredentials, _ = p.authStore.read(key)
+		}
 		_, item.Overridden = project.MCPServers[name]
 		if state != nil {
 			p.applyStatus(&item, state)
@@ -355,6 +373,12 @@ func (p *Provider) ReadSettings(workspace string) (SettingsView, error) {
 			}
 		}
 		item := serverView(name, "project", source, config)
+		if config.Type == transportHTTP || config.Type == "streamable-http" {
+			realPath, err := filepath.EvalSymlinks(workspace)
+			if err == nil {
+				_, item.HasOAuthCredentials, _ = p.authStore.read(oauthKey(realPath, true, oauthIdentitySpec(name, config)))
+			}
+		}
 		p.applyStatus(&item, state)
 		if item.Status == "saved" && planErr == nil {
 			for _, planned := range freshPlan.entries {
@@ -371,6 +395,8 @@ func (p *Provider) ReadSettings(workspace string) (SettingsView, error) {
 }
 
 func (p *Provider) applyStatus(view *ServerView, state *workspaceState) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if state == nil || !state.built || view.Status == "disabled" || view.Overridden {
 		return
 	}
@@ -400,6 +426,18 @@ func applyChanges(config *serverConfig, input SaveInput) {
 	}
 	if input.URL != nil {
 		config.URL = *input.URL
+	}
+	if input.OAuthClientID != nil {
+		config.OAuthClientID = *input.OAuthClientID
+	}
+	if input.OAuthClientIDMetadataURL != nil {
+		config.OAuthClientIDMetadataURL = *input.OAuthClientIDMetadataURL
+	}
+	if input.OAuthClientSecretEnv != nil {
+		config.OAuthClientSecretEnv = *input.OAuthClientSecretEnv
+	}
+	if input.OAuthRedirectURL != nil {
+		config.OAuthRedirectURL = *input.OAuthRedirectURL
 	}
 	if input.IncludeTools != nil {
 		if len(*input.IncludeTools) == 0 {
@@ -445,7 +483,7 @@ func validateRaw(name string, config serverConfig) error {
 	}
 	switch config.Type {
 	case transportStdio:
-		if strings.TrimSpace(config.Command) == "" || config.URL != "" || len(config.Headers) != 0 {
+		if strings.TrimSpace(config.Command) == "" || config.URL != "" || len(config.Headers) != 0 || config.OAuthClientID != "" || config.OAuthClientIDMetadataURL != "" || config.OAuthClientSecretEnv != "" || config.OAuthRedirectURL != "" {
 			return fmt.Errorf("%w: STDIO 需要命令，不能填写 URL 或 Header", ErrInvalid)
 		}
 	case transportHTTP:
@@ -456,6 +494,23 @@ func validateRaw(name string, config serverConfig) error {
 		parsed, err := url.Parse(candidate)
 		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil {
 			return fmt.Errorf("%w: HTTP URL 无效", ErrInvalid)
+		}
+		if config.OAuthClientSecretEnv != "" && !environmentNamePattern.MatchString(config.OAuthClientSecretEnv) {
+			return fmt.Errorf("%w: OAuth 密钥环境变量名称无效", ErrInvalid)
+		}
+		if config.OAuthClientSecretEnv != "" && config.OAuthClientID == "" {
+			return fmt.Errorf("%w: OAuth 客户端密钥需要预注册 Client ID", ErrInvalid)
+		}
+		if config.OAuthClientIDMetadataURL != "" {
+			if err := safeOAuthURL(config.OAuthClientIDMetadataURL, false); err != nil {
+				return fmt.Errorf("%w: CIMD 地址必须是 HTTPS", ErrInvalid)
+			}
+		}
+		if config.OAuthClientID != "" || config.OAuthClientIDMetadataURL != "" {
+			redirect := mustParseURL(config.OAuthRedirectURL)
+			if redirect.Scheme != "http" || !loopbackHost(redirect.Hostname()) || redirect.Port() == "" || redirect.Path == "" || redirect.RawQuery != "" || redirect.Fragment != "" {
+				return fmt.Errorf("%w: 预注册或 CIMD 需要固定的本机回调地址", ErrInvalid)
+			}
 		}
 	default:
 		return fmt.Errorf("%w: 不支持的传输方式", ErrInvalid)
@@ -512,6 +567,14 @@ func (p *Provider) Save(ctx context.Context, input SaveInput) (SettingsView, err
 		if err := validateRaw(input.Name, old); err != nil {
 			return err
 		}
+		if exists {
+			oldKey := p.globalOAuthKey(input.Name, config.MCPServers[input.Name])
+			if oldKey != "" && oldKey != p.globalOAuthKey(input.Name, old) {
+				if err := p.retireOAuthKey(oldKey); err != nil {
+					return fmt.Errorf("%w: %v", ErrOAuthCredentialCleanup, err)
+				}
+			}
+		}
 		config.MCPServers[input.Name] = old
 		return nil
 	})
@@ -525,8 +588,14 @@ func (p *Provider) Save(ctx context.Context, input SaveInput) (SettingsView, err
 // Delete 删除一条全局 Server，正在使用旧版本的 Run 保留旧连接。
 func (p *Provider) Delete(ctx context.Context, name, expected string) (SettingsView, error) {
 	err := p.writeGlobal(expected, func(config *configFile) error {
-		if _, ok := config.MCPServers[name]; !ok {
+		old, ok := config.MCPServers[name]
+		if !ok {
 			return ErrMissing
+		}
+		if key := p.globalOAuthKey(name, old); key != "" {
+			if err := p.retireOAuthKey(key); err != nil {
+				return fmt.Errorf("%w: %v", ErrOAuthCredentialCleanup, err)
+			}
 		}
 		delete(config.MCPServers, name)
 		return nil
@@ -536,6 +605,19 @@ func (p *Provider) Delete(ctx context.Context, name, expected string) (SettingsV
 	}
 	p.refreshGlobal(ctx)
 	return p.ReadSettings("")
+}
+
+func (p *Provider) globalOAuthKey(name string, config serverConfig) string {
+	if config.Type != transportHTTP && config.Type != "streamable-http" {
+		return ""
+	}
+	return oauthKey("", false, oauthIdentitySpec(name, config))
+}
+
+func oauthIdentitySpec(name string, config serverConfig) serverSpec {
+	return serverSpec{Name: name, URL: config.URL, ConfigURL: config.URL,
+		OAuthClientID: config.OAuthClientID, OAuthClientIDMetadataURL: config.OAuthClientIDMetadataURL,
+		OAuthClientSecretEnv: config.OAuthClientSecretEnv, OAuthRedirectURL: config.OAuthRedirectURL}
 }
 
 // Retry 重新连接全局配置，不改变磁盘版本。

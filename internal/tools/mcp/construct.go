@@ -16,7 +16,13 @@ func New(files *persist.Files, approvalService *approvals.Service) (*Provider, e
 	if err != nil {
 		return nil, fmt.Errorf("tools-mcp: get launch directory: %w", err)
 	}
+	authFiles, err := files.Scope("mcp", "oauth")
+	if err != nil {
+		return nil, fmt.Errorf("tools-mcp: open OAuth credential files: %w", err)
+	}
+	authStore := newOAuthStore()
+	authStore.files = authFiles
 	provider := &Provider{files: files, launchDir: launchDir, approvals: approvalService,
-		current: make(map[string]*workspaceState), runs: make(map[string]*workspaceState)}
+		current: make(map[string]*workspaceState), runs: make(map[string]*workspaceState), authStore: authStore, authTasks: make(map[string]*oauthTask)}
 	return provider, nil
 }

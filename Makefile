@@ -36,6 +36,9 @@ desktop-build:
 # 验收：日常快速检查 / 发布前完整检查
 .PHONY: agent-check test
 
+# reference 仅供阅读，复制的 SDK 源码不属于 Harness Go module 的检查目标。
+GO_PACKAGES := ./clients/... ./cmd/... ./internal/... ./tests/...
+
 # Agent 日常快速回归：依赖按需安装，页面只构建一次，其余检查并行执行。
 # 发布前或干净环境的最终验收仍使用 make test。
 agent-check: agent-web-build
@@ -43,8 +46,8 @@ agent-check: agent-web-build
 
 test: web
 	npm --prefix clients ci
-	go test ./...
-	go vet ./...
+	go test $(GO_PACKAGES)
+	go vet $(GO_PACKAGES)
 	go test -race ./internal/appserver ./internal/conversations ./internal/runner
 	npm --prefix clients run contracts:check
 	npm --prefix clients run rpc:check
@@ -58,8 +61,8 @@ agent-web-build: clients/web/node_modules/.package-lock.json
 	npm --prefix clients/web run build
 
 agent-go:
-	go test ./...
-	go vet ./...
+	go test $(GO_PACKAGES)
+	go vet $(GO_PACKAGES)
 
 agent-race:
 	go test -race ./internal/appserver ./internal/conversations ./internal/runner ./internal/subagents ./internal/machine/local ./internal/tools/subagents

@@ -2858,6 +2858,33 @@
 .settings-connection-status[data-status="connected"]::before { background: var(--success); }
 .settings-connection-status[data-status="failed"]::before,
 .settings-connection-status[data-status="invalid"]::before { background: var(--destructive); }
+.settings-connection-status[data-status="auth-required"]::before,
+.settings-connection-status[data-status="insufficient-scope"]::before { background: var(--warning); }
+.mcp-auth-action {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+}
+.mcp-auth-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: var(--control-form);
+  height: var(--control-form);
+  border-radius: var(--radius-control);
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+.mcp-auth-action[data-attention="true"] .mcp-auth-icon { background: var(--warning-background); color: var(--warning); }
+.mcp-auth-copy { display: flex; flex: 1 1 200px; min-width: 0; flex-direction: column; gap: var(--space-1); font-size: var(--font-size-label); }
+.mcp-auth-copy span { color: var(--muted-foreground); overflow-wrap: anywhere; }
+.mcp-auth-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); margin-left: auto; }
 .settings-next-step { display: flex; width: 100%; height: auto; min-height: var(--space-12); margin-top: var(--space-4); padding: var(--space-3); text-align: left; white-space: normal; }
 .settings-next-step > .metadata { margin-left: auto; min-width: 0; overflow-wrap: anywhere; }
 .settings-detail-title-row h3 {

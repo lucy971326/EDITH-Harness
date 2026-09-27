@@ -29,6 +29,24 @@ type MCPResetParams struct {
 	Revision string `json:"revision"`
 }
 
+// 数据。指定设置页中的全局或项目 HTTP Server。
+type MCPAuthParams struct {
+	Workspace string `json:"workspace"`
+	Scope     string `json:"scope"`
+	Name      string `json:"name"`
+}
+
+// 数据。查询或取消一次登录任务。
+type MCPAuthTaskParams struct {
+	ID string `json:"id"`
+}
+
+// 数据。用户确认当前项目 MCP 配置摘要。
+type MCPTrustParams struct {
+	Workspace string `json:"workspace"`
+	Version   string `json:"version"`
+}
+
 // BindMCP 登记设置页的 MCP 配置方法。
 func (s *Server) BindMCP(provider *mcp.Provider) error {
 	if provider == nil || s.mcp != nil {
@@ -47,7 +65,43 @@ func (s *Server) BindMCP(provider *mcp.Provider) error {
 	if err := Register(s, "mcp/retry", s.handleMCPRetry); err != nil {
 		return err
 	}
-	return Register(s, "mcp/resetInvalid", s.handleMCPReset)
+	if err := Register(s, "mcp/resetInvalid", s.handleMCPReset); err != nil {
+		return err
+	}
+	if err := Register(s, "mcp/auth/start", s.handleMCPAuthStart); err != nil {
+		return err
+	}
+	if err := Register(s, "mcp/auth/status", s.handleMCPAuthStatus); err != nil {
+		return err
+	}
+	if err := Register(s, "mcp/auth/cancel", s.handleMCPAuthCancel); err != nil {
+		return err
+	}
+	if err := Register(s, "mcp/auth/logout", s.handleMCPAuthLogout); err != nil {
+		return err
+	}
+	return Register(s, "mcp/auth/trustProject", s.handleMCPAuthTrust)
+}
+
+func (s *Server) handleMCPAuthStart(_ context.Context, input MCPAuthParams) (mcp.OAuthTaskView, error) {
+	view, err := s.mcp.StartOAuth(input.Workspace, input.Scope, input.Name)
+	return view, mcpSettingsError(err)
+}
+func (s *Server) handleMCPAuthStatus(_ context.Context, input MCPAuthTaskParams) (mcp.OAuthTaskView, error) {
+	view, err := s.mcp.OAuthStatus(input.ID)
+	return view, mcpSettingsError(err)
+}
+func (s *Server) handleMCPAuthCancel(_ context.Context, input MCPAuthTaskParams) (mcp.OAuthTaskView, error) {
+	view, err := s.mcp.CancelOAuth(input.ID)
+	return view, mcpSettingsError(err)
+}
+func (s *Server) handleMCPAuthLogout(_ context.Context, input MCPAuthParams) (mcp.SettingsView, error) {
+	view, err := s.mcp.LogoutOAuth(input.Workspace, input.Scope, input.Name)
+	return view, mcpSettingsError(err)
+}
+func (s *Server) handleMCPAuthTrust(_ context.Context, input MCPTrustParams) (struct{}, error) {
+	err := s.mcp.TrustProjectOAuth(input.Workspace, input.Version)
+	return struct{}{}, mcpSettingsError(err)
 }
 
 func (s *Server) handleMCPRead(_ context.Context, input MCPReadParams) (mcp.SettingsView, error) {
@@ -86,6 +140,10 @@ func mcpSettingsError(err error) error {
 		return &Error{Code: CodeNotFound, Message: "MCP Server 不存在"}
 	case errors.Is(err, mcp.ErrInvalid):
 		return &Error{Code: CodeInvalidParams, Message: err.Error()}
+	case errors.Is(err, mcp.ErrOAuthUntrusted):
+		return &Error{Code: CodeConflict, Message: "请先确认当前项目 MCP 配置"}
+	case errors.Is(err, mcp.ErrOAuthCredentialCleanup):
+		return &Error{Code: CodeInternal, Message: "本机凭据文件清理失败，请重试；配置未修改"}
 	default:
 		return &Error{Code: CodeInternal, Message: "MCP 设置操作失败"}
 	}

@@ -1,0 +1,45 @@
+//go:build windows
+
+package mcp
+
+import (
+	"errors"
+	"runtime"
+	"unsafe"
+
+	"golang.org/x/sys/windows"
+)
+
+// Windows 文件继承用户目录 ACL；DPAPI 再把内容绑定到当前 Windows 用户。
+func sealOAuthCredential(data []byte) ([]byte, error) {
+	if len(data) == 0 {
+		return nil, errors.New("empty OAuth credential")
+	}
+	input := windows.DataBlob{Size: uint32(len(data)), Data: &data[0]}
+	var output windows.DataBlob
+	err := windows.CryptProtectData(&input, nil, nil, 0, nil, windows.CRYPTPROTECT_UI_FORBIDDEN, &output)
+	runtime.KeepAlive(data)
+	if err != nil {
+		return nil, err
+	}
+	defer windows.LocalFree(windows.Handle(unsafe.Pointer(output.Data)))
+	return append([]byte(nil), unsafe.Slice(output.Data, int(output.Size))...), nil
+}
+
+func openOAuthCredential(data []byte) ([]byte, error) {
+	if len(data) == 0 {
+		return nil, errors.New("empty OAuth credential")
+	}
+	input := windows.DataBlob{Size: uint32(len(data)), Data: &data[0]}
+	var output windows.DataBlob
+	err := windows.CryptUnprotectData(&input, nil, nil, 0, nil, windows.CRYPTPROTECT_UI_FORBIDDEN, &output)
+	runtime.KeepAlive(data)
+	if err != nil {
+		return nil, err
+	}
+	defer windows.LocalFree(windows.Handle(unsafe.Pointer(output.Data)))
+	plain := unsafe.Slice(output.Data, int(output.Size))
+	copyOfPlain := append([]byte(nil), plain...)
+	clear(plain)
+	return copyOfPlain, nil
+}

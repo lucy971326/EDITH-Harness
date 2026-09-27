@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/modelcontextprotocol/go-sdk/auth"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"harness/internal/tools"
@@ -30,9 +31,11 @@ type serverConnection struct {
 	definitions  []tools.Definition
 	remoteNames  map[string]string
 	instructions string
+	authKey      string
+	authVersion  uint64
 }
 
-func connectServer(ctx context.Context, spec serverSpec) (*serverConnection, error) {
+func connectServer(ctx context.Context, spec serverSpec, oauthHandler auth.OAuthHandler) (*serverConnection, error) {
 	var transport sdk.Transport
 	if spec.Transport == transportStdio {
 		command := exec.Command(spec.Command, spec.Args...)
@@ -40,10 +43,17 @@ func connectServer(ctx context.Context, spec serverSpec) (*serverConnection, err
 		command.Env = mergedEnvironment(spec.Env)
 		transport = &sdk.CommandTransport{Command: command}
 	} else {
-		client := &http.Client{Transport: headerTransport{base: http.DefaultTransport, headers: spec.Headers}}
+		client := &http.Client{Transport: headerTransport{base: http.DefaultTransport, headers: spec.Headers},
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				if len(via) >= 3 || !sameOrigin(via[0].URL, req.URL) {
+					return http.ErrUseLastResponse
+				}
+				return nil
+			}}
 		transport = &sdk.StreamableClientTransport{
 			Endpoint:             spec.URL,
 			HTTPClient:           client,
+			OAuthHandler:         oauthHandler,
 			DisableStandaloneSSE: true,
 		}
 	}

@@ -44,6 +44,8 @@ type Provider struct {
 	launchDir    string
 	userOverride *configFile // 仅供包内测试构造。
 	approvals    *approvals.Service
+	authStore    *oauthStore
+	authTasks    map[string]*oauthTask
 
 	configMu sync.Mutex // 保护后端对 mcp.json 的版本比较与写入。
 	mu       sync.Mutex // 保护 current、runs、连接引用与关闭状态。
@@ -55,7 +57,7 @@ type Provider struct {
 
 func newProvider(ctx context.Context, config configFile, launchDir string) (*Provider, error) {
 	p := &Provider{launchDir: launchDir, userOverride: &config,
-		current: make(map[string]*workspaceState), runs: make(map[string]*workspaceState)}
+		current: make(map[string]*workspaceState), runs: make(map[string]*workspaceState), authStore: newOAuthStore(), authTasks: make(map[string]*oauthTask)}
 	_, err := p.state(ctx, "")
 	if err != nil {
 		return nil, err
@@ -219,11 +221,29 @@ func (p *Provider) build(ctx context.Context, workspace string, state *workspace
 				continue
 			}
 			connectCtx, cancel := context.WithTimeout(ctx, startupTimeout)
-			connection, err := connectServer(connectCtx, *entry.spec)
+			var handler *oauthCredentialHandler
+			var err error
+			if entry.spec.Transport == transportHTTP {
+				handler, err = p.credentialHandler(connectCtx, workspace, entry)
+				if err != nil {
+					status[entry.name] = serverStatus{state: "failed", message: safeConnectionError(err)}
+					cancel()
+					continue
+				}
+			}
+			connection, err := connectServer(connectCtx, *entry.spec, handler)
 			cancel()
 			if err != nil {
-				status[entry.name] = serverStatus{state: "failed", message: safeConnectionError(err)}
+				var challenge *oauthChallenge
+				if errors.As(err, &challenge) {
+					status[entry.name] = serverStatus{state: challenge.state, message: challenge.message}
+				} else {
+					status[entry.name] = serverStatus{state: "failed", message: safeConnectionError(err)}
+				}
 				continue
+			}
+			if handler != nil {
+				connection.authKey, connection.authVersion = handler.key, handler.version
 			}
 			connections = append(connections, connection)
 			tools := make([]string, 0, len(connection.definitions))
@@ -261,6 +281,10 @@ func safeConnectionError(err error) string {
 	}
 	if errors.Is(err, context.Canceled) {
 		return "连接已取消"
+	}
+	var challenge *oauthChallenge
+	if errors.As(err, &challenge) {
+		return challenge.message
 	}
 	return "连接或工具发现失败"
 }
@@ -302,6 +326,9 @@ func (p *Provider) Call(ctx context.Context, call tools.Call) (tools.Result, err
 	if connection == nil {
 		return tools.Result{}, fmt.Errorf("mcp: tool %q is not in run snapshot", call.Name)
 	}
+	if connection.authKey != "" && p.authStore.version(connection.authKey) != connection.authVersion {
+		return tools.Result{}, fmt.Errorf("mcp: 此 Server 已退出登录，请重新连接")
+	}
 	remoteName := connection.remoteNames[call.Name]
 	var arguments map[string]any
 	if err := json.Unmarshal(call.Arguments, &arguments); err != nil {
@@ -321,6 +348,16 @@ func (p *Provider) Call(ctx context.Context, call tools.Call) (tools.Result, err
 	defer cancel()
 	result, err := connection.session.CallTool(callCtx, &sdk.CallToolParams{Name: remoteName, Arguments: arguments})
 	if err != nil {
+		var challenge *oauthChallenge
+		if errors.As(err, &challenge) {
+			p.mu.Lock()
+			if state.status == nil {
+				state.status = make(map[string]serverStatus)
+			}
+			state.status[connection.name] = serverStatus{state: challenge.state, message: challenge.message}
+			p.mu.Unlock()
+			return tools.Result{}, fmt.Errorf("mcp: %s", challenge.message)
+		}
 		return tools.Result{}, fmt.Errorf("mcp: call %s/%s failed", connection.name, remoteName)
 	}
 	return renderResult(result)
@@ -391,6 +428,9 @@ func (p *Provider) Close() error {
 		return nil
 	}
 	p.closed = true
+	for _, task := range p.authTasks {
+		task.cancel()
+	}
 	p.mu.Unlock()
 	p.wg.Wait()
 	p.mu.Lock()

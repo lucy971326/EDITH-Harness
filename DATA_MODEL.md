@@ -24,7 +24,11 @@ Web 与 Desktop 启动前都独占 `.lock` 文件的操作系统锁；同一份�
 │  用户可编辑的模型 ID、上下文窗口、看图能力与有序思考档位；首次缺失时复制内置目录
 │
 ├─ mcp.json
-│  用户级 MCP Server 配置（enabled 缺省为启用）；项目级配置仍放在项目目录
+│  用户级 MCP Server 配置（enabled 缺省为启用）；OAuth 只保存公开客户端设置和密钥环境变量名称，不保存令牌
+│  项目级配置仍放在项目目录
+│
+├─ mcp/oauth/<配置身份>.cred
+│  MCP OAuth 客户端身份与令牌；Unix 文件仅当前用户可读，Windows 内容由当前用户 DPAPI 加密
 │
 ├─ approvals/{settings.json,mcp-trust.json}
 │  审核设置与项目 MCP 配置信任
@@ -203,6 +207,7 @@ messages.jsonl
 
 - `approvals.Service` 拥有待审批表（原操作、可信 Session/Run/ToolCall 身份、Context、回答通道）和快照订阅，不持久化；断线只清订阅，取消/回答删除请求，重启不恢复。
 - 项目 MCP 配置确认按真实项目路径与有效配置摘要保存在 `~/.harness/approvals/mcp-trust.json`；MCP Tool 的逐次裁决和待审批请求不持久化。
+- MCP OAuth 凭据由 MCP 领域按全局／真实工作区路径、Server 名、原始配置地址和客户端身份隔离，保存在 `~/.harness/mcp/oauth/` 的独立文件中；Unix 文件权限为 0600，Windows 文件内容由当前用户的 DPAPI 加密。写入失败会报错，不退回仅内存的登录。令牌、DCR 客户端密钥、刷新令牌及 scope 不进入 `mcp.json`、RPC 或日志。每次新连接先核对资源、授权服务与端点，再使用旧令牌；刷新时附带资源并保存轮换令牌。配置撤下清持久凭据但旧 Run 继续用已有连接，退出登录使旧连接的后续调用失效。
 - `runs.json` 的可选 `permissionInstructions` 是该轮给模型的环境说明，沿用 Runner 的保存与分叉复制。准备完成的 Run 保存基线。它不是待审批或可复用授权。
 - 模型输入按可见 Run 重建环境说明，普通对话账本和网页聊天正文不增加权限消息；客户端审批卡片仅是服务内存的投影。
 

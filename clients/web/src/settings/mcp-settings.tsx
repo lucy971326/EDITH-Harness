@@ -9,9 +9,9 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import type { MCPServerView, MCPSettingsView, MCPSaveInput } from "../../../contracts/appserver";
+import type { MCPServerView, MCPSettingsView, MCPSaveInput, MCPOAuthTaskView } from "../../../contracts/appserver";
 import { RPCClient, formatRPCError } from "../client/rpc";
-import { ArrowLeft, ChevronRight, FileText, Plus, RefreshCw, Pencil, Server, Trash2, Wrench, X } from "../icons";
+import { ArrowLeft, ChevronRight, ExternalLink, FileText, KeyRound, LogOut, Plus, RefreshCw, Pencil, Server, Trash2, Wrench, X } from "../icons";
 import type { SettingsDraftState } from "./types";
 
 type Scope = "global" | "project";
@@ -24,6 +24,8 @@ type Draft = {
   args: string[]; replaceArgs: boolean;
   env: Record<string, string | null>;
   headers: Record<string, string | null>;
+  oauthClientId: string; oauthClientIdMetadataUrl: string; oauthClientSecretEnv: string; oauthRedirectUrl: string;
+  clearOAuthClientSecretEnv: boolean;
   includeTools: string; excludeTools: string;
 };
 
@@ -32,6 +34,9 @@ function newDraft(item?: MCPServerView): Draft {
     name: item?.name ?? "", type: item?.type === "http" || item?.type === "streamable-http" ? "http" : "stdio",
     command: "", url: "", cwd: "", clear: { command: false, url: false, cwd: false },
     args: [], replaceArgs: !item, env: {}, headers: {},
+    oauthClientId: item?.oauthClientId ?? "", oauthClientIdMetadataUrl: item?.oauthClientIdMetadataUrl ?? "",
+    oauthClientSecretEnv: "", oauthRedirectUrl: item?.oauthRedirectUrl ?? "",
+    clearOAuthClientSecretEnv: false,
     includeTools: item?.includeTools.join(", ") ?? "", excludeTools: item?.excludeTools.join(", ") ?? "",
   };
 }
@@ -46,6 +51,8 @@ function statusLabel(item: MCPServerView): string {
     case "connected": return `已连接 · ${item.tools.length} 个工具`;
     case "failed": return "连接失败";
     case "invalid": return "配置无效";
+    case "auth-required": return "需要登录";
+    case "insufficient-scope": return "需要增加授权权限";
     case "disabled": return "已关闭";
     default: return "配置已保存 · 尚未连接";
   }
@@ -67,9 +74,18 @@ export function MCPSettingsPanel({ client, currentWorkspace, onOpenFile, onState
   const [resetPrompt, setResetPrompt] = useState(false);
   const [newEnvKey, setNewEnvKey] = useState("");
   const [newHeaderKey, setNewHeaderKey] = useState("");
+  const [authTask, setAuthTask] = useState<MCPOAuthTaskView | null>(null);
+  const [authTaskTarget, setAuthTaskTarget] = useState<{ scope: Scope; name: string; workspace: string } | null>(null);
+  const [trustPrompt, setTrustPrompt] = useState(false);
 
   const current = target.scope === "project" ? view?.project : view?.global;
   const selected = current?.find((item) => item.name === target.name);
+  const selectedAuthTask = selected && authTaskTarget?.workspace === currentWorkspace &&
+    authTaskTarget.scope === target.scope && authTaskTarget.name === selected.name ? authTask : null;
+  const authBusy = selectedAuthTask != null && ["preparing", "waiting", "connecting"].includes(selectedAuthTask.state);
+  const authNeeded = selected?.status === "auth-required" || selected?.status === "insufficient-scope";
+  const showOAuth = selected && selected.type !== "stdio" && !selected.overridden &&
+    (authNeeded || selected.hasOAuthCredentials || selectedAuthTask != null);
   const dirty = !!draft && (target.create || JSON.stringify(draft) !== JSON.stringify(newDraft(selected)) ||
     !!newEnvKey.trim() || !!newHeaderKey.trim());
   useEffect(() => { onStateChange({ dirty, saving }); }, [dirty, saving, onStateChange]);
@@ -88,6 +104,19 @@ export function MCPSettingsPanel({ client, currentWorkspace, onOpenFile, onState
     }).catch((cause: unknown) => { if (active) setError(formatRPCError(cause, "MCP 配置读取失败")); });
     return () => { active = false; };
   }, [client, currentWorkspace, reload]);
+
+  useEffect(() => {
+    if (!client?.connected || !authTask || !["preparing", "waiting", "connecting"].includes(authTask.state)) return;
+    let active = true;
+    const timer = window.setInterval(() => {
+      void client.call("mcp/auth/status", { id: authTask.id }).then(async (next) => {
+        if (!active) return;
+        setAuthTask(next);
+        if (["complete", "failed", "cancelled"].includes(next.state)) await refreshDisk();
+      }).catch((cause: unknown) => { if (active) setError(formatRPCError(cause, "授权状态读取失败")); });
+    }, 1000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [client, authTask?.id, authTask?.state, currentWorkspace]);
 
   function select(next: Target) {
     if (saving) return;
@@ -127,6 +156,12 @@ export function MCPSettingsPanel({ client, currentWorkspace, onOpenFile, onState
       name, revision: view.revision, create: target.create,
       includeTools: list(draft.includeTools), excludeTools: list(draft.excludeTools),
     };
+    if (draft.type === "http") {
+      input.oauthClientId = draft.oauthClientId;
+      input.oauthClientIdMetadataUrl = draft.oauthClientIdMetadataUrl;
+      input.oauthRedirectUrl = draft.oauthRedirectUrl;
+      if (draft.oauthClientSecretEnv !== "" || draft.clearOAuthClientSecretEnv) input.oauthClientSecretEnv = draft.oauthClientSecretEnv;
+    }
     if (target.create) input.type = draft.type;
     for (const field of ["command", "url", "cwd"] as const) {
       if (draft[field] !== "" || draft.clear[field] || target.create) input[field] = draft[field];
@@ -155,6 +190,10 @@ export function MCPSettingsPanel({ client, currentWorkspace, onOpenFile, onState
       await refreshAfterMutation(result);
       setTarget({ scope: "global", name: input.name, edit: false, create: false });
       setDraft(null);
+      if (authTask?.state === "failed" || authTask?.state === "cancelled") {
+        setAuthTask(null);
+        setAuthTaskTarget(null);
+      }
       return true;
     } catch (cause) {
       setError(formatRPCError(cause, "保存失败"));
@@ -200,6 +239,56 @@ export function MCPSettingsPanel({ client, currentWorkspace, onOpenFile, onState
     setSaving(true); setError("");
     try { await refreshAfterMutation(await client.call("mcp/retry", { name: selected.name }, { timeoutMs: null })); }
     catch (cause) { setError(formatRPCError(cause, "重试失败")); }
+    finally { setSaving(false); }
+  }
+
+  async function startOAuth() {
+    if (!client?.connected || !selected || saving) return;
+    setSaving(true); setError(""); setAuthTask(null);
+    try {
+      const task = await client.call("mcp/auth/start", { workspace: currentWorkspace, scope: target.scope, name: selected.name }, { timeoutMs: 40000 });
+      setAuthTaskTarget({ scope: target.scope, name: selected.name, workspace: currentWorkspace });
+      setAuthTask(task);
+    } catch (cause) { setError(formatRPCError(cause, "启动 MCP 登录失败")); }
+    finally { setSaving(false); }
+  }
+
+  async function trustAndStartOAuth() {
+    if (!client?.connected || !view) return;
+    setTrustPrompt(false); setSaving(true); setError("");
+    try {
+      await client.call("mcp/auth/trustProject", { workspace: currentWorkspace, version: view.projectVersion });
+    } catch (cause) { setError(formatRPCError(cause, "项目配置确认失败")); setSaving(false); return; }
+    setSaving(false);
+    await startOAuth();
+  }
+
+  async function cancelOAuth() {
+    if (!client?.connected || !authTask) return;
+    try { setAuthTask(await client.call("mcp/auth/cancel", { id: authTask.id }, { timeoutMs: 10000 })); }
+    catch (cause) { setError(formatRPCError(cause, "取消登录失败")); }
+  }
+
+  async function openAuthorizationURL(address: string) {
+    if (window.location.protocol !== "wails:" && window.location.hostname !== "wails.localhost") {
+      window.open(address, "_blank", "noopener,noreferrer");
+      return;
+    }
+    try {
+      const { Browser } = await import("@wailsio/runtime");
+      await Browser.OpenURL(address);
+    } catch (cause) {
+      setError(formatRPCError(cause, "打开系统浏览器失败"));
+    }
+  }
+
+  async function logoutOAuth() {
+    if (!client?.connected || !selected || saving) return;
+    setSaving(true); setError("");
+    try {
+      const result = await client.call("mcp/auth/logout", { workspace: currentWorkspace, scope: target.scope, name: selected.name });
+      await refreshAfterMutation(result); setAuthTask(null);
+    } catch (cause) { setError(formatRPCError(cause, "退出登录失败")); }
     finally { setSaving(false); }
   }
 
@@ -307,6 +396,8 @@ export function MCPSettingsPanel({ client, currentWorkspace, onOpenFile, onState
               <div className="settings-field"><Label htmlFor="mcp-type">类型</Label>
                 <Select value={draft.type} disabled={!target.create || saving} onValueChange={(type) => setDraft({ ...draft,
                   type: type as Draft["type"], command: "", url: "", cwd: "", args: [], env: {}, headers: {},
+                  oauthClientId: "", oauthClientIdMetadataUrl: "", oauthClientSecretEnv: "", oauthRedirectUrl: "",
+                  clearOAuthClientSecretEnv: false,
                 })}>
                   <SelectTrigger id="mcp-type"><SelectValue /></SelectTrigger>
                   <SelectContent><SelectItem value="stdio">STDIO</SelectItem><SelectItem value="http">Streamable HTTP</SelectItem></SelectContent>
@@ -321,7 +412,8 @@ export function MCPSettingsPanel({ client, currentWorkspace, onOpenFile, onState
                   <Button variant="ghost" size="sm" onClick={() => setDraft({ ...draft, args: [...draft.args, ""] })}><Plus />添加参数</Button>
                 </>}</div>
             </> : secretField("url", "Server URL", !!selected?.hasURL)}
-            <Collapsible className="settings-advanced" key={`${target.create ? "new" : target.name}:${draft.type}`}>
+            <Collapsible className="settings-advanced" key={`${target.create ? "new" : target.name}:${draft.type}`}
+              defaultOpen={selectedAuthTask?.reason === "client-registration-required"}>
               <CollapsibleTrigger className="settings-advanced-trigger ui-focus">
                 <ChevronRight className="disclosure-chevron" />高级设置
               </CollapsibleTrigger>
@@ -329,7 +421,25 @@ export function MCPSettingsPanel({ client, currentWorkspace, onOpenFile, onState
                 {draft.type === "stdio" ? <>
                   {secretField("cwd", "工作目录", !!selected?.hasCWD)}
                   {keyValues("env", selected?.envKeys ?? [])}
-                </> : keyValues("headers", selected?.headerKeys ?? [])}
+                </> : <>
+                  {keyValues("headers", selected?.headerKeys ?? [])}
+                  <div className="settings-field"><Label htmlFor="mcp-oauth-id">OAuth 客户端 ID · 可选</Label>
+                    <Input id="mcp-oauth-id" value={draft.oauthClientId} disabled={saving}
+                      placeholder="预注册的 Client ID" onChange={(event) => setDraft({ ...draft, oauthClientId: event.target.value })} /></div>
+                  <div className="settings-field"><Label htmlFor="mcp-oauth-cimd">CIMD 地址 · 可选</Label>
+                    <Input id="mcp-oauth-cimd" value={draft.oauthClientIdMetadataUrl} disabled={saving}
+                      placeholder="https://…/client.json" onChange={(event) => setDraft({ ...draft, oauthClientIdMetadataUrl: event.target.value })} /></div>
+                  <div className="settings-field"><Label htmlFor="mcp-oauth-secret">客户端密钥环境变量 · 可选</Label>
+                    <div className="mcp-secret-row"><Input id="mcp-oauth-secret" value={draft.oauthClientSecretEnv} disabled={saving || draft.clearOAuthClientSecretEnv}
+                      placeholder={selected?.oauthClientSecretConfigured ? "已设置 · 留空保持" : "例如 MCP_CLIENT_SECRET"}
+                      onChange={(event) => setDraft({ ...draft, oauthClientSecretEnv: event.target.value })} />
+                      {selected?.oauthClientSecretConfigured && <Button variant="ghost" size="sm" disabled={saving}
+                        onClick={() => setDraft({ ...draft, oauthClientSecretEnv: "", clearOAuthClientSecretEnv: !draft.clearOAuthClientSecretEnv })}>
+                        {draft.clearOAuthClientSecretEnv ? "撤销清除" : "清除"}</Button>}</div></div>
+                  <div className="settings-field"><Label htmlFor="mcp-oauth-redirect">已登记的回调地址 · 预注册/CIMD 必填</Label>
+                    <Input id="mcp-oauth-redirect" value={draft.oauthRedirectUrl} disabled={saving}
+                      placeholder="http://127.0.0.1:端口/oauth/callback" onChange={(event) => setDraft({ ...draft, oauthRedirectUrl: event.target.value })} /></div>
+                </>}
                 <div className="settings-field"><Label htmlFor="mcp-include">允许的工具</Label><Input id="mcp-include" value={draft.includeTools}
                   placeholder="留空表示全部" onChange={(event) => setDraft({ ...draft, includeTools: event.target.value })} /></div>
                 <div className="settings-field"><Label htmlFor="mcp-exclude">禁用的工具</Label><Input id="mcp-exclude" value={draft.excludeTools}
@@ -354,7 +464,7 @@ export function MCPSettingsPanel({ client, currentWorkspace, onOpenFile, onState
                 onCheckedChange={(enabled) => void toggle(selected, enabled)} />
             </div>}
           </div>
-          {selected.error && <div className="inline-notice" role="status">{selected.error}</div>}
+          {selected.error && !authNeeded && <div className="inline-notice" role="status">{selected.error}</div>}
           <dl className="settings-facts">
             <div><dt>连接状态</dt><dd>
               <span className="settings-connection-status" data-status={selected.status}>{statusLabel(selected)}</span>
@@ -368,6 +478,33 @@ export function MCPSettingsPanel({ client, currentWorkspace, onOpenFile, onState
               <span className="settings-truncate">{target.scope === "global" ? "全局" : "项目 · 只读"} · {selected.source.split(/[\\/]/).pop()}</span>
             </dd></div>}
           </dl>
+          {showOAuth && <div className="mcp-auth-action" data-attention={authNeeded && !authBusy} role="status">
+            <span className="mcp-auth-icon"><KeyRound /></span>
+            <div className="mcp-auth-copy">
+              <strong>{authBusy ? "正在授权" : selectedAuthTask?.state === "failed" ? "授权未完成" :
+                selectedAuthTask?.state === "cancelled" ? "授权已取消" :
+                selectedAuthTask?.state === "complete" && !selected.hasOAuthCredentials ? "授权已完成" :
+                selected.status === "insufficient-scope" ? "需要增加授权权限" :
+                selected.status === "auth-required" ? "需要登录" : "已授权"}</strong>
+              <span>{selectedAuthTask?.message || (selected.status === "insufficient-scope" ? "当前权限不足，请重新授权。" :
+                selected.status === "auth-required" ? "此 Server 请求 OAuth 授权。" : "凭据保存在本机。")}</span>
+            </div>
+            <div className="mcp-auth-actions">
+              {authBusy ? <>
+                {selectedAuthTask?.url && <Button size="sm" variant="outline" onClick={() => void openAuthorizationURL(selectedAuthTask.url!)}><ExternalLink />打开授权页面</Button>}
+                <Button size="sm" variant="ghost" onClick={() => void cancelOAuth()}>取消</Button>
+              </> : <>
+                {selectedAuthTask?.reason === "client-registration-required" && (target.scope === "global"
+                  ? <Button size="sm" variant="outline" onClick={() => select({ ...target, edit: true })}><Pencil />编辑授权配置</Button>
+                  : selected.source && <Button size="sm" variant="outline" onClick={() => onOpenFile(selected.source)}><FileText />打开配置文件</Button>)}
+                {selected.enabled && !(target.scope === "global" && selectedAuthTask?.reason === "client-registration-required") &&
+                  <Button size="sm" variant={selected.hasOAuthCredentials ? "outline" : "default"} disabled={saving}
+                  onClick={() => target.scope === "project" ? setTrustPrompt(true) : void startOAuth()}>
+                  {selected.hasOAuthCredentials ? "重新授权" : "登录授权"}</Button>}
+                {selected.hasOAuthCredentials && <Button size="sm" variant="ghost" disabled={saving} onClick={() => void logoutOAuth()}><LogOut />退出登录</Button>}
+              </>}
+            </div>
+          </div>}
           <section className="settings-section mcp-tools">
             <div className="settings-section-header"><h3>可用工具 <span className="settings-badge">{selected.tools.length}</span></h3></div>
             {selected.tools.length ? <div className="settings-item-list">{selected.tools.map((tool) =>
@@ -391,6 +528,15 @@ export function MCPSettingsPanel({ client, currentWorkspace, onOpenFile, onState
         <AlertDialogDescription>原文件会先备份，再创建空配置。</AlertDialogDescription></AlertDialogHeader>
       <AlertDialogFooter><AlertDialogCancel>取消</AlertDialogCancel>
         <AlertDialogAction onClick={() => void resetInvalid()}>备份并重建</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+    </AlertDialog>
+    <AlertDialog open={trustPrompt} onOpenChange={setTrustPrompt}><AlertDialogContent>
+      <AlertDialogHeader><AlertDialogTitle>确认项目 MCP 配置？</AlertDialogTitle>
+        <AlertDialogDescription>本次确认覆盖项目中的全部 MCP Server。登录后会连接以下已启用项；STDIO 会在宿主执行启动命令。</AlertDialogDescription></AlertDialogHeader>
+      <div className="settings-item-list">{view?.project.filter((server) => server.enabled).map((server) =>
+        <div className="mcp-tool-row" key={server.name}><Server /><span>{server.name} · {server.type === "stdio" ? "STDIO 命令" : "HTTP 服务"}</span></div>)}</div>
+      <p className="metadata">配置文件：{view?.projectPaths.join("、")}</p>
+      <AlertDialogFooter><AlertDialogCancel>取消</AlertDialogCancel>
+        <AlertDialogAction onClick={() => void trustAndStartOAuth()}>确认并登录</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
     </AlertDialog>
   </div>;
 }

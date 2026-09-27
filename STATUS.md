@@ -1,13 +1,13 @@
 # 项目状态
 
-更新：2026-09-26。架构决策见[设计书](docs/设计书.md)，数据位置见[DATA_MODEL](DATA_MODEL.md)。本篇只保留当前事实，不累计施工日志。
+更新：2026-09-27。架构决策见[设计书](docs/设计书.md)，数据位置见[DATA_MODEL](DATA_MODEL.md)。本篇只保留当前事实，不累计施工日志。
 
 ## 当前能力
 
 - React Web：项目与会话、归档与恢复、永久删除、文字／图片聊天、实时过程、Steer、停止、分叉、压缩、上下文引用。
 - 模型选择：供应商二级列表与独立思考滑块，档位沿用用户目录 models.json 配置顺序；新会话默认取第一档。设置页可配置 DeepSeek、Google、OpenAI Chat Completions／Responses、Anthropic 的供应商密钥和模型能力。
 - Wails v3 Desktop：复用同一份 React 构建产物与后台，业务通过 Stream 传完整 JSON-RPC 2.0 消息；使用系统标题栏，关闭最后窗口即退出；同一份用户数据只允许一个后台运行。
-- 设置：独立导航、主题预览、Agent 分组表单、模型与供应商、智能审批方式、可折叠 Hooks 列表，以及全局 MCP Server 的增删改、开关和连接重试；项目 MCP 只读。分类切换保留草稿，离开前确认未保存修改。
+- 设置：独立导航、主题预览、Agent 分组表单、模型与供应商、智能审批方式、可折叠 Hooks 列表，以及全局 MCP Server 的增删改、开关、连接重试和 HTTP OAuth 登录；项目 MCP 配置只读，可确认配置后登录。分类切换保留草稿，离开前确认未保存修改。
 - 工作区：Monaco 编辑器、自动保存与冲突保护、文件监听、Run Diff 与受版本保护的撤销、真实 PTY 终端。
 - Agent 能力：命令／持续进程、补丁、MCP、Skills；子任务支持主会话 → 孩子 → 孙子，独立页面、续聊与递归停止。
 - 安全：四档权限、人工／LLM／Jev 审批、项目 MCP 配置信任与逐次工具审批；Linux bwrap + seccomp、macOS Seatbelt。
@@ -40,6 +40,8 @@ Web 开发页 `http://127.0.0.1:5173/`，业务连接同源 `/rpc` 并代理到 
 - macOS Seatbelt 已在 macOS 27.0 arm64 验证，其他版本与 Intel 未验证。Linux 需要支持相应 namespace、seccomp 与挂载能力的 bwrap。
 - 沙箱不隔离硬链接别名；受保护目录内部的细粒度子路径授权暂时拒绝。异常断电／强杀可能留下 Linux 挂载占位空目录，不自动删除来源不明目录。
 - MCP 与 Hook 在宿主或远端执行，不在 Agent 命令沙箱内；Hook 信任仅覆盖配置，不跟踪脚本内容。
+- MCP OAuth 首版仅支持本机 Web／Desktop 的 HTTP Server；用户已通过阿里云远程 Server 完成授权并发现工具，令牌刷新、重启复用和其他第三方服务仍待实机验收。凭据保存在本机私有文件；Windows 通过当前用户 DPAPI 保护，Unix 依赖用户目录与文件权限。
+- GitHub 托管的远程 MCP 不支持动态客户端注册；Harness 要使用其 OAuth，需配置已注册的 GitHub App／OAuth App 客户端身份，也可改用 GitHub 访问令牌。
 - LLM／Jev 已有用户实际使用反馈，但自动审核的安全准确率没有完成生产校准。
 - 上下文引用的中文输入法／窄屏、嵌套子任务的实机流式交互及真实 MCP Server 交互，尚无完整验收记录；总体 UI 满意不替代这些专项验证。
 - Vite 仍提示较大的主包／Monaco chunk。Monaco 使用本地资源并按需加载。

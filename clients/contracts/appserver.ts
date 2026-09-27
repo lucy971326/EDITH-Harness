@@ -160,15 +160,21 @@ export interface MCPServerView {
   argCount: number;
   envKeys: string[];
   headerKeys: string[];
+  oauthClientId?: string;
+  oauthClientIdMetadataUrl?: string;
+  oauthClientSecretConfigured: boolean;
+  oauthRedirectUrl?: string;
+  hasOAuthCredentials: boolean;
   includeTools: string[];
   excludeTools: string[];
-  status: 'saved' | 'connected' | 'failed' | 'invalid' | 'disabled';
+  status: 'saved' | 'connected' | 'failed' | 'invalid' | 'disabled' | 'auth-required' | 'insufficient-scope';
   error?: string;
   tools: string[];
 }
 
 export interface MCPSettingsView {
   revision: string;
+  projectVersion: string;
   global: MCPServerView[];
   project: MCPServerView[];
   globalError?: string;
@@ -189,8 +195,21 @@ export interface MCPSaveInput {
   cwd?: string;
   url?: string;
   headers?: Record<string, string | null>;
+  oauthClientId?: string;
+  oauthClientIdMetadataUrl?: string;
+  oauthClientSecretEnv?: string;
+  oauthRedirectUrl?: string;
   includeTools?: string[];
   excludeTools?: string[];
+}
+
+export interface MCPOAuthTaskView {
+  id: string;
+  url?: string;
+  state: 'preparing' | 'waiting' | 'connecting' | 'complete' | 'failed' | 'cancelled';
+  message?: string;
+  reason?: 'client-registration-required';
+  storage?: 'file' | 'memory';
 }
 
 export interface ServerMethods {
@@ -199,6 +218,11 @@ export interface ServerMethods {
 	'mcp/delete': { params: { name: string; revision: string }; result: MCPSettingsView };
 	'mcp/retry': { params: { name: string }; result: MCPSettingsView };
 	'mcp/resetInvalid': { params: { revision: string }; result: MCPSettingsView };
+	'mcp/auth/start': { params: { workspace: string; scope: 'global' | 'project'; name: string }; result: MCPOAuthTaskView };
+	'mcp/auth/status': { params: { id: string }; result: MCPOAuthTaskView };
+	'mcp/auth/cancel': { params: { id: string }; result: MCPOAuthTaskView };
+	'mcp/auth/logout': { params: { workspace: string; scope: 'global' | 'project'; name: string }; result: MCPSettingsView };
+	'mcp/auth/trustProject': { params: { workspace: string; version: string }; result: Record<string, never> };
   'hooks/read': { params: { workspace: string }; result: HookView };
   'hooks/save': { params: { scope: 'global' | 'project'; workspace: string; hash: string; hooks: HookConfig[] }; result: HookView };
   'hooks/trust': { params: { workspace: string; hash: string }; result: HookView };

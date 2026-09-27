@@ -29,32 +29,41 @@ type configFile struct {
 
 // 数据。一条 MCP Server 的静态配置。
 type serverConfig struct {
-	Type         string            `json:"type"`
-	Enabled      *bool             `json:"enabled,omitempty"`
-	Command      string            `json:"command,omitempty"`
-	Args         []string          `json:"args,omitempty"`
-	Env          map[string]string `json:"env,omitempty"`
-	CWD          string            `json:"cwd,omitempty"`
-	URL          string            `json:"url,omitempty"`
-	Headers      map[string]string `json:"headers,omitempty"`
-	IncludeTools *[]string         `json:"includeTools,omitempty"`
-	ExcludeTools []string          `json:"excludeTools,omitempty"`
+	Type                     string            `json:"type"`
+	Enabled                  *bool             `json:"enabled,omitempty"`
+	Command                  string            `json:"command,omitempty"`
+	Args                     []string          `json:"args,omitempty"`
+	Env                      map[string]string `json:"env,omitempty"`
+	CWD                      string            `json:"cwd,omitempty"`
+	URL                      string            `json:"url,omitempty"`
+	Headers                  map[string]string `json:"headers,omitempty"`
+	OAuthClientID            string            `json:"oauthClientId,omitempty"`
+	OAuthClientIDMetadataURL string            `json:"oauthClientIdMetadataUrl,omitempty"`
+	OAuthClientSecretEnv     string            `json:"oauthClientSecretEnv,omitempty"`
+	OAuthRedirectURL         string            `json:"oauthRedirectUrl,omitempty"`
+	IncludeTools             *[]string         `json:"includeTools,omitempty"`
+	ExcludeTools             []string          `json:"excludeTools,omitempty"`
 }
 
 func (c serverConfig) isEnabled() bool { return c.Enabled == nil || *c.Enabled }
 
 // 数据。一条已确定来源目录、变量和 transport 的 Server 配置。
 type serverSpec struct {
-	Name         string
-	Transport    string
-	Command      string
-	Args         []string
-	Env          map[string]string
-	CWD          string
-	URL          string
-	Headers      map[string]string
-	IncludeTools *[]string
-	ExcludeTools []string
+	Name                     string
+	Transport                string
+	Command                  string
+	Args                     []string
+	Env                      map[string]string
+	CWD                      string
+	URL                      string
+	ConfigURL                string // 凭据身份使用原始配置，变量缺失时仍能清理旧凭据。
+	Headers                  map[string]string
+	OAuthClientID            string
+	OAuthClientIDMetadataURL string
+	OAuthClientSecretEnv     string
+	OAuthRedirectURL         string
+	IncludeTools             *[]string
+	ExcludeTools             []string
 }
 
 func readConfig(path string) (configFile, bool, error) {
@@ -155,18 +164,26 @@ func normalizeServer(name string, config serverConfig, baseDir string) (serverSp
 	}
 
 	spec := serverSpec{
-		Name:         name,
-		Transport:    transport,
-		Command:      command,
-		Args:         args,
-		Env:          environment,
-		CWD:          cwd,
-		URL:          endpoint,
-		Headers:      headers,
-		IncludeTools: copyStringList(config.IncludeTools),
-		ExcludeTools: append([]string(nil), config.ExcludeTools...),
+		Name:                     name,
+		Transport:                transport,
+		Command:                  command,
+		Args:                     args,
+		Env:                      environment,
+		CWD:                      cwd,
+		URL:                      endpoint,
+		ConfigURL:                config.URL,
+		Headers:                  headers,
+		OAuthClientID:            config.OAuthClientID,
+		OAuthClientIDMetadataURL: config.OAuthClientIDMetadataURL,
+		OAuthClientSecretEnv:     config.OAuthClientSecretEnv,
+		OAuthRedirectURL:         config.OAuthRedirectURL,
+		IncludeTools:             copyStringList(config.IncludeTools),
+		ExcludeTools:             append([]string(nil), config.ExcludeTools...),
 	}
 	if transport == transportStdio {
+		if config.OAuthClientID != "" || config.OAuthClientIDMetadataURL != "" || config.OAuthClientSecretEnv != "" || config.OAuthRedirectURL != "" {
+			return serverSpec{}, fmt.Errorf("mcp: stdio server %q cannot configure OAuth", name)
+		}
 		if command == "" {
 			return serverSpec{}, fmt.Errorf("mcp: stdio server %q needs command", name)
 		}
