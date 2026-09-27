@@ -8,10 +8,12 @@ export function UserMessage({
   text,
   workspace,
   onOpenFile,
+  skillNames,
 }: {
   text: string;
   workspace?: string | null;
   onOpenFile?: (location: FileLocation) => void;
+  skillNames?: string[];
 }) {
   const decoded = decodeReferences(text);
   let assistantReferenceNumber = 0;
@@ -30,7 +32,8 @@ export function UserMessage({
         </div>
       )}
       {decoded.text.trim() && (
-        <MessageMarkdown text={decoded.text} workspace={workspace} onOpenFile={onOpenFile} />
+        <MessageMarkdown text={decoded.text} workspace={workspace} onOpenFile={onOpenFile}
+          skillNames={skillNames} />
       )}
     </>
   );

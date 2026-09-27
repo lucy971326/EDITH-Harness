@@ -44,6 +44,7 @@ export {
   Circle,
   Command,
   BookOpen,
+  BookOpenCheck,
   WifiOff,
   RefreshCw,
   GitCompareArrows,

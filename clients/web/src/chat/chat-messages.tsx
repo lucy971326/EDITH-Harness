@@ -178,6 +178,7 @@ export function ChatMessages({
   onOpenFile,
   onOpenDiff,
   onOpenSubagent,
+  skillNames = [],
   onAddReference,
   pendingReferences = noPendingReferences,
   children,
@@ -192,6 +193,7 @@ export function ChatMessages({
   onOpenFile?: (location: FileLocation) => void;
   onOpenDiff?: (runID: string, summary: RunDiffSummary) => void;
   onOpenSubagent?: (taskID: string) => void;
+  skillNames?: string[];
   onAddReference?: (reference: ContextReference) => void;
   pendingReferences?: ReferenceAttachment[];
   children?: ReactNode;
@@ -291,6 +293,7 @@ export function ChatMessages({
               onOpenFile={onOpenFile}
               onOpenDiff={onOpenDiff}
               onOpenSubagent={onOpenSubagent}
+              skillNames={skillNames}
               onInspect={() => {
                 follow.current = false;
                 userScroll.current = false;

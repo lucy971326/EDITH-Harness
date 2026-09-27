@@ -179,6 +179,7 @@ function WorkProcessComponent({
   onOpenFile,
   onOpenDiff,
   onOpenSubagent,
+  skillNames,
 }: {
   turn: ChatTurn;
   onInspect: () => void;
@@ -190,6 +191,7 @@ function WorkProcessComponent({
   onOpenFile?: (location: FileLocation) => void;
   onOpenDiff?: (runID: string, summary: RunDiffSummary) => void;
   onOpenSubagent?: (taskID: string) => void;
+  skillNames?: string[];
 }) {
   const status = turn.run?.status;
   const [open, setOpen] = useState(status !== "success");
@@ -216,6 +218,7 @@ function WorkProcessComponent({
                   text={promptText}
                   workspace={workspace}
                   onOpenFile={onOpenFile}
+                  skillNames={skillNames}
                 />
               </div>
             )}
@@ -334,6 +337,7 @@ function WorkProcessComponent({
                         text={group.text}
                         workspace={workspace}
                         onOpenFile={onOpenFile}
+                        skillNames={skillNames}
                       />
                     ) : group.kind === "text" ? (
                       <MessageMarkdown

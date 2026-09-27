@@ -8,13 +8,12 @@ import {
   type RefObject,
 } from "react";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ArrowUp, BookOpen, Command, Square, X, Plus, FileText, Folder } from "../icons";
+import { ArrowUp, BookOpenCheck, Command, Square, X, Plus, FileText, Folder } from "../icons";
 import type { ContextReference, ReferenceAttachment } from "./context-references";
 import { ContextReferenceTag } from "./context-reference-tags";
 import { ModelMenu, type ModelSelection } from "../components/model-menu";
@@ -22,6 +21,7 @@ import { PermissionMenu } from "../components/permission-menu";
 import type { PermissionModeChoice } from "../../../contracts/approvals.ts";
 import type { PermissionMode } from "../../../contracts/harness.ts";
 import { AgentMenu } from "../components/agent-menu";
+import { SkillEditor, type SkillEditorHandle } from "./skill-editor";
 import type { ModelChoice, PathSearchResult } from "../../../contracts/appserver.ts";
 import type {
   AgentView,
@@ -180,7 +180,7 @@ export function Composer({
   onAddReference?: (reference: ContextReference) => void;
   onRemoveReference?: (id: string) => void;
 }) {
-  const input = useRef<HTMLTextAreaElement>(null);
+  const input = useRef<SkillEditorHandle>(null);
   const imageInput = useRef<HTMLInputElement>(null);
   const suggestionList = useRef<HTMLDivElement>(null);
   const [cursor, setCursor] = useState(draft.length);
@@ -272,23 +272,16 @@ export function Composer({
     },
   }));
 
-  function replaceTrigger(value: string, current: ComposerTrigger) {
-    const next = `${draft.slice(0, current.start)}${value}${draft.slice(current.end)}`;
-    const nextCursor = current.start + value.length;
-    onDraftChange(next);
-    setCursor(nextCursor);
+  function replaceTrigger(value: string, current: ComposerTrigger, skillName?: string) {
+    input.current?.replace(current.start, current.end, value, skillName);
     setDismissedTrigger("");
-    requestAnimationFrame(() => {
-      input.current?.focus();
-      input.current?.setSelectionRange(nextCursor, nextCursor);
-    });
   }
 
   async function selectSuggestion(item: Suggestion) {
     if (!trigger || commandBusy) return;
     setDismissedTrigger(triggerKey);
     if (item.kind === "skill") {
-      replaceTrigger(`$${item.name} `, trigger);
+      replaceTrigger(`$${item.name} `, trigger, item.name);
       return;
     }
     if (item.kind === "path") {
@@ -324,27 +317,36 @@ export function Composer({
         <div className="composer">
           {showSuggestions && (
             <div ref={suggestionList} className="suggestions" role="listbox" aria-label="输入候选">
-              {suggestions.map((item, index) => (
-                <button
-                  key={`${item.kind}:${item.name}`}
-                  type="button"
-                  role="option"
-                  aria-selected={index === activeSuggestion}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => void selectSuggestion(item)}
-                >
-                  {item.kind === "command" ? <Command /> : item.kind === "skill" ? <BookOpen /> :
-                    item.reference.kind === "directory" ? <Folder /> : <FileText />}
-                  <span>
-                    <strong>
-                      {item.kind === "command" ? "/" : item.kind === "skill" ? "$" : ""}
-                      {item.name}
-                    </strong>
-                    <small>{item.description}</small>
-                  </span>
-                  {item.kind === "skill" && <small>{item.scope}</small>}
-                </button>
-              ))}
+              {(["command", "skill", "path"] as const).map((kind) => {
+                const group = suggestions.map((item, index) => ({ item, index }))
+                  .filter(({ item }) => item.kind === kind);
+                if (!group.length) return null;
+                return <div key={kind} className="suggestion-group" role="group"
+                  aria-label={kind === "command" ? "命令" : kind === "skill" ? "Skills" : "文件与目录"}>
+                  <div className="suggestion-heading" aria-hidden="true">
+                    {kind === "command" ? "命令" : kind === "skill" ? "Skills" : "文件与目录"}
+                  </div>
+                  {group.map(({ item, index }) => <button
+                    key={`${item.kind}:${item.name}`}
+                    type="button"
+                    role="option"
+                    aria-selected={index === activeSuggestion}
+                    onMouseEnter={() => setActiveSuggestion(index)}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => void selectSuggestion(item)}
+                  >
+                    <span className={`suggestion-icon${item.kind === "skill" ? " suggestion-skill-icon" : ""}`}>
+                      {item.kind === "command" ? <Command /> : item.kind === "skill" ? <BookOpenCheck /> :
+                        item.reference.kind === "directory" ? <Folder /> : <FileText />}
+                    </span>
+                    <span className="suggestion-copy">
+                      <strong>{item.name}</strong>
+                      <small>{item.description}</small>
+                    </span>
+                    {item.kind === "skill" && <small className="suggestion-scope">{item.scope}</small>}
+                  </button>)}
+                </div>;
+              })}
               {showPathSuggestions && (!search || search.loading || search.error ||
                 search.entries.length === 0 || search.truncated) &&
                 <div className="suggestion-status" role="status">
@@ -374,21 +376,20 @@ export function Composer({
               assistantNumber={item.assistantNumber}
               onRemove={() => onRemoveReference?.(item.id)} />)}
           </div>}
-          <Textarea
+          <SkillEditor
             ref={input}
-            aria-label="消息输入"
+            names={skills.map((skill) => skill.name)}
             placeholder={running ? "发送以调整当前任务" : "说说你的想法"}
             value={draft}
-            onChange={(event) => {
-              setCursor(event.target.selectionStart);
+            onChange={(text, position) => {
+              setCursor(position);
               setDismissedTrigger("");
-              onDraftChange(event.target.value);
+              onDraftChange(text);
             }}
-            onSelect={(event) => setCursor(event.currentTarget.selectionStart)}
-            onCompositionStart={() => setComposing(true)}
-            onCompositionEnd={(event) => {
-              setComposing(false);
-              setCursor(event.currentTarget.selectionStart);
+            onCursor={setCursor}
+            onCompositionChange={(active, position) => {
+              setComposing(active);
+              setCursor(position);
             }}
             onKeyDown={(event) => {
               if (composing || event.nativeEvent.isComposing || event.keyCode === 229) return;
@@ -420,13 +421,7 @@ export function Composer({
                 onSend();
               }
             }}
-            onPaste={(event) => {
-              const files = Array.from(event.clipboardData.files);
-              if (files.length) {
-                event.preventDefault();
-                onAddImages(files);
-              }
-            }}
+            onPasteImages={onAddImages}
           />
           <div className="composer-toolbar">
             <div className="composer-left">

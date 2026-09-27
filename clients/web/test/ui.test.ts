@@ -41,6 +41,9 @@ let shouldClearSubmittedDraft: (
   sessionID: string,
   submittedVersion: number,
 ) => boolean;
+let skillParts: typeof import("../src/chat/skill-mentions.tsx").skillParts;
+let replaceSkillText: typeof import("../src/chat/skill-mentions.tsx").replaceSkillText;
+let UserMessage: ComponentType<Record<string, unknown>>;
 
 before(async () => {
   server = await createServer({
@@ -56,6 +59,8 @@ before(async () => {
   ({ chatSendParams, shouldClearSubmittedDraft } =
     await server.ssrLoadModule("/src/App.tsx"));
   ({ providerDraft } = await server.ssrLoadModule("/src/settings/model-settings.tsx"));
+  ({ skillParts, replaceSkillText } = await server.ssrLoadModule("/src/chat/skill-mentions.tsx"));
+  ({ UserMessage } = await server.ssrLoadModule("/src/chat/user-message.tsx"));
 });
 after(async () => {
   await server?.close();
@@ -237,11 +242,42 @@ test("slash offers commands and skills; dollar offers only skills", () => {
     commands: [{ name: "compact", description: "压缩对话" }],
   };
   const slash = renderComposer({ ...catalog, draft: "/" });
-  assert.match(slash, /\/compact/);
-  assert.match(slash, /\$review/);
+  assert.match(slash, /<strong>compact<\/strong><small>压缩对话<\/small>/);
+  assert.match(slash, /<strong>review<\/strong><small>审查代码<\/small>/);
+  assert.doesNotMatch(slash, /<strong>[/$]/);
   const dollar = renderComposer({ ...catalog, draft: "$" });
-  assert.doesNotMatch(dollar, /\/compact/);
-  assert.match(dollar, /\$review/);
+  assert.doesNotMatch(dollar, /<strong>compact<\/strong>/);
+  assert.match(dollar, /<strong>review<\/strong><small>审查代码<\/small>/);
+});
+
+test("selected skills remain plain $name text while exact known names become tokens", () => {
+  const names = new Set(["archify", "skill-creator"]);
+  const draft = replaceSkillText("先做 后说", 3, 3, "$archify ");
+  assert.equal(draft, "先做 $archify 后说");
+  assert.deepEqual(skillParts(draft, names), [
+    { kind: "text", value: "先做 " },
+    { kind: "skill", name: "archify", value: "$archify" },
+    { kind: "text", value: " 后说" },
+  ]);
+  assert.equal(replaceSkillText(draft, 3, 11, ""), "先做  后说");
+  assert.deepEqual(skillParts("$archify $skill-creator $missing $HOME $50", names)
+    .filter((part) => part.kind === "skill").map((part) => part.name),
+  ["archify", "skill-creator"]);
+});
+
+test("user history decorates only available skills outside code and links", () => {
+  const text = "$archify and `$archify` and $gone";
+  const available = renderToStaticMarkup(createElement(UserMessage, {
+    text, skillNames: ["archify"],
+  }));
+  assert.match(available, /class="skill-token"/);
+  assert.match(available, /<code>\$archify<\/code>/);
+  assert.match(available, /\$gone/);
+  const unavailable = renderToStaticMarkup(createElement(UserMessage, {
+    text, skillNames: [],
+  }));
+  assert.doesNotMatch(unavailable, /class="skill-token"/);
+  assert.match(unavailable, /\$archify/);
 });
 
 test("sidebar highlights the selected session and disables project actions offline", () => {

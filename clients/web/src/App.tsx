@@ -1269,6 +1269,7 @@ export default function App() {
                   forkingEntryID={forkingEntryID || undefined}
                   forkDisabled={!synchronized || !!currentRun}
                   workspace={selected?.settings.workspace}
+                  skillNames={skills.map((skill) => skill.name)}
                   onOpenFile={(location) => {
                     const workspace = selected?.settings.workspace;
                     if (!workspace) return;

@@ -70,6 +70,9 @@
   --ring: #5266d6;
   --ring-foreground: #ffffff;
   --link: #4058c9;
+  --skill-foreground: #6846a5;
+  --skill-background: #f4f0fb;
+  --skill-border: #e6dcf5;
   --sidebar: #f6f6f7;
   --bubble: #f1f2f4;
   --tool: #f7f7f8;
@@ -171,6 +174,9 @@
   --ring: #9aa8ff;
   --ring-foreground: #191a1d;
   --link: #a4b0ff;
+  --skill-foreground: #c9b1f1;
+  --skill-background: #30283e;
+  --skill-border: #4a3b62;
   --sidebar: #16171a;
   --bubble: #292b32;
   --tool: #202126;
@@ -1226,20 +1232,50 @@
   border-color: var(--border-strong);
   box-shadow: var(--shadow-composer);
 }
-.composer textarea {
+.composer .skill-editor {
   min-height: calc(var(--control-compact) * 2);
   max-height: 200px;
-  resize: none;
-  border: none;
-  box-shadow: none;
+  overflow-y: auto;
   padding: var(--space-2);
   font-size: var(--font-size-reading);
   line-height: var(--leading-body);
-  background: transparent;
-}
-.composer textarea:focus-visible {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   outline: none;
-  box-shadow: none;
+}
+.skill-editor[data-empty="true"]::before {
+  content: attr(data-placeholder);
+  color: var(--muted-foreground);
+  pointer-events: none;
+}
+.skill-token {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: 100%;
+  min-height: 24px;
+  padding: 1px var(--space-2);
+  border: 1px solid var(--skill-border);
+  border-radius: var(--radius-control);
+  background: var(--skill-background);
+  color: var(--skill-foreground);
+  font-size: var(--font-size-label);
+  font-weight: 550;
+  line-height: var(--leading-label);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.skill-token > svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.skill-token > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.skill-editor .skill-token {
+  user-select: all;
 }
 .composer-toolbar {
   display: flex;
@@ -1739,23 +1775,35 @@
 }
 .suggestions {
   position: absolute;
-  bottom: calc(100% + 8px);
+  bottom: calc(100% + var(--space-2));
   left: 0;
   width: 100%;
   padding: var(--space-2);
-  max-height: 280px;
+  max-height: min(360px, 55vh);
   overflow-y: auto;
   z-index: 8;
+}
+.suggestion-group + .suggestion-group {
+  border-top: 1px solid var(--border);
+  margin-top: var(--space-1);
+  padding-top: var(--space-1);
+}
+.suggestion-heading {
+  padding: var(--space-1) var(--space-2);
+  color: var(--muted-foreground);
+  font-size: var(--font-size-caption);
+  font-weight: 550;
 }
 .suggestions button {
   display: flex;
   gap: var(--space-2);
   align-items: center;
   width: 100%;
-  padding: var(--space-3);
+  min-height: 40px;
+  padding: var(--space-1) var(--space-2);
   text-align: left;
   font-size: var(--font-size-label);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   border: 0;
   color: var(--foreground);
   background: transparent;
@@ -1764,37 +1812,59 @@
 .suggestions button[aria-selected="true"] {
   background: var(--accent);
 }
-.suggestions button > svg {
-  width: 16px;
-  height: 16px;
+.suggestions button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+.suggestion-icon {
+  display: grid;
+  place-items: center;
+  width: var(--control-compact);
+  height: var(--control-compact);
   flex: 0 0 auto;
+  border-radius: var(--radius-control);
+  background: var(--muted);
   color: var(--muted-foreground);
 }
-.suggestions button > span {
+.suggestion-icon svg {
+  width: var(--icon-size);
+  height: var(--icon-size);
+}
+.suggestion-skill-icon {
+  background: var(--skill-background);
+  color: var(--skill-foreground);
+}
+.suggestion-copy {
   display: flex;
   align-items: baseline;
   flex: 1;
   gap: var(--space-2);
   min-width: 0;
-  white-space: nowrap;
 }
-.suggestions strong {
+.suggestion-copy strong {
+  flex: 0 0 auto;
+  max-width: 100%;
   min-width: 0;
   font-weight: 550;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.suggestions small {
+.suggestion-copy small,
+.suggestion-scope {
   color: var(--muted-foreground);
   font-size: var(--font-size-caption);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.suggestions button > span > small {
-  flex: 1;
+.suggestion-copy small {
+  flex: 1 1 0;
   min-width: 0;
+}
+.suggestion-scope {
+  flex: none;
+  padding: 0 var(--space-1);
 }
 .back-latest {
   position: absolute;
