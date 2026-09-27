@@ -217,7 +217,8 @@ func newNetworkServices(t *testing.T, data string) (func() error, *appserver.Ser
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = skillService.Register(skillsfilesystem.New(machineService, files))
+	filesystemSkills := skillsfilesystem.New(machineService, files, builtin)
+	err = skillService.Register(filesystemSkills)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +240,7 @@ func newNetworkServices(t *testing.T, data string) (func() error, *appserver.Ser
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = server.BindSkills(skillService)
+	err = server.BindSkills(skillService, filesystemSkills)
 	if err != nil {
 		t.Fatal(err)
 	}

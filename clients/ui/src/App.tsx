@@ -2,6 +2,7 @@ import { Approvals } from "./chat/approvals";
 import { ApprovalSettingsPanel } from "./settings/approval-settings";
 import { HookSettingsPanel } from "./settings/hook-settings";
 import { MCPSettingsPanel } from "./settings/mcp-settings";
+import { SkillSettingsPanel } from "./settings/skill-settings";
 import { ModelSettingsPanel } from "./settings/model-settings";
 import { ArchivedSettingsPanel } from "./settings/archived-settings";
 import {
@@ -243,6 +244,7 @@ export default function App({ platform }: { platform: Platform }) {
   const selectGeneration = useRef(0);
   const listGeneration = useRef(0);
   const modelGeneration = useRef(0);
+  const skillGeneration = useRef(0);
 
   const connected = connection === "connected";
   const sidebarSpace = sidebar ? sidebarWidth : 0;
@@ -682,9 +684,11 @@ export default function App({ platform }: { platform: Platform }) {
   }
 
   async function loadSkills(client: RPCClient, sessionID: string) {
+    const generation = ++skillGeneration.current;
     try {
       const result = await client.skills(sessionID);
       if (
+        generation !== skillGeneration.current ||
         client !== clientRef.current ||
         !client.connected ||
         selectedIDRef.current !== sessionID
@@ -692,7 +696,7 @@ export default function App({ platform }: { platform: Platform }) {
         return;
       setSkills(result.skills);
     } catch (error) {
-      if (client !== clientRef.current || selectedIDRef.current !== sessionID)
+      if (generation !== skillGeneration.current || client !== clientRef.current || selectedIDRef.current !== sessionID)
         return;
       setSkills([]);
       setNotice(formatRPCError(error, "Skill 候选加载失败"));
@@ -1098,6 +1102,13 @@ export default function App({ platform }: { platform: Platform }) {
           setPanel(true);
           navigate("/");
           setFileOpenRequest({ path, workspace, requestID: ++fileOpenRequestID.current });
+        }} />,
+      skillSettings: (onStateChange) => <SkillSettingsPanel client={approvalClient}
+        currentWorkspace={selected?.settings.workspace ?? ""} onStateChange={onStateChange}
+        onChanged={() => {
+          const client = clientRef.current;
+          const sessionID = selectedIDRef.current;
+          if (client?.connected && sessionID) void loadSkills(client, sessionID);
         }} />,
       approvalSettings: (onStateChange) => <ApprovalSettingsPanel client={approvalClient}
         models={models} modelError={modelError} onStateChange={onStateChange}

@@ -123,7 +123,8 @@ func Open(dataDir string) (backend *Backend, result error) {
 	if err != nil {
 		return nil, err
 	}
-	err = skillService.Register(skillsfilesystem.New(machineService, files))
+	filesystemSkills := skillsfilesystem.New(machineService, files, builtinSkills)
+	err = skillService.Register(filesystemSkills)
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +195,7 @@ func Open(dataDir string) (backend *Backend, result error) {
 	if err != nil {
 		return nil, err
 	}
-	err = server.BindSkills(skillService)
+	err = server.BindSkills(skillService, filesystemSkills)
 	if err != nil {
 		return nil, err
 	}

@@ -242,11 +242,56 @@ func (m *Local) WriteFileIfUnchanged(path string, data []byte, expectedHash stri
 	if !strings.EqualFold(current.Hash, expectedHash) {
 		return "", fmt.Errorf("machine-local: write %q: %w", path, machine.ErrFileConflict)
 	}
-	err = os.WriteFile(path, data, 0o644)
+	err = replaceFile(path, data)
 	if err != nil {
 		return "", fmt.Errorf("machine-local: write %q: %w", path, err)
 	}
 	return fileHash(data), nil
+}
+
+// 版本检查成功后用同目录临时文件替换，写入失败时保留原文件。
+func replaceFile(path string, data []byte) error {
+	target, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return err
+	}
+	info, err := os.Stat(target)
+	if err != nil {
+		return err
+	}
+	dir := filepath.Dir(target)
+	temporary, err := os.CreateTemp(dir, ".harness-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(temporary.Name())
+
+	err = temporary.Chmod(info.Mode().Perm())
+	if err == nil {
+		_, err = temporary.Write(data)
+	}
+	if err == nil {
+		err = temporary.Sync()
+	}
+	closeErr := temporary.Close()
+	if err != nil {
+		return err
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	if err := os.Rename(temporary.Name(), target); err != nil {
+		return err
+	}
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	directory, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	syncErr := directory.Sync()
+	return errors.Join(syncErr, directory.Close())
 }
 
 func (m *Local) RemoveFileIfUnchanged(path string, expectedHash string) error {

@@ -1,5 +1,5 @@
 import type { ComponentProps, ReactNode } from "react";
-import { Palette, Bot, Shield, Webhook, Brain, Archive, Server } from "../icons";
+import { Palette, Bot, Shield, Webhook, Brain, Archive, Server, BookOpenCheck } from "../icons";
 import { AgentSettingsPanel } from "./agent-settings";
 import { AppearanceSettingsPanel } from "./appearance-settings";
 import type { SettingsDraftState } from "./types";
@@ -18,6 +18,7 @@ export type SettingsContentProps = Omit<ComponentProps<typeof AgentSettingsPanel
     hookSettings: SettingsSection["render"];
     modelSettings: SettingsSection["render"];
     mcpSettings: SettingsSection["render"];
+    skillSettings: SettingsSection["render"];
     archivedSettings: SettingsSection["render"];
   };
 
@@ -31,6 +32,7 @@ export function createSettingsSections(props: SettingsContentProps): SettingsSec
         agents={props.agents} kinds={props.kinds} tools={props.tools} loading={props.loading}
         error={props.error} saving={props.saving} onReload={props.onReload}
         onSave={props.onSave} onDelete={props.onDelete} onStateChange={onStateChange} /> },
+    { id: "skills", label: "Skills", icon: BookOpenCheck, render: props.skillSettings },
     { id: "models", label: "模型与供应商", icon: Brain, render: props.modelSettings },
     { id: "approvals", label: "智能审批", icon: Shield, render: props.approvalSettings },
     { id: "hooks", label: "Hooks", icon: Webhook, render: props.hookSettings },

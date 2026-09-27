@@ -33,6 +33,7 @@ type Server struct {
 	mcp             *mcp.Provider
 	agents          *agents.Service
 	skills          skills.Skills
+	skillSettings   skills.Settings
 	commands        commands.Commands
 	filesystem      machine.FileSystem
 	pathSearcher    machine.PathSearcher

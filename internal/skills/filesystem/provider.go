@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"unicode/utf8"
 
 	"gopkg.in/yaml.v3"
@@ -23,6 +24,8 @@ var skillNamePattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 type Provider struct {
 	machine machine.Machine
 	files   *persist.Files
+	system  kernskills.Provider
+	mu      sync.Mutex
 }
 
 // newProvider 造一个文件系统 Skill Provider。
@@ -38,29 +41,14 @@ func (p *Provider) List(workspace string) ([]kernskills.Skill, error) {
 	if p == nil || p.machine == nil || p.files == nil {
 		return nil, fmt.Errorf("skills-filesystem: missing dependency")
 	}
-	home, err := p.machine.HomeDir()
-	if err != nil {
-		return nil, fmt.Errorf("skills-filesystem: home directory: %w", err)
-	}
-	if strings.TrimSpace(home) == "" {
-		return nil, fmt.Errorf("skills-filesystem: home directory is empty")
-	}
-
-	roots := make([]root, 0, 4)
-	if workspace != "" {
-		roots = append(roots,
-			root{path: p.machine.ResolvePath(workspace, ".harness/skills"), scope: kernskills.ScopeWorkspace},
-			root{path: p.machine.ResolvePath(workspace, ".agents/skills"), scope: kernskills.ScopeWorkspace},
-		)
-	}
-	userSkills, err := p.files.Scope("skills")
+	roots, err := p.roots(workspace)
 	if err != nil {
 		return nil, err
 	}
-	roots = append(roots,
-		root{files: userSkills, scope: kernskills.ScopeUser},
-		root{path: p.machine.ResolvePath(home, ".agents/skills"), scope: kernskills.ScopeUser},
-	)
+	disabled, err := p.disabled()
+	if err != nil {
+		return nil, err
+	}
 
 	found := make(map[string]kernskills.Skill)
 	for _, candidateRoot := range roots {
@@ -76,6 +64,12 @@ func (p *Provider) List(workspace string) ([]kernskills.Skill, error) {
 		})
 		for _, entry := range entries {
 			if !entry.IsDir {
+				continue
+			}
+			if candidateRoot.source == "personal" && disabled[entry.Name] {
+				if _, exists := found[entry.Name]; !exists {
+					found[entry.Name] = kernskills.Skill{Name: entry.Name}
+				}
 				continue
 			}
 			skill, ok, err := p.readSkill(candidateRoot, entry.Name)
@@ -94,6 +88,9 @@ func (p *Provider) List(workspace string) ([]kernskills.Skill, error) {
 
 	out := make([]kernskills.Skill, 0, len(found))
 	for _, skill := range found {
+		if skill.Location == "" {
+			continue
+		}
 		out = append(out, skill)
 	}
 	sort.SliceStable(out, func(i, j int) bool {
@@ -104,9 +101,35 @@ func (p *Provider) List(workspace string) ([]kernskills.Skill, error) {
 
 // 数据。一个待扫描的 Skill 根及其作用域。
 type root struct {
-	path  string
-	files *persist.Files
-	scope kernskills.Scope
+	path   string
+	files  *persist.Files
+	scope  kernskills.Scope
+	source string
+}
+
+func (p *Provider) roots(workspace string) ([]root, error) {
+	home, err := p.machine.HomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("skills-filesystem: home directory: %w", err)
+	}
+	if strings.TrimSpace(home) == "" {
+		return nil, fmt.Errorf("skills-filesystem: home directory is empty")
+	}
+	roots := make([]root, 0, 4)
+	if workspace != "" {
+		roots = append(roots,
+			root{path: p.machine.ResolvePath(workspace, ".harness/skills"), scope: kernskills.ScopeWorkspace, source: "project"},
+			root{path: p.machine.ResolvePath(workspace, ".agents/skills"), scope: kernskills.ScopeWorkspace, source: "project-agents"},
+		)
+	}
+	userSkills, err := p.files.Scope("skills")
+	if err != nil {
+		return nil, err
+	}
+	return append(roots,
+		root{files: userSkills, scope: kernskills.ScopeUser, source: "personal"},
+		root{path: p.machine.ResolvePath(home, ".agents/skills"), scope: kernskills.ScopeUser, source: "agents"},
+	), nil
 }
 
 type rootEntry struct {
@@ -236,6 +259,8 @@ func validateDescription(description string) error {
 }
 
 // New 创建文件系统 Skill 来源。
-func New(machineService machine.Machine, files *persist.Files) *Provider {
-	return newProvider(machineService, files)
+func New(machineService machine.Machine, files *persist.Files, system kernskills.Provider) *Provider {
+	provider := newProvider(machineService, files)
+	provider.system = system
+	return provider
 }

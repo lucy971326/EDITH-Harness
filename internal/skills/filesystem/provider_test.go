@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"harness/internal/machine"
+	machinelocal "harness/internal/machine/local"
 	"harness/internal/persist"
 	kernskills "harness/internal/skills"
 )
@@ -144,6 +145,134 @@ func TestProviderUsesCurrentMachinePaths(t *testing.T) {
 		t.Fatalf("List() = %#v", got)
 	}
 }
+
+func TestSettingsPersonalLifecycle(t *testing.T) {
+	home := t.TempDir()
+	files, err := persist.NewFiles(filepath.Join(home, ".harness"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	local, err := machinelocal.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = local.Close() })
+	provider := newProvider(settingsTestMachine{FileSystem: local, home: home}, files)
+	source := "---\nname: review\ndescription: Review changes.\ncustom: keep\n---\n\n# Review\n"
+	created, err := provider.Save("review", source, "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(created.Content, "custom: keep") || created.Version == "" {
+		t.Fatalf("created = %#v", created)
+	}
+	if _, err := provider.Save("review", source, "", true); !errors.Is(err, kernskills.ErrConflict) {
+		t.Fatalf("duplicate create = %v", err)
+	}
+
+	asset := filepath.Join(home, ".harness", "skills", "review", "note.txt")
+	if err := os.WriteFile(asset, []byte("asset"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	writeSkill(t, filepath.Join(home, ".agents", "skills", "review"), "review", "fallback")
+	document, err := provider.ReadDocument("", "personal", "review")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(document.Resources) != 1 || document.Resources[0] != "note.txt" {
+		t.Fatalf("resources = %#v", document.Resources)
+	}
+	if err := provider.SetEnabled("review", false); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := provider.List(""); err != nil || len(got) != 0 {
+		t.Fatalf("disabled List = %#v, %v", got, err)
+	}
+	reopened := newProvider(settingsTestMachine{FileSystem: local, home: home}, files)
+	if got, err := reopened.List(""); err != nil || len(got) != 0 {
+		t.Fatalf("restarted List = %#v, %v", got, err)
+	}
+	if err := reopened.SetEnabled("review", true); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := reopened.List(""); err != nil || len(got) != 1 {
+		t.Fatalf("enabled List = %#v, %v", got, err)
+	}
+
+	if _, err := provider.Save("review", strings.Replace(source, "Review changes.", "Review again.", 1), "wrong", false); !errors.Is(err, kernskills.ErrConflict) {
+		t.Fatalf("stale save = %v", err)
+	}
+	if err := provider.Delete("review", "wrong"); !errors.Is(err, kernskills.ErrConflict) {
+		t.Fatalf("stale delete = %v", err)
+	}
+	if err := provider.SetEnabled("review", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := provider.Delete("review", document.Version); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(asset); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("asset after delete = %v", err)
+	}
+	if _, err := provider.Save("review", source, "", true); err != nil {
+		t.Fatalf("recreate after disabled delete = %v", err)
+	}
+	if got, err := provider.List(""); err != nil || len(got) != 1 {
+		t.Fatalf("recreated List = %#v, %v", got, err)
+	}
+}
+
+func TestSettingsCatalogKeepsBrokenAndShadowedSkills(t *testing.T) {
+	home := t.TempDir()
+	workspace := t.TempDir()
+	files, err := persist.NewFiles(filepath.Join(home, ".harness"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	local, err := machinelocal.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = local.Close() })
+	provider := newProvider(settingsTestMachine{FileSystem: local, home: home}, files)
+	writeSkill(t, filepath.Join(workspace, ".harness", "skills", "shared"), "shared", "project")
+	writeSkill(t, filepath.Join(home, ".harness", "skills", "shared"), "shared", "personal")
+	if err := os.MkdirAll(filepath.Join(workspace, ".harness", "skills", "missing"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeSkill(t, filepath.Join(home, ".harness", "skills", "missing"), "missing", "personal")
+	writeRawSkill(t, filepath.Join(home, ".harness", "skills", "broken", "SKILL.md"), "not frontmatter")
+	items, err := provider.Catalog(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 5 {
+		t.Fatalf("Catalog = %#v", items)
+	}
+	if items[0].Name != "missing" || items[0].Error == "" || items[1].Source != "project" ||
+		items[2].Name != "broken" || items[2].Error == "" || items[3].Name != "missing" || items[3].Overridden ||
+		items[4].Name != "shared" || !items[4].Overridden {
+		t.Fatalf("Catalog = %#v", items)
+	}
+	broken, err := provider.ReadDocument(workspace, "personal", "broken")
+	if err != nil {
+		t.Fatal(err)
+	}
+	valid := "---\nname: broken\ndescription: Fixed.\n---\n# Fixed\n"
+	if _, err := provider.Save("broken", valid, broken.Version, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.ReadDocument(workspace, "unknown", "broken"); !errors.Is(err, kernskills.ErrNotFound) {
+		t.Fatalf("unknown source = %v", err)
+	}
+}
+
+type settingsTestMachine struct {
+	machine.FileSystem
+	home string
+}
+
+func (m settingsTestMachine) HomeDir() (string, error) { return m.home, nil }
 
 func newTestProvider(t *testing.T, dataDir string, m machine.Machine) *Provider {
 	t.Helper()

@@ -147,6 +147,22 @@ export interface HookView {
   lastError: string;
 }
 
+export interface SkillSettingsItem {
+  name: string;
+  description: string;
+  source: 'personal' | 'project' | 'project-agents' | 'agents' | 'system';
+  path: string;
+  enabled: boolean;
+  overridden: boolean;
+  error?: string;
+}
+
+export interface SkillDocument {
+  content: string;
+  version: string;
+  resources: string[];
+}
+
 export interface MCPServerView {
   name: string;
   scope: 'global' | 'project';
@@ -244,6 +260,11 @@ export interface ServerMethods {
   'agent/save': { params: AgentSaveParams; result: { agent: AgentView } };
   'agent/delete': { params: { agentID: string }; result: Record<string, never> };
   'skill/list': { params: { sessionID: string }; result: { skills: SkillView[] } };
+  'skill/settings/read': { params: { workspace: string }; result: { items: SkillSettingsItem[] } };
+  'skill/settings/document': { params: { workspace: string; source: SkillSettingsItem['source']; name: string }; result: SkillDocument };
+  'skill/settings/save': { params: { name: string; content: string; version: string; create: boolean }; result: SkillDocument };
+  'skill/settings/toggle': { params: { name: string; enabled: boolean }; result: Record<string, never> };
+  'skill/settings/delete': { params: { name: string; version: string }; result: Record<string, never> };
   'command/list': { params: Record<string, never>; result: { commands: CommandView[] } };
   'command/call': { params: { sessionID: string; name: string }; result: Record<string, never> };
   'fs/readFile': { params: { path: string }; result: { dataBase64: string; hash: string } };

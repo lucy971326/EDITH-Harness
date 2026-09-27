@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Skills 设置 · 交互原型</title>
+  <style>
+    /* 独立原型：这些颜色和尺寸对应现有公共 Token；正式页面直接复用应用 Token。 */
+    :root {
+      --background: #fff; --foreground: #202124; --sidebar: #f6f6f7;
+      --secondary: #e9eaed; --muted: #f7f7f8; --muted-foreground: #686b73;
+      --border: #e7e8eb; --input: #d4d6dc; --primary: #26272b;
+      --ring: #5266d6; --danger: #bc3434; --skill: #6846a5;
+      --skill-bg: #f4f0fb; --radius: 8px;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--foreground); background: var(--background); font: 14px/1.55 system-ui, "Noto Sans SC", sans-serif; }
+    button, input, textarea { font: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+    button:disabled { opacity: .5; cursor: default; }
+    .app { display: grid; grid-template-columns: 200px minmax(0, 1fr); min-height: 100vh; }
+    .rail { background: var(--sidebar); border-right: 1px solid var(--border); padding: 28px 14px; }
+    .rail h1 { margin: 24px 10px 18px; font-size: 18px; }
+    .back { color: var(--muted-foreground); background: none; border: 0; padding: 4px 10px; font-size: 12px; }
+    .rail-item { display: flex; align-items: center; width: 100%; min-height: 32px; padding: 5px 11px; border: 0; border-radius: 6px; text-align: left; color: #565962; background: transparent; font-size: 13px; }
+    .rail-item svg { width: 15px; height: 15px; margin-right: 7px; color: var(--skill); }
+    .rail-item.active { background: var(--secondary); color: var(--foreground); font-weight: 600; }
+    .main { width: min(100%, 1050px); margin: 0 auto; padding: 56px 56px 80px; }
+    .page-head, .detail-head, .section-head, .savebar, .fact, .row-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .page-head { margin-bottom: 26px; }
+    h2 { margin: 0; font-size: 20px; line-height: 1.35; }
+    h3 { margin: 0; font-size: 16px; line-height: 1.4; }
+    h4 { margin: 0; font-size: 13px; }
+    p { margin: 0; }
+    .hint { color: var(--muted-foreground); font-size: 12px; }
+    .demo { margin-top: 4px; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; border: 1px solid var(--border); border-radius: 6px; background: #fff; color: var(--foreground); padding: 5px 11px; font-size: 13px; white-space: nowrap; }
+    .btn:hover:not(:disabled) { background: var(--muted); }
+    .btn.primary { color: #fff; border-color: var(--primary); background: var(--primary); }
+    .btn.primary:hover:not(:disabled) { background: #424348; }
+    .btn.ghost { border-color: transparent; background: transparent; }
+    .btn.danger { color: var(--danger); }
+    .layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); align-items: start; gap: 30px; }
+    .catalog { border-right: 1px solid var(--border); padding-right: 14px; min-height: 520px; }
+    .search { width: 100%; height: 34px; border: 1px solid var(--input); border-radius: 6px; background: #fff; padding: 0 10px; margin-bottom: 18px; }
+    .group { margin: 0 0 17px; }
+    .group-title { margin: 0 0 5px 8px; color: var(--muted-foreground); font-size: 11px; font-weight: 600; }
+    .skill-item { display: flex; width: 100%; align-items: flex-start; gap: 8px; border: 0; border-radius: 6px; background: transparent; padding: 8px; text-align: left; }
+    .skill-item:hover, .skill-item.active { background: var(--secondary); }
+    .skill-item svg, .identity-icon svg { width: 17px; height: 17px; flex: none; color: var(--skill); }
+    .skill-item svg { margin-top: 2px; }
+    .item-copy { min-width: 0; display: grid; gap: 2px; }
+    .item-name { font-weight: 600; font-size: 13px; overflow-wrap: anywhere; }
+    .item-status { color: var(--muted-foreground); font-size: 11px; }
+    .empty-list { padding: 10px 8px; color: var(--muted-foreground); font-size: 12px; }
+    .detail { min-width: 0; }
+    .detail-head { align-items: flex-start; padding-bottom: 24px; border-bottom: 1px solid var(--border); }
+    .identity { display: flex; gap: 12px; align-items: flex-start; min-width: 0; }
+    .identity-icon { display: grid; place-items: center; width: 34px; height: 34px; flex: none; border-radius: 8px; background: var(--skill-bg); }
+    .identity-copy { min-width: 0; }
+    .identity-copy h3 { overflow-wrap: anywhere; }
+    .identity-copy p { margin-top: 2px; color: var(--muted-foreground); font-size: 12px; }
+    .status { display: inline-block; padding: 2px 7px; border-radius: 5px; color: var(--muted-foreground); background: var(--muted); font-size: 11px; }
+    .status.enabled { color: #237a47; background: #edf7f0; }
+    .status.error { color: #a14e1d; background: #fff4e8; }
+    .section { padding: 22px 0; border-bottom: 1px solid var(--border); }
+    .section-head { margin-bottom: 13px; }
+    .description { max-width: 68ch; }
+    .facts { display: grid; gap: 10px; margin: 0; }
+    .fact { align-items: flex-start; justify-content: flex-start; gap: 16px; }
+    .fact dt { width: 70px; flex: none; color: var(--muted-foreground); font-size: 12px; }
+    .fact dd { min-width: 0; margin: 0; font-size: 12px; overflow-wrap: anywhere; }
+    code, textarea { font-family: ui-monospace, "JetBrains Mono", Consolas, monospace; }
+    code { font-size: 12px; }
+    .preview { max-height: 270px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--muted); padding: 18px 20px; }
+    .preview h4 { margin: 0 0 10px; }
+    .preview p, .preview li { margin: 5px 0; }
+    .preview ul { margin: 0; padding-left: 19px; }
+    .preview .spacer { height: 9px; }
+    .note { color: var(--muted-foreground); font-size: 12px; margin-top: 10px; }
+    .notice { padding: 10px 12px; margin: 16px 0; border-radius: 6px; background: #fff4e8; color: #8c4f24; font-size: 12px; }
+    .notice.ok { background: #edf7f0; color: #237a47; }
+    .row-actions { justify-content: flex-start; margin-top: 20px; }
+    .toggle-row { display: flex; align-items: center; gap: 9px; }
+    .toggle { position: relative; display: inline-flex; align-items: center; cursor: pointer; }
+    .toggle input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+    .toggle span { display: block; width: 31px; height: 18px; border-radius: 20px; background: #cdd0d7; transition: background .15s; }
+    .toggle span::after { content: ""; display: block; width: 14px; height: 14px; margin: 2px; border-radius: 50%; background: #fff; transition: transform .15s; }
+    .toggle input:checked + span { background: var(--primary); }
+    .toggle input:checked + span::after { transform: translateX(13px); }
+    .toggle input:focus-visible + span { outline: 2px solid var(--ring); outline-offset: 2px; }
+    .editor-head { margin-bottom: 18px; }
+    .editor-help { color: var(--muted-foreground); font-size: 12px; margin-top: 6px; }
+    .source { display: block; width: 100%; min-height: 420px; resize: vertical; padding: 16px; border: 1px solid var(--input); border-radius: var(--radius); background: #fff; line-height: 1.6; font-size: 12px; }
+    .savebar { padding: 16px 0; }
+    .savebar .hint { margin-right: auto; }
+    .modal-backdrop { position: fixed; inset: 0; display: grid; place-items: center; background: #15161a66; padding: 18px; }
+    .modal { width: min(100%, 430px); border-radius: 12px; background: #fff; padding: 22px; box-shadow: 0 8px 28px #20212422; }
+    .modal p { margin-top: 10px; color: var(--muted-foreground); font-size: 13px; }
+    .modal .row-actions { justify-content: flex-end; flex-wrap: wrap; }
+    @media (max-width: 840px) {
+      .app { grid-template-columns: 1fr; }
+      .rail { padding: 14px; border-right: 0; border-bottom: 1px solid var(--border); }
+      .rail h1 { display: inline-block; margin: 0 18px 0 0; }
+      .back { display: none; }
+      .rail-item { display: inline-flex; width: auto; }
+      .rail-item:not(.active) { display: none; }
+      .main { padding: 28px 20px 60px; }
+      .layout { grid-template-columns: 1fr; gap: 22px; }
+      .catalog { min-height: 0; padding-right: 0; padding-bottom: 18px; border-right: 0; border-bottom: 1px solid var(--border); }
+      .groups { display: flex; gap: 14px; overflow-x: auto; }
+      .group { flex: 0 0 155px; margin-bottom: 0; }
+      .page-head { align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <svg width="0" height="0" aria-hidden="true" style="position:absolute">
+    <symbol id="skill-icon" viewBox="0 0 24 24">
+      <path d="M12 21V7M16 12l2 2 4-4M22 6V4a1 1 0 0 0-1-1h-5a4 4 0 0 0-4 4 4 4 0 0 0-4-4H3a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1h6a3 3 0 0 1 3 3 3 3 0 0 1 3-3h6a1 1 0 0 0 1-1v-1.3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+  </svg>
+  <div id="app"></div>
+  <script>
+    // 示例数据只保存在当前页面内；刷新可恢复初始状态，不访问 Harness 后端。
+    const skillText = (name, description, body) =>
+      ["---", "name: " + name, "description: " + description, "---", "", body, ""].join("\n");
+    const items = [
+      { id: "personal:architecture-review", group: "个人", name: "architecture-review",
+        description: "检查架构边界、状态归属和失败恢复。", source: "Harness 个人",
+        path: "~/.harness/skills/architecture-review/SKILL.md", enabled: true,
+        assets: ["references/checklist.md", "scripts/inspect.go"],
+        content: skillText("architecture-review", "检查架构边界、状态归属和失败恢复。",
+          "# Architecture Review\n\n先确认调用链，再检查状态归属、依赖边界和失败恢复。\n\n- 找出重复状态\n- 说明可复现的风险") },
+      { id: "personal:release-notes", group: "个人", name: "release-notes",
+        description: "根据已验证的变更整理发布说明。", source: "Harness 个人",
+        path: "~/.harness/skills/release-notes/SKILL.md", enabled: false, assets: [],
+        content: skillText("release-notes", "根据已验证的变更整理发布说明。",
+          "# Release Notes\n\n从实际变更和检查结果整理简短发布说明。") },
+      { id: "personal:project-conventions", group: "个人", name: "project-conventions",
+        description: "通用项目规范。", source: "Harness 个人",
+        path: "~/.harness/skills/project-conventions/SKILL.md", enabled: true, shadowed: true, assets: [],
+        content: skillText("project-conventions", "通用项目规范。",
+          "# Project Conventions\n\n通用规则；在当前项目被同名 Skill 覆盖。") },
+      { id: "personal:broken-skill", group: "个人", name: "broken-skill",
+        description: "", source: "Harness 个人", error: "缺少 description，当前无法使用",
+        path: "~/.harness/skills/broken-skill/SKILL.md", enabled: true, assets: [],
+        content: "---\nname: broken-skill\n---\n\n# 待修复的说明\n" },
+      { id: "project:project-conventions", group: "项目 · EDITH-Harness", name: "project-conventions",
+        description: "EDITH-Harness 项目中的开发约束。", source: "项目 · .harness/skills",
+        path: "EDITH-Harness/.harness/skills/project-conventions/SKILL.md", enabled: true, assets: [],
+        content: skillText("project-conventions", "EDITH-Harness 项目中的开发约束。",
+          "# Project Conventions\n\n遵守项目中的开发与验证规则。") },
+      { id: "external:ablation-review", group: ".agents", name: "ablation-review",
+        description: "通过删除或合并的反证审查架构。", source: "个人 · .agents/skills",
+        path: "~/.agents/skills/ablation-review/SKILL.md", enabled: true, assets: [],
+        content: skillText("ablation-review", "通过删除或合并的反证审查架构。",
+          "# Ablation Review\n\n问清楚每一层被删除后具体会坏什么。") },
+      { id: "system:skill-creator", group: "系统", name: "skill-creator",
+        description: "创建或修改 Harness Skill。", source: "Harness 内置",
+        path: "~/.harness/system/skills/skill-creator/SKILL.md", enabled: true, assets: [],
+        content: skillText("skill-creator", "创建或修改 Harness Skill。",
+          "# Skill Creator\n\n帮助编写符合 Harness 约定的 Skill。") },
+    ];
+    const groups = ["个人", "项目 · EDITH-Harness", ".agents", "系统"];
+    const icon = '<svg aria-hidden="true"><use href="#skill-icon"></use></svg>';
+    const app = document.getElementById("app");
+    let selected = items[0].id;
+    let lastSelected = selected;
+    let mode = "overview";
+    let draft = "";
+    let search = "";
+    let pending = null;
+    let error = "";
+    let notice = "";
+    let previewOpen = false;
+
+    function esc(value) {
+      return String(value ?? "").replace(/[&<>"']/g, (character) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
+    }
+    function current() { return items.find((item) => item.id === selected); }
+    function editable(item) { return item && item.group === "个人"; }
+    function dirty() { return mode === "create" || (mode === "edit" && draft !== current()?.content); }
+    function status(item) {
+      if (item.error) return "配置错误";
+      if (!item.enabled) return "已关闭";
+      if (item.shadowed) return "当前项目同名覆盖";
+      return item.group === "个人" ? "已启用" : "只读";
+    }
+    function body(content) {
+      const match = content.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/);
+      return match ? content.slice(match[0].length).trim() : content.trim();
+    }
+    function preview(content) {
+      const lines = body(content).split(/\r?\n/);
+      let listOpen = false;
+      let html = "";
+      for (const line of lines) {
+        if (!line.trim()) {
+          if (listOpen) { html += "</ul>"; listOpen = false; }
+          html += '<div class="spacer"></div>';
+        } else if (line.startsWith("# ")) {
+          if (listOpen) { html += "</ul>"; listOpen = false; }
+          html += "<h4>" + esc(line.slice(2)) + "</h4>";
+        } else if (line.startsWith("- ")) {
+          if (!listOpen) { html += "<ul>"; listOpen = true; }
+          html += "<li>" + esc(line.slice(2)) + "</li>";
+        } else {
+          if (listOpen) { html += "</ul>"; listOpen = false; }
+          html += "<p>" + esc(line) + "</p>";
+        }
+      }
+      return html + (listOpen ? "</ul>" : "");
+    }
+    function groupHTML(group) {
+      const found = items.filter((item) => item.group === group &&
+        (item.name.toLowerCase().includes(search) || item.description.toLowerCase().includes(search)));
+      if (!found.length) return "";
+      return '<div class="group"><div class="group-title">' + esc(group) +
+        ' · ' + found.length + '</div>' + found.map((item) =>
+          '<button class="skill-item' + (selected === item.id && mode !== "create" ? ' active' : '') +
+          '" data-action="select" data-key="' + esc(item.id) + '" aria-pressed="' + (selected === item.id && mode !== "create") + '">' +
+          icon + '<span class="item-copy"><span class="item-name">' + esc(item.name) +
+          '</span><span class="item-status">' + esc(status(item)) + '</span></span></button>').join("") + "</div>";
+    }
+    function detailHTML() {
+      const item = current();
+      if (mode === "edit" || mode === "create") {
+        return '<div class="editor-head"><button class="btn ghost" data-action="cancel">← 返回概况</button>' +
+          '<h3>' + (mode === "create" ? "新建个人 Skill" : "编辑 · " + esc(item.name)) + '</h3>' +
+          '</div>' +
+          (error ? '<div class="notice" role="alert">' + esc(error) + '</div>' : '') +
+          '<label for="source" class="hint">SKILL.md 源码</label>' +
+          '<textarea id="source" class="source" spellcheck="false" aria-label="SKILL.md 源码">' + esc(draft) + '</textarea>' +
+          '<div class="savebar"><span class="hint" id="save-status">' +
+          (dirty() ? "有未保存的更改" : "所有更改已保存") + '</span>' +
+          '<button class="btn ghost" data-action="cancel">放弃</button>' +
+          '<button class="btn primary" data-action="save">保存</button></div>';
+      }
+      if (!item) return '<div class="hint">选择左侧 Skill 查看详情。</div>';
+      const personal = editable(item);
+      const badge = item.error ? "error" : item.enabled && !item.shadowed ? "enabled" : "";
+      return '<div class="detail-head"><div class="identity"><span class="identity-icon">' + icon +
+        '</span><div class="identity-copy"><h3>' + esc(item.name) + '</h3><p>' +
+        esc(item.source) + ' <span class="status ' + badge + '">' + esc(status(item)) +
+        '</span></p></div></div>' +
+        (personal ? '<div class="toggle-row"><span class="hint">启用</span><label class="toggle">' +
+          '<input type="checkbox" id="enabled" aria-label="启用 ' + esc(item.name) + '"' +
+          (item.enabled ? " checked" : "") + '><span></span></label></div>' : "") + '</div>' +
+        (item.error ? '<div class="notice" role="alert">' + esc(item.error) +
+          '</div>' : "") +
+        '<section class="section"><div class="section-head"><h4>概况</h4></div>' +
+        '<p class="description">' + esc(item.description || "未能读取说明") + '</p>' +
+        '<dl class="facts" style="margin-top:16px"><div class="fact"><dt>来源</dt><dd>' + esc(item.source) +
+        '</dd></div><div class="fact"><dt>文件</dt><dd><code>' + esc(item.path) +
+        '</code> <button class="btn ghost" data-action="copy">复制路径</button></dd></div></dl></section>' +
+        '<section class="section"><button class="btn ghost" data-action="preview" aria-expanded="' + previewOpen + '">' +
+        (previewOpen ? '⌄' : '›') + ' 正文预览 <span class="hint">SKILL.md</span></button>' +
+        (previewOpen ? '<div class="preview">' + preview(item.content) + '</div>' : '') + '</section>' +
+        (item.assets.length ? '<section class="section"><div class="section-head"><h4>附属资源</h4><span class="hint">' +
+          item.assets.length + ' 项</span></div><p class="hint">' + item.assets.map(esc).join(" · ") + '</p></section>' : '') +
+        (personal ? '<div class="row-actions"><button class="btn" data-action="edit">编辑 SKILL.md</button>' +
+          '<button class="btn ghost danger" data-action="delete">删除 Skill</button></div>' : '');
+    }
+    function dialogHTML() {
+      if (!pending) return "";
+      if (pending.type === "delete") {
+        const item = current();
+        return '<div class="modal-backdrop"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="dialog-title">' +
+          '<h3 id="dialog-title">删除 ' + esc(item.name) + '？</h3><p>将删除整个个人 Skill 文件夹' +
+          (item.assets.length ? "及 " + item.assets.length + " 个附属资源" : "") +
+          '。此操作不可撤销。</p><div class="row-actions">' +
+          '<button class="btn" data-action="close-dialog">取消</button>' +
+          '<button class="btn primary" data-action="confirm-delete">确认删除</button></div></div></div>';
+      }
+      return '<div class="modal-backdrop"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="dialog-title">' +
+        '<h3 id="dialog-title">保存当前 Skill 的更改？</h3><p>切换后，未保存的源码会丢失。</p>' +
+        '<div class="row-actions"><button class="btn ghost" data-action="close-dialog">继续编辑</button>' +
+        '<button class="btn" data-action="discard-switch">放弃</button>' +
+        '<button class="btn primary" data-action="save-switch">保存</button></div></div></div>';
+    }
+    function render() {
+      app.innerHTML = '<div class="app"><aside class="rail"><div class="back">← 返回工作台</div><h1>设置</h1>' +
+        '<div class="rail-item">外观</div><div class="rail-item">Agent</div>' +
+        '<div class="rail-item active">' + icon + ' Skills</div>' +
+        '<div class="rail-item">模型与供应商</div><div class="rail-item">智能审批</div>' +
+        '<div class="rail-item">Hooks</div><div class="rail-item">MCP</div>' +
+        '</aside><main class="main"><div class="page-head"><div><h2>Skills</h2>' +
+        '</div>' +
+        '<button class="btn" data-action="new">＋ 新建 Skill</button></div>' +
+        (notice ? '<div class="notice ok" role="status">' + esc(notice) + '</div>' : '') +
+        '<div class="layout"><aside class="catalog" aria-label="Skill 列表">' +
+        '<input class="search" id="search" placeholder="搜索 Skill" aria-label="搜索 Skill" value="' + esc(search) + '">' +
+        '<div class="groups">' + groups.map(groupHTML).join("") +
+        (!items.some((item) => item.name.toLowerCase().includes(search) ||
+          item.description.toLowerCase().includes(search)) ? '<p class="empty-list">没有匹配的 Skill</p>' : "") +
+        '</div></aside><div class="detail">' + detailHTML() +
+        '</div></div></main></div>' + dialogHTML();
+    }
+    function newDraft() {
+      lastSelected = selected ?? lastSelected;
+      selected = null; mode = "create"; error = ""; notice = "";
+      draft = skillText("new-skill", "一句话说明这个 Skill 何时使用。",
+        "# Instructions\n\n在这里写使用步骤和注意事项。");
+      render();
+      document.getElementById("source")?.focus();
+    }
+    function show(key) { selected = key; lastSelected = key ?? lastSelected; mode = "overview"; draft = ""; error = ""; notice = ""; previewOpen = false; render(); }
+    function requestSwitch(next) {
+      if (mode === "create" && next === "new") return;
+      if (dirty()) { pending = { type: "leave", next }; render(); return; }
+      go(next);
+    }
+    function go(next) {
+      pending = null;
+      if (next === "new") newDraft();
+      else if (next === "overview") show(selected ?? lastSelected ?? items[0]?.id);
+      else show(next);
+    }
+    function saveDraft() {
+      const front = draft.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+      const name = front?.[1].match(/^name:\s*(.+)$/m)?.[1]?.trim();
+      const description = front?.[1].match(/^description:\s*(.+)$/m)?.[1]?.trim();
+      if (!name || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name) || name.length > 64 ||
+          !description || description.length > 1024) {
+        error = "需要有效的 name 和 description；name 使用小写字母、数字和连字符。";
+        pending = null; render(); return false;
+      }
+      if (mode === "edit" && name !== current().name) {
+        error = "已有 Skill 的 name 必须与文件夹名称一致。"; pending = null; render(); return false;
+      }
+      if (mode === "create" && items.some((item) => item.name === name &&
+          (item.group === "个人" || item.group === "系统"))) {
+        error = "同名个人或内置 Skill 已存在。"; pending = null; render(); return false;
+      }
+      let item = current();
+      if (mode === "create") {
+        item = { id: "personal:" + name, group: "个人", name, source: "Harness 个人",
+          path: "~/.harness/skills/" + name + "/SKILL.md", enabled: true, assets: [], content: draft };
+        items.unshift(item); selected = item.id;
+      }
+      item.description = description; item.content = draft; item.error = "";
+      lastSelected = selected;
+      mode = "overview"; error = ""; notice = "已保存示例 Skill；真实实现会检查文件版本。";
+      render(); return true;
+    }
+    document.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-action]");
+      if (!button) return;
+      const action = button.dataset.action;
+      if (action === "select") requestSwitch(button.dataset.key);
+      if (action === "preview") { previewOpen = !previewOpen; render(); }
+      if (action === "new") requestSwitch("new");
+      if (action === "edit") { mode = "edit"; draft = current().content; error = ""; notice = ""; render(); }
+      if (action === "cancel") requestSwitch("overview");
+      if (action === "save") saveDraft();
+      if (action === "delete") { pending = { type: "delete" }; render(); }
+      if (action === "close-dialog") { pending = null; render(); }
+      if (action === "discard-switch") go(pending.next);
+      if (action === "save-switch") { const next = pending.next; if (saveDraft()) go(next); }
+      if (action === "confirm-delete") {
+        const index = items.findIndex((item) => item.id === selected);
+        items.splice(index, 1); pending = null; notice = "示例 Skill 已删除；刷新页面可恢复。";
+        selected = items[0]?.id ?? null; mode = "overview"; render();
+      }
+      if (action === "copy") {
+        const text = current().path;
+        if (navigator.clipboard?.writeText) {
+          navigator.clipboard.writeText(text).then(() => { notice = "已复制文件位置。"; render(); })
+            .catch(() => { notice = "复制失败，请手动选择文件位置。"; render(); });
+        } else { notice = "请手动选择文件位置复制。"; render(); }
+      }
+    });
+    document.addEventListener("change", (event) => {
+      if (event.target.id !== "enabled") return;
+      const item = current();
+      if (!editable(item)) return;
+      item.enabled = event.target.checked;
+      notice = item.enabled ? "已启用；新的 Run 可使用。" : "已关闭；新的 Run 不再使用。";
+      render();
+    });
+    document.addEventListener("input", (event) => {
+      if (event.target.id === "source") {
+        draft = event.target.value;
+        const status = document.getElementById("save-status");
+        if (status) status.textContent = dirty() ? "有未保存的更改" : "所有更改已保存";
+      }
+      if (event.target.id === "search") {
+        const position = event.target.selectionStart;
+        search = event.target.value.trim().toLowerCase();
+        render();
+        const input = document.getElementById("search");
+        input?.focus();
+        input?.setSelectionRange(position, position);
+      }
+    });
+    render();
+  </script>
+</body>
+</html>
