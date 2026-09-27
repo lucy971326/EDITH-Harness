@@ -29,11 +29,11 @@ import type { RunDiffSummary } from "../../../contracts/run.ts";
 import type { AgentView, ModelChoice } from "../../../contracts/appserver.ts";
 import type { SubagentInfo } from "../../../contracts/harness.ts";
 
-const CodeEditor = lazy(() =>
+const loadCodeEditor = () =>
   import("../editor/code-editor").then((module) => ({
     default: module.CodeEditor,
-  })),
-);
+  }));
+const CodeEditor = lazy(loadCodeEditor);
 
 const ReviewView = lazy(() =>
   import("../review/review-view").then((module) => ({
@@ -113,6 +113,7 @@ function storedTreeWidth(): number {
 }
 
 function WorkspaceTabsComponent({
+  visible,
   workspace,
   sessionID,
   sessionTitle,
@@ -127,6 +128,7 @@ function WorkspaceTabsComponent({
   onHide,
   onAddReference,
 }: {
+  visible: boolean;
   workspace: string | null;
   sessionID: string | null;
   sessionTitle: string | null;
@@ -165,6 +167,14 @@ function WorkspaceTabsComponent({
     [],
   );
   const [activeTabID, setActiveTabID] = useState("");
+
+  useEffect(() => {
+    // 打开文件面板即预热，利用用户选择文件的时间加载 Monaco。
+    // 预热失败不阻断面板，实际打开文件时仍由 lazy 尝试加载。
+    if (visible) {
+      void loadCodeEditor().catch(() => {});
+    }
+  }, [visible]);
 
   const activeFile = project?.files.get(project.activePath);
   const reviewTabID = (runID: string) => `review:${sessionID}:${runID}`;

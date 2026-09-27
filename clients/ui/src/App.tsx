@@ -1425,6 +1425,7 @@ export default function App({ platform }: { platform: Platform }) {
               onChange={setPanelWidth}
             />
             <WorkspaceTabs
+              visible={panelOpen}
               onAddReference={addContextReference}
               workspace={selected?.settings.workspace ?? null}
               sessionID={selectedID}

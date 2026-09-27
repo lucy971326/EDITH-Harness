@@ -11,6 +11,19 @@ import {
   type EditorFile,
 } from "../src/editor/files.ts";
 import { parseFileLink } from "../src/editor/links.ts";
+import { monacoColor } from "../src/editor/theme.ts";
+
+test("Monaco colors survive CSS production shorthand including alpha", () => {
+  for (const [input, expected] of [
+    [" #fff ", "#ffffff"],
+    ["#123", "#112233"],
+    ["#abcd", "#aabbccdd"],
+    ["#202124", "#202124"],
+    ["#c5e9d480", "#c5e9d480"],
+  ]) {
+    assert.equal(monacoColor(input), expected);
+  }
+});
 
 test("UTF-8 file content survives the JSON-RPC base64 boundary", () => {
   const content = "你好，Monaco 👋\n";

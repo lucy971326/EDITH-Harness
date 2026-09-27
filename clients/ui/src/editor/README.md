@@ -11,6 +11,7 @@ workspace-tabs -> useEditorFiles -> RPC 文件接口 -> machine
 - `use-files.ts`：按工作区保留文件、延迟保存、监听与关闭清理。
 - `files.ts`：文件状态、编码、保存／外部变化的状态转换。
 - `code-editor.tsx / monaco.ts`：编辑器组件、模型和主题。
+- `theme.ts`：将构建压缩后的颜色 Token 还原为 Monaco 接受的完整 RGB / RGBA；语言 Worker 按语言在 `monaco.ts` 分配。
 - `file-tree.tsx / links.ts`：目录树与文件位置解析。
 
 标签编排在上层 [`workspace-tabs.tsx`](../workspace/workspace-tabs.tsx)。保存携带读取版本；外部变化与本地草稿冲突时保留草稿，由用户选择。异步结果只更新仍归本页持有的文件对象。

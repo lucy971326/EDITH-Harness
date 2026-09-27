@@ -2,9 +2,27 @@ import { useEffect, useState } from "react";
 import { loader, type Monaco } from "@monaco-editor/react";
 import * as monaco from "monaco-editor";
 import EditorWorker from "monaco-editor/editor/editor.worker.js?worker";
+import JSONWorker from "monaco-editor/language/json/json.worker.js?worker";
+import CSSWorker from "monaco-editor/language/css/css.worker.js?worker";
+import HTMLWorker from "monaco-editor/language/html/html.worker.js?worker";
+import TypeScriptWorker from "monaco-editor/language/typescript/ts.worker.js?worker";
+import { monacoColor } from "./theme";
 
 self.MonacoEnvironment = {
-  getWorker: () => new EditorWorker(),
+  getWorker: (_moduleId, label) => {
+    switch (label) {
+      case "json": return new JSONWorker();
+      case "css":
+      case "scss":
+      case "less": return new CSSWorker();
+      case "html":
+      case "handlebars":
+      case "razor": return new HTMLWorker();
+      case "javascript":
+      case "typescript": return new TypeScriptWorker();
+      default: return new EditorWorker();
+    }
+  },
 };
 loader.config({ monaco });
 
@@ -43,7 +61,7 @@ export function editorLanguage(path: string): string | undefined {
 export function defineEditorThemes(api: Monaco) {
   const dark = document.documentElement.classList.contains("dark");
   const style = getComputedStyle(document.documentElement);
-  const color = (name: string) => style.getPropertyValue(name).trim();
+  const color = (name: string) => monacoColor(style.getPropertyValue(name));
   api.editor.defineTheme(dark ? "harness-dark" : "harness-light", {
     base: dark ? "vs-dark" : "vs",
     inherit: true,
