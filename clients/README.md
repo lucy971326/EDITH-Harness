@@ -1,24 +1,116 @@
 # clients
 
-一份 React UI、一份构建产物；Web 与 Desktop 各自提供接入能力。
+**一份 React UI，两种启动方式。** Web 在浏览器中显示页面，Desktop 在 Wails 的 WebView 中显示页面；各自的 Go 入口都启动同一套后台。
+
+## 1. 构建：页面如何进入程序
+
+以下路径相对 `clients/`：
 
 ```text
-main.tsx -> 选择平台 -> ui/src/App
-                       |
-          openSocket / openExternal
-           |                   |
-   web/platform.ts     desktop/platform.ts
-      WebSocket           Wails Stream
-           |                   |
-      web/*.go          desktop/wails.go
-           +---------+---------+
-              appserver.ServeStream
+main.tsx + ui/ + web/platform.ts + desktop/platform.ts
+                         |
+                    Vite 构建
+                         v
+                       dist/
+                         |
+                 assets.go（Go embed）
+                         |
+              +----------+----------+
+              v                     v
+       harness 可执行文件    harness-desktop 可执行文件
 ```
 
-- [`ui/`](ui/README.md)：共用页面、草稿、RPC、订阅和服务端投影。
-- [`web/`](web/README.md)：浏览器能力、HTTP 与 WebSocket 传输。
-- [`desktop/`](desktop/README.md)：Wails 能力与 Go 传输；窗口入口仍在 `cmd/harness-desktop`。
-- [`contracts/`](contracts/README.md)：手写 TS 契约；[`test/`](test/README.md)：无界面网络验收 Client。
-- `package.json / package-lock.json`：唯一前端依赖清单与锁文件；`vite.config.ts` 构建 `dist/`，`assets.go` 将其嵌入两端。
+两端采用同一套前端构建配置，各自编译时嵌入页面。正式运行不需要 Node.js 或 Vite。
 
-业务事实归服务端。共用 UI 不判断平台、不导入两端适配器；平台只提供当前需要的连接与打开网址能力，不保存会话状态。
+## 2. 启动：谁先启动，谁加载页面
+
+下面是正式版的正常启动流程。两端都先由 `backend.Open` 锁定用户数据目录、构造服务并登记 RPC 方法，再开放界面接入。
+
+```text
+Web：启动 harness
+  |
+  +-> cmd/harness/main.go（Go 进程入口）
+       1. backend.Open -> appserver + 领域服务
+       2. clients/web 启动 HTTP：127.0.0.1:8888
+          /     提供嵌入的页面
+          /rpc  接受 WebSocket
+       3. 打开系统浏览器 -> 浏览器加载页面 -> 前端启动（见下方）
+
+Desktop：启动 harness-desktop
+  |
+  +-> cmd/harness-desktop/main.go（Go 进程入口）
+       1. backend.Open -> appserver + 领域服务
+       2. 创建 Wails 应用，挂载嵌入的页面，登记 rpc Stream
+       3. 创建窗口 -> app.Run -> WebView 加载页面 -> 前端启动（见下方）
+
+前端启动（两端共用，运行在浏览器 / WebView 中）
+  main.tsx
+    -> 选择 web/platform.ts 或 desktop/platform.ts
+    -> 注入 openSocket、openExternal
+    -> 挂载共用 ui/src/App
+    -> ChatConnection 建立连接、初始化协议、读取页面数据
+```
+
+Desktop 自己启动 Go 后台，业务通信不需要启动 Web 的 8888 监听器。两端默认使用同一个 `~/.harness`，因此不能同时运行两个后台占用它。
+
+### 开发模式有什么不同
+
+| 命令 | 页面从哪里来 | 后台与热更新 |
+| --- | --- | --- |
+| `make run` | 浏览器访问 Vite `127.0.0.1:5173` | 并行启动 Vite 与 `cmd/harness --no-browser`；同源 `/rpc` 代理到 8888。前端热更新，Go 改动后手动重启。 |
+| `make desktop-run` | Wails WebView 加载 Vite 开发页面 | `wails3 dev` 启动 Vite 和 Desktop；前端热更新，Go 改动后重建并重启 Desktop。业务仍走 Wails Stream。 |
+
+开发命令会先准备依赖和嵌入所需的 `dist`；浏览器／WebView 实际显示 Vite 的最新页面。
+
+## 3. 运行：一次操作如何到达后台
+
+```text
+浏览器 / WebView：前端 TypeScript
+  共用 App -> client/chat.ts、client/rpc.ts
+                         |
+              发送完整 JSON-RPC 消息
+                         |
+         +---------------+---------------+
+         | Web                           | Desktop
+         v                               v
+  web/platform.ts                desktop/platform.ts
+  WebSocket /rpc                 Wails Stream("rpc")
+         |                               |
+---------|---------- 前端 / Go 边界 ------|----------------
+         v                               v
+  web/server.go                  cmd/harness-desktop 的
+    -> web/websocket.go          HandleStream 回调
+                                   -> desktop/wails.go
+         |                               |
+         +---------------+---------------+
+                         v
+            appserver/connection.go：ServeStream
+                         |
+            初始化、请求分发、订阅与断线清理
+                         |
+              conversations / 各领域服务
+                         |
+           需要执行 Agent 时 -> Runner -> Loop / Tools
+
+  响应与订阅通知沿原连接返回 -> 共用状态投影 -> React 更新页面
+```
+
+**`platform.ts` 在前端执行，`websocket.go` 和 `wails.go` 在 Go 后台执行。** 后两者只转换传输消息，业务方法由 appserver 统一分发。
+
+打开 OAuth 等外部网址是独立的平台能力：`openExternal(url)` 在 Web 打开新标签，在 Desktop 调用 Wails 打开系统浏览器，不经过上图的业务 RPC 分发。
+
+## 4. 状态与退出
+
+- UI 保存草稿、当前选择和服务端投影；会话、Run 与持久化数据归后台。平台适配器不保存会话状态。
+- 浏览器页面关闭或连接断开：清理该连接的订阅、用户终端等资源，已接受的 Agent Run 继续执行。
+- Web 后台退出：先关闭 HTTP／WebSocket 并等待 RPC 收尾，再关闭 appserver 和领域服务。
+- Desktop 应用退出：`app.Run` 返回后关闭后台，取消运行并释放资源。退出整个应用与单纯断线不同。
+
+## 源码入口
+
+- [`main.tsx`](main.tsx)：唯一前端入口；[`ui/`](ui/README.md)：共用页面、RPC、订阅和投影。
+- [`web/`](web/README.md) / [`desktop/`](desktop/README.md)：两端平台能力与 Go 传输。
+- [`cmd/harness`](../cmd/harness/main.go) / [`cmd/harness-desktop`](../cmd/harness-desktop/main.go)：两种 Go 启动入口。
+- [`backend`](../internal/backend/open.go) / [`appserver`](../internal/appserver/README.md)：后台组装与公共 RPC 接入。
+- [`contracts/`](contracts/README.md)：手写 TS 契约；[`test/`](test/README.md)：无界面网络验收 Client。
+- `package.json / package-lock.json / vite.config.ts`：统一依赖与构建；[`assets.go`](assets.go)：两端共用的资源嵌入。
