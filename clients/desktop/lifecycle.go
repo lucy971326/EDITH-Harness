@@ -1,10 +1,7 @@
 package desktop
 
 import (
-	"bytes"
-	"image"
-	"image/color"
-	"image/png"
+	_ "embed"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -13,13 +10,18 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
+// Icon 是桌面应用和托盘共用的 EDITH 图标。
+//
+//go:embed edith-icon.png
+var Icon []byte
+
 type closeRequest struct {
-	id      uint64
-	phase   string
-	running bool
+	id       uint64
+	phase    string
+	running  bool
 	terminal bool
 	dirty    bool
-	timer   *time.Timer
+	timer    *time.Timer
 }
 
 type closeState struct {
@@ -56,11 +58,11 @@ func NewLifecycle(app *application.App, window *application.WebviewWindow, activ
 	app.Event.On("desktop-close-state", l.onState)
 	app.Event.On("desktop-exit-decision", l.onDecision)
 	tray := app.SystemTray.New()
-	tray.SetIcon(trayIcon())
-	tray.SetTooltip("Harness")
+	tray.SetIcon(Icon)
+	tray.SetTooltip("EDITH")
 	menu := app.NewMenu()
 	menu.Add("显示窗口").OnClick(func(*application.Context) { l.Show() })
-	menu.Add("退出 Harness").OnClick(func(*application.Context) { l.request() })
+	menu.Add("退出 EDITH").OnClick(func(*application.Context) { l.request() })
 	tray.SetMenu(menu)
 	tray.OnClick(l.Show)
 	return l
@@ -190,33 +192,13 @@ func (l *Lifecycle) fallback(id uint64) {
 
 func (l *Lifecycle) nativeConfirm(message string) {
 	l.Show()
-	dialog := l.app.Dialog.Question().SetTitle("退出 Harness？").SetMessage(message).AttachToWindow(l.window)
+	dialog := l.app.Dialog.Question().SetTitle("退出 EDITH？").SetMessage(message).AttachToWindow(l.window)
 	dialog.AddButton("继续使用").SetAsCancel()
-	dialog.AddButton("退出 Harness").OnClick(l.quit)
+	dialog.AddButton("退出 EDITH").OnClick(l.quit)
 	dialog.Show()
 }
 
 func (l *Lifecycle) quit() {
 	l.quitting.Store(true)
 	l.app.Quit()
-}
-
-func trayIcon() []byte {
-	icon := image.NewRGBA(image.Rect(0, 0, 32, 32))
-	background := color.RGBA{41, 37, 36, 255}
-	foreground := color.RGBA{250, 250, 249, 255}
-	for y := 2; y < 30; y++ {
-		for x := 2; x < 30; x++ {
-			if (x < 6 || x >= 26) && (y < 6 || y >= 26) {
-				continue
-			}
-			icon.Set(x, y, background)
-			if y >= 8 && y < 24 && (x >= 9 && x < 12 || x >= 20 && x < 23 || y >= 14 && y < 18 && x >= 12 && x < 20) {
-				icon.Set(x, y, foreground)
-			}
-		}
-	}
-	var output bytes.Buffer
-	_ = png.Encode(&output, icon)
-	return output.Bytes()
 }

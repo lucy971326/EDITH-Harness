@@ -110,9 +110,6 @@ func (n *Notifications) Status() NotificationStatus {
 	if !ready {
 		return NotificationStatus{Permission: "unavailable", Message: "此环境暂不支持系统通知"}
 	}
-	if !notificationDaemonReady() {
-		return NotificationStatus{Permission: "unavailable", Message: "当前桌面环境没有可用的通知服务"}
-	}
 	authorized, err := n.service.CheckNotificationAuthorization()
 	if err != nil {
 		return NotificationStatus{Permission: "unavailable", Message: "无法读取系统通知权限"}
@@ -133,7 +130,7 @@ func (n *Notifications) RequestAuthorization() (NotificationStatus, error) {
 		return NotificationStatus{Permission: "unavailable", Message: "系统通知授权失败"}, nil
 	}
 	if !authorized {
-		return NotificationStatus{Permission: "not-granted", Message: "请在系统设置中允许 Harness 通知"}, nil
+		return NotificationStatus{Permission: "not-granted", Message: "请在系统设置中允许 EDITH 通知"}, nil
 	}
 	return NotificationStatus{Permission: "granted"}, nil
 }
@@ -235,7 +232,7 @@ func (n *Notifications) sendLoop() {
 			continue
 		}
 		err := n.service.SendNotification(notifications.NotificationOptions{
-			ID: item.id, Title: "Harness", Body: item.body,
+			ID: item.id, Title: "EDITH", Body: item.body,
 			Data: map[string]interface{}{"sessionID": item.sessionID},
 		})
 		if item.testResult != nil {

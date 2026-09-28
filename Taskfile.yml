@@ -1,5 +1,9 @@
 version: '3'
 
+vars:
+  APP_VERSION:
+    sh: node -p "require('fs').readFileSync('build/version.txt','utf8').trim()"
+
 tasks:
   deps:
     desc: Install web dependencies when missing or changed.
@@ -15,6 +19,7 @@ tasks:
 
   build:
     desc: Build the Wails Desktop binary with the shared React assets.
+    platforms: [windows, darwin]
     env:
       MACOSX_DEPLOYMENT_TARGET: '{{if eq OS "darwin"}}13.0{{end}}'
       CGO_CFLAGS: '{{if eq OS "darwin"}}-mmacosx-version-min=13.0{{end}}'
@@ -22,28 +27,36 @@ tasks:
     cmds:
       - task: deps
       - npm --prefix clients run build
+      - node -e "require('fs').existsSync('.build')||require('fs').mkdirSync('.build')"
+      - cmd: node build/write-windows-info.mjs
+        platforms: [windows]
+      - cmd: wails3 generate syso -arch {{ARCH}} -icon build/edith-icon.ico -manifest build/windows.manifest -info .build/windows-info.json -out cmd/harness-desktop/rsrc_windows_{{ARCH}}.syso
+        platforms: [windows]
       # Windows 直接 exec 需要可执行文件带 .exe 后缀。
       # 正式版在 Windows 使用 GUI 子系统，双击时不弹控制台；开发版保留控制台日志。
-      - go build -tags production -trimpath {{if eq OS "windows"}}-ldflags="-H windowsgui" {{end}}-o .build/harness-desktop{{exeExt}} ./cmd/harness-desktop
+      - go build -tags production -trimpath -ldflags="{{if eq OS "windows"}}-H windowsgui {{end}}-X main.version={{.APP_VERSION}}" -o .build/EDITH{{exeExt}} ./cmd/harness-desktop
       - task: package:mac
 
   package:mac:
     platforms:
       - darwin
     cmds:
-      - sh build/macos-bundle.sh
+      - sh build/macos-bundle.sh {{.APP_VERSION}}
 
   run:
     desc: Run the built Desktop app.
+    platforms: [windows, darwin]
     cmds:
-      - .build/harness-desktop{{exeExt}}
+      - .build/EDITH{{exeExt}}
 
   build:dev:
     desc: Rebuild the Desktop backend for Wails dev mode.
+    platforms: [windows, darwin]
     env:
       MACOSX_DEPLOYMENT_TARGET: '{{if eq OS "darwin"}}13.0{{end}}'
       CGO_CFLAGS: '{{if eq OS "darwin"}}-mmacosx-version-min=13.0{{end}}'
       CGO_LDFLAGS: '{{if eq OS "darwin"}}-mmacosx-version-min=13.0{{end}}'
     cmds:
       # Windows 直接 exec 需要可执行文件带 .exe 后缀。
-      - go build -o .build/harness-desktop{{exeExt}} ./cmd/harness-desktop
+      - node -e "require('fs').existsSync('.build')||require('fs').mkdirSync('.build')"
+      - go build -ldflags="-X main.version={{.APP_VERSION}}" -o .build/EDITH{{exeExt}} ./cmd/harness-desktop

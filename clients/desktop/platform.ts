@@ -1,11 +1,29 @@
-import { Browser, Call, Events, Stream } from "@wailsio/runtime";
-import type { Platform, NotificationStatus } from "../ui/src/types";
+import { Browser, Call, Events, Stream, System, Window } from "@wailsio/runtime";
+import type { DesktopWindowControls, Platform, NotificationStatus } from "../ui/src/types";
 
 let closeSnapshot: (() => { terminalOpen: boolean; dirty: boolean; saving: boolean }) | null = null;
 let notificationOpen: ((sessionID: string) => void) | null = null;
 let deferredNotificationOpen = "";
 
-export const platform: Platform = {
+const windowControls: DesktopWindowControls = {
+  minimize: () => Window.Minimise(),
+  toggleMaximize: () => Window.ToggleMaximise(),
+  close: () => Window.Close(),
+  onMaximizedChange(update) {
+    let active = true;
+    let changed = false;
+    const offMaximize = Events.On("common:WindowMaximise", () => { changed = true; update(true); });
+    const offUnmaximize = Events.On("common:WindowUnMaximise", () => { changed = true; update(false); });
+    const offRestore = Events.On("common:WindowRestore", () => {
+      changed = true;
+      void Window.IsMaximised().then((value) => { if (active) update(value); }).catch(() => {});
+    });
+    void Window.IsMaximised().then((value) => { if (active && !changed) update(value); }).catch(() => {});
+    return () => { active = false; offMaximize(); offUnmaximize(); offRestore(); };
+  },
+};
+
+const platform: Platform = {
   notifications: {
     status: () => Call.ByName("harness/clients/desktop.Notifications.Status") as Promise<NotificationStatus>,
     request: () => Call.ByName("harness/clients/desktop.Notifications.RequestAuthorization") as Promise<NotificationStatus>,
@@ -54,3 +72,13 @@ export const platform: Platform = {
     },
   },
 };
+
+export async function createPlatform(): Promise<Platform> {
+  const { OS } = await System.Environment();
+  if (OS !== "windows" && OS !== "darwin") throw new Error("EDITH Desktop 仅支持 Windows 和 macOS");
+  if (!platform.desktop) throw new Error("Desktop 平台能力未初始化");
+  return {
+    ...platform,
+    desktop: { ...platform.desktop, windowControls: OS === "windows" ? windowControls : undefined },
+  };
+}

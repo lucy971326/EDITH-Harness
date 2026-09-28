@@ -257,6 +257,7 @@
   --reading-gutter: clamp(24px, 4vw, 64px);
   --reading-top: var(--space-6);
   --topbar-height: 56px;
+  --desktop-titlebar-height: 36px;
   --toolbar-height: 40px;
   --navigation-row-height: 36px;
   --file-row-height: var(--control-compact);
@@ -632,6 +633,59 @@
   padding: var(--workspace-gap);
   overflow: hidden;
 }
+.app[data-desktop="true"] {
+  padding-top: calc(var(--workspace-gap) + var(--desktop-titlebar-height));
+}
+.desktop-titlebar {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 45;
+  height: var(--desktop-titlebar-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-2) 0 var(--space-4);
+  background: var(--surface-base);
+  color: var(--muted-foreground);
+  app-region: drag;
+  --wails-draggable: drag;
+  user-select: none;
+}
+.desktop-titlebar-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-caption);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.desktop-titlebar-brand img { width: 16px; height: 16px; }
+.desktop-titlebar[data-native-controls="true"] .desktop-titlebar-brand {
+  margin-left: 76px;
+}
+.desktop-window-controls {
+  display: flex;
+  gap: var(--space-1);
+  app-region: no-drag;
+  --wails-draggable: no-drag;
+}
+.desktop-window-button {
+  display: grid;
+  place-items: center;
+  width: var(--control-form);
+  height: var(--control-compact);
+  border: 0;
+  border-radius: var(--radius-control);
+  color: var(--foreground);
+  cursor: pointer;
+  app-region: no-drag;
+  --wails-draggable: no-drag;
+  transition: background-color var(--duration-fast), color var(--duration-fast);
+}
+.desktop-window-button svg { width: 15px; height: 15px; stroke-width: var(--icon-stroke); }
+.desktop-window-button:hover { background: var(--accent); }
+.desktop-window-close:hover { background: var(--destructive); color: var(--destructive-foreground); }
+.desktop-window-button:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 .workspace-panel {
   border: 1px solid var(--border);
   border-radius: var(--radius-panel);

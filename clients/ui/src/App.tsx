@@ -1,4 +1,5 @@
 import { ConnectionIndicator } from "./components/connection-indicator";
+import { DesktopTitlebar } from "./components/desktop-titlebar";
 import { useSessionActivity } from "./workspace/use-session-activity";
 import { Approvals, useApprovalInbox } from "./chat/approvals";
 import { ApprovalSettingsPanel } from "./settings/approval-settings";
@@ -1223,6 +1224,7 @@ export default function App({ platform }: { platform: Platform }) {
       <div
         ref={appElement}
         className="app"
+        data-desktop={!!platform.desktop}
         data-standalone={!!page?.standalone}
         data-panel-overlay={panelOverlay}
         style={
@@ -1232,6 +1234,7 @@ export default function App({ platform }: { platform: Platform }) {
           } as CSSProperties
         }
       >
+        {platform.desktop && <DesktopTitlebar controls={platform.desktop.windowControls} />}
         {!page?.standalone && (
           <div className="sidebar-shell" data-open={sidebar} inert={!sidebar} aria-hidden={!sidebar}>
           <Sidebar
@@ -1565,7 +1568,7 @@ export default function App({ platform }: { platform: Platform }) {
         }}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>退出 Harness？</AlertDialogTitle>
+              <AlertDialogTitle>退出 EDITH？</AlertDialogTitle>
               <AlertDialogDescription>
                 {desktopExit?.running && "运行中的任务将停止。"}
                 {desktopExit?.terminalOpen && "打开的终端将关闭。"}

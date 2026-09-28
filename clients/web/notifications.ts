@@ -15,7 +15,7 @@ function status(): NotificationStatus {
 function notify(sessionID: string, body: string, open: (sessionID: string) => void) {
   if (status().permission !== "granted" || (document.visibilityState === "visible" && document.hasFocus())) return;
   try {
-    const notification = new Notification("Harness", { body, tag: `harness-${sessionID}-${body}` });
+    const notification = new Notification("EDITH", { body, tag: `harness-${sessionID}-${body}` });
     notification.onclick = () => {
       notification.close();
       window.focus();
@@ -41,7 +41,7 @@ export const notifications: PlatformNotifications = {
   async setEnabled(enabled) { return enabled && status().permission === "granted"; },
   async test() {
     if (status().permission !== "granted") throw new Error("notification permission is not granted");
-    const notification = new Notification("Harness", { body: "这是一条测试通知" });
+    const notification = new Notification("EDITH", { body: "这是一条测试通知" });
     notification.onclick = () => { notification.close(); window.focus(); };
   },
   subscribe(client: RPCClient, open) {

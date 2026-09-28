@@ -17,7 +17,7 @@ main.tsx + ui/ + web/platform.ts + desktop/platform.ts
                          |
               +----------+----------+
               v                     v
-       harness 可执行文件    harness-desktop 可执行文件
+       harness 可执行文件    EDITH 可执行文件
 ```
 
 两端采用同一套前端构建配置，各自编译时嵌入页面。正式运行不需要 Node.js 或 Vite。
@@ -36,7 +36,7 @@ Web：启动 harness
           /rpc  接受 WebSocket
        3. 打开系统浏览器 -> 浏览器加载页面 -> 前端启动（见下方）
 
-Desktop：启动 harness-desktop
+Desktop：启动 EDITH
   |
   +-> cmd/harness-desktop/main.go（Go 进程入口）
        1. 创建 Wails 应用并登记单实例唤醒
@@ -107,7 +107,7 @@ Desktop 自己启动 Go 后台，业务通信不需要启动 Web 的 8888 监听
 - UI 保存草稿、当前选择和服务端投影；会话、Run 与持久化数据归后台。平台适配器不保存会话状态。
 - 浏览器页面关闭或连接断开：清理该连接的订阅、用户终端等资源，已接受的 Agent Run 继续执行。
 - Web 后台退出：先关闭 HTTP／WebSocket 并等待 RPC 收尾，再关闭 appserver 和领域服务。
-- Desktop 点关闭：三端都直接隐藏到托盘，任务、终端与草稿继续保留。Linux 托盘图标依赖桌面环境；不可见时再次启动 Harness 可唤回窗口。
+- Desktop 点关闭：Windows／macOS 直接隐藏到托盘，任务、终端与草稿继续保留。Windows 使用自绘标题栏，macOS 保留原生交通灯；窗口操作仍由 Desktop 接入层负责。
 - Desktop 显式退出：保护未保存内容；确认后 `app.Run` 返回，后台取消运行并等待资源收尾。退出整个应用与单纯断线不同。
 
 ## 源码入口

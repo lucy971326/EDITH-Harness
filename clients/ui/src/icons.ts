@@ -22,6 +22,7 @@ export {
   X,
   Settings,
   Square,
+  Minus,
   Check,
   Copy,
   GitBranch,

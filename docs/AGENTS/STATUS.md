@@ -6,7 +6,7 @@
 
 - React Web：项目与会话、归档与恢复、永久删除、文字／图片聊天、实时过程、Steer、停止、分叉、压缩、上下文引用。
 - 模型选择：供应商二级列表与独立思考滑块，档位沿用用户目录 models.json 配置顺序；新会话默认取第一档。设置页可配置 DeepSeek、Google、OpenAI Chat Completions／Responses、Anthropic 的供应商密钥和模型能力。
-- Wails v3 Desktop：复用同一份 React 构建产物与后台，业务通过 Stream 传完整 JSON-RPC 2.0 消息；单实例唤醒、窗口布局恢复、三端关窗隐藏到托盘已实现；同一份用户数据只允许一个后台运行。
+- Wails v3 Desktop：支持 Windows／macOS，复用同一份 React 构建产物与后台，业务通过 Stream 传完整 JSON-RPC 2.0 消息；单实例唤醒、窗口布局恢复、关窗隐藏到托盘已实现；Windows 自绘标题栏，macOS 保留原生交通灯。Linux 保留 Web，不构建 Desktop；同一份用户数据只允许一个后台运行。
 - 设置：独立导航，通用内含主题与默认关闭的通知开关；Agent 分组表单、个人 Skill 管理、模型与供应商、智能审批方式、可折叠 Hooks 列表，以及全局 MCP Server 的增删改、开关、重连全部全局 Server 和 HTTP OAuth 登录；项目 Skill 只读，项目 MCP 配置只读、确认后可登录。分类切换保留草稿，离开前确认未保存修改。
 - 工作区：Monaco 编辑器、自动保存与冲突保护、文件监听、Run Diff 与受版本保护的撤销、真实 PTY 终端。
 - Agent 能力：命令／持续进程、补丁、MCP、Skills；子任务支持主会话 → 孩子 → 孙子，独立页面、续聊与递归停止。
@@ -22,7 +22,7 @@
 make run           # Web 开发：Vite 热更新，Go 后台提供 /rpc
 make build         # 产出 .build/harness
 make desktop-run   # wails3 dev，前端热更新、Go 改动后重启
-make desktop-build # 产出二进制；macOS 另生成 .build/Harness.app
+make desktop-build # 产出 .build/EDITH（Windows 带 .exe）；macOS 另生成 .build/EDITH.app
 make agent-check   # 日常检查
 make test          # 完整串行验收
 ```
@@ -36,8 +36,8 @@ Web 开发页 `http://127.0.0.1:5173/`，业务连接同源 `/rpc` 并代理到 
 - MCP 表单的亮暗主题与窄屏显示待用户截图验收。
 - 模型二级选择与思考滑块的视觉、亮暗主题和窄屏交互待用户截图验收。
 - Windows 受限 Agent 沙箱未实现，Full Access 可用；原生目录选择仍需交互式 Windows 验收。
-- Desktop 已通过构建与连接入口检查；Windows 用户实机确认可双击启动且无控制台，Agent 命令不再弹窗仍待用户实机验收，聊天／终端等交互未逐项验收；新单实例、关窗、托盘与窗口恢复仍待实机验收，macOS 窗口交互亦待验收。Linux 托盘可见性取决于桌面环境；暂不做分发签名与安装包。
-- 后台通知的 Web 页面交互、Windows Toast、Linux 通知守护进程与 macOS 本机签名 `.app` 均待实机验收；分发签名、公证与安装包未实施。
+- Desktop 已通过构建与连接入口检查；Windows 用户实机确认可双击启动且无控制台，Agent 命令不再弹窗仍待用户实机验收，聊天／终端等交互未逐项验收；新标题栏、单实例、关窗、托盘与窗口恢复仍待实机验收，macOS 窗口交互亦待验收。暂不做分发签名与安装包。
+- 后台通知的 Web 页面交互、Windows Toast 与 macOS 本机签名 `.app` 均待实机验收；分发签名、公证与安装包未实施。
 - macOS Seatbelt 已在 macOS 27.0 arm64 验证，其他版本与 Intel 未验证。Linux 需要支持相应 namespace、seccomp 与挂载能力的 bwrap。
 - 沙箱不隔离硬链接别名；受保护目录内部的细粒度子路径授权暂时拒绝。异常断电／强杀可能留下 Linux 挂载占位空目录，不自动删除来源不明目录。
 - MCP 与 Hook 在宿主或远端执行，不在 Agent 命令沙箱内；Hook 信任仅覆盖配置，不跟踪脚本内容。

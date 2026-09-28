@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html"
 	"os"
+	"runtime"
 	"sync"
 
 	clientassets "harness/clients"
@@ -15,6 +16,8 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
+
+var version = "dev"
 
 func main() {
 	err := run()
@@ -44,9 +47,11 @@ func run() (result error) {
 	var wakeReady, wakePending bool
 	var lifecycle *desktop.Lifecycle
 	app := application.New(application.Options{
-		Name:   "Harness",
-		Assets: application.AssetOptions{Handler: application.AssetFileServerFS(assets)},
-		Mac:    application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: false},
+		Name:        "EDITH",
+		Description: "EDITH " + version,
+		Icon:        desktop.Icon,
+		Assets:      application.AssetOptions{Handler: application.AssetFileServerFS(assets)},
+		Mac:         application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: false},
 		SingleInstance: &application.SingleInstanceOptions{
 			UniqueID: "com.edith.harness.desktop",
 			OnSecondInstanceLaunch: func(application.SecondInstanceData) {
@@ -92,8 +97,8 @@ func run() (result error) {
 	if err != nil {
 		// 启动失败时仍给用户一个可读的桌面窗口，尤其是 Web 已占用数据目录时。
 		window := app.Window.NewWithOptions(application.WebviewWindowOptions{
-			Title: "Harness 无法启动", Width: 520, Height: 220,
-			HTML: "<html><meta charset='utf-8'><body style='font:16px system-ui;padding:24px'><h2>Harness 无法启动</h2><p>如果 Web 或 Desktop 已在运行，请先关闭它。</p><pre style='white-space:pre-wrap'>" + html.EscapeString(err.Error()) + "</pre></body></html>",
+			Title: "EDITH 无法启动", Width: 520, Height: 220,
+			HTML: "<html><meta charset='utf-8'><body style='font:16px system-ui;padding:24px'><h2>EDITH 无法启动</h2><p>如果 Web 或 Desktop 已在运行，请先关闭它。</p><pre style='white-space:pre-wrap'>" + html.EscapeString(err.Error()) + "</pre></body></html>",
 		})
 		attachWake(window)
 		return errors.Join(err, app.Run())
@@ -109,7 +114,12 @@ func run() (result error) {
 		services.Server.ServeStream(&desktop.Stream{Conn: conn})
 	})
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title: "Harness", Width: 1440, Height: 900, MinWidth: 900, MinHeight: 600, URL: "/",
+		Title: "EDITH", Width: 1440, Height: 900, MinWidth: 900, MinHeight: 600, URL: "/",
+		Frameless: runtime.GOOS == "windows",
+		Windows:   application.WindowsWindow{NonClientRegionSupport: true},
+		Mac: application.MacWindow{
+			TitleBar: application.MacTitleBarHidden, InvisibleTitleBarHeight: 36,
+		},
 	})
 	app.RegisterService(application.NewService(desktop.NewNotifications(window, services.SubscribeActivity)))
 	preferences.Attach(app, window)

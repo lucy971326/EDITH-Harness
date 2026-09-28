@@ -5,11 +5,16 @@ import { initializeFonts } from "./ui/src/fonts";
 import App from "./ui/src/App";
 import "./ui/src/styles.css";
 import { platform as webPlatform } from "./web/platform";
+import type { Platform } from "./ui/src/types";
 
 async function main() {
   // 入口只选择一次接入方式，共用 UI 不感知 Wails 或 WebSocket 地址。
   const desktop = location.protocol === "wails:" || location.hostname === "wails.localhost";
-  const platform = desktop ? (await import("./desktop/platform")).platform : webPlatform;
+  let platform: Platform = webPlatform;
+  if (desktop) {
+    const { createPlatform } = await import("./desktop/platform");
+    platform = await createPlatform();
+  }
   await initializeFonts();
   ReactDOM.createRoot(document.getElementById("root")!).render(
     <React.StrictMode>
