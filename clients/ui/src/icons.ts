@@ -1,6 +1,7 @@
 // 所有界面图标统一来自 Lucide；尺寸与描边在样式 Token 中统一。
 export {
   Palette,
+  Bell,
   Building2,
   Server,
   Webhook,

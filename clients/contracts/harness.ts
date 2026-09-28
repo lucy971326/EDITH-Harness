@@ -76,6 +76,14 @@ export interface SubscribeResult {
   snapshot: Snapshot;
 }
 
+// 只推送订阅之后的新成功／失败 Run；无历史快照。
+export interface TerminalEvent {
+  sessionID: string;
+  runID: string;
+  status: "success" | "failed";
+}
+export interface TerminalNotification { subscriptionID: string; event: TerminalEvent; }
+
 export interface ReadRunDiffParams {
   sessionID: string;
   runID: string;
@@ -164,6 +172,10 @@ export interface Methods {
   "harness/session/subscribe": {
     params: SessionIDParams;
     result: SubscribeResult;
+  };
+  "harness/run/terminal/subscribe": {
+    params: Record<string, never>;
+    result: { subscriptionID: string };
   };
   "harness/session/stop": {
     params: SessionIDParams;

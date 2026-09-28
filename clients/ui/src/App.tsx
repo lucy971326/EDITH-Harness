@@ -173,6 +173,9 @@ export default function App({ platform }: { platform: Platform }) {
     typeof window === "undefined" ? 1280 : window.innerWidth,
   );
   const [theme, setTheme] = useState(() => preference("theme", "system"));
+  const [notificationEnabled, setNotificationEnabled] = useState(() =>
+    preference(platform.desktop ? "desktop-notifications" : "web-notifications", "false") === "true",
+  );
   const [composerDraft, setComposerDraft] = useState<Draft>(emptyDraft);
   const { text: draft, images, references } = composerDraft;
   const [notice, setNotice] = useState("");
@@ -249,6 +252,8 @@ export default function App({ platform }: { platform: Platform }) {
   const listGeneration = useRef(0);
   const modelGeneration = useRef(0);
   const skillGeneration = useRef(0);
+  const openNotificationRef = useRef<(sessionID: string) => void>(() => {});
+  const pendingNotificationOpen = useRef<string | null>(null);
 
   const reportWorkspaceState = useCallback((state: { terminalOpen: boolean; dirty: boolean; saving: boolean }) => {
     desktopWorkspace.current = state;
@@ -566,6 +571,34 @@ export default function App({ platform }: { platform: Platform }) {
     setNotice("项目目录已移动或删除，请重新选择目录。历史会话仍会保留。");
     await openProject();
   }
+
+  async function openNotificationSession(sessionID: string) {
+    pendingNotificationOpen.current = sessionID;
+    const client = clientRef.current;
+    if (!client?.connected) {
+      setNotice("连接后台后将打开通知对应的会话。");
+      return;
+    }
+    try {
+      await client.call("harness/session/get", { sessionID });
+      if (pendingNotificationOpen.current !== sessionID || client !== clientRef.current || !client.connected) return;
+      pendingNotificationOpen.current = null;
+      navigate("/", false, () => { void selectSession(sessionID); });
+    } catch (cause) {
+      if (pendingNotificationOpen.current !== sessionID || client !== clientRef.current || !client.connected) return;
+      pendingNotificationOpen.current = null;
+      navigate("/", false, () => {
+        if (shouldClearSessionOnGetError(cause)) {
+          setCurrentSession(null, null);
+          applyDraft(null);
+          setNotice("通知对应的会话已不可用。");
+        } else {
+          setNotice("暂时无法打开通知对应的会话，请稍后重试。");
+        }
+      });
+    }
+  }
+  openNotificationRef.current = (sessionID) => { void openNotificationSession(sessionID); };
 
   async function viewArchivedSession(sessionID: string) {
     setCurrentSession(sessionID, archivedSessions?.find((item) => item.sessionID === sessionID) ?? null);
@@ -1045,6 +1078,21 @@ export default function App({ platform }: { platform: Platform }) {
     savePreference("reading-panel-width", String(panelWidth));
     savePreference("sidebar-width", String(sidebarWidth));
   }, [panel, panelWidth, sidebarWidth]);
+  useEffect(() => {
+    let active = true;
+    void platform.notifications.setEnabled(notificationEnabled).then((accepted) => {
+      if (active && notificationEnabled && !accepted) setNotificationEnabled(false);
+    }).catch(() => { if (active) setNotificationEnabled(false); });
+    return () => { active = false; };
+  }, [platform.notifications]);
+  useEffect(() => {
+    savePreference(platform.desktop ? "desktop-notifications" : "web-notifications", String(notificationEnabled));
+  }, [notificationEnabled, platform.desktop]);
+  useEffect(() => platform.notifications.onOpen?.((id) => openNotificationRef.current(id)), [platform.notifications]);
+  useEffect(() => {
+    if (!notificationEnabled || !connected || !approvalClient) return;
+    return platform.notifications.subscribe?.(approvalClient, (id) => openNotificationRef.current(id));
+  }, [notificationEnabled, connected, approvalClient, platform.notifications]);
   useEffect(
     () => () => {
       objectUrls.current.forEach((url) => URL.revokeObjectURL(url));
@@ -1080,6 +1128,10 @@ export default function App({ platform }: { platform: Platform }) {
     };
   }, []);
   useEffect(() => {
+    if (!connected || !approvalClient?.connected || !pendingNotificationOpen.current) return;
+    openNotificationRef.current(pendingNotificationOpen.current);
+  }, [connected, approvalClient]);
+  useEffect(() => {
     if (chatState.missing && chatState.sessionID === selectedIDRef.current) {
       setCurrentSession(null, null);
       applyDraft(null);
@@ -1104,7 +1156,9 @@ export default function App({ platform }: { platform: Platform }) {
         : openProject()),
     },
     settings: {
-      theme, setTheme, onBack: () => navigate("/"), setNavigationGuard: setGuard,
+      theme, setTheme, notifications: platform.notifications,
+      enabled: notificationEnabled, setEnabled: setNotificationEnabled,
+      onBack: () => navigate("/"), setNavigationGuard: setGuard,
       onDesktopState: reportSettingsState,
       agents: agentCatalog?.agents ?? null, kinds: agentCatalog?.kinds ?? [],
       tools: agentCatalog?.tools ?? [], loading: agentLoading, error: agentError,

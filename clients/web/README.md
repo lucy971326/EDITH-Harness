@@ -7,6 +7,7 @@ platform.ts -> WebSocket /rpc -> server.go + websocket.go -> appserver.ServeStre
 ```
 
 - `platform.ts`：计算同源 RPC 地址；打开外部网址到新标签。
+- `notifications.ts`：浏览器通知授权与只读订阅；仅标签打开且失焦时发送，不做后台推送。
 - `server.go`：回环 HTTP 监听、静态页面分发、握手准入与传输收尾。
 - `websocket.go`：Host / Origin 校验、16 MiB 消息限制、JSON 帧收发与写入超时。
 - `rpc-proxy.ts`：Vite 开发代理的 Origin 校验；只允许同源页面升级。

@@ -2,7 +2,7 @@
 
 浏览器与 Desktop 使用本目录的同一份 React 页面、连接状态和投影。页面规则见 [WEB_UI](../../docs/AGENTS/WEB_UI.md)，当前能力见 [STATUS](../../docs/AGENTS/STATUS.md)。
 
-平台能力由 `clients/main.tsx` 注入，`types.ts` 只定义 `openSocket()` 与 `openExternal(url)`；本目录不导入两端适配器。
+平台能力由 `clients/main.tsx` 注入，`types.ts` 定义连接、打开网址与通知契约；本目录不导入两端适配器。
 
 ## 启动
 
@@ -41,7 +41,7 @@ workspace/workspace-tabs -> editor / review / terminal / subagent
 - `state/chat.ts / state/chat-process.ts`：事件归并与只读分轮；`chat/chat-messages.tsx / chat/work-process.tsx`：呈现结果和过程。
 - `workspace/workspace-tabs.tsx / workspace/auxiliary-panel.tsx`：辅助面板与标签编排；[`editor/`](src/editor/README.md)：文件草稿、保存、冲突和监听。
 - `review/ / terminal/ / subagent/`：Diff、终端与子任务工作页。
-- `settings/settings-page.tsx / settings/approval-settings.tsx / settings/hook-settings.tsx`：设置；`styles.css / components/ui/`：视觉规则与基础控件。
+- `settings/settings-page.tsx / settings/general-settings.tsx / settings/approval-settings.tsx`：通用与业务设置；`styles.css / components/ui/`：视觉规则与基础控件。
 
 Client 保存界面状态和服务端投影，账本与 Run 仍以后台为准。关闭标签或断线不停止后台任务。
 

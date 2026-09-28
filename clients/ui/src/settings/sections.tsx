@@ -1,19 +1,19 @@
 import type { ComponentProps, ReactNode } from "react";
-import { Palette, Bot, Shield, Webhook, Brain, Archive, Server, BookOpenCheck } from "../icons";
+import { SlidersHorizontal, Bot, Shield, Webhook, Brain, Archive, Server, BookOpenCheck } from "../icons";
 import { AgentSettingsPanel } from "./agent-settings";
-import { AppearanceSettingsPanel } from "./appearance-settings";
+import { GeneralSettingsPanel } from "./general-settings";
 import type { SettingsDraftState } from "./types";
 
 // 契约。每个分类拥有自己的表单，仅向外壳报告草稿与保存状态。
 export type SettingsSection = {
   id: string;
   label: string;
-  icon: typeof Palette;
+  icon: typeof SlidersHorizontal;
   render: (onStateChange: (state: SettingsDraftState) => void) => ReactNode;
 };
 
 export type SettingsContentProps = Omit<ComponentProps<typeof AgentSettingsPanel>, "onStateChange"> &
-  ComponentProps<typeof AppearanceSettingsPanel> & {
+  ComponentProps<typeof GeneralSettingsPanel> & {
     approvalSettings: SettingsSection["render"];
     hookSettings: SettingsSection["render"];
     modelSettings: SettingsSection["render"];
@@ -25,8 +25,9 @@ export type SettingsContentProps = Omit<ComponentProps<typeof AgentSettingsPanel
 // 唯一分类登记入口；顺序同时决定导航和面板，不在外壳添加分类分支。
 export function createSettingsSections(props: SettingsContentProps): SettingsSection[] {
   return [
-    { id: "appearance", label: "外观", icon: Palette,
-      render: () => <AppearanceSettingsPanel theme={props.theme} setTheme={props.setTheme} /> },
+    { id: "general", label: "通用", icon: SlidersHorizontal,
+      render: () => <GeneralSettingsPanel theme={props.theme} setTheme={props.setTheme}
+        notifications={props.notifications} enabled={props.enabled} setEnabled={props.setEnabled} /> },
     { id: "agents", label: "Agent", icon: Bot,
       render: (onStateChange) => <AgentSettingsPanel
         agents={props.agents} kinds={props.kinds} tools={props.tools} loading={props.loading}

@@ -9,7 +9,9 @@ import (
 
 	"harness/internal/approvals"
 	"harness/internal/appserver/internal/clientconn"
+	"harness/internal/events"
 	"harness/internal/permissions"
+	"harness/internal/runner"
 
 	"github.com/sourcegraph/jsonrpc2"
 )
@@ -332,5 +334,55 @@ func TestApprovalReconnect(t *testing.T) {
 	}
 	if err := <-finished; err == nil {
 		t.Fatal("denied MCP call was approved")
+	}
+}
+
+// 通知订阅不能把取消当成失败，也不能补发订阅前的历史终态。
+func TestTerminalSubscriptionFiltersNewRuns(t *testing.T) {
+	server := New()
+	registry := events.NewRegistry()
+	server.events = registry
+	err := Register(server, terminalSubscribeMethod, server.handleTerminalSubscribe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream := connectTestStream(t, server)
+	initializeStream(t, stream)
+	err = events.Publish(t.Context(), registry, runner.RunEvent{SessionID: "old", RunID: "old-run", Kind: runner.RunEnded, Status: runner.RunSucceeded})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := streamRequest(t, stream, `{"jsonrpc":"2.0","id":2,"method":"harness/run/terminal/subscribe","params":{}}`)
+	if response.Error != nil {
+		t.Fatal(response.Error)
+	}
+	var subscribed TerminalSubscribeResult
+	if err := json.Unmarshal(response.Result, &subscribed); err != nil || subscribed.SubscriptionID == "" {
+		t.Fatalf("subscription = %s: %v", response.Result, err)
+	}
+	for _, event := range []runner.RunEvent{
+		{SessionID: "s", RunID: "started", Kind: runner.RunStarted},
+		{SessionID: "s", RunID: "cancelled", Kind: runner.RunEnded, Status: runner.RunCancelled},
+		{SessionID: "s", RunID: "success", Kind: runner.RunEnded, Status: runner.RunSucceeded},
+		{SessionID: "s", RunID: "failed", Kind: runner.RunEnded, Status: runner.RunFailed},
+	} {
+		if err := events.Publish(t.Context(), registry, event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, want := range []runner.RunStatus{runner.RunSucceeded, runner.RunFailed} {
+		var envelope struct {
+			Method string `json:"method"`
+			Params struct {
+				SubscriptionID string        `json:"subscriptionID"`
+				Event          TerminalEvent `json:"event"`
+			} `json:"params"`
+		}
+		if err := stream.ReadObject(&envelope); err != nil {
+			t.Fatal(err)
+		}
+		if envelope.Method != "harness/run/terminal" || envelope.Params.SubscriptionID != subscribed.SubscriptionID || envelope.Params.Event.Status != want {
+			t.Fatalf("terminal notification = %+v, want %s", envelope, want)
+		}
 	}
 }

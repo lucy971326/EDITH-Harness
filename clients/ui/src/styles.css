@@ -2764,6 +2764,14 @@
 .settings-detail-pane {
   min-width: 0;
 }
+.notification-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.notification-setting strong { font-size: var(--font-size-body); }
+.notification-setting p { margin: var(--space-1) 0 0; }
 .skill-settings-page .settings-subnav > input { margin-bottom: var(--space-4); }
 .skill-group + .skill-group { margin-top: var(--space-6); }
 .skill-group > h3 { padding-left: var(--space-3); overflow-wrap: anywhere; }

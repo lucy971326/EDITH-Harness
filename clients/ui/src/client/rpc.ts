@@ -3,6 +3,7 @@ import type {
   Methods,
   SendParams,
   SubscribeResult,
+  TerminalNotification,
 } from "../../../contracts/harness.ts";
 import type { ServerMethods } from "../../../contracts/appserver.ts";
 import type {
@@ -68,6 +69,19 @@ export interface CallOptions<Result = unknown> {
 export class RPCClient {
   onApprovals: ((notification: ApprovalNotification) => void) | null = null;
   onRun: ((notification: RunNotification) => void) | null = null;
+
+  private readonly approvalListeners = new Set<(notification: ApprovalNotification) => void>();
+  private readonly terminalListeners = new Set<(notification: TerminalNotification) => void>();
+
+  onApprovalChange(listener: (notification: ApprovalNotification) => void): () => void {
+    this.approvalListeners.add(listener);
+    return () => this.approvalListeners.delete(listener);
+  }
+
+  onTerminal(listener: (notification: TerminalNotification) => void): () => void {
+    this.terminalListeners.add(listener);
+    return () => this.terminalListeners.delete(listener);
+  }
 
   private readonly runListeners = new Set<
     (notification: RunNotification) => void
@@ -484,7 +498,15 @@ export class RPCClient {
           typeof envelope.params?.subscriptionID === "string" &&
           Array.isArray(envelope.params?.event)
         ) {
-          this.onApprovals?.(envelope.params as ApprovalNotification);
+          const notification = envelope.params as ApprovalNotification;
+          this.onApprovals?.(notification);
+          for (const listener of this.approvalListeners) listener(notification);
+        } else if (
+          envelope.method === "harness/run/terminal" &&
+          typeof envelope.params?.subscriptionID === "string" &&
+          typeof envelope.params?.event?.sessionID === "string"
+        ) {
+          for (const listener of this.terminalListeners) listener(envelope.params as TerminalNotification);
         } else if (
           envelope.method === "fs/changed" &&
           typeof envelope.params?.subscriptionID === "string" &&

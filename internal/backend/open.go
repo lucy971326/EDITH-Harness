@@ -36,9 +36,11 @@ import (
 
 // 活对象。Backend 拥有一个进程的服务和逆序关闭动作。
 type Backend struct {
-	Server *appserver.Server
-	runs   *runner.Runner
-	close  func() error
+	Server    *appserver.Server
+	runs      *runner.Runner
+	approvals *approvals.Service
+	events    *events.Registry
+	close     func() error
 }
 
 func UserDataDir() (string, error) {
@@ -204,7 +206,8 @@ func Open(dataDir string) (backend *Backend, result error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Backend{Server: server, runs: runService, close: func() error { return closeReverse(closers) }}, nil
+	return &Backend{Server: server, runs: runService, approvals: approvalService, events: registry,
+		close: func() error { return closeReverse(closers) }}, nil
 }
 
 // HasActiveRuns 只提供进程运行状态，不引入 Desktop 窗口概念。

@@ -8,11 +8,13 @@ React RPC → Wails Stream → Stream → appserver.ServeStream
 
 `platform.ts` 提供 Wails Stream 与系统浏览器能力，由 `clients/main.tsx` 注入共用 UI。
 
+`notifications.go` 持有 Wails 原生通知服务、有界发送队列及后台只读事件订阅；前端只同步开关与权限状态。原生服务初始化失败时 Desktop 仍可启动。Linux 缺少通知守护进程时显示不可用；macOS 通知验收使用带 Bundle ID、本机临时签名的 `.build/Harness.app`。
+
 `lifecycle.go` 负责单窗口关窗、托盘与退出确认；共用 UI 只回报终端标签、草稿和保存状态，活 Run 由 Runner 只读查询。`window.go` 将普通窗口布局保存到 `~/.harness/desktop/window.json`，坏文件使用默认居中窗口。窗口行为不进入 appserver 或领域服务。
 
 窗口与进程启动见 [`cmd/harness-desktop`](../../cmd/harness-desktop/main.go)。
 
-仓库根目录执行 `make desktop-run` 启动 Wails 开发模式：Vite 负责页面热更新，Wails 监视 Go 源码并重启桌面进程；`make desktop-build` 构建正式二进制。
+仓库根目录执行 `make desktop-run` 启动 Wails 开发模式：Vite 负责页面热更新，Wails 监视 Go 源码并重启桌面进程；`make desktop-build` 在 Windows／Linux 构建正式二进制，在 macOS 另生成 `.build/Harness.app`。
 
 ```text
 Makefile               开发命令入口

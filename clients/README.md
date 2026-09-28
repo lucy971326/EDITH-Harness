@@ -47,7 +47,7 @@ Desktop：启动 harness-desktop
 前端启动（两端共用，运行在浏览器 / WebView 中）
   main.tsx
     -> 选择 web/platform.ts 或 desktop/platform.ts
-    -> 注入 openSocket、openExternal；Desktop 另接关窗状态桥
+    -> 注入 openSocket、openExternal、通知能力；Desktop 另接关窗状态桥
     -> 挂载共用 ui/src/App
     -> ChatConnection 建立连接、初始化协议、读取页面数据
 ```
@@ -99,6 +99,8 @@ Desktop 自己启动 Go 后台，业务通信不需要启动 Web 的 8888 监听
 **`platform.ts` 在前端执行，`websocket.go` 和 `wails.go` 在 Go 后台执行。** 后两者只转换传输消息，业务方法由 appserver 统一分发。
 
 打开 OAuth 等外部网址是独立的平台能力：`openExternal(url)` 在 Web 打开新标签，在 Desktop 调用 Wails 打开系统浏览器，不经过上图的业务 RPC 分发。
+
+后台通知也按平台接入：Web 用浏览器 Notification API 和只读 RPC 订阅；Desktop Go 直接订阅进程事件，通过 Wails 原生通知服务发送。开关属于各端本机偏好，不进入会话或 Run。
 
 ## 4. 状态与退出
 

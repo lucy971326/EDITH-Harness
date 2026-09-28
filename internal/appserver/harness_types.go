@@ -130,6 +130,21 @@ type SubscribeResult struct {
 	Snapshot       conversations.Snapshot `json:"snapshot"`
 }
 
+// 数据。订阅所有会话的新 Run 终态；不回放历史。
+type TerminalSubscribeParams struct{}
+
+// 数据。终态订阅的连接内标识。
+type TerminalSubscribeResult struct {
+	SubscriptionID string `json:"subscriptionID"`
+}
+
+// 数据。给通知接入层的最小 Run 终态。
+type TerminalEvent struct {
+	SessionID string           `json:"sessionID"`
+	RunID     string           `json:"runID"`
+	Status    runner.RunStatus `json:"status"`
+}
+
 // 对外 Subagent 接口：直属父会话与任务共同定位；父会话本身可以是 Subagent。
 
 // 数据。定位父会话中的一个子任务。

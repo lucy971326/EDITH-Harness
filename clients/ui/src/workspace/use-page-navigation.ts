@@ -16,8 +16,8 @@ export function usePageNavigation() {
     guard.current = next;
   }, []);
 
-  const navigate = useCallback((next: string, replace = false) => {
-    if (next === current.current.path) return;
+  const navigate = useCallback((next: string, replace = false, after?: () => void) => {
+    if (next === current.current.path) { after?.(); return; }
     const proceed = () => {
       const index = current.current.index + (replace ? 0 : 1);
       const state = { ...window.history.state, harnessPageIndex: index };
@@ -25,6 +25,7 @@ export function usePageNavigation() {
       else window.history.pushState(state, "", `#${next}`);
       current.current = { path: next, index };
       setPath(next);
+      after?.();
     };
     if (guard.current) guard.current(proceed);
     else proceed();

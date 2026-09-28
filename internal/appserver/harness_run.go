@@ -116,6 +116,31 @@ func (s *Server) handleSubscribe(ctx context.Context, input SessionIDParams) (Su
 	return SubscribeResult{SubscriptionID: subscription.ID(), Snapshot: snapshot}, nil
 }
 
+func (s *Server) handleTerminalSubscribe(ctx context.Context, _ TerminalSubscribeParams) (TerminalSubscribeResult, error) {
+	request, err := clientconn.FromContext(ctx)
+	if err != nil {
+		return TerminalSubscribeResult{}, err
+	}
+	subscription, err := request.Subscribe()
+	if err != nil {
+		return TerminalSubscribeResult{}, err
+	}
+	unlisten, err := events.Subscribe(s.events, func(_ context.Context, event runner.RunEvent) error {
+		if event.Kind == runner.RunEnded && (event.Status == runner.RunSucceeded || event.Status == runner.RunFailed) {
+			subscription.Notify("harness/run/terminal", TerminalEvent{
+				SessionID: event.SessionID, RunID: event.RunID, Status: event.Status,
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		subscription.Close()
+		return TerminalSubscribeResult{}, err
+	}
+	subscription.SetCleanup(unlisten)
+	return TerminalSubscribeResult{SubscriptionID: subscription.ID()}, nil
+}
+
 type runSubscription interface {
 	Done() <-chan struct{}
 	Notify(string, any)

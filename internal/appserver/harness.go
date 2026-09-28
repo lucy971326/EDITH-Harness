@@ -26,6 +26,7 @@ const (
 	sendMethod               = "harness/session/send"
 	snapshotMethod           = "harness/session/snapshot"
 	subscribeMethod          = "harness/session/subscribe"
+	terminalSubscribeMethod  = "harness/run/terminal/subscribe"
 	stopMethod               = "harness/session/stop"
 	readRunDiffMethod        = "harness/run/diff/read"
 	revertRunDiffMethod      = "harness/run/diff/revertFile"
@@ -102,6 +103,10 @@ func (s *Server) BindHarness(product *conversations.Service, runService *runner.
 		return err
 	}
 	err = Register(s, subscribeMethod, s.handleSubscribe)
+	if err != nil {
+		return err
+	}
+	err = Register(s, terminalSubscribeMethod, s.handleTerminalSubscribe)
 	if err != nil {
 		return err
 	}

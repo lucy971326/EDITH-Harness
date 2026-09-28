@@ -111,6 +111,7 @@ func run() (result error) {
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title: "Harness", Width: 1440, Height: 900, MinWidth: 900, MinHeight: 600, URL: "/",
 	})
+	app.RegisterService(application.NewService(desktop.NewNotifications(window, services.SubscribeActivity)))
 	preferences.Attach(app, window)
 	lifecycle = desktop.NewLifecycle(app, window, services.HasActiveRuns)
 	attachWake(window)

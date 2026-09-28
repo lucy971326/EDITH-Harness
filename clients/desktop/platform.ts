@@ -1,9 +1,33 @@
-import { Browser, Events, Stream } from "@wailsio/runtime";
-import type { Platform } from "../ui/src/types";
+import { Browser, Call, Events, Stream } from "@wailsio/runtime";
+import type { Platform, NotificationStatus } from "../ui/src/types";
 
 let closeSnapshot: (() => { terminalOpen: boolean; dirty: boolean; saving: boolean }) | null = null;
+let notificationOpen: ((sessionID: string) => void) | null = null;
+let deferredNotificationOpen = "";
 
 export const platform: Platform = {
+  notifications: {
+    status: () => Call.ByName("harness/clients/desktop.Notifications.Status") as Promise<NotificationStatus>,
+    request: () => Call.ByName("harness/clients/desktop.Notifications.RequestAuthorization") as Promise<NotificationStatus>,
+    setEnabled: (enabled) => Call.ByName("harness/clients/desktop.Notifications.SetEnabled", enabled) as Promise<boolean>,
+    onOpen(open) {
+      notificationOpen = open;
+      if (deferredNotificationOpen) {
+        open(deferredNotificationOpen);
+        deferredNotificationOpen = "";
+      }
+      const takePending = () => {
+        void Call.ByName("harness/clients/desktop.Notifications.TakePendingOpen").then((sessionID) => {
+          if (typeof sessionID !== "string" || !sessionID) return;
+          if (notificationOpen) notificationOpen(sessionID);
+          else deferredNotificationOpen = sessionID;
+        }).catch(() => {});
+      };
+      const off = Events.On("desktop-notification-open", takePending);
+      takePending();
+      return () => { off(); if (notificationOpen === open) notificationOpen = null; };
+    },
+  },
   async openSocket() {
     return await Stream("rpc") as WebSocket;
   },
