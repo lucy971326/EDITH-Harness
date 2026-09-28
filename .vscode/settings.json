@@ -3,6 +3,7 @@
     "**/*_test.go": true,
     "**/*.test.ts": true
   },
+  "css.customData": ["./.vscode/css-custom-data.json"],
   "betterFolding.showFoldedBodyLinesCount":false,
   "betterFolding.showFunctionParameters":true,
 }

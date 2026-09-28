@@ -17,6 +17,7 @@ type activitySubscriber func(func([]approvals.Pending, bool), func(runner.RunEve
 
 type notificationItem struct {
 	id, sessionID, body string
+	testResult          chan error
 }
 
 // 数据。系统授权与服务可用性，不保存用户开关。
@@ -147,6 +148,32 @@ func (n *Notifications) SetEnabled(enabled bool) bool {
 	return n.enabled
 }
 
+// SendTest 经现有发送队列提交测试通知；聚焦设置页时也会显示。
+func (n *Notifications) SendTest() error {
+	if n.Status().Permission != "granted" {
+		return fmt.Errorf("desktop: notification permission is not granted")
+	}
+	result := make(chan error, 1)
+	n.mu.Lock()
+	if !n.enabled || n.closed || n.queue == nil {
+		n.mu.Unlock()
+		return fmt.Errorf("desktop: notifications are disabled")
+	}
+	select {
+	case n.queue <- notificationItem{id: fmt.Sprintf("test-%d", time.Now().UnixNano()), body: "这是一条测试通知", testResult: result}:
+	default:
+		n.mu.Unlock()
+		return fmt.Errorf("desktop: notification queue is full")
+	}
+	n.mu.Unlock()
+	select {
+	case err := <-result:
+		return err
+	case <-time.After(10 * time.Second):
+		return fmt.Errorf("desktop: test notification timed out")
+	}
+}
+
 // TakePendingOpen 补取前端完成挂载前点开的通知。
 func (n *Notifications) TakePendingOpen() string {
 	n.mu.Lock()
@@ -201,13 +228,19 @@ func (n *Notifications) sendLoop() {
 		n.mu.Lock()
 		enabled := n.enabled && !n.failed
 		n.mu.Unlock()
-		if !enabled || (n.window.IsVisible() && !n.window.IsMinimised() && n.window.IsFocused()) {
+		if !enabled || (item.testResult == nil && n.window.IsVisible() && !n.window.IsMinimised() && n.window.IsFocused()) {
+			if item.testResult != nil {
+				item.testResult <- fmt.Errorf("desktop: notifications are disabled")
+			}
 			continue
 		}
-		_ = n.service.SendNotification(notifications.NotificationOptions{
+		err := n.service.SendNotification(notifications.NotificationOptions{
 			ID: item.id, Title: "Harness", Body: item.body,
 			Data: map[string]interface{}{"sessionID": item.sessionID},
 		})
+		if item.testResult != nil {
+			item.testResult <- err
+		}
 		// 系统服务可能临时离线；下一条可自然重试，Run 不受影响。
 	}
 }
@@ -217,20 +250,21 @@ func (n *Notifications) onResponse(result notifications.NotificationResult) {
 		return
 	}
 	sessionID, _ := result.Response.UserInfo["sessionID"].(string)
-	if sessionID == "" {
-		return
-	}
 	n.mu.Lock()
 	if n.closed {
 		n.mu.Unlock()
 		return
 	}
-	n.pendingOpen = sessionID
+	if sessionID != "" {
+		n.pendingOpen = sessionID
+	}
 	n.mu.Unlock()
 	n.window.Show()
 	n.window.UnMinimise()
 	n.window.Focus()
-	n.window.EmitEvent("desktop-notification-open", sessionID)
+	if sessionID != "" {
+		n.window.EmitEvent("desktop-notification-open", sessionID)
+	}
 }
 
 var _ application.ServiceStartup = (*Notifications)(nil)

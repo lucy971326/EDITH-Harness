@@ -15,6 +15,7 @@ export function GeneralSettingsPanel({ theme, setTheme, notifications, enabled, 
   const [detail, setDetail] = useState<"appearance" | "notifications">("appearance");
   const [status, setStatus] = useState<NotificationStatus | null>(null);
   const [busy, setBusy] = useState(false);
+  const [testMessage, setTestMessage] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -26,6 +27,7 @@ export function GeneralSettingsPanel({ theme, setTheme, notifications, enabled, 
   async function toggle(next: boolean) {
     if (busy) return;
     setBusy(true);
+    setTestMessage("");
     try {
       const permission = next ? await notifications.request() : await notifications.status();
       setStatus(permission);
@@ -35,6 +37,20 @@ export function GeneralSettingsPanel({ theme, setTheme, notifications, enabled, 
       if (next && !active) setStatus({ permission: "unavailable", message: "系统通知暂不可用" });
     } catch {
       setStatus({ permission: "unavailable", message: "无法更新通知设置" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function sendTest() {
+    if (busy) return;
+    setBusy(true);
+    setTestMessage("");
+    try {
+      await notifications.test();
+      setTestMessage("测试通知已提交给系统。");
+    } catch {
+      setTestMessage("测试通知发送失败，请检查系统通知设置。");
     } finally {
       setBusy(false);
     }
@@ -58,6 +74,10 @@ export function GeneralSettingsPanel({ theme, setTheme, notifications, enabled, 
             <span className="settings-identity-icon">{detail === "appearance" ? <Palette /> : <Bell />}</span>
             <h3>{detail === "appearance" ? "外观" : "后台通知"}</h3>
           </div>
+          {detail === "notifications" && <Button variant="ghost" size="sm" className="text-muted-foreground"
+            disabled={busy || !enabled || status?.permission !== "granted"} onClick={() => void sendTest()}>
+            发送测试通知
+          </Button>}
         </div>
         {detail === "appearance" ? <><ThemeOptions theme={theme} setTheme={setTheme} /><FontOptions /></> : <>
           <div className="settings-section notification-setting">
@@ -73,6 +93,7 @@ export function GeneralSettingsPanel({ theme, setTheme, notifications, enabled, 
           {status?.permission === "unavailable" && <p className="settings-notice" role="status">
             {status.message} <Button variant="ghost" size="sm" onClick={() => void notifications.status().then(setStatus)}>重试检测</Button>
           </p>}
+          {testMessage && <p className="settings-description notification-test-status" role="status">{testMessage}</p>}
         </>}
       </section>
     </div>

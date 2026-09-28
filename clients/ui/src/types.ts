@@ -7,11 +7,12 @@ export type NotificationStatus = {
   message?: string;
 };
 
-// 契约。两端只向共用设置页暴露通知权限、开关和点击目标。
+// 契约。两端只向共用设置页暴露通知权限、开关、测试和点击目标。
 export interface PlatformNotifications {
   status: () => Promise<NotificationStatus>;
   request: () => Promise<NotificationStatus>;
   setEnabled: (enabled: boolean) => Promise<boolean>;
+  test: () => Promise<void>;
   subscribe?: (client: RPCClient, open: (sessionID: string) => void) => () => void;
   onOpen?: (open: (sessionID: string) => void) => () => void;
 }

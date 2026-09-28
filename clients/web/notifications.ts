@@ -39,6 +39,11 @@ export const notifications: PlatformNotifications = {
     return status();
   },
   async setEnabled(enabled) { return enabled && status().permission === "granted"; },
+  async test() {
+    if (status().permission !== "granted") throw new Error("notification permission is not granted");
+    const notification = new Notification("Harness", { body: "这是一条测试通知" });
+    notification.onclick = () => { notification.close(); window.focus(); };
+  },
   subscribe(client: RPCClient, open) {
     let active = true;
     let approvalID = "";

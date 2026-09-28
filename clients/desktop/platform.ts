@@ -10,6 +10,7 @@ export const platform: Platform = {
     status: () => Call.ByName("harness/clients/desktop.Notifications.Status") as Promise<NotificationStatus>,
     request: () => Call.ByName("harness/clients/desktop.Notifications.RequestAuthorization") as Promise<NotificationStatus>,
     setEnabled: (enabled) => Call.ByName("harness/clients/desktop.Notifications.SetEnabled", enabled) as Promise<boolean>,
+    test: () => Call.ByName("harness/clients/desktop.Notifications.SendTest") as Promise<void>,
     onOpen(open) {
       notificationOpen = open;
       if (deferredNotificationOpen) {
