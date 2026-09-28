@@ -20,6 +20,18 @@ cmd/harness / cmd/harness-desktop → backend 显式装配与逆序关闭
 
 源码地图：[`internal`](internal/README.md) · [`appserver`](internal/appserver/README.md) · [`clients`](clients/README.md) · [`集成验收`](tests/integration/README.md)。
 
+目录速览：
+
+```text
+cmd/        两个 Go 程序入口           internal/   后台领域
+clients/    共用 UI、Web/Desktop 接入   site/       独立网站
+build/      Desktop 构建输入           .build/     生成的程序（不提交）
+docs/       规范与执行中计划           tests/      集成验收
+reference/  本地参考源码（不提交）
+```
+
+[`build/`](build/README.md) 中的文件按 Windows、macOS 分组；`.task/`、`.codegraph/` 是本地缓存，`playground/` 是本地实验目录，不参与正式构建。
+
 ## 已实现
 
 - **Agent 执行**：流式对话、思考与工具过程、Steer、停止、分叉、重连和后台恢复。

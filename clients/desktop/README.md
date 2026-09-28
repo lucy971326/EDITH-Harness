@@ -14,7 +14,7 @@ React RPC → Wails Stream → Stream → appserver.ServeStream
 
 窗口与进程启动见 [`cmd/harness-desktop`](../../cmd/harness-desktop/main.go)。
 
-仓库根目录执行 `make desktop-run` 启动 Wails 开发模式：Vite 负责页面热更新，Wails 监视 Go 源码并重启桌面进程；`make desktop-build` 在 Windows 构建 `.build/EDITH.exe`，在 macOS 生成 `.build/EDITH.app`。Linux Desktop 不再支持，Linux Web 保留。产品版本只在 [`build/version.txt`](../../build/version.txt) 修改；Desktop PNG、ICO、ICNS 由现有 [`edith-icon.svg`](../public/edith-icon.svg) 生成，分别供运行时、Windows 和 macOS 使用。
+仓库根目录执行 `make desktop-run` 启动 Wails 开发模式：Vite 负责页面热更新，Wails 监视 Go 源码并重启桌面进程；`make desktop-build` 在 Windows 构建 `.build/EDITH.exe`，在 macOS 生成 `.build/EDITH.app`。Linux Desktop 不再支持，Linux Web 保留。产品版本只在 [`build/version.txt`](../../build/version.txt) 修改；Desktop PNG、ICO、ICNS 由现有 [`edith-icon.svg`](../public/edith-icon.svg) 生成，分别供运行时、Windows 和 macOS 使用。构建文件见 [`build/README.md`](../../build/README.md)。
 
 ```text
 Makefile               开发命令入口

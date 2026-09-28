@@ -28,9 +28,9 @@ tasks:
       - task: deps
       - npm --prefix clients run build
       - node -e "require('fs').existsSync('.build')||require('fs').mkdirSync('.build')"
-      - cmd: node build/write-windows-info.mjs
+      - cmd: node build/windows/write-info.mjs
         platforms: [windows]
-      - cmd: wails3 generate syso -arch {{ARCH}} -icon build/edith-icon.ico -manifest build/windows.manifest -info .build/windows-info.json -out cmd/harness-desktop/rsrc_windows_{{ARCH}}.syso
+      - cmd: wails3 generate syso -arch {{ARCH}} -icon build/windows/icon.ico -manifest build/windows/app.manifest -info .build/windows-info.json -out cmd/harness-desktop/rsrc_windows_{{ARCH}}.syso
         platforms: [windows]
       # Windows 直接 exec 需要可执行文件带 .exe 后缀。
       # 正式版在 Windows 使用 GUI 子系统，双击时不弹控制台；开发版保留控制台日志。
@@ -41,7 +41,7 @@ tasks:
     platforms:
       - darwin
     cmds:
-      - sh build/macos-bundle.sh {{.APP_VERSION}}
+      - sh build/macos/bundle.sh {{.APP_VERSION}}
 
   run:
     desc: Run the built Desktop app.
