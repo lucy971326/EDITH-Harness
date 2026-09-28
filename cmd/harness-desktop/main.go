@@ -46,7 +46,7 @@ func run() (result error) {
 	app := application.New(application.Options{
 		Name:   "Harness",
 		Assets: application.AssetOptions{Handler: application.AssetFileServerFS(assets)},
-		Mac:    application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true},
+		Mac:    application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: false},
 		SingleInstance: &application.SingleInstanceOptions{
 			UniqueID: "com.edith.harness.desktop",
 			OnSecondInstanceLaunch: func(application.SecondInstanceData) {

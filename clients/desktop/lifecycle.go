@@ -5,7 +5,6 @@ import (
 	"image"
 	"image/color"
 	"image/png"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -16,7 +15,6 @@ import (
 
 type closeRequest struct {
 	id      uint64
-	mode    string
 	phase   string
 	running bool
 	terminal bool
@@ -28,15 +26,9 @@ type closeState struct {
 	running, terminalOpen, dirty, saving bool
 }
 
-func closeAction(mode string, state closeState, trayAvailable bool) string {
-	if mode == "window" && trayAvailable && (state.running || state.terminalOpen) {
-		return "hide"
-	}
+func closeAction(state closeState) string {
 	if state.saving {
 		return "blocked"
-	}
-	if mode == "window" && !trayAvailable && (state.running || state.terminalOpen) {
-		return "native-confirm"
 	}
 	if state.running || state.terminalOpen || state.dirty {
 		return "confirm"
@@ -59,20 +51,18 @@ func NewLifecycle(app *application.App, window *application.WebviewWindow, activ
 	l := &Lifecycle{app: app, window: window, activeRun: activeRun}
 	window.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
 		event.Cancel()
-		l.request("window")
+		l.window.Hide()
 	})
 	app.Event.On("desktop-close-state", l.onState)
 	app.Event.On("desktop-exit-decision", l.onDecision)
-	if runtime.GOOS != "linux" {
-		tray := app.SystemTray.New()
-		tray.SetIcon(trayIcon())
-		tray.SetTooltip("Harness")
-		menu := app.NewMenu()
-		menu.Add("显示窗口").OnClick(func(*application.Context) { l.Show() })
-		menu.Add("退出 Harness").OnClick(func(*application.Context) { l.request("quit") })
-		tray.SetMenu(menu)
-		tray.OnClick(l.Show)
-	}
+	tray := app.SystemTray.New()
+	tray.SetIcon(trayIcon())
+	tray.SetTooltip("Harness")
+	menu := app.NewMenu()
+	menu.Add("显示窗口").OnClick(func(*application.Context) { l.Show() })
+	menu.Add("退出 Harness").OnClick(func(*application.Context) { l.request() })
+	tray.SetMenu(menu)
+	tray.OnClick(l.Show)
 	return l
 }
 
@@ -87,18 +77,18 @@ func (l *Lifecycle) ShouldQuit() bool {
 	if l.quitting.Load() {
 		return true
 	}
-	l.request("quit")
+	l.request()
 	return false
 }
 
-func (l *Lifecycle) request(mode string) {
+func (l *Lifecycle) request() {
 	l.mu.Lock()
 	if l.pending != nil {
 		l.mu.Unlock()
 		return
 	}
 	l.nextID++
-	request := &closeRequest{id: l.nextID, mode: mode, phase: "state"}
+	request := &closeRequest{id: l.nextID, phase: "state"}
 	l.pending = request
 	request.timer = time.AfterFunc(2*time.Second, func() { l.fallback(request.id) })
 	l.mu.Unlock()
@@ -127,7 +117,7 @@ func (l *Lifecycle) onState(event *application.CustomEvent) {
 	saving, _ := data["saving"].(bool)
 	request.terminal, request.dirty = terminal, dirty
 	state := closeState{running: request.running, terminalOpen: terminal, dirty: dirty, saving: saving}
-	action := closeAction(request.mode, state, runtime.GOOS != "linux")
+	action := closeAction(state)
 	if action != "confirm" {
 		l.pending = nil
 	} else {
@@ -136,19 +126,9 @@ func (l *Lifecycle) onState(event *application.CustomEvent) {
 	l.mu.Unlock()
 
 	switch action {
-	case "hide":
-		l.window.Hide()
-		return
 	case "blocked":
 		l.Show()
 		l.app.Dialog.Info().SetTitle("正在保存").SetMessage("请等待保存完成后再退出。").AttachToWindow(l.window).Show()
-		return
-	case "native-confirm":
-		message := "当前有运行任务或打开的终端。Linux 托盘可能不可见；退出将停止这些工作。"
-		if dirty {
-			message += "未保存内容也会丢失。"
-		}
-		l.nativeConfirm(message)
 		return
 	case "quit":
 		l.quit()
@@ -191,7 +171,7 @@ func (l *Lifecycle) onDecision(event *application.CustomEvent) {
 	dirty, _ := data["dirty"].(bool)
 	// 确认弹窗打开期间可能刚启动新任务；重新询问，不能静默取消它。
 	if !request.running && l.activeRun() || !request.terminal && terminal || !request.dirty && dirty {
-		l.request("quit")
+		l.request()
 		return
 	}
 	l.quit()
