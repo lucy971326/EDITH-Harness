@@ -354,73 +354,75 @@ export function Composer({
                 </div>}
             </div>
           )}
-          {images.length > 0 && (
-            <div className="attachments">
-              {images.map((image) => (
-                <div key={image.id}>
-                  <img src={image.url} alt={image.name} />
-                  <button
-                    aria-label={`移除图片 ${image.name}`}
-                    onClick={() => onRemoveImage(image.id)}
-                  >
-                    <X />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-          {references.length > 0 && <div className="context-references" aria-label="待发送引用">
-            {numberedReferences.map((item) => <ContextReferenceTag key={item.id} reference={item.reference}
-              assistantNumber={item.assistantNumber}
-              onRemove={() => onRemoveReference?.(item.id)} />)}
-          </div>}
-          <SkillEditor
-            ref={input}
-            names={skills.map((skill) => skill.name)}
-            placeholder={running ? "发送以调整当前任务" : "说说你的想法"}
-            value={draft}
-            onChange={(text, position) => {
-              setCursor(position);
-              setDismissedTrigger("");
-              onDraftChange(text);
-            }}
-            onCursor={setCursor}
-            onCompositionChange={(active, position) => {
-              setComposing(active);
-              setCursor(position);
-            }}
-            onKeyDown={(event) => {
-              if (composing || event.nativeEvent.isComposing || event.keyCode === 229) return;
-              if (showSuggestions) {
-                if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-                  event.preventDefault();
-                  if (suggestions.length === 0) return;
-                  const direction = event.key === "ArrowDown" ? 1 : -1;
-                  setActiveSuggestion(
-                    (activeSuggestion + direction + suggestions.length) %
-                      suggestions.length,
-                  );
-                  return;
-                }
-                if (event.key === "Escape") {
-                  event.preventDefault();
-                  setDismissedTrigger(triggerKey);
-                  return;
+          <div className="composer-paper">
+            {images.length > 0 && (
+              <div className="attachments">
+                {images.map((image) => (
+                  <div key={image.id}>
+                    <img src={image.url} alt={image.name} />
+                    <button
+                      aria-label={`移除图片 ${image.name}`}
+                      onClick={() => onRemoveImage(image.id)}
+                    >
+                      <X />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {references.length > 0 && <div className="context-references" aria-label="待发送引用">
+              {numberedReferences.map((item) => <ContextReferenceTag key={item.id} reference={item.reference}
+                assistantNumber={item.assistantNumber}
+                onRemove={() => onRemoveReference?.(item.id)} />)}
+            </div>}
+            <SkillEditor
+              ref={input}
+              names={skills.map((skill) => skill.name)}
+              placeholder={running ? "发送以调整当前任务" : "说说你的想法"}
+              value={draft}
+              onChange={(text, position) => {
+                setCursor(position);
+                setDismissedTrigger("");
+                onDraftChange(text);
+              }}
+              onCursor={setCursor}
+              onCompositionChange={(active, position) => {
+                setComposing(active);
+                setCursor(position);
+              }}
+              onKeyDown={(event) => {
+                if (composing || event.nativeEvent.isComposing || event.keyCode === 229) return;
+                if (showSuggestions) {
+                  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                    event.preventDefault();
+                    if (suggestions.length === 0) return;
+                    const direction = event.key === "ArrowDown" ? 1 : -1;
+                    setActiveSuggestion(
+                      (activeSuggestion + direction + suggestions.length) %
+                        suggestions.length,
+                    );
+                    return;
+                  }
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    setDismissedTrigger(triggerKey);
+                    return;
+                  }
+                  if (isComposerSubmitKey(event)) {
+                    event.preventDefault();
+                    const item = suggestions[activeSuggestion] ?? suggestions[0];
+                    if (item) void selectSuggestion(item);
+                    return;
+                  }
                 }
                 if (isComposerSubmitKey(event)) {
                   event.preventDefault();
-                  const item = suggestions[activeSuggestion] ?? suggestions[0];
-                  if (item) void selectSuggestion(item);
-                  return;
+                  onSend();
                 }
-              }
-              if (isComposerSubmitKey(event)) {
-                event.preventDefault();
-                onSend();
-              }
-            }}
-            onPasteImages={onAddImages}
-          />
+              }}
+              onPasteImages={onAddImages}
+            />
+          </div>
           <div className="composer-toolbar">
             <div className="composer-left">
               <input
@@ -438,7 +440,7 @@ export function Composer({
                 <TooltipTrigger asChild>
                   <Button
                     variant="ghost"
-                    size="icon"
+                    size="icon-sm"
                     aria-label="添加图片"
                     disabled={imageDisabled}
                     onClick={() => imageInput.current?.click()}
@@ -498,7 +500,7 @@ export function Composer({
               {running && (
                 <Button
                   variant="outline"
-                  size="icon"
+                  size="icon-sm"
                   aria-label={stopping ? "停止中" : "停止任务"}
                   disabled={stopDisabled}
                   onClick={onStop}
@@ -510,7 +512,7 @@ export function Composer({
                 <TooltipTrigger asChild>
                   <span>
                     <Button
-                      size="icon"
+                      size="icon-sm"
                       className="send-button"
                       aria-label={running ? "调整当前任务" : "发送消息"}
                       disabled={!canSend}
