@@ -256,9 +256,7 @@ export function Composer({
   const usagePercent = usage?.contextWindow
     ? Math.min(100, (usedTokens / usage.contextWindow) * 100)
     : 0;
-  const usageLabel = usage
-    ? `${Math.round(usagePercent * 10) / 10}%`
-    : "暂无";
+  const usageLabel = `${Math.round(usagePercent * 10) / 10}%`;
 
   useEffect(() => {
     setActiveSuggestion(0);
@@ -466,14 +464,16 @@ export function Composer({
               />
             </div>
             <div className="composer-right">
-              <Tooltip>
+              {usage && usage.contextWindow > 0 && <Tooltip>
                 <TooltipTrigger asChild>
                   <span
-                    className="usage"
+                    tabIndex={0}
+                    className="usage ui-focus"
                     aria-label={`上下文已使用 ${usageLabel}`}
                   >
                     <span
                       className="usage-ring"
+                      aria-hidden="true"
                       style={
                         {
                           "--usage-percent": `${usagePercent}%`,
@@ -483,7 +483,7 @@ export function Composer({
                   </span>
                 </TooltipTrigger>
                 <TooltipContent>上下文已使用 {usageLabel}</TooltipContent>
-              </Tooltip>
+              </Tooltip>}
               <div className="composer-model">
                 <ModelMenu
                   models={models}

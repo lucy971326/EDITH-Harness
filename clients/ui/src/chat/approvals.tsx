@@ -5,48 +5,16 @@ import { RPCClient, RPCError, formatRPCError } from "../client/rpc";
 import { FileText, Terminal } from "../icons";
 
 // 本机用户的审批收件区；所有会话与子 Agent 的申请都标明来源。
-export function Approvals({ client, children }: {
+export function Approvals({ client, pending, syncError, children }: {
   client: RPCClient | null;
+  pending: PendingApproval[];
+  syncError: string;
   children: ReactNode;
 }) {
-  const [pending, setPending] = useState<PendingApproval[]>([]);
   const [answering, setAnswering] = useState("");
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    setPending([]);
-    setError("");
-    setAnswering("");
-    if (!client) return;
-    let active = true;
-    let subscriptionID = "";
-    client.onApprovals = (notification) => {
-      if (active && notification.subscriptionID === subscriptionID) {
-        setPending(notification.event);
-      }
-    };
-    void client.call("approval/subscribe", {}, {
-      accept(result) {
-        if (!active) {
-          void client.unsubscribe(result.subscriptionID).catch(() => {});
-          return;
-        }
-        subscriptionID = result.subscriptionID;
-        setPending(result.pending);
-      },
-    }).catch((cause: unknown) => {
-      if (!active) return;
-      setError(formatRPCError(cause, "审批同步失败"));
-      if (!(cause instanceof RPCError)) client.close();
-    });
-    return () => {
-      active = false;
-      client.onApprovals = null;
-      if (subscriptionID && client.connected) {
-        void client.unsubscribe(subscriptionID).catch(() => {});
-      }
-    };
-  }, [client]);
+  useEffect(() => { setAnswering(""); setError(""); }, [client]);
 
   async function respond(id: string, approved: boolean) {
     if (!client?.connected || answering) return;
@@ -67,6 +35,7 @@ export function Approvals({ client, children }: {
     }
   }
 
+  const visibleError = error || syncError;
   const current = pending[0];
   const mcp = current?.mcp;
   const title = mcp?.kind === "config" ? "启用项目 MCP"
@@ -75,9 +44,9 @@ export function Approvals({ client, children }: {
   return (
     <>
       <div hidden={!!current}>{children}</div>
-      {(current || error) && <section className="composer-area" aria-label="待审批操作">
+      {(current || visibleError) && <section className="composer-area" aria-label="待审批操作">
         <div className="composer-column">
-          {error && <p className="inline-notice" role="alert">{error}</p>}
+          {visibleError && <p className="inline-notice" role="alert">{visibleError}</p>}
           {current && <article className="composer approval-card" key={current.id}>
           <header className="approval-heading">
             {mcp?.kind === "call" || current.request.toolName === "exec_command" ? <Terminal /> : <FileText />}
@@ -145,4 +114,45 @@ export function Approvals({ client, children }: {
       </section>}
     </>
   );
+}
+
+// 一个订阅同时供审批界面与侧栏状态使用，切换设置页不丢失投影。
+export function useApprovalInbox(client: RPCClient | null) {
+  const [pending, setPending] = useState<PendingApproval[]>([]);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    setPending([]);
+    setError("");
+    if (!client) return;
+    let active = true;
+    let subscriptionID = "";
+    client.onApprovals = (notification) => {
+      if (active && notification.subscriptionID === subscriptionID) {
+        setPending(notification.event);
+      }
+    };
+    void client.call("approval/subscribe", {}, {
+      accept(result) {
+        if (!active) {
+          void client.unsubscribe(result.subscriptionID).catch(() => {});
+          return;
+        }
+        subscriptionID = result.subscriptionID;
+        setPending(result.pending);
+      },
+    }).catch((cause: unknown) => {
+      if (!active) return;
+      setError(formatRPCError(cause, "审批同步失败"));
+      if (!(cause instanceof RPCError)) client.close();
+    });
+    return () => {
+      active = false;
+      client.onApprovals = null;
+      if (subscriptionID && client.connected) {
+        void client.unsubscribe(subscriptionID).catch(() => {});
+      }
+    };
+  }, [client]);
+
+  return { pending, error };
 }

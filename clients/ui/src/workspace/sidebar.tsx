@@ -1,3 +1,4 @@
+import { ConnectionIndicator } from "../components/connection-indicator";
 import { Button } from "@/components/ui/button";
 import {
   Collapsible,
@@ -15,20 +16,23 @@ import {
   FolderOpen,
   Plus,
   ChevronRight,
-  Circle,
-  RefreshCw,
   Archive,
   Trash2,
 } from "../icons";
 import type { ConnectionStatus } from "../client/rpc";
 import { groupSessions } from "../state/projects";
-import type { SessionView } from "../../../contracts/harness.ts";
+import type { PendingApproval } from "../../../contracts/approvals";
+import type { SessionActivity, SessionView } from "../../../contracts/harness.ts";
 import type { NavigationEntry } from "./navigation";
 
 export function Sidebar({
   connection,
+  connectionDetail,
   backendBusy,
   sessions,
+  activities,
+  pendingApprovals,
+  activityError,
   listError,
   selectedID,
   navigation,
@@ -45,8 +49,12 @@ export function Sidebar({
   onDeleteProject,
 }: {
   connection: ConnectionStatus;
+  connectionDetail?: string;
   backendBusy: boolean;
   sessions: SessionView[] | null;
+  activities: SessionActivity[];
+  pendingApprovals: PendingApproval[];
+  activityError: string;
   listError: string;
   selectedID: string | null;
   navigation: NavigationEntry[];
@@ -62,6 +70,15 @@ export function Sidebar({
   onDeleteSession: (sessionID: string) => void;
   onDeleteProject: (workspace: string) => void;
 }) {
+  const activityByID = new Map(activities.map((item) => [item.sessionID, item]));
+  const waiting = new Set(pendingApprovals.map((item) => item.sessionID));
+  function sessionStatus(id: string) {
+    const state = activityByID.get(id);
+    if (waiting.has(id)) return { kind: "waiting", label: "等待审批" };
+    if (state?.running) return { kind: "running", label: "正在运行" };
+    if (state && state.latestResultSeq > state.readResultSeq) return { kind: "unread", label: "有未读结果" };
+    return null;
+  }
   const connected = connection === "connected";
   const projects = sessions ? groupSessions(sessions) : [];
 
@@ -88,9 +105,10 @@ export function Sidebar({
         aria-label="关闭项目侧栏"
         onClick={onClose}
       />
-      <aside className="sidebar">
+      <aside className="sidebar workspace-panel">
         <div className="brand-row">
           <span className="brand"><img className="brand-mark" src="/edith-icon.svg" alt="" />EDITH</span>
+          <ConnectionIndicator status={connection} detail={connectionDetail} onReconnect={onReconnect} />
           <Button
             variant="ghost"
             size="icon"
@@ -122,6 +140,7 @@ export function Sidebar({
         </Tooltip>
         </div>
         <nav className="project-list" aria-label="项目与会话">
+          {activityError && <p className="metadata sidebar-empty" role="status">{activityError}</p>}
           {connection !== "connected" && sessions === null && !listError && (
             <p className="metadata sidebar-empty">
               {connection === "connecting"
@@ -176,16 +195,25 @@ export function Sidebar({
                 </Button>
               </div>
               <CollapsibleContent className="project-sessions">
-                {project.sessions.map((item) => (
+                {project.sessions.map((item) => {
+                  const state = activityByID.get(item.sessionID);
+                  const status = connected ? sessionStatus(item.sessionID) : null;
+                  return (
                   <div
                     key={item.sessionID}
+                    data-unread={!!state && state.latestResultSeq > state.readResultSeq}
                     className={`session-row ${item.sessionID === selectedID && activePath === "/" ? "selected" : ""}`}
                   >
                     <button className="session-link ui-focus" title={item.title}
                       aria-current={item.sessionID === selectedID && activePath === "/" ? "page" : undefined}
                       onClick={() => onSelect(item.sessionID)}><span>{item.title}</span></button>
+                    {status && <Tooltip><TooltipTrigger asChild>
+                      <span className="session-indicator-target ui-focus" tabIndex={0} role="img" aria-label={status.label}>
+                        <span className={`session-indicator session-indicator-${status.kind}`} aria-hidden="true" />
+                      </span>
+                    </TooltipTrigger><TooltipContent>{status.label}</TooltipContent></Tooltip>}
                     <div className="session-actions">
-                      <Button variant="ghost" size="icon-sm" className="sidebar-row-action"
+                    <Button variant="ghost" size="icon-sm" className="sidebar-row-action"
                         title="归档会话" aria-label={`归档会话 ${item.title}`}
                         disabled={!connected} onClick={() => onArchiveSession(item.sessionID)}><Archive /></Button>
                       <Button variant="ghost" size="icon-sm" className="sidebar-row-action"
@@ -193,22 +221,14 @@ export function Sidebar({
                         disabled={!connected} onClick={() => onDeleteSession(item.sessionID)}><Trash2 /></Button>
                     </div>
                   </div>
-                ))}
+                ); })}
               </CollapsibleContent>
             </Collapsible>
           ))}
         </nav>
         <div className="sidebar-bottom">
           <nav aria-label="应用导航">{navigation.filter((entry) => entry.placement === "footer").map(navigationItem)}</nav>
-          {connection === "connecting" && (
-            <div className="connection-status"><Circle />正在连接</div>
-          )}
-          {connection === "disconnected" && (
-            <Button variant="ghost" size="sm" onClick={onReconnect}>
-              <RefreshCw />
-              重新连接
-            </Button>
-          )}
+
         </div>
       </aside>
     </>

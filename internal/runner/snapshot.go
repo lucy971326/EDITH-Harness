@@ -132,3 +132,34 @@ func maxSeq(a, b uint64) uint64 {
 	}
 	return b
 }
+
+// RunStates 返回侧栏所需的轻量运行事实，不复制消息正文、草稿或 Diff。
+func (r *Runner) RunStates(sessionID string) ([]RunState, error) {
+	r.recordsMu.Lock()
+	defer r.recordsMu.Unlock()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	current := r.live[sessionID]
+	records, err := r.loadRecords(sessionID)
+	if err != nil {
+		return nil, err
+	}
+	records, err = r.interruptStaleRecords(sessionID, records, current)
+	if err != nil {
+		return nil, err
+	}
+	states := make([]RunState, 0, len(records)+1)
+	seen := false
+	for _, record := range records {
+		states = append(states, RunState{RunID: record.RunID, AfterEntrySeq: record.AfterEntrySeq, Status: record.Status})
+		if current != nil && record.RunID == current.runID {
+			seen = true
+		}
+	}
+	if current != nil && !seen {
+		current.mu.Lock()
+		states = append(states, RunState{RunID: current.runID, AfterEntrySeq: current.afterEntrySeq, Status: RunRunning})
+		current.mu.Unlock()
+	}
+	return states, nil
+}

@@ -40,6 +40,12 @@ export function TerminalView({
     terminal.loadAddon(fit);
     terminal.open(host.current);
     fit.fit();
+    const updateFont = () => {
+      terminal.options.fontFamily = terminalFont();
+      scheduleResize();
+    };
+    window.addEventListener("edith-fonts-changed", updateFont);
+    document.fonts.addEventListener("loadingdone", updateFont);
     terminalRef.current = terminal;
     fitRef.current = fit;
 
@@ -87,7 +93,7 @@ export function TerminalView({
       }
       sendInput(bytes);
     });
-    const observer = new ResizeObserver(() => {
+    function scheduleResize() {
       if (!activeRef.current || !running || !ready) return;
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
@@ -98,7 +104,8 @@ export function TerminalView({
         lastCols = terminal.cols;
         void client.resizeTerminal(processID, lastRows, lastCols).catch(() => {});
       }, 50);
-    });
+    }
+    const observer = new ResizeObserver(scheduleResize);
     observer.observe(host.current);
 
     // 延后一拍启动，避免 React StrictMode 的开发期 effect 重放创建两次进程。
@@ -130,6 +137,8 @@ export function TerminalView({
       stopOutput();
       terminalRef.current = null;
       fitRef.current = null;
+      window.removeEventListener("edith-fonts-changed", updateFont);
+      document.fonts.removeEventListener("loadingdone", updateFont);
       terminal.dispose();
     };
   }, [client, processID, workspace]);

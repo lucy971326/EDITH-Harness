@@ -98,6 +98,9 @@ function renderSidebar(props: Record<string, unknown>) {
       TooltipProvider,
       null,
       createElement(Sidebar, {
+        activities: [],
+        pendingApprovals: [],
+        activityError: "",
         connection: "connected",
         backendBusy: false,
         sessions: [session("keep", "/tmp/alpha", "保留草稿")],

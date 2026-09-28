@@ -124,7 +124,14 @@ func finishDeletion(files *persist.Files, name string, intent deletionIntent) er
 	if err != nil {
 		return err
 	}
+	readingFiles, err := files.Scope("reading")
+	if err != nil {
+		return err
+	}
 	for _, id := range intent.SessionIDs {
+		if err = readingFiles.Remove(id + ".json"); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
 		if err := sessions.RemoveDir(id); err != nil {
 			return fmt.Errorf("conversation: remove session %q: %w", id, err)
 		}

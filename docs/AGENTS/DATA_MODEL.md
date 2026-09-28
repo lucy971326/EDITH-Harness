@@ -33,6 +33,9 @@ Web 与 Desktop 启动前都独占 `.lock` 文件的操作系统锁；同一份�
 ├─ mcp/oauth/<配置身份>.cred
 │  MCP OAuth 客户端身份与令牌；Unix 文件仅当前用户可读，Windows 内容由当前用户 DPAPI 加密
 │
+├─ reading/<session-id>.json
+│  当前本机用户已读完成结果的起始账本序号；同一后台连接共享，只能前进
+│
 ├─ approvals/{settings.json,mcp-trust.json}
 │  审核设置与项目 MCP 配置信任
 │
@@ -85,6 +88,7 @@ LLM 设置读取只返回供应商是否已配置密钥，绝不返回密钥本�
 ## 文件格式归属
 
 ```text
+reading           → 阅读位置；不是 Session 对话数据
 session           → 账本、元数据
 session/settings  → 会话运行设置
 agents            → Agent 设置
@@ -221,3 +225,11 @@ messages.jsonl
 conversations 的操作锁仅协调同一会话的设置、发送、分叉和命令，不拥有 Run；Stop 独立执行。创建复用单独协调，Runner.live 仍是活 Run 的唯一入口。
 
 Client 每个会话保存一份草稿记录（文字、图片、引用、编辑版本）。当前输入框与异步回调引用同一版本，发送确认只清理已提交部分；订阅生命周期与页面投影分开，子任务 Diff 独立续订。
+
+## 会话阅读位置
+
+`reading.Store` 使用 `persist.Files` 原子保存单调游标，不维护第二份缓存。
+客户端提交实际看到的已完成 Run ID，由 conversations 验证身份与状态，取其 `AfterEntrySeq` 推进。
+新结果在后台完成而旧确认晚到时，只确认旧结果；写失败不发布成功通知，损坏游标返回错误而不静默覆盖。
+appserver 在成功保存后广播失效通知，各端重新读取状态；阅读确认不写对话账本。
+归档保留阅读位置，永久删除由既有删除意图一起清理。当前作用域是一个本机用户／后台，尚不涉及云端多用户身份。

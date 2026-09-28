@@ -53,7 +53,7 @@ export function SettingsPage({ onBack, setNavigationGuard, onDesktopState, ...co
   return (
     <section className="settings-page">
       <Tabs defaultValue={sections[0].id} orientation="vertical" className="settings-layout">
-        <div className="settings-rail">
+        <div className="settings-rail workspace-panel">
           <Button variant="ghost" className="settings-back" disabled={saving} onClick={onBack}>
             <ArrowLeft />返回工作台
           </Button>
@@ -64,7 +64,7 @@ export function SettingsPage({ onBack, setNavigationGuard, onDesktopState, ...co
             </TabsTrigger>)}
           </TabsList>
         </div>
-        <div className="settings-content">
+        <div className="settings-content workspace-panel">
           {sections.map((section) => <SectionContent key={section.id} section={section} onStateChange={reportState} />)}
         </div>
       </Tabs>

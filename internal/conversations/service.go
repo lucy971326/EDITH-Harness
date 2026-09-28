@@ -15,6 +15,7 @@ import (
 	"harness/internal/llm"
 	"harness/internal/permissions"
 	"harness/internal/persist"
+	"harness/internal/reading"
 	"harness/internal/runner"
 	"harness/internal/session"
 	"harness/internal/session/settings"
@@ -39,6 +40,7 @@ type Service struct {
 	createMu   sync.Mutex
 	operations sync.Map // Session ID → *sync.Mutex；仅保存实际存在的会话。
 	files      *persist.Files
+	reading    *reading.Store
 	deletedMu  sync.RWMutex
 	deleted    map[string]struct{}
 }
@@ -72,7 +74,11 @@ func New(sessions *session.Store, settingsStore settings.SessionSettingsStore, a
 	if files == nil {
 		return nil, fmt.Errorf("conversation: nil files")
 	}
-	return &Service{sessions: sessions, settings: settingsStore, agents: agentService, models: modelClient, runner: runService, commands: commandService, subagents: subagentService, approvals: approvalService, files: files, deleted: make(map[string]struct{})}, nil
+	readings, err := reading.New(files)
+	if err != nil {
+		return nil, err
+	}
+	return &Service{reading: readings, sessions: sessions, settings: settingsStore, agents: agentService, models: modelClient, runner: runService, commands: commandService, subagents: subagentService, approvals: approvalService, files: files, deleted: make(map[string]struct{})}, nil
 }
 
 // Send 闲时启动、忙时插话；已接受的运行由 Runner 管理生命周期。

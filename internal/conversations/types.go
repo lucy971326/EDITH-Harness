@@ -65,3 +65,12 @@ type SubagentSnapshot struct {
 
 	ChildSessionID string `json:"-"`
 }
+
+// 数据。侧栏的运行与阅读投影；不包含聊天正文。
+type SessionActivity struct {
+	SessionID       string `json:"sessionID"`
+	Running         bool   `json:"running"`
+	LatestRunID     string `json:"latestRunID"`
+	LatestResultSeq uint64 `json:"latestResultSeq"`
+	ReadResultSeq   uint64 `json:"readResultSeq"`
+}

@@ -969,3 +969,157 @@ func TestDeletionRecoveryFinishesPartialCleanup(t *testing.T) {
 		t.Fatalf("workspace removed: %v", err)
 	}
 }
+
+// 两端看到不同轮次时，迟到确认只能确认该轮；运行中的结果不能提前读完。
+func TestReadPositionTracksOnlyObservedCompletedRun(t *testing.T) {
+	f := newTestFixture(t)
+	defer f.close()
+	created, err := f.service.Create(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := created.Meta.ID
+	var runs []string
+	for index := 0; index < 2; index++ {
+		err = f.service.Start(t.Context(), conversations.RunInput{
+			SessionID: id, Model: "deepseek/deepseek-flash", ReasoningEffort: "high",
+			Message: session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "work"}}},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		invocation := f.loop.waitStarted(t)
+		if err = f.service.MarkRead(id, invocation.RunID); !errors.Is(err, conversations.ErrRunChanged) {
+			t.Fatalf("running read = %v", err)
+		}
+		f.loop.release()
+		waitIdle(t, f.runner, id)
+		runs = append(runs, invocation.RunID)
+	}
+	if err = f.service.MarkRead(id, runs[0]); err != nil {
+		t.Fatal(err)
+	}
+	activities, err := f.service.Activities()
+	if err != nil || len(activities) != 1 {
+		t.Fatalf("activities = %+v, %v", activities, err)
+	}
+	state := activities[0]
+	if state.Running || state.LatestRunID != runs[1] || state.ReadResultSeq == 0 || state.ReadResultSeq >= state.LatestResultSeq {
+		t.Fatalf("old confirmation consumed new result: %+v", state)
+	}
+	if err = f.service.MarkRead(id, runs[1]); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.service.MarkRead(id, runs[0]); err != nil {
+		t.Fatal(err)
+	}
+	activities, err = f.service.Activities()
+	if err != nil || activities[0].ReadResultSeq != state.LatestResultSeq {
+		t.Fatalf("read moved backwards: %+v, %v", activities, err)
+	}
+	if err = f.service.MarkRead(id, "unknown"); !errors.Is(err, conversations.ErrRunChanged) {
+		t.Fatalf("unknown read = %v", err)
+	}
+	if _, err = f.service.DeleteSession(id); err != nil {
+		t.Fatal(err)
+	}
+	readingFiles, err := f.files.Scope("reading")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = readingFiles.Read(id + ".json"); !os.IsNotExist(err) {
+		t.Fatalf("read cursor survived deletion: %v", err)
+	}
+}
+
+// 一个客户端确认后，另一连接收到通知并能读到已经落盘的游标。
+func TestReadConfirmationNotifiesOtherClient(t *testing.T) {
+	f := newTestFixture(t)
+	defer f.close()
+	created, err := f.service.Create(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = f.service.Start(t.Context(), conversations.RunInput{
+		SessionID: created.Meta.ID, Model: "deepseek/deepseek-flash", ReasoningEffort: "high",
+		Message: session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "work"}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	invocation := f.loop.waitStarted(t)
+	f.loop.release()
+	waitIdle(t, f.runner, created.Meta.ID)
+	server := newRPCServer(t, f)
+	web, err := webclient.New(server, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer web.Close()
+	baseURL, err := web.Listen("127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sockets []*websocket.Conn
+	for index := 0; index < 2; index++ {
+		ws, _, err := websocket.Dial(t.Context(), "ws"+strings.TrimPrefix(baseURL, "http")+"/rpc", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer ws.CloseNow()
+		writeSocketRequest(t, ws, `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1}}`)
+		if response := readSocketResponse(t, ws); response.Error != nil {
+			t.Fatal(response.Error)
+		}
+		sockets = append(sockets, ws)
+	}
+	writeSocketRequest(t, sockets[1], `{"jsonrpc":"2.0","id":2,"method":"harness/session/activity/subscribe","params":{}}`)
+	response := readSocketResponse(t, sockets[1])
+	if response.Error != nil {
+		t.Fatal(response.Error)
+	}
+	var subscribed appserver.ActivitySubscribeResult
+	if err = json.Unmarshal(response.Result, &subscribed); err != nil {
+		t.Fatal(err)
+	}
+	if len(subscribed.Sessions) != 1 || subscribed.Sessions[0].ReadResultSeq != 0 {
+		t.Fatalf("initial = %+v", subscribed)
+	}
+	writeSocketRequest(t, sockets[0], string(mustJSON(t, map[string]any{
+		"jsonrpc": "2.0", "id": 2, "method": "harness/session/read",
+		"params": appserver.MarkReadParams{SessionID: created.Meta.ID, RunID: invocation.RunID},
+	})))
+	if response = readSocketResponse(t, sockets[0]); response.Error != nil {
+		t.Fatal(response.Error)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	_, data, err := sockets[1].Read(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var notification struct {
+		Method string `json:"method"`
+		Params struct {
+			SubscriptionID string `json:"subscriptionID"`
+		} `json:"params"`
+	}
+	if err = json.Unmarshal(data, &notification); err != nil {
+		t.Fatal(err)
+	}
+	if notification.Method != "harness/session/activity/changed" || notification.Params.SubscriptionID != subscribed.SubscriptionID {
+		t.Fatalf("notification = %s", data)
+	}
+	writeSocketRequest(t, sockets[1], `{"jsonrpc":"2.0","id":3,"method":"harness/session/activity/list","params":{}}`)
+	response = readSocketResponse(t, sockets[1])
+	if response.Error != nil {
+		t.Fatal(response.Error)
+	}
+	var result appserver.ActivityListResult
+	if err = json.Unmarshal(response.Result, &result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Sessions) != 1 || result.Sessions[0].ReadResultSeq == 0 || result.Sessions[0].ReadResultSeq != result.Sessions[0].LatestResultSeq {
+		t.Fatalf("notification preceded durable read: %+v", result)
+	}
+}

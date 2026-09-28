@@ -215,3 +215,20 @@ type RevertSubagentRunDiffParams struct {
 	Path             string `json:"path" jsonschema:"minLength=1"`
 	ExpectedRevision uint64 `json:"expectedRevision" jsonschema:"minimum=1"`
 }
+
+// 数据。所有普通会话的轻量运行和已读状态。
+type ActivityListResult struct {
+	Sessions []conversations.SessionActivity `json:"sessions"`
+}
+
+// 数据。先登记通知，再返回当前状态；通知表示需重新读取，不携带过期快照。
+type ActivitySubscribeResult struct {
+	SubscriptionID string                          `json:"subscriptionID"`
+	Sessions       []conversations.SessionActivity `json:"sessions"`
+}
+
+// 数据。确认实际看到的已完成 Run。
+type MarkReadParams struct {
+	SessionID string `json:"sessionID" jsonschema:"minLength=1"`
+	RunID     string `json:"runID" jsonschema:"minLength=1"`
+}

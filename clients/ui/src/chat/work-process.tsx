@@ -206,6 +206,9 @@ function WorkProcessComponent({
       .join("\n\n") ?? "";
   const title =
     stopping && status === "running" ? "停止中，正在收尾" : runLabel(status);
+  const diff = turn.run?.diff;
+  const additions = diff?.files.reduce((sum, file) => sum + file.additions, 0) ?? 0;
+  const deletions = diff?.files.reduce((sum, file) => sum + file.deletions, 0) ?? 0;
   return (
     <article className="turn" data-run-id={turn.id}>
       {turn.prompt && (
@@ -388,32 +391,24 @@ function WorkProcessComponent({
           </div>
         </div>
       )}
-      {turn.run?.diff && turn.run.diff.files.length > 0 && (
+      {diff && diff.files.length > 0 && (
         <button
-          className="run-diff-card"
-          onClick={() => onOpenDiff?.(turn.run!.runID, turn.run!.diff!)}
+          className="run-diff-card ui-focus"
+          aria-label={`审查本轮改动：${diff.files.length} 个文件，新增 ${additions} 行，删除 ${deletions} 行`}
+          onClick={() => onOpenDiff?.(turn.run!.runID, diff)}
         >
-          <GitCompareArrows />
-          <span>
-            <strong>已修改 {turn.run.diff.files.length} 个文件</strong>
-            <small>
-              <i className="diff-additions">
-                +
-                {turn.run.diff.files.reduce(
-                  (sum, file) => sum + file.additions,
-                  0,
-                )}
-              </i>{" "}
-              <i className="diff-deletions">
-                -
-                {turn.run.diff.files.reduce(
-                  (sum, file) => sum + file.deletions,
-                  0,
-                )}
-              </i>
-            </small>
+          <span className="run-diff-mark" aria-hidden="true"><GitCompareArrows /></span>
+          <span className="run-diff-copy">
+            <span className="run-diff-caption">本轮文件改动</span>
+            <span className="run-diff-readout">
+              <strong>已修改 {diff.files.length} 个文件</strong>
+              <span className="run-diff-counts">
+                <span className="diff-additions">+{additions}</span>
+                <span className="diff-deletions">−{deletions}</span>
+              </span>
+            </span>
           </span>
-          <span className="run-diff-action">审查</span>
+          <span className="run-diff-action">审查改动 <ChevronRight aria-hidden="true" /></span>
         </button>
       )}
       {status === "success" && turn.items.length === 0 && turn.answer && (

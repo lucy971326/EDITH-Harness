@@ -118,3 +118,9 @@ Desktop 自己启动 Go 后台，业务通信不需要启动 Web 的 8888 监听
 - [`backend`](../internal/backend/open.go) / [`appserver`](../internal/appserver/README.md)：后台组装与公共 RPC 接入。
 - [`contracts/`](contracts/README.md)：手写 TS 契约；[`test/`](test/README.md)：无界面网络验收 Client。
 - `package.json / package-lock.json / vite.config.ts`：统一依赖与构建；[`assets.go`](assets.go)：两端共用的资源嵌入。
+
+## 外观资源
+
+`ui/src/fonts.ts` 管理本机字体偏好，`ui/src/styles.css` 提供 UI／内容／代码字体 Token。
+字体与许可证随构建打包，来源及字宽规则见 [字体说明](ui/src/assets/fonts/README.md)。
+`ui/src/workspace/use-session-activity.ts` 订阅后台运行／已读投影；阅读游标由后端保存。

@@ -68,6 +68,7 @@ export interface CallOptions<Result = unknown> {
 // 浏览器 JSON-RPC 连接。请求 ID 只配对响应；有副作用的调用超时或断线后不自动重发。
 export class RPCClient {
   onApprovals: ((notification: ApprovalNotification) => void) | null = null;
+  onActivity: ((subscriptionID: string) => void) | null = null;
   onRun: ((notification: RunNotification) => void) | null = null;
 
   private readonly approvalListeners = new Set<(notification: ApprovalNotification) => void>();
@@ -485,6 +486,8 @@ export class RPCClient {
               error: { code: -32601, message: "Method not found" },
             }),
           );
+        } else if (envelope.method === "harness/session/activity/changed" && typeof envelope.params?.subscriptionID === "string") {
+          this.onActivity?.(envelope.params.subscriptionID);
         } else if (
           envelope.method === "harness/run/event" &&
           typeof envelope.params?.subscriptionID === "string" &&

@@ -58,6 +58,18 @@ func (s *Server) BindHarness(product *conversations.Service, runService *runner.
 	if err != nil {
 		return err
 	}
+	err = Register(s, "harness/session/activity/subscribe", s.handleActivitySubscribe)
+	if err != nil {
+		return err
+	}
+	err = Register(s, "harness/session/activity/list", s.handleActivityList)
+	if err != nil {
+		return err
+	}
+	err = registerSession(s, "harness/session/read", func(input MarkReadParams) string { return input.SessionID }, s.handleMarkRead)
+	if err != nil {
+		return err
+	}
 	err = Register(s, listMethod, s.handleList)
 	if err != nil {
 		return err
@@ -156,6 +168,7 @@ func (s *Server) BindHarness(product *conversations.Service, runService *runner.
 }
 
 func (s *Server) handleCreate(_ context.Context, input CreateParams) (SessionResult, error) {
+	defer s.invalidateActivity()
 	info, err := s.conversations.Create(input.Workspace)
 	return SessionResult{Session: sessionView(info)}, methodError(err)
 }
@@ -185,21 +198,25 @@ func (s *Server) handleArchivedList(_ context.Context, _ ListParams) (ListResult
 }
 
 func (s *Server) handleArchive(_ context.Context, input SessionIDParams) (SessionResult, error) {
+	defer s.invalidateActivity()
 	info, err := s.conversations.Archive(input.SessionID)
 	return SessionResult{Session: sessionView(info)}, methodError(err)
 }
 
 func (s *Server) handleRestore(_ context.Context, input SessionIDParams) (SessionResult, error) {
+	defer s.invalidateActivity()
 	info, err := s.conversations.Restore(input.SessionID)
 	return SessionResult{Session: sessionView(info)}, methodError(err)
 }
 
 func (s *Server) handleDeleteSession(_ context.Context, input SessionIDParams) (DeleteResult, error) {
+	defer s.invalidateActivity()
 	ids, err := s.conversations.DeleteSession(input.SessionID)
 	return DeleteResult{SessionIDs: ids}, methodError(err)
 }
 
 func (s *Server) handleDeleteProject(_ context.Context, input DeleteProjectParams) (DeleteResult, error) {
+	defer s.invalidateActivity()
 	ids, err := s.conversations.DeleteProject(input.Workspace)
 	return DeleteResult{SessionIDs: ids}, methodError(err)
 }
@@ -220,6 +237,7 @@ func (s *Server) handleUpdateSettings(ctx context.Context, input UpdateSettingsP
 }
 
 func (s *Server) handleFork(_ context.Context, input ForkParams) (SessionResult, error) {
+	defer s.invalidateActivity()
 	destinationID, err := s.conversations.Fork(conversations.ForkInput{
 		SessionID:       input.SessionID,
 		RunID:           input.RunID,

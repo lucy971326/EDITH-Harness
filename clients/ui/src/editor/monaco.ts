@@ -26,7 +26,7 @@ self.MonacoEnvironment = {
 };
 loader.config({ monaco });
 
-export const editorFontFamily =
+export let editorFontFamily =
   getComputedStyle(document.documentElement).getPropertyValue("--font-code").trim();
 
 export const editorFontSize = Number.parseFloat(
@@ -112,8 +112,15 @@ export function useEditorTheme(): string {
     document.documentElement.classList.contains("dark"),
   );
   useEffect(() => {
-    // 中文字体按字符分片加载；到达后刷新 Monaco 缓存的字宽，避免光标错位。
+    // 内置字体与粗体资源加载后刷新字宽；切换字体不重建 Model。
     const remeasureFonts = () => monaco.editor.remeasureFonts();
+    const updateFonts = () => {
+      editorFontFamily = getComputedStyle(document.documentElement).getPropertyValue("--font-code").trim();
+      for (const editor of monaco.editor.getEditors()) editor.updateOptions({ fontFamily: editorFontFamily });
+      remeasureFonts();
+    };
+    window.addEventListener("edith-fonts-changed", updateFonts);
+    updateFonts();
     document.fonts.addEventListener("loadingdone", remeasureFonts);
     remeasureFonts();
     defineEditorThemes(monaco);
@@ -127,6 +134,7 @@ export function useEditorTheme(): string {
     });
     return () => {
       observer.disconnect();
+      window.removeEventListener("edith-fonts-changed", updateFonts);
       document.fonts.removeEventListener("loadingdone", remeasureFonts);
     };
   }, []);

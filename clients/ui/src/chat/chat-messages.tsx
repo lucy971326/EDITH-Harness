@@ -181,6 +181,7 @@ export function ChatMessages({
   skillNames = [],
   onAddReference,
   pendingReferences = noPendingReferences,
+  onReadResult,
   children,
 }: {
   snapshot: Snapshot | null;
@@ -196,6 +197,7 @@ export function ChatMessages({
   skillNames?: string[];
   onAddReference?: (reference: ContextReference) => void;
   pendingReferences?: ReferenceAttachment[];
+  onReadResult?: (sessionID: string, runID: string, seq: number) => void;
   children?: ReactNode;
 }) {
   const scroll = useRef<HTMLDivElement>(null);
@@ -231,6 +233,32 @@ export function ChatMessages({
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
   }, [pendingReferences]);
+
+  useEffect(() => {
+    const element = scroll.current;
+    if (!element || !sessionID || !snapshot || !onReadResult) return;
+    const latest = snapshot.runs.filter((run) => run.status !== "running")
+      .reduce<(typeof snapshot.runs)[number] | undefined>((last, run) => !last || run.afterEntrySeq > last.afterEntrySeq ? run : last, undefined);
+    if (!latest) return;
+    const report = () => {
+      if (document.visibilityState !== "visible" || !document.hasFocus() || !element.getClientRects().length) return;
+      if (element.scrollHeight - element.clientHeight - element.scrollTop > 8) return;
+      onReadResult(sessionID, latest.runID, latest.afterEntrySeq);
+    };
+    const frame = requestAnimationFrame(report);
+    element.addEventListener("scroll", report, { passive: true });
+    window.addEventListener("focus", report);
+    document.addEventListener("visibilitychange", report);
+    const observer = new ResizeObserver(report);
+    observer.observe(element);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      element.removeEventListener("scroll", report);
+      window.removeEventListener("focus", report);
+      document.removeEventListener("visibilitychange", report);
+    };
+  }, [snapshot, sessionID, onReadResult]);
 
   return (
     <div className="chat-history">

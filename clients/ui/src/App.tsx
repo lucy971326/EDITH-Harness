@@ -1,4 +1,6 @@
-import { Approvals } from "./chat/approvals";
+import { ConnectionIndicator } from "./components/connection-indicator";
+import { useSessionActivity } from "./workspace/use-session-activity";
+import { Approvals, useApprovalInbox } from "./chat/approvals";
 import { ApprovalSettingsPanel } from "./settings/approval-settings";
 import { HookSettingsPanel } from "./settings/hook-settings";
 import { MCPSettingsPanel } from "./settings/mcp-settings";
@@ -37,8 +39,6 @@ import {
   PanelLeft,
   PanelRight,
   Folder,
-  WifiOff,
-  RefreshCw,
 } from "./icons";
 import { createNavigation } from "./workspace/navigation";
 import { usePageNavigation } from "./workspace/use-page-navigation";
@@ -277,6 +277,14 @@ export default function App({ platform }: { platform: Platform }) {
   }, [platform.desktop, settingsSaving, agentSaving]);
 
   const connected = connection === "connected";
+  const activity = useSessionActivity(connected ? approvalClient : null);
+  const approvalInbox = useApprovalInbox(connected ? approvalClient : null);
+  const activityIDs = activity.sessions.map((item) => item.sessionID).sort().join(",");
+  useEffect(() => {
+    const client = clientRef.current;
+    if (client?.connected) void loadSessions(client);
+  }, [activityIDs]);
+
   const sidebarSpace = sidebar ? sidebarWidth : 0;
   const panelOverlay =
     viewportWidth <= 950 || viewportWidth - sidebarSpace < 636;
@@ -1224,11 +1232,16 @@ export default function App({ platform }: { platform: Platform }) {
           } as CSSProperties
         }
       >
-        {sidebar && !page?.standalone && (
+        {!page?.standalone && (
+          <div className="sidebar-shell" data-open={sidebar} inert={!sidebar} aria-hidden={!sidebar}>
           <Sidebar
             connection={connection}
+            connectionDetail={connectionDetail}
             backendBusy={backendBusy}
             sessions={sessions}
+            activities={activity.sessions}
+            pendingApprovals={approvalInbox.pending}
+            activityError={activity.error}
             listError={listError}
             selectedID={selectedID}
             navigation={navigation}
@@ -1247,6 +1260,7 @@ export default function App({ platform }: { platform: Platform }) {
             onDeleteSession={requestDeleteSession}
             onDeleteProject={requestDeleteProject}
           />
+          </div>
         )}
         {sidebar && !page?.standalone && (
           <ResizeHandle
@@ -1265,7 +1279,7 @@ export default function App({ platform }: { platform: Platform }) {
             onChange={setSidebarWidth}
           />
         )}
-        <main className="main">
+        <main className="main workspace-panel">
           <header className="topbar" hidden={page?.standalone}>
             <div className="topbar-title">
               {!sidebar && (
@@ -1278,6 +1292,7 @@ export default function App({ platform }: { platform: Platform }) {
                   <PanelLeft />
                 </Button>
               )}
+              {!sidebar && <ConnectionIndicator status={connection} detail={connectionDetail} onReconnect={reconnect} />}
               <div className="conversation-heading">
                 <span className="conversation-title">{page?.label ?? selected?.title ?? "新建会话"}</span>
                 {!page && selected && <span className="conversation-project" title={selected.settings.workspace}>
@@ -1306,23 +1321,6 @@ export default function App({ platform }: { platform: Platform }) {
           <div className="workspace">
             {page ? page.render() : (
               <section className="chat" aria-label="聊天" data-welcome={welcome}>
-                {connection !== "connected" && (
-                  <div className="connection-banner" role="status">
-                    <WifiOff />
-                    <span>
-                      {connection === "connecting"
-                        ? "正在连接后台…"
-                        : connectionDetail ||
-                          "连接已断开。后台任务不会因此停止，草稿仍保留在本页。"}
-                    </span>
-                    {connection === "disconnected" && (
-                      <Button variant="ghost" size="sm" onClick={reconnect}>
-                        <RefreshCw />
-                        重新连接
-                      </Button>
-                    )}
-                  </div>
-                )}
                 {connected &&
                   selectedID &&
                   (chatState.syncing || chatState.error) && (
@@ -1349,6 +1347,7 @@ export default function App({ platform }: { platform: Platform }) {
                   </div>
                 )}
                 <ChatMessages
+                  onReadResult={activity.markRead}
                   snapshot={snapshot}
                   sessionID={selectedID}
                   stoppingRunID={
@@ -1413,7 +1412,7 @@ export default function App({ platform }: { platform: Platform }) {
                     </div>
                   </div>
                 </ChatMessages>
-                <Approvals client={connected ? approvalClient : null}>
+                <Approvals client={connected ? approvalClient : null} pending={approvalInbox.pending} syncError={approvalInbox.error}>
                   <Composer
                     key={selectedID ?? ""}
                     references={references}
@@ -1500,7 +1499,7 @@ export default function App({ platform }: { platform: Platform }) {
               onClick={() => setPanel(false)}
             />
           )}
-          <aside className="aux-panel" aria-label="辅助工作区" hidden={!panelOpen}>
+          <aside className="aux-panel workspace-panel" aria-label="辅助工作区" data-open={panelOpen} inert={!panelOpen} aria-hidden={!panelOpen}>
             <ResizeHandle
               label="调整辅助工作区宽度"
               value={visiblePanelWidth}

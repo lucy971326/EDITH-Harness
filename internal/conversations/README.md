@@ -11,6 +11,7 @@ appserver -> Service
 ```
 
 - `service.go`：主流程与同会话操作锁；等待 Steer 落账前释放锁，Stop 不取操作锁。
+- `reading.go`：组合轻量 Run 状态与独立阅读位置，验证实际已完成的 Run 后确认已读。
 - `subagents.go`：子任务页面的查询、发送与设置。
 - `types.go / errors.go`：操作输入、快照与可识别错误。
 

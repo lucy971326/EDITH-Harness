@@ -215,3 +215,12 @@ export interface Methods {
     result: RunDiffSummary;
   };
 }
+
+// 对应 conversations.SessionActivity。
+export interface SessionActivity {
+  sessionID: string;
+  running: boolean;
+  latestRunID: string;
+  latestResultSeq: number;
+  readResultSeq: number;
+}

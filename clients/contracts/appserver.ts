@@ -1,3 +1,4 @@
+import type { SessionActivity } from "./harness.ts";
 import type { PendingApproval, PermissionModeChoice, ApprovalSettings, ApprovalSettingsView } from "./approvals.ts";
 export interface InitializeResult { protocolVersion: number }
 
@@ -244,6 +245,9 @@ export interface ServerMethods {
   'hooks/trust': { params: { workspace: string; hash: string }; result: HookView };
   'approval/settings/read': { params: Record<string, never>; result: ApprovalSettingsView };
   'approval/settings/update': { params: ApprovalSettings; result: ApprovalSettingsView };
+  'harness/session/activity/subscribe': { params: Record<string, never>; result: { subscriptionID: string; sessions: SessionActivity[] } };
+  'harness/session/activity/list': { params: Record<string, never>; result: { sessions: SessionActivity[] } };
+  'harness/session/read': { params: { sessionID: string; runID: string }; result: Record<string, never> };
   'approval/subscribe': { params: Record<string, never>; result: { subscriptionID: string; pending: PendingApproval[] } };
   'permissions/modes': { params: Record<string, never>; result: { modes: PermissionModeChoice[] } };
   'approval/respond': { params: { requestID: string; decision: { approved: boolean; reason: string } }; result: Record<string, never> };
