@@ -880,14 +880,16 @@
   font-size: var(--font-size-heading);
   font-weight: 600;
 }
+.conversation-project + .conversation-title {
+  border-left: 1px solid var(--border);
+  padding-left: var(--space-3);
+}
 .conversation-project {
   display: flex;
   align-items: center;
   gap: var(--space-1);
   color: var(--muted-foreground);
   font-size: var(--font-size-caption);
-  border-left: 1px solid var(--border);
-  padding-left: var(--space-3);
   white-space: nowrap;
   max-width: 180px;
   overflow: hidden;
@@ -3693,6 +3695,10 @@
   }
   .conversation-project {
     display: none;
+  }
+  .conversation-project + .conversation-title {
+    border-left: 0;
+    padding-left: 0;
   }
   .message-column {
     padding-top: var(--space-6);

@@ -1294,10 +1294,10 @@ export default function App({ platform }: { platform: Platform }) {
               )}
               {!sidebar && <ConnectionIndicator status={connection} detail={connectionDetail} onReconnect={reconnect} />}
               <div className="conversation-heading">
-                <span className="conversation-title">{page?.label ?? selected?.title ?? "新建会话"}</span>
                 {!page && selected && <span className="conversation-project" title={selected.settings.workspace}>
                   <Folder />{workspaceName(selected.settings.workspace)}
                 </span>}
+                <span className="conversation-title">{page?.label ?? selected?.title ?? "新建会话"}</span>
               </div>
             </div>
             {chatPage && (
