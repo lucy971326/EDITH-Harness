@@ -1,11 +1,14 @@
-# Harness 开发命令入口。日常命令都在这里；Desktop 构建钩子在 Taskfile.yml（wails3 约定，不回调本文件）。
+# Harness 开发命令入口。Wails 通过薄 Taskfile 接入；两端共用 web-build 准备前端。
 # 本机 LLM 密钥在 ~/.harness/config.yaml（用户数据，与构建无关）。
 
 # Web：开发模式由 Vite 热更新页面，Go 后台提供 /rpc。
-.PHONY: web run run-backend run-frontend build
+.PHONY: web web-build run run-backend run-frontend build
 
 web:
 	npm --prefix clients ci
+	npm --prefix clients run build
+
+web-build: clients/node_modules/.package-lock.json
 	npm --prefix clients run build
 
 run: clients/node_modules/.package-lock.json clients/dist/index.html
@@ -44,7 +47,7 @@ GO_PACKAGES := ./clients/... ./cmd/... ./internal/... ./tests/...
 
 # Agent 日常快速回归：依赖按需安装，页面只构建一次，其余检查并行执行。
 # 发布前或干净环境的最终验收仍使用 make test。
-agent-check: agent-web-build
+agent-check: web-build
 	@$(MAKE) --no-print-directory -j4 agent-go agent-race agent-contracts agent-web-test
 
 test: web
@@ -57,10 +60,7 @@ test: web
 	npm --prefix clients test
 
 # agent-check 的子任务
-.PHONY: agent-web-build agent-go agent-race agent-contracts agent-web-test
-
-agent-web-build: clients/node_modules/.package-lock.json
-	npm --prefix clients run build
+.PHONY: agent-go agent-race agent-contracts agent-web-test
 
 agent-go:
 	go test $(GO_PACKAGES)

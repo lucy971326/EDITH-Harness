@@ -28,7 +28,7 @@ Wails Go 依赖、前端 runtime、CLI 统一为 beta.26。复用官方 NSIS 模
 
 ## 构建与验收
 
-- Makefile 提供入口，Taskfile 串联任务；脚本与资源归 `build/windows`、`build/macos`。
+- Makefile 提供入口与共用前端准备，Taskfile 薄接入 Wails；`build/desktop.mjs` 统一桌面构建，平台资源归 `build/windows`、`build/macos`。
 - 工具缺失或版本不符给出具体提示；普通构建不自动安装或升级工具。
 - 不改业务接口；本批不做付费签名、公证、上传发布、自动更新。
 - 改动完成后运行一次 `make agent-check`；正式发布前运行 `make test`。

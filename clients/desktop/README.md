@@ -19,7 +19,7 @@ React RPC → Wails Stream → Stream → appserver.ServeStream
 ```text
 Makefile               开发命令入口
   └─ wails3 dev/build
-      ├─ Taskfile.yml  Desktop 构建与运行
+      ├─ Taskfile.yml  薄命令接入 → build/desktop.mjs 构建与打包
       └─ build/config.yml  dev 监听与启动顺序
 clients/vite.config.ts  React 开发服务器
 .build/                二进制输出

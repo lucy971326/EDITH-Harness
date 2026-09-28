@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 
@@ -12,6 +12,10 @@ function run(command, args, capture = false) {
 }
 
 try {
+  const mode = process.argv[2];
+  if (!["build", "dev", "package"].includes(mode)) {
+    throw new Error("用法：node build/desktop.mjs build|dev|package");
+  }
   const expected = readFileSync("go.mod", "utf8").match(/github\.com\/wailsapp\/wails\/v3\s+(\S+)/)?.[1];
   const runtime = JSON.parse(readFileSync("clients/package.json", "utf8")).dependencies["@wailsio/runtime"];
   const cli = spawnSync("wails3", ["version"], { encoding: "utf8" });
@@ -32,18 +36,63 @@ try {
   }
 
   let nsis;
-  if (process.platform === "win32") {
+  if (mode === "package" && process.platform === "win32") {
     const candidates = ["makensis.exe", ...[process.env["ProgramFiles(x86)"], process.env.ProgramFiles,
       process.env.LOCALAPPDATA && resolve(process.env.LOCALAPPDATA, "Programs")]
       .filter(Boolean).map((directory) => resolve(directory, "NSIS/makensis.exe"))];
     nsis = candidates.find((command) => spawnSync(command, ["/VERSION"], { encoding: "utf8" }).status === 0);
     if (!nsis) throw new Error("缺少 NSIS。请运行 winget install --id NSIS.NSIS --exact，再重新打包。");
   }
-  if (process.argv[2] === "--check") process.exit(0);
+  // 开发热重启只编译 Go；首次前端准备由 Wails dev 配置执行。
+  if (mode !== "dev") run("make", ["web-build"]);
+  mkdirSync(".build/temp", { recursive: true });
+  if (process.platform === "win32") {
+    const info = {
+      fixed: { file_version: `${version}.0`, product_version: `${version}.0` },
+      info: { "0409": { FileVersion: version, ProductVersion: version, ProductName: "EDITH", FileDescription: "EDITH" } },
+    };
+    writeFileSync(".build/temp/windows-info.json", JSON.stringify(info));
+    run("wails3", ["generate", "syso", "-arch", architecture, "-icon", "build/windows/icon.ico",
+      "-manifest", "build/windows/app.manifest", "-info", ".build/temp/windows-info.json",
+      "-out", `cmd/harness-desktop/rsrc_windows_${architecture}.syso`]);
+  } else {
+    // 开发版和正式版共用最低系统版本，避免两处构建参数漂移。
+    process.env.MACOSX_DEPLOYMENT_TARGET = "13.0";
+    process.env.CGO_CFLAGS = "-mmacosx-version-min=13.0";
+    process.env.CGO_LDFLAGS = "-mmacosx-version-min=13.0";
+  }
+  const binary = `.build/EDITH${process.platform === "win32" ? ".exe" : ""}`;
+  const ldflags = `${mode !== "dev" && process.platform === "win32" ? "-H windowsgui " : ""}-X main.version=${version}`;
+  run("go", ["build", ...(mode === "dev" ? [] : ["-tags", "production", "-trimpath"]),
+    "-ldflags", ldflags, "-o", binary, "./cmd/harness-desktop"]);
+
+  if (process.platform === "darwin" && mode !== "dev") {
+    const bundle = ".build/EDITH.app/Contents";
+    mkdirSync(`${bundle}/MacOS`, { recursive: true });
+    mkdirSync(`${bundle}/Resources`, { recursive: true });
+    copyFileSync(binary, `${bundle}/MacOS/EDITH`);
+    copyFileSync("build/macos/icon.icns", `${bundle}/Resources/EDITH.icns`);
+    const properties = {
+      CFBundleIdentifier: "com.edith.harness.desktop",
+      CFBundleName: "EDITH",
+      CFBundleDisplayName: "EDITH",
+      CFBundleExecutable: "EDITH",
+      CFBundleIconFile: "EDITH.icns",
+      CFBundleShortVersionString: version,
+      CFBundleVersion: version,
+      CFBundlePackageType: "APPL",
+      LSMinimumSystemVersion: "13.0",
+    };
+    writeFileSync(`${bundle}/Info.plist`, `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+${Object.entries(properties).map(([key, value]) => `  <key>${key}</key><string>${value}</string>`).join("\n")}
+</dict></plist>\n`);
+    run("codesign", ["--force", "--deep", "--sign", "-", ".build/EDITH.app"]);
+  }
+  if (mode !== "package") process.exit(0);
 
   if (process.platform === "win32") {
-    if (!existsSync(".build/EDITH.exe")) throw new Error("缺少 .build/EDITH.exe，请使用 make desktop-package。");
-    mkdirSync(".build/temp", { recursive: true });
     run("wails3", ["generate", "webview2bootstrapper", "-dir", ".build/temp"]);
     run(nsis, ["/V2", "/INPUTCHARSET", "UTF8", `/DVERSION=${version}`, `/DARCH=${architecture}`,
       `/DOUTPUT=${resolve(`.build/EDITH-${version}-windows-${architecture}-setup.exe`)}`,
