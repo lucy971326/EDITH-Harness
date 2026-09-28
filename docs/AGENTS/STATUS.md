@@ -23,6 +23,7 @@ make run           # Web 开发：Vite 热更新，Go 后台提供 /rpc
 make build         # 产出 .build/harness
 make desktop-run   # wails3 dev，前端热更新、Go 改动后重启
 make desktop-build # 产出 .build/EDITH（Windows 带 .exe）；macOS 另生成 .build/EDITH.app
+make desktop-package # 本机生成 Windows 安装程序 / macOS DMG；Windows 构建机需 NSIS
 make agent-check   # 日常检查
 make test          # 完整串行验收
 ```
@@ -36,8 +37,9 @@ Web 开发页 `http://127.0.0.1:5173/`，业务连接同源 `/rpc` 并代理到 
 - MCP 表单的亮暗主题与窄屏显示待用户截图验收。
 - 模型二级选择与思考滑块的视觉、亮暗主题和窄屏交互待用户截图验收。
 - Windows 受限 Agent 沙箱未实现，Full Access 可用；原生目录选择仍需交互式 Windows 验收。
-- Desktop 已通过构建与连接入口检查；Windows 用户实机确认可双击启动且无控制台，Agent 命令不再弹窗仍待用户实机验收，聊天／终端等交互未逐项验收；新标题栏、单实例、关窗、托盘与窗口恢复仍待实机验收，macOS 窗口交互亦待验收。暂不做分发签名与安装包。
-- 后台通知的 Web 页面交互、Windows Toast 与 macOS 本机签名 `.app` 均待实机验收；分发签名、公证与安装包未实施。
+- Desktop 已通过构建与连接入口检查；Windows 用户实机确认可双击启动且无控制台，Agent 命令不再弹窗仍待用户实机验收，聊天／终端等交互未逐项验收；新标题栏、单实例、关窗、托盘与窗口恢复仍待实机验收，macOS 窗口交互亦待验收。
+- Windows 安装器仅当前用户安装；升级／卸载拦截运行中的 EDITH，拒绝降级，保留用户数据及非安装器文件。macOS DMG 打包流程已接入，仍需 Mac 实机验证；真实 WebView2 缺失环境的下载与安装待验收，失败分支已用隔离登记和模拟引导程序验证。
+- 后台通知的 Web 页面交互、Windows Toast 与 macOS 本机签名 `.app` 均待实机验收；分发签名、公证和自动更新未实施。
 - macOS Seatbelt 已在 macOS 27.0 arm64 验证，其他版本与 Intel 未验证。Linux 需要支持相应 namespace、seccomp 与挂载能力的 bwrap。
 - 沙箱不隔离硬链接别名；受保护目录内部的细粒度子路径授权暂时拒绝。异常断电／强杀可能留下 Linux 挂载占位空目录，不自动删除来源不明目录。
 - MCP 与 Hook 在宿主或远端执行，不在 Agent 命令沙箱内；Hook 信任仅覆盖配置，不跟踪脚本内容。

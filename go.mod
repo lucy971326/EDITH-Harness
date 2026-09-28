@@ -11,7 +11,7 @@ require (
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/sourcegraph/jsonrpc2 v0.2.3
-	github.com/wailsapp/wails/v3 v3.0.0-beta.25
+	github.com/wailsapp/wails/v3 v3.0.0-beta.26
 	github.com/zendev-sh/goai v0.9.8
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sys v0.47.0

@@ -24,3 +24,5 @@ Makefile               开发命令入口
 clients/vite.config.ts  React 开发服务器
 .build/                二进制输出
 ```
+
+`make desktop-package` 在构建后生成 Windows NSIS 安装程序或 macOS DMG，工具与安装规则见 [`build/README.md`](../../build/README.md)。安装脚本归构建层，不调用 appserver；Windows 安装器通过 Wails 单实例 mutex 阻止运行时升级或卸载，因此修改 Desktop UniqueID 或升级 Wails 的单实例实现时，须同步核对 `build/windows/installer.nsi`。

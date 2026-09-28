@@ -25,13 +25,16 @@ build: web
 	go build -o .build/harness ./cmd/harness
 
 # Desktop：Wails 开发与构建（Taskfile.yml 承接构建细节）
-.PHONY: desktop-run desktop-build
+.PHONY: desktop-run desktop-build desktop-package
 
 desktop-run:
 	wails3 dev
 
 desktop-build:
 	wails3 build
+
+desktop-package:
+	wails3 task package
 
 # 验收：日常快速检查 / 发布前完整检查
 .PHONY: agent-check test

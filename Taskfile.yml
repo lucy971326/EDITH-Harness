@@ -5,6 +5,14 @@ vars:
     sh: node -p "require('fs').readFileSync('build/version.txt','utf8').trim()"
 
 tasks:
+  package:
+    desc: Build and package EDITH for the current desktop platform.
+    platforms: [windows, darwin]
+    cmds:
+      - node build/desktop-package.mjs --check
+      - task: build
+      - node build/desktop-package.mjs
+
   deps:
     desc: Install web dependencies when missing or changed.
     sources:
@@ -30,7 +38,7 @@ tasks:
       - node -e "require('fs').existsSync('.build')||require('fs').mkdirSync('.build')"
       - cmd: node build/windows/write-info.mjs
         platforms: [windows]
-      - cmd: wails3 generate syso -arch {{ARCH}} -icon build/windows/icon.ico -manifest build/windows/app.manifest -info .build/windows-info.json -out cmd/harness-desktop/rsrc_windows_{{ARCH}}.syso
+      - cmd: wails3 generate syso -arch {{ARCH}} -icon build/windows/icon.ico -manifest build/windows/app.manifest -info .build/temp/windows-info.json -out cmd/harness-desktop/rsrc_windows_{{ARCH}}.syso
         platforms: [windows]
       # Windows 直接 exec 需要可执行文件带 .exe 后缀。
       # 正式版在 Windows 使用 GUI 子系统，双击时不弹控制台；开发版保留控制台日志。

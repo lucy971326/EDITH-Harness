@@ -75,6 +75,7 @@ make desktop-run  # wails3 dev：前端热更新，Go 改动后重启 Desktop
 ```bash
 make build        # 构建前端并产出 .build/harness
 make desktop-build # 经 wails3 build 产出 .build/EDITH.exe（macOS 为 .build/EDITH.app）
+make desktop-package # 本机生成 Windows 安装程序 / macOS DMG，工具准备见 build/README.md
 make agent-check  # 日常快速回归
 make test         # 完整串行验收
 ```
