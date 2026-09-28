@@ -393,7 +393,7 @@ function WorkProcessComponent({
       )}
       {diff && diff.files.length > 0 && (
         <button
-          className="run-diff-card ui-focus"
+          className="run-diff-card ui-key ui-focus"
           aria-label={`审查本轮改动：${diff.files.length} 个文件，新增 ${additions} 行，删除 ${deletions} 行`}
           onClick={() => onOpenDiff?.(turn.run!.runID, diff)}
         >

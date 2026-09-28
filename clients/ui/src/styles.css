@@ -274,13 +274,13 @@
   --focus-shadow: 0 0 0 3px #51483b1a;
   /* 材质共用入口：外壳、按键与书写面板；内容区保持平面。 */
   --surface-base: #e6e2d8;
-  --key-top: #faf8f2;
-  --key-bottom: #eee9de;
+  --key-top: #f8f6f0;
+  --key-bottom: #f3f0e8;
   --key-hover: #fffdf7;
   --signal-hi: #ff743e;
   --signal-edge: #ca430f;
   --edge-highlight: #ffffffb3;
-  --shadow-key: inset 0 1px 0 var(--edge-highlight), 0 1px 0 #b9af9c, 0 2px 3px #3c321012;
+  --shadow-key: inset 0 1px 0 var(--edge-highlight), 0 1px 3px #3c321018;
   --shadow-key-pressed: inset 0 1px 2px #3c32101c;
   --shadow-signal: inset 0 1px 0 #ffffff40, 0 1px 0 var(--signal-edge), 0 2px 4px #3c32101c;
   --shadow-panel: inset 0 1px 0 var(--edge-highlight), 0 2px 8px #3c32100a;
@@ -351,13 +351,13 @@
   --shadow-composer: 0 2px 8px #00000026, inset 0 1px 0 var(--edge-highlight);
   --shadow-thumb: 0 1px 3px #00000066;
   --surface-base: #191714;
-  --key-top: #363027;
-  --key-bottom: #2b261f;
+  --key-top: #342f28;
+  --key-bottom: #302b25;
   --key-hover: #40382d;
   --signal-hi: #ff8249;
   --signal-edge: #ab3d13;
   --edge-highlight: #ffffff0f;
-  --shadow-key: inset 0 1px 0 var(--edge-highlight), 0 1px 0 #100e0a, 0 2px 3px #00000033;
+  --shadow-key: inset 0 1px 0 var(--edge-highlight), 0 1px 3px #00000040;
   --shadow-key-pressed: inset 0 1px 3px #00000059;
   --shadow-signal: inset 0 1px 0 #ffffff26, 0 1px 0 var(--signal-edge), 0 2px 4px #00000040;
   --shadow-panel: inset 0 1px 0 var(--edge-highlight), 0 2px 8px #00000026;
@@ -513,26 +513,34 @@
     box-shadow: var(--shadow-signal);
   }
   .ui-button-outline,
-  .ui-button-secondary {
+  .ui-button-secondary,
+  .ui-key {
     color: var(--foreground);
     background: linear-gradient(var(--key-top), var(--key-bottom));
     box-shadow: var(--shadow-key);
   }
   .ui-button-outline { border: 1px solid var(--border); }
+  .ui-key {
+    border: 1px solid var(--border);
+    transition: background-color var(--duration-fast), border-color var(--duration-fast), box-shadow var(--duration-fast), transform var(--duration-fast);
+  }
   .ui-button-outline:hover:not(:disabled),
-  .ui-button-secondary:hover:not(:disabled) { background: var(--key-hover); }
+  .ui-button-secondary:hover:not(:disabled),
+  .ui-key:hover:not(:disabled) { background: var(--key-hover); border-color: var(--border-strong); }
   .ui-button-destructive {
     background: var(--destructive);
     color: var(--destructive-foreground);
   }
-  .ui-button-ghost:hover:not(:disabled) { background: var(--accent); color: var(--foreground); }
-  :is(.ui-button-primary, .ui-button-outline, .ui-button-secondary):active:not(:disabled) { transform: translateY(1px); }
+  .ui-button-ghost:not(.ui-key):hover:not(:disabled) { background: var(--accent); color: var(--foreground); }
+  :is(.ui-button-primary, .ui-button-outline, .ui-button-secondary, .ui-key):active:not(:disabled) { transform: translateY(1px); }
   .ui-button-link { color: var(--link); text-underline-offset: 4px; }
   .ui-button-link:hover { text-decoration: underline; }
   .ui-button-primary:active:not(:disabled),
   .ui-button-outline:active:not(:disabled),
-  .ui-button-secondary:active:not(:disabled) { box-shadow: var(--shadow-key-pressed); }
+  .ui-button-secondary:active:not(:disabled),
+  .ui-key:active:not(:disabled) { box-shadow: var(--shadow-key-pressed); }
   .ui-button:disabled { box-shadow: none; }
+  .ui-key:disabled { background: var(--muted); box-shadow: none; }
   .ui-button-primary:hover:not(:disabled),
   .ui-button-destructive:hover:not(:disabled) { filter: brightness(0.97); }
   .ui-switch {
@@ -710,14 +718,6 @@
 .navigation-item span {
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.feature-navigation .navigation-item[data-kind="action"] {
-  background: linear-gradient(var(--key-top), var(--key-bottom));
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-key);
-}
-.feature-navigation .navigation-item[data-kind="action"]:hover {
-  background: var(--key-hover);
 }
 .sidebar-empty {
   padding: var(--space-2) var(--space-3);
@@ -1486,7 +1486,7 @@
   justify-content: space-between;
   gap: var(--space-2);
   min-height: var(--control-standard);
-  padding: var(--space-2) 0 0;
+  padding: var(--space-1) 0 0;
 }
 .composer-toolbar .agent-select,
 .composer-toolbar .permission-trigger {
@@ -1507,31 +1507,14 @@
   width: 100%;
   margin-top: var(--space-2);
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
   border-radius: var(--radius-control);
-  background: linear-gradient(var(--key-top), var(--key-bottom));
-  box-shadow: var(--shadow-key);
-  color: var(--foreground);
   text-align: left;
-  transition: background-color var(--duration-fast), border-color var(--duration-fast), box-shadow var(--duration-fast);
-}
-.run-diff-card:hover {
-  background: var(--key-hover);
-  border-color: var(--border-strong);
-}
-.run-diff-card:active {
-  transform: translateY(1px);
-  box-shadow: var(--shadow-key-pressed);
 }
 .run-diff-mark {
   display: grid;
   place-items: center;
-  flex: 0 0 var(--control-standard);
-  height: var(--control-standard);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-control);
-  background: var(--muted);
-  box-shadow: var(--shadow-inset);
+  flex: 0 0 var(--control-compact);
+  height: var(--control-compact);
   color: var(--muted-foreground);
 }
 .run-diff-copy {
@@ -1565,10 +1548,7 @@
 .run-diff-action {
   display: inline-flex;
   align-items: center;
-  align-self: stretch;
   gap: var(--space-1);
-  padding-left: var(--space-3);
-  border-left: 1px solid var(--border);
   color: var(--muted-foreground);
   font-size: var(--font-size-label);
   white-space: nowrap;
@@ -3784,6 +3764,7 @@
   .ui-button-outline,
   .ui-button-secondary,
   .ui-button-destructive,
+  .ui-key,
   .ui-switch,
   .ui-switch-thumb { border: 1px solid ButtonText; }
   .session-row.selected,

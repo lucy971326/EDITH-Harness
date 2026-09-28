@@ -85,7 +85,7 @@ export function Sidebar({
   function navigationItem(entry: NavigationEntry) {
     const Icon = entry.icon;
     const active = entry.kind === "page" && activePath === entry.path;
-    return <Button key={entry.id} variant="ghost" className={`navigation-item ${active ? "selected" : ""}`}
+    return <Button key={entry.id} variant="ghost" className={`navigation-item ${entry.kind === "action" ? "ui-key" : ""} ${active ? "selected" : ""}`}
       data-kind={entry.kind}
       aria-current={active ? "page" : undefined}
       disabled={entry.kind === "action" && entry.disabled}
