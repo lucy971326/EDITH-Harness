@@ -9,7 +9,7 @@ build/
 └─ macos/           macOS 图标
 ```
 
-品牌图标源文件在 `clients/public/edith-icon.svg`，运行时 PNG 在 `clients/desktop/edith-icon.png`。
+品牌图标源文件在 `clients/public/edith-icon.svg`，运行时 PNG 在 `clients/desktop/edith-icon.png`。macOS 的 `icon.icns` 使用同一 SVG 图形，画布视口由 `0 0 64 64` 扩至 `-8 -8 80 80`，四周留 10% 透明边距；重新生成时只修改 macOS 图标，不缩小 Web 或 Windows 的品牌图标。
 
 ## 构建职责
 

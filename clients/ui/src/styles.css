@@ -2714,22 +2714,26 @@
 }
 .assistant-comment-editor {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   width: min(340px, calc(100vw - 16px));
   min-height: 42px;
   gap: var(--space-2);
   padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
 }
-.assistant-comment-editor input {
+.assistant-comment-editor textarea {
   min-width: 0;
   flex: 1;
   border: 0;
   outline: 0;
+  resize: none;
+  overflow-y: auto;
+  padding: var(--space-2) 0;
   background: transparent;
   color: var(--popover-foreground);
   font-size: var(--font-size-label);
+  line-height: var(--leading-label);
 }
-.assistant-comment-editor input::placeholder {
+.assistant-comment-editor textarea::placeholder {
   color: var(--muted-foreground);
 }
 .assistant-comment-editor button {

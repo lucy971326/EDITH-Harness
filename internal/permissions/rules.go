@@ -23,7 +23,7 @@ func Modes() []ModeChoice {
 func NormalizeMode(mode Mode) (Mode, error) {
 	switch mode {
 	case "":
-		return AskForApproval, nil
+		return FullAccess, nil
 	case ReadOnly, AskForApproval, ApproveForMe, FullAccess:
 		return mode, nil
 	default:

@@ -94,9 +94,15 @@ function AssistantCommentEditor({
   onSubmit: (reference: Extract<ContextReference, { kind: "assistant-selection" }>) => void;
   onClose: () => void;
 }) {
-  const input = useRef<HTMLInputElement>(null);
+  const input = useRef<HTMLTextAreaElement>(null);
   const [comment, setComment] = useState("");
-  useLayoutEffect(() => input.current?.focus(), []);
+  useLayoutEffect(() => input.current?.focus({ preventScroll: true }), []);
+  useLayoutEffect(() => {
+    const textarea = input.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 140)}px`;
+  }, [comment]);
 
   const submit = () => {
     const value = comment.trim();
@@ -111,14 +117,15 @@ function AssistantCommentEditor({
         label="为选中内容添加评论"
         onClose={onClose}
       >
-        <input
+        <textarea
           ref={input}
           value={comment}
           placeholder="添加评论（可选）"
           aria-label="评论"
+          rows={1}
           onChange={(event) => setComment(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+            if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing || event.keyCode === 229) return;
             event.preventDefault();
             submit();
           }}

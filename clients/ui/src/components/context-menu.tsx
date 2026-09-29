@@ -45,18 +45,24 @@ export function FloatingSurface({
   useLayoutEffect(() => {
     const surface = surfaceRef.current;
     if (!surface) return;
-    const bounds = surface.getBoundingClientRect();
-    let left = x ?? 0;
-    let top = y ?? 0;
-    if (anchor) {
-      left = anchor.left + (anchor.right - anchor.left - bounds.width) / 2;
-      top = anchor.top - bounds.height - 8;
-      if (top < 8) top = anchor.bottom + 8;
-    }
-    setPosition({
-      left: Math.max(8, Math.min(left, window.innerWidth - bounds.width - 8)),
-      top: Math.max(8, Math.min(top, window.innerHeight - bounds.height - 8)),
-    });
+    const updatePosition = () => {
+      const bounds = surface.getBoundingClientRect();
+      let left = x ?? 0;
+      let top = y ?? 0;
+      if (anchor) {
+        left = anchor.left + (anchor.right - anchor.left - bounds.width) / 2;
+        top = anchor.top - bounds.height - 8;
+        if (top < 8) top = anchor.bottom + 8;
+      }
+      setPosition({
+        left: Math.max(8, Math.min(left, window.innerWidth - bounds.width - 8)),
+        top: Math.max(8, Math.min(top, window.innerHeight - bounds.height - 8)),
+      });
+    };
+    updatePosition();
+    const observer = new ResizeObserver(updatePosition);
+    observer.observe(surface);
+    return () => observer.disconnect();
   }, [x, y, anchor?.left, anchor?.top, anchor?.right, anchor?.bottom, className]);
 
   useEffect(() => {
@@ -65,13 +71,17 @@ export function FloatingSurface({
       if (event.key === "Escape") close();
     };
     window.addEventListener("pointerdown", close);
-    window.addEventListener("scroll", close, true);
+    const closeOnScroll = (event: Event) => {
+      if (event.target instanceof Node && surfaceRef.current?.contains(event.target)) return;
+      close();
+    };
+    window.addEventListener("scroll", closeOnScroll, true);
     window.addEventListener("blur", close);
     window.addEventListener("resize", close);
     window.addEventListener("keydown", closeOnEscape);
     return () => {
       window.removeEventListener("pointerdown", close);
-      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("scroll", closeOnScroll, true);
       window.removeEventListener("blur", close);
       window.removeEventListener("resize", close);
       window.removeEventListener("keydown", closeOnEscape);

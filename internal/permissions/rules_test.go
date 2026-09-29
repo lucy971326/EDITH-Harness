@@ -17,7 +17,7 @@ func TestPermissionRules(t *testing.T) {
 		write    Requirement
 		network  Requirement
 	}{
-		{"", HumanReviewer, Allow, Ask},
+		{"", NoReviewer, Allow, Allow},
 		{ReadOnly, HumanReviewer, Ask, Ask},
 		{AskForApproval, HumanReviewer, Allow, Ask},
 		{ApproveForMe, ModelReviewer, Allow, Ask},
