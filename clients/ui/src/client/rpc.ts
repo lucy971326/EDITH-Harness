@@ -67,9 +67,7 @@ export interface CallOptions<Result = unknown> {
 
 // 浏览器 JSON-RPC 连接。请求 ID 只配对响应；有副作用的调用超时或断线后不自动重发。
 export class RPCClient {
-  onApprovals: ((notification: ApprovalNotification) => void) | null = null;
   onActivity: ((subscriptionID: string) => void) | null = null;
-  onRun: ((notification: RunNotification) => void) | null = null;
 
   private readonly approvalListeners = new Set<(notification: ApprovalNotification) => void>();
   private readonly terminalListeners = new Set<(notification: TerminalNotification) => void>();
@@ -494,7 +492,6 @@ export class RPCClient {
           envelope.params?.event
         ) {
           const notification = envelope.params as RunNotification;
-          this.onRun?.(notification);
           for (const listener of this.runListeners) listener(notification);
         } else if (
           envelope.method === "approval/changed" &&
@@ -502,7 +499,6 @@ export class RPCClient {
           Array.isArray(envelope.params?.event)
         ) {
           const notification = envelope.params as ApprovalNotification;
-          this.onApprovals?.(notification);
           for (const listener of this.approvalListeners) listener(notification);
         } else if (
           envelope.method === "harness/run/terminal" &&

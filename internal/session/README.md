@@ -10,7 +10,7 @@ Store -> 同一 ID 的 Session -> Append / History
 ```
 
 - `types.go`：消息、节点、元数据与 Persistence 契约。
-- `store.go`：创建、打开、列表、改名与分叉。
+- `store.go`：创建、打开、按 ID 读取元数据、列表与分叉。
 - `session.go`：追加节点、分支历史、摘要后的有效输入。
 - `jsonl.go / id.go`：文件格式与身份生成。
 

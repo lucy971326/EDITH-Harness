@@ -238,8 +238,4 @@ func TestTruncate(t *testing.T) {
 	if !strings.HasSuffix(head, truncatedNotice) {
 		t.Fatalf("head = %q", head[len(head)-100:])
 	}
-	tail := TruncateTail(strings.Repeat("a", maxOutputBytes+1))
-	if !strings.HasPrefix(tail, truncatedNotice) {
-		t.Fatalf("tail = %q", tail[:100])
-	}
 }

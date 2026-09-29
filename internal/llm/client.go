@@ -73,9 +73,6 @@ type Client struct {
 	current atomic.Pointer[modelState]
 	editMu  sync.Mutex
 	files   *persist.Files
-	// 保留包内测试使用的静态构造；生产环境只读取 current。
-	config config
-	models map[string]model
 }
 
 type modelState struct {
@@ -90,7 +87,7 @@ func (c *Client) state() *modelState {
 	if current := c.current.Load(); current != nil {
 		return current
 	}
-	return &modelState{config: c.config, models: c.models}
+	return &modelState{}
 }
 
 // Pin 固定一轮运行使用的目录，避免多步工具调用期间切换供应商设置。
@@ -99,16 +96,6 @@ func (c *Client) Pin() *Client {
 	pinned := &Client{}
 	pinned.current.Store(state)
 	return pinned
-}
-
-func newClient(cfg config) (*Client, error) {
-	models, err := loadModels()
-	if err != nil {
-		return nil, err
-	}
-	client := &Client{}
-	client.current.Store(&modelState{config: cfg, models: models})
-	return client, nil
 }
 
 // Stream 根据本次调用配置选择模型和思考档位，直接返回 goai 的流事件。

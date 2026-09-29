@@ -63,7 +63,7 @@ func TestProductRunsWithoutWebAndForksCompletedSegment(t *testing.T) {
 	}
 	defer unsubscribe()
 
-	err = fixture.service.Start(context.Background(), conversations.RunInput{
+	_, err = fixture.service.Send(context.Background(), conversations.RunInput{
 		SessionID: created.Meta.ID, Model: "deepseek/deepseek-flash", ReasoningEffort: "high",
 		Message: session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "first"}}},
 	})
@@ -73,7 +73,11 @@ func TestProductRunsWithoutWebAndForksCompletedSegment(t *testing.T) {
 	invocation := fixture.loop.waitStarted(t)
 	steerDone := make(chan error, 1)
 	go func() {
-		steerDone <- fixture.service.Steer(created.Meta.ID, session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "steer"}}})
+		_, err := fixture.service.Send(context.Background(), conversations.RunInput{
+			SessionID: created.Meta.ID, ExpectedRunID: invocation.RunID,
+			Message: session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "steer"}}},
+		})
+		steerDone <- err
 	}()
 	select {
 	case <-invocation.InputSignal():
@@ -124,7 +128,7 @@ func TestProductRunsWithoutWebAndForksCompletedSegment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = fixture.service.Start(context.Background(), conversations.RunInput{
+	_, err = fixture.service.Send(context.Background(), conversations.RunInput{
 		SessionID: stopping.Meta.ID, Model: "deepseek/deepseek-flash", ReasoningEffort: "high",
 		Message: session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "stop"}}},
 	})
@@ -298,18 +302,13 @@ func newTestFixture(t *testing.T) testFixture {
 	}
 	t.Cleanup(func() { _ = machineService.Close() })
 	eventRegistry := events.NewRegistry()
-	loopRegistry := loops.NewRegistry()
 	toolRegistry := tools.NewRegistry()
 	skillService := skills.NewRegistry()
-	err = loopRegistry.Register(loop)
+	agentService, err := agents.NewService(agents.NewStore(files), settingsStore, toolRegistry, skillService)
 	if err != nil {
 		t.Fatal(err)
 	}
-	agentService, err := agents.NewService(agents.NewStore(files), settingsStore, loopRegistry, toolRegistry, skillService)
-	if err != nil {
-		t.Fatal(err)
-	}
-	runService, err := runner.NewRunner(sessions, settingsStore, agentService, loopRegistry, eventRegistry, models, toolRegistry, files, machineService)
+	runService, err := runner.NewRunner(sessions, settingsStore, agentService, loop, eventRegistry, models, toolRegistry, files, machineService)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -348,10 +347,6 @@ type testLoop struct {
 
 func newTestLoop() *testLoop {
 	return &testLoop{started: make(chan loops.Invocation, 8), releaseCh: make(chan struct{}, 8)}
-}
-
-func (l *testLoop) Definition() loops.Definition {
-	return loops.Definition{Kind: "react", Description: "test"}
 }
 
 func (l *testLoop) Run(ctx context.Context, invocation loops.Invocation) error {
@@ -433,7 +428,7 @@ func TestSubagentsChatIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = fixture.service.Start(context.Background(), conversations.RunInput{
+	_, err = fixture.service.Send(context.Background(), conversations.RunInput{
 		SessionID: created.Meta.ID, Model: "deepseek/deepseek-flash", ReasoningEffort: "high",
 		Message: session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "parent prompt"}}},
 	})
@@ -533,16 +528,17 @@ func TestSubagentsChatIsolation(t *testing.T) {
 		t.Fatalf("stop exposed child session: %v", err)
 	}
 
-	// 4. HarnessProduct.Start / Steer / CallCommand 拒绝操作子会话
-	err = fixture.service.Start(context.Background(), conversations.RunInput{
+	// 4. Send / CallCommand 拒绝操作子会话
+	_, err = fixture.service.Send(context.Background(), conversations.RunInput{
 		SessionID: spawnRes.ChildSessionID,
 		Message:   session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "hi"}}},
 	})
 	if !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("expected ErrNotExist, got %v", err)
 	}
-	err = fixture.service.Steer(spawnRes.ChildSessionID, session.UserMessage{
-		Blocks: []session.Block{{Kind: "text", Text: "steer"}},
+	_, err = fixture.service.Send(context.Background(), conversations.RunInput{
+		SessionID: spawnRes.ChildSessionID, ExpectedRunID: "child-run",
+		Message: session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "steer"}}},
 	})
 	if !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("expected ErrNotExist, got %v", err)
@@ -561,7 +557,7 @@ func TestNestedSubagentInterfacesUseDirectParent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = fixture.service.Start(t.Context(), conversations.RunInput{
+	_, err = fixture.service.Send(t.Context(), conversations.RunInput{
 		SessionID: created.Meta.ID, Model: "deepseek/deepseek-flash", ReasoningEffort: "high",
 		Message: session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "root"}}},
 	})
@@ -783,7 +779,7 @@ func TestArchiveAndProjectDeletionKeepWorkspaceAndSibling(t *testing.T) {
 		t.Fatal("archived empty session was reused")
 	}
 
-	err = fixture.service.Start(t.Context(), conversations.RunInput{SessionID: second.Meta.ID,
+	_, err = fixture.service.Send(t.Context(), conversations.RunInput{SessionID: second.Meta.ID,
 		Message: session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "root"}}}})
 	if err != nil {
 		t.Fatal(err)
@@ -981,7 +977,7 @@ func TestReadPositionTracksOnlyObservedCompletedRun(t *testing.T) {
 	id := created.Meta.ID
 	var runs []string
 	for index := 0; index < 2; index++ {
-		err = f.service.Start(t.Context(), conversations.RunInput{
+		_, err = f.service.Send(t.Context(), conversations.RunInput{
 			SessionID: id, Model: "deepseek/deepseek-flash", ReasoningEffort: "high",
 			Message: session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "work"}}},
 		})
@@ -1040,7 +1036,7 @@ func TestReadConfirmationNotifiesOtherClient(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = f.service.Start(t.Context(), conversations.RunInput{
+	_, err = f.service.Send(t.Context(), conversations.RunInput{
 		SessionID: created.Meta.ID, Model: "deepseek/deepseek-flash", ReasoningEffort: "high",
 		Message: session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "work"}}},
 	})
@@ -1121,5 +1117,36 @@ func TestReadConfirmationNotifiesOtherClient(t *testing.T) {
 	}
 	if len(result.Sessions) != 1 || result.Sessions[0].ReadResultSeq == 0 || result.Sessions[0].ReadResultSeq != result.Sessions[0].LatestResultSeq {
 		t.Fatalf("notification preceded durable read: %+v", result)
+	}
+}
+
+func TestSessionReadsOnlyTargetMeta(t *testing.T) {
+	fixture := newTestFixture(t)
+	defer fixture.close()
+	good, err := fixture.service.Create(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	broken, err := fixture.files.Scope("sessions", "broken")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, body := range []string{"{", `{"id":"another"}`} {
+		err = broken.Write("meta.json", []byte(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		info, err := fixture.service.Session(good.Meta.ID)
+		if err != nil || info.Meta.ID != good.Meta.ID {
+			t.Fatalf("unrelated metadata affected target: %#v, %v", info, err)
+		}
+		_, err = fixture.service.Session("broken")
+		if err == nil || errors.Is(err, conversations.ErrSessionNotFound) {
+			t.Fatalf("invalid target metadata must remain a read error: %v", err)
+		}
+	}
+	_, err = fixture.service.Session("missing")
+	if !errors.Is(err, conversations.ErrSessionNotFound) || !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("missing metadata = %v", err)
 	}
 }

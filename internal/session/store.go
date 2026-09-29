@@ -197,6 +197,11 @@ func (s *Store) SetArchived(id string, archived bool) (SessionMeta, error) {
 	return meta, nil
 }
 
+// Meta 按 ID 读取耐久元数据，不加载账本或缓存另一份状态。
+func (s *Store) Meta(id string) (SessionMeta, error) {
+	return s.persist.LoadMeta(id)
+}
+
 // Forget 删除永久删除后仍缓存的活对象。
 func (s *Store) Forget(ids []string) {
 	s.mu.Lock()
@@ -204,26 +209,6 @@ func (s *Store) Forget(ids []string) {
 	for _, id := range ids {
 		delete(s.live, id)
 	}
-}
-
-// Rename 修改一本会话的显示标题。
-func (s *Store) Rename(id string, title string) error {
-	if id == "" {
-		return fmt.Errorf("session: empty id")
-	}
-	if title == "" {
-		return fmt.Errorf("session: empty title")
-	}
-	meta, err := s.persist.LoadMeta(id)
-	if err != nil {
-		return fmt.Errorf("session: rename %q: %w", id, err)
-	}
-	meta.Title = title
-	err = s.persist.SaveMeta(meta)
-	if err != nil {
-		return fmt.Errorf("session: rename %q: %w", id, err)
-	}
-	return nil
 }
 
 // DiscardEmpty 删除刚创建、尚未写入账本的会话。

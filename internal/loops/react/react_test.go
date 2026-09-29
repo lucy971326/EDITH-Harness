@@ -580,12 +580,8 @@ func TestReactCancellingOneOfMultipleToolCallsPersistsEveryResult(t *testing.T) 
 	}
 	t.Cleanup(func() { _ = machineService.Close() })
 	eventRegistry := events.NewRegistry()
-	loopRegistry := loops.NewRegistry()
 	toolRegistry := tools.NewRegistry()
-	err = loopRegistry.Register(New(models, toolRegistry))
-	if err != nil {
-		t.Fatal(err)
-	}
+	loop := New(models, toolRegistry)
 	var called []string
 	var calledMu sync.Mutex
 	err = toolRegistry.Register(tools.New("echo", "Echo a value.", func(ctx context.Context, _ tools.Call, args echoArgs) (tools.Result, error) {
@@ -602,11 +598,11 @@ func TestReactCancellingOneOfMultipleToolCallsPersistsEveryResult(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	agentService, err := agents.NewService(agents.NewStore(files), settingsStore, loopRegistry, toolRegistry, skills.NewRegistry())
+	agentService, err := agents.NewService(agents.NewStore(files), settingsStore, toolRegistry, skills.NewRegistry())
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := runner.NewRunner(sessions, settingsStore, agentService, loopRegistry, eventRegistry, models, toolRegistry, files, machineService)
+	r, err := runner.NewRunner(sessions, settingsStore, agentService, loop, eventRegistry, models, toolRegistry, files, machineService)
 	if err != nil {
 		t.Fatal(err)
 	}

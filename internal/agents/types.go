@@ -2,7 +2,6 @@
 package agents
 
 import (
-	"harness/internal/loops"
 	"harness/internal/tools"
 )
 
@@ -12,20 +11,17 @@ const DefaultID = "default"
 type Agent struct {
 	ID           string   `json:"id"`
 	Name         string   `json:"name"`
-	Kind         string   `json:"kind"`
 	SystemPrompt string   `json:"systemPrompt"`
 	Tools        []string `json:"tools"`
 }
 
 // 数据。Agent 设置界面可展示的候选项。
 type Choices struct {
-	Loops []loops.Definition
 	Tools []tools.Definition
 }
 
 // 数据。Runner 使用的一份已准备 Agent。
 type PreparedAgent struct {
-	Kind         string
 	Tools        []string
 	SystemPrompt string
 }

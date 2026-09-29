@@ -89,7 +89,6 @@ type runPreparation struct {
 	sess     *session.Session
 	settings settings.SessionSettings
 	prepared agents.PreparedAgent
-	loop     loops.Loop
 }
 
 // 活对象。管理尚未结束 Run 的对话运行器。
@@ -97,7 +96,7 @@ type Runner struct {
 	sessions   *session.Store
 	settings   settings.SessionSettingsStore
 	agents     *agents.Service
-	loops      loops.Loops
+	loop       loops.Loop
 	events     *events.Registry
 	llm        *llm.Client
 	tools      tools.Tools
@@ -114,13 +113,12 @@ type Runner struct {
 	wg           sync.WaitGroup
 }
 
-// 活对象。一场异步 Run 的身份、配置和完成通知句柄。
+// 活对象。一场异步 Run 的身份和完成通知句柄。
 type RunHandle struct {
-	runID    string
-	settings settings.SessionSettings
-	done     chan struct{}
-	result   RunResult
-	once     sync.Once
+	runID  string
+	done   chan struct{}
+	result RunResult
+	once   sync.Once
 }
 
 // RunID 返回这场 Run 的稳定身份。
@@ -135,14 +133,10 @@ func (h *RunHandle) Wait() RunResult {
 	return h.result
 }
 
-// Settings 返回启动时保存的本轮配置快照。
-func (h *RunHandle) Settings() settings.SessionSettings { return h.settings }
-
-func newRunHandle(runID string, runSettings settings.SessionSettings) *RunHandle {
+func newRunHandle(runID string) *RunHandle {
 	return &RunHandle{
-		runID:    runID,
-		settings: runSettings,
-		done:     make(chan struct{}),
+		runID: runID,
+		done:  make(chan struct{}),
 	}
 }
 
@@ -158,7 +152,7 @@ func NewRunner(
 	sessions *session.Store,
 	settingsStore settings.SessionSettingsStore,
 	agentService *agents.Service,
-	loopRegistry loops.Loops,
+	loop loops.Loop,
 	eventRegistry *events.Registry,
 	llmClient *llm.Client,
 	toolRegistry tools.Tools,
@@ -174,8 +168,8 @@ func NewRunner(
 	if agentService == nil {
 		return nil, fmt.Errorf("runner: nil agents")
 	}
-	if loopRegistry == nil {
-		return nil, fmt.Errorf("runner: nil loops")
+	if loop == nil {
+		return nil, fmt.Errorf("runner: nil loop")
 	}
 	if eventRegistry == nil {
 		return nil, fmt.Errorf("runner: nil events")
@@ -200,7 +194,7 @@ func NewRunner(
 		sessions:   sessions,
 		settings:   settingsStore,
 		agents:     agentService,
-		loops:      loopRegistry,
+		loop:       loop,
 		events:     eventRegistry,
 		llm:        llmClient,
 		tools:      toolRegistry,
@@ -269,7 +263,7 @@ func (r *Runner) openRun(ctx context.Context, sessionID string) (*RunHandle, *li
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	return newRunHandle(runID, settings.SessionSettings{}), current, runCtx, nil
+	return newRunHandle(runID), current, runCtx, nil
 }
 
 func (r *Runner) openLive(ctx context.Context, sessionID string) (string, *liveRun, context.Context, error) {
@@ -309,7 +303,6 @@ func (r *Runner) prepareActive(ctx context.Context, sessionID string, current *l
 	current.mu.Lock()
 	current.settings = &prepared.settings
 	current.mu.Unlock()
-	handle.settings = prepared.settings
 	return prepared, nil
 }
 
@@ -328,18 +321,13 @@ func (r *Runner) prepare(ctx context.Context, sessionID, runID string) (runPrepa
 	if err != nil {
 		return runPreparation{}, err
 	}
-	loop, err := r.loops.Get(prepared.Kind)
-	if err != nil {
-		return runPreparation{}, err
-	}
-	return runPreparation{sess: sess, settings: runSettings, prepared: prepared, loop: loop}, nil
+	return runPreparation{sess: sess, settings: runSettings, prepared: prepared}, nil
 }
 
 func (r *Runner) executePrepared(runCtx context.Context, sessionID, runID string, input session.UserMessage, current *liveRun, preparation runPreparation) (err error) {
 	sess := preparation.sess
 	runSettings := preparation.settings
 	prepared := preparation.prepared
-	loop := preparation.loop
 	runStartedAttempted := false
 	runRecorded := false
 	defer func() {
@@ -451,7 +439,7 @@ func (r *Runner) executePrepared(runCtx context.Context, sessionID, runID string
 			return r.checkpoint(sess, sessionID, current, phase)
 		},
 	}
-	return loop.Run(runCtx, invocation)
+	return r.loop.Run(runCtx, invocation)
 }
 
 func runResult(runID string, err error) RunResult {

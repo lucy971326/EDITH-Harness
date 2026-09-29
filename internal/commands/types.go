@@ -21,7 +21,4 @@ type Commands interface {
 	Register(command Command) error
 	Get(name string) (Command, error)
 	List() []Definition
-
-	// 按名执行
-	Call(ctx context.Context, name, sessionID string) error
 }

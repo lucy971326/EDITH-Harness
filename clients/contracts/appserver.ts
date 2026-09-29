@@ -55,25 +55,21 @@ export interface SelectWorkspaceResult {
 export interface AgentView {
   id: string;
   name: string;
-  kind: string;
   systemPrompt: string;
   tools: string[];
   inUse: boolean;
 }
 
-export interface AgentKindChoice { kind: string; description: string }
 export interface AgentToolChoice { name: string; description: string }
 
 export interface AgentListResult {
   agents: AgentView[];
-  kinds: AgentKindChoice[];
   tools: AgentToolChoice[];
 }
 
 export interface AgentSaveParams {
   id?: string;
   name: string;
-  kind: string;
   systemPrompt: string;
   tools: string[];
 }

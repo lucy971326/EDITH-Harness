@@ -22,13 +22,6 @@ type reactLoop struct {
 	tools tools.Tools
 }
 
-func (l *reactLoop) Definition() loops.Definition {
-	return loops.Definition{
-		Kind:        "react",
-		Description: "Call an LLM, execute requested tools, and continue until it answers.",
-	}
-}
-
 func (l *reactLoop) Run(ctx context.Context, invocation loops.Invocation) error {
 	if invocation.Emit == nil {
 		return fmt.Errorf("react: nil Emit")

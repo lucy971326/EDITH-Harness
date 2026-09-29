@@ -303,3 +303,25 @@ test("recognizes only the stable unavailable-workspace error", () => {
     false,
   );
 });
+
+test("approval listeners coexist and unsubscribe independently", async () => {
+  const socket = new FakeSocket();
+  const client = new RPCClient(() => {}, factory(socket));
+  await client.connect();
+  const received: string[] = [];
+  const removeInbox = client.onApprovalChange(() => received.push("inbox"));
+  const removeNotification = client.onApprovalChange(() => received.push("notification"));
+  const notification = JSON.stringify({
+    jsonrpc: "2.0", method: "approval/changed",
+    params: { subscriptionID: "approvals", event: [] },
+  });
+  socket.dispatchEvent(new MessageEvent("message", { data: notification }));
+  assert.deepEqual(received, ["inbox", "notification"]);
+  removeInbox();
+  socket.dispatchEvent(new MessageEvent("message", { data: notification }));
+  assert.deepEqual(received, ["inbox", "notification", "notification"]);
+  removeNotification();
+  socket.dispatchEvent(new MessageEvent("message", { data: notification }));
+  assert.equal(received.length, 3);
+  client.close();
+});

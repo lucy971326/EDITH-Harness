@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -64,16 +63,4 @@ func (r *Registry) List() []Definition {
 		return out[i].Name < out[j].Name
 	})
 	return out
-}
-
-// Call 按名执行一条命令。
-func (r *Registry) Call(ctx context.Context, name, sessionID string) error {
-	if strings.TrimSpace(sessionID) == "" {
-		return fmt.Errorf("commands: empty session id")
-	}
-	command, err := r.Get(name)
-	if err != nil {
-		return err
-	}
-	return command.Run(ctx, sessionID)
 }

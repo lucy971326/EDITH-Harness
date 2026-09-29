@@ -30,10 +30,6 @@ type controlledLoop struct {
 	release chan struct{}
 }
 
-func (l *controlledLoop) Definition() loops.Definition {
-	return loops.Definition{Kind: "react", Description: "controlled test loop"}
-}
-
 func (l *controlledLoop) Run(ctx context.Context, invocation loops.Invocation) error {
 	l.started <- invocation
 	if invocation.SessionID == "parent" {
@@ -107,18 +103,13 @@ func newFixture(t *testing.T) fixture {
 	}
 	t.Cleanup(func() { _ = machineService.Close() })
 	eventRegistry := events.NewRegistry()
-	loopRegistry := loops.NewRegistry()
 	toolRegistry := tools.NewRegistry()
 	skillService := skills.NewRegistry()
-	err = loopRegistry.Register(loop)
+	agentService, err := agents.NewService(agents.NewStore(files), settingsStore, toolRegistry, skillService)
 	if err != nil {
 		t.Fatal(err)
 	}
-	agentService, err := agents.NewService(agents.NewStore(files), settingsStore, loopRegistry, toolRegistry, skillService)
-	if err != nil {
-		t.Fatal(err)
-	}
-	runService, err := runner.NewRunner(sessions, settingsStore, agentService, loopRegistry, eventRegistry, models, toolRegistry, files, machineService)
+	runService, err := runner.NewRunner(sessions, settingsStore, agentService, loop, eventRegistry, models, toolRegistry, files, machineService)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -391,7 +382,7 @@ func TestToolDelegationDepthLimit(t *testing.T) {
 
 func TestIndependentSettingOverrides(t *testing.T) {
 	f := newFixture(t)
-	worker, err := f.agents.Save(agents.Agent{Name: "Worker", Kind: "react", SystemPrompt: "Inspect carefully."})
+	worker, err := f.agents.Save(agents.Agent{Name: "Worker", SystemPrompt: "Inspect carefully."})
 	if err != nil {
 		t.Fatal(err)
 	}

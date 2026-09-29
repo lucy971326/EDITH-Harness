@@ -1169,7 +1169,7 @@ export default function App({ platform }: { platform: Platform }) {
       enabled: notificationEnabled, setEnabled: setNotificationEnabled,
       onBack: () => navigate("/"), setNavigationGuard: setGuard,
       onDesktopState: reportSettingsState,
-      agents: agentCatalog?.agents ?? null, kinds: agentCatalog?.kinds ?? [],
+      agents: agentCatalog?.agents ?? null,
       tools: agentCatalog?.tools ?? [], loading: agentLoading, error: agentError,
       saving: agentSaving, onSave: saveAgent, onDelete: deleteAgent,
       onReload: () => { if (clientRef.current?.connected) void loadAgents(clientRef.current); },

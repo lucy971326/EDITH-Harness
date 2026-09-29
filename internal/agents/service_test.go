@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"harness/internal/loops"
 	"harness/internal/persist"
 	"harness/internal/session/settings"
 	"harness/internal/skills"
@@ -17,14 +16,12 @@ import (
 )
 
 func TestService_saveChoicesAndPrepare(t *testing.T) {
-	service, loopsRegistry, toolsRegistry, skillsRegistry := testService(t)
-	registerLoop(t, loopsRegistry, "react")
+	service, toolsRegistry, skillsRegistry := testService(t)
 	registerTool(t, toolsRegistry, "exec_command")
 	registerSkill(t, skillsRegistry, "git", "Commit only tested changes.")
 
 	agent, err := service.Save(Agent{
 		Name:         "Coding",
-		Kind:         "react",
 		SystemPrompt: "Work carefully.",
 		Tools:        []string{"exec_command"},
 	})
@@ -35,14 +32,14 @@ func TestService_saveChoicesAndPrepare(t *testing.T) {
 		t.Fatal("Save() did not generate ID")
 	}
 	choices := service.Choices()
-	if len(choices.Loops) != 1 || len(choices.Tools) != 1 {
+	if len(choices.Tools) != 1 {
 		t.Fatalf("Choices() = %#v", choices)
 	}
 	prepared, err := service.Prepare(context.Background(), agent.ID, "/work")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if prepared.Kind != "react" || !slices.Equal(prepared.Tools, []string{"exec_command"}) {
+	if !slices.Equal(prepared.Tools, []string{"exec_command"}) {
 		t.Fatalf("PreparedAgent = %#v", prepared)
 	}
 	wantPrompt := "Work carefully.\n\n## Available Skills\n- git: Commit only tested changes.\n  Location: /skills/git/SKILL.md\n\nRead the complete SKILL.md with the existing exec_command tool before using the Skill.\nResolve relative resources from each Skill directory.\nUser instructions take priority over Skill instructions.\n\n## Workspace\n/work"
@@ -52,13 +49,11 @@ func TestService_saveChoicesAndPrepare(t *testing.T) {
 }
 
 func TestService_defaultAgentKeepsInitialToolsAndAddsNewSkills(t *testing.T) {
-	loopsRegistry := loops.NewRegistry()
 	toolsRegistry := tools.NewRegistry()
 	skillsRegistry := skills.NewRegistry()
-	registerLoop(t, loopsRegistry, "react")
 	registerTool(t, toolsRegistry, "read")
 	registerSkill(t, skillsRegistry, "first", "First summary.")
-	service, err := NewService(newMemoryStore(), noAgentUse{}, loopsRegistry, toolsRegistry, skillsRegistry)
+	service, err := NewService(newMemoryStore(), noAgentUse{}, toolsRegistry, skillsRegistry)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,12 +80,11 @@ func TestService_defaultAgentKeepsInitialToolsAndAddsNewSkills(t *testing.T) {
 }
 
 func TestService_prepareDirectsFileChangesThroughApplyPatch(t *testing.T) {
-	service, loopsRegistry, toolsRegistry, _ := testService(t)
-	registerLoop(t, loopsRegistry, "react")
+	service, toolsRegistry, _ := testService(t)
 	registerTool(t, toolsRegistry, "exec_command")
 	registerTool(t, toolsRegistry, "apply_patch")
 
-	agent, err := service.Save(Agent{ID: "coding", Name: "Coding", Kind: "react", Tools: []string{"exec_command", "apply_patch"}})
+	agent, err := service.Save(Agent{ID: "coding", Name: "Coding", Tools: []string{"exec_command", "apply_patch"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,20 +100,19 @@ func TestService_prepareDirectsFileChangesThroughApplyPatch(t *testing.T) {
 }
 
 func TestService_rejectsInvalidConfigurationAndAllowsDefaultChanges(t *testing.T) {
-	service, loopsRegistry, toolsRegistry, _ := testService(t)
-	registerLoop(t, loopsRegistry, "react")
+	service, toolsRegistry, _ := testService(t)
 	registerTool(t, toolsRegistry, "bash")
 
 	for _, agent := range []Agent{
-		{Name: "bad", Kind: "missing"},
-		{Name: "bad", Kind: "react", Tools: []string{"missing"}},
-		{Name: "bad", Kind: "react", Tools: []string{"bash", "bash"}},
+		{Name: ""},
+		{Name: "bad", Tools: []string{"missing"}},
+		{Name: "bad", Tools: []string{"bash", "bash"}},
 	} {
 		if _, err := service.Save(agent); err == nil {
 			t.Fatalf("Save(%#v) error = nil", agent)
 		}
 	}
-	updated, err := service.Save(Agent{ID: DefaultID, Name: "Harness", Kind: "react", Tools: []string{"bash"}})
+	updated, err := service.Save(Agent{ID: DefaultID, Name: "Harness", Tools: []string{"bash"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,8 +125,7 @@ func TestService_rejectsInvalidConfigurationAndAllowsDefaultChanges(t *testing.T
 }
 
 func TestService_prepareIncludesAllScopedSkillsWithoutSelecting(t *testing.T) {
-	service, loopsRegistry, toolsRegistry, skillsRegistry := testService(t)
-	registerLoop(t, loopsRegistry, "react")
+	service, toolsRegistry, skillsRegistry := testService(t)
 	registerTool(t, toolsRegistry, "exec_command")
 	err := skillsRegistry.Register(testSkillListProvider{skills: func(workspace string) []skills.Skill {
 		out := []skills.Skill{
@@ -152,7 +144,7 @@ func TestService_prepareIncludesAllScopedSkillsWithoutSelecting(t *testing.T) {
 	if len(choices.Tools) != 1 || choices.Tools[0].Name != "exec_command" {
 		t.Fatalf("Choices() = %#v", choices)
 	}
-	agent, err := service.Save(Agent{ID: "coding", Name: "Coding", Kind: "react", Tools: []string{"exec_command"}})
+	agent, err := service.Save(Agent{ID: "coding", Name: "Coding", Tools: []string{"exec_command"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,10 +170,9 @@ func TestService_prepareIncludesAllScopedSkillsWithoutSelecting(t *testing.T) {
 }
 
 func TestService_prepareWithoutSkillReaderStillListsSkills(t *testing.T) {
-	service, loopsRegistry, _, skillsRegistry := testService(t)
-	registerLoop(t, loopsRegistry, "react")
+	service, _, skillsRegistry := testService(t)
 	registerSkill(t, skillsRegistry, "git", "Git workflow.")
-	agent, err := service.Save(Agent{ID: "plain", Name: "Plain", Kind: "react"})
+	agent, err := service.Save(Agent{ID: "plain", Name: "Plain"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,8 +196,7 @@ func TestService_prepareWithoutSkillReaderStillListsSkills(t *testing.T) {
 }
 
 func TestService_availableSkillsIgnoresAgentSelection(t *testing.T) {
-	service, loopsRegistry, toolsRegistry, skillsRegistry := testService(t)
-	registerLoop(t, loopsRegistry, "react")
+	service, toolsRegistry, skillsRegistry := testService(t)
 	registerTool(t, toolsRegistry, "read")
 	err := skillsRegistry.Register(testSkillListProvider{skills: func(string) []skills.Skill {
 		return []skills.Skill{{
@@ -217,7 +207,7 @@ func TestService_availableSkillsIgnoresAgentSelection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	agent := Agent{ID: "configured", Name: "Configured", Kind: "react", Tools: []string{"read"}}
+	agent := Agent{ID: "configured", Name: "Configured", Tools: []string{"read"}}
 	err = service.store.PutAgent(agent)
 	if err != nil {
 		t.Fatal(err)
@@ -239,8 +229,7 @@ func TestService_availableSkillsIgnoresAgentSelection(t *testing.T) {
 }
 
 func TestService_availableSkillsPropagatesDiscoveryError(t *testing.T) {
-	service, loopsRegistry, _, skillsRegistry := testService(t)
-	registerLoop(t, loopsRegistry, "react")
+	service, _, skillsRegistry := testService(t)
 	err := skillsRegistry.Register(testSkillErrorProvider{err: errors.New("broken skill root")})
 	if err != nil {
 		t.Fatal(err)
@@ -252,16 +241,14 @@ func TestService_availableSkillsPropagatesDiscoveryError(t *testing.T) {
 }
 
 func TestService_deleteRejectsAgentUsedBySession(t *testing.T) {
-	loopRegistry := loops.NewRegistry()
 	toolRegistry := tools.NewRegistry()
 	skillRegistry := skills.NewRegistry()
-	registerLoop(t, loopRegistry, "react")
 	usage := &agentUse{used: map[string]bool{"coding": true}}
-	service, err := NewService(newMemoryStore(), usage, loopRegistry, toolRegistry, skillRegistry)
+	service, err := NewService(newMemoryStore(), usage, toolRegistry, skillRegistry)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Save(Agent{ID: "coding", Name: "Coding", Kind: "react"}); err != nil {
+	if _, err := service.Save(Agent{ID: "coding", Name: "Coding"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := service.Delete("coding"); err == nil {
@@ -273,24 +260,15 @@ func TestService_deleteRejectsAgentUsedBySession(t *testing.T) {
 	}
 }
 
-func testService(t *testing.T) (*Service, *loops.Registry, *tools.Registry, *skills.Registry) {
+func testService(t *testing.T) (*Service, *tools.Registry, *skills.Registry) {
 	t.Helper()
-	loopRegistry := loops.NewRegistry()
 	toolRegistry := tools.NewRegistry()
 	skillRegistry := skills.NewRegistry()
-	service, err := NewService(newMemoryStore(), noAgentUse{}, loopRegistry, toolRegistry, skillRegistry)
+	service, err := NewService(newMemoryStore(), noAgentUse{}, toolRegistry, skillRegistry)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return service, loopRegistry, toolRegistry, skillRegistry
-}
-
-func registerLoop(t *testing.T, registry *loops.Registry, kind string) {
-	t.Helper()
-	err := registry.Register(agentTestLoop{definition: loops.Definition{Kind: kind, Description: kind + " loop."}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	return service, toolRegistry, skillRegistry
 }
 
 func registerTool(t *testing.T, registry *tools.Registry, name string) {
@@ -341,14 +319,6 @@ func (testSkillErrorProvider) Name() string { return "error" }
 func (p testSkillErrorProvider) List(string) ([]skills.Skill, error) {
 	return nil, p.err
 }
-
-type agentTestLoop struct {
-	definition loops.Definition
-}
-
-func (l agentTestLoop) Definition() loops.Definition { return l.definition }
-
-func (agentTestLoop) Run(context.Context, loops.Invocation) error { return nil }
 
 type memoryStore struct {
 	agents   map[string]Agent
@@ -418,18 +388,22 @@ func TestAgentStore_roundTripListAndDelete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	input := Agent{ID: "coding", Name: "Coding", Kind: "react", Tools: []string{"bash"}}
+	input := Agent{ID: "coding", Name: "Coding", Tools: []string{"bash"}}
 	if err := s.PutAgent(input); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "agents", "coding.json")); err != nil {
-		t.Fatalf("agent file: %v", err)
+	body, err := os.ReadFile(filepath.Join(dir, "agents", "coding.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(body), `"kind"`) {
+		t.Fatalf("saved Agent still contains an execution kind: %s", body)
 	}
 	got, err := s.ForAgent("coding")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.ID != input.ID || got.Name != input.Name || got.Kind != input.Kind || !slices.Equal(got.Tools, input.Tools) {
+	if got.ID != input.ID || got.Name != input.Name || !slices.Equal(got.Tools, input.Tools) {
 		t.Fatalf("ForAgent() = %#v, want %#v", got, input)
 	}
 	list, err := s.ListAgents()

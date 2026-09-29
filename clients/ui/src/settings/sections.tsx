@@ -30,7 +30,7 @@ export function createSettingsSections(props: SettingsContentProps): SettingsSec
         notifications={props.notifications} enabled={props.enabled} setEnabled={props.setEnabled} /> },
     { id: "agents", label: "Agent", icon: Bot,
       render: (onStateChange) => <AgentSettingsPanel
-        agents={props.agents} kinds={props.kinds} tools={props.tools} loading={props.loading}
+        agents={props.agents} tools={props.tools} loading={props.loading}
         error={props.error} saving={props.saving} onReload={props.onReload}
         onSave={props.onSave} onDelete={props.onDelete} onStateChange={onStateChange} /> },
     { id: "skills", label: "Skills", icon: BookOpenCheck, render: props.skillSettings },

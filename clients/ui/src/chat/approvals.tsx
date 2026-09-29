@@ -126,11 +126,11 @@ export function useApprovalInbox(client: RPCClient | null) {
     if (!client) return;
     let active = true;
     let subscriptionID = "";
-    client.onApprovals = (notification) => {
+    const unsubscribe = client.onApprovalChange((notification) => {
       if (active && notification.subscriptionID === subscriptionID) {
         setPending(notification.event);
       }
-    };
+    });
     void client.call("approval/subscribe", {}, {
       accept(result) {
         if (!active) {
@@ -147,7 +147,7 @@ export function useApprovalInbox(client: RPCClient | null) {
     });
     return () => {
       active = false;
-      client.onApprovals = null;
+      unsubscribe();
       if (subscriptionID && client.connected) {
         void client.unsubscribe(subscriptionID).catch(() => {});
       }

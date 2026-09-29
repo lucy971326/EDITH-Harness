@@ -22,16 +22,9 @@ type AgentListParams struct{}
 type AgentView struct {
 	ID           string   `json:"id" jsonschema:"minLength=1"`
 	Name         string   `json:"name" jsonschema:"minLength=1"`
-	Kind         string   `json:"kind" jsonschema:"minLength=1"`
 	SystemPrompt string   `json:"systemPrompt"`
 	Tools        []string `json:"tools"`
 	InUse        bool     `json:"inUse"`
-}
-
-// 数据。Agent 可选的一种执行类型。
-type AgentKindChoice struct {
-	Kind        string `json:"kind" jsonschema:"minLength=1"`
-	Description string `json:"description"`
 }
 
 // 数据。Agent 可选的一个普通工具。
@@ -40,10 +33,9 @@ type AgentToolChoice struct {
 	Description string `json:"description"`
 }
 
-// 数据。Agent 列表连同当前可用的执行类型与工具。
+// 数据。Agent 列表连同当前可用的工具。
 type AgentListResult struct {
 	Agents []AgentView       `json:"agents"`
-	Kinds  []AgentKindChoice `json:"kinds"`
 	Tools  []AgentToolChoice `json:"tools"`
 }
 
@@ -51,7 +43,6 @@ type AgentListResult struct {
 type AgentSaveParams struct {
 	ID           string   `json:"id,omitempty"`
 	Name         string   `json:"name" jsonschema:"minLength=1"`
-	Kind         string   `json:"kind" jsonschema:"minLength=1"`
 	SystemPrompt string   `json:"systemPrompt"`
 	Tools        []string `json:"tools"`
 }
@@ -91,7 +82,6 @@ func (s *Server) handleAgentList(_ context.Context, _ AgentListParams) (AgentLis
 	}
 	result := AgentListResult{
 		Agents: make([]AgentView, 0, len(configured)),
-		Kinds:  []AgentKindChoice{},
 		Tools:  []AgentToolChoice{},
 	}
 	for _, agent := range configured {
@@ -102,9 +92,6 @@ func (s *Server) handleAgentList(_ context.Context, _ AgentListParams) (AgentLis
 		result.Agents = append(result.Agents, view)
 	}
 	choices := s.agents.Choices()
-	for _, choice := range choices.Loops {
-		result.Kinds = append(result.Kinds, AgentKindChoice{Kind: choice.Kind, Description: choice.Description})
-	}
 	for _, choice := range choices.Tools {
 		result.Tools = append(result.Tools, AgentToolChoice{Name: choice.Name, Description: choice.Description})
 	}
@@ -121,7 +108,6 @@ func (s *Server) handleAgentSave(_ context.Context, input AgentSaveParams) (Agen
 	saved, err := s.agents.Save(agents.Agent{
 		ID:           input.ID,
 		Name:         input.Name,
-		Kind:         input.Kind,
 		SystemPrompt: input.SystemPrompt,
 		Tools:        input.Tools,
 	})
@@ -147,7 +133,6 @@ func (s *Server) agentView(agent agents.Agent) (AgentView, error) {
 	return AgentView{
 		ID:           agent.ID,
 		Name:         agent.Name,
-		Kind:         agent.Kind,
 		SystemPrompt: agent.SystemPrompt,
 		Tools:        tools,
 		InUse:        inUse,

@@ -413,11 +413,11 @@ func TestAgentMethodsUsePublicServiceAndProtectDeletes(t *testing.T) {
 	if err := json.Unmarshal(raw, &listed); err != nil {
 		t.Fatal(err)
 	}
-	if len(listed.Agents) != 1 || listed.Agents[0].ID != "default" || len(listed.Kinds) == 0 {
+	if len(listed.Agents) != 1 || listed.Agents[0].ID != "default" {
 		t.Fatalf("agent list = %#v", listed)
 	}
 
-	raw, err = server.Call(t.Context(), "agent/save", json.RawMessage(`{"name":"Reviewer","kind":"react","systemPrompt":"review","tools":[]}`))
+	raw, err = server.Call(t.Context(), "agent/save", json.RawMessage(`{"name":"Reviewer","systemPrompt":"review","tools":[]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -428,14 +428,14 @@ func TestAgentMethodsUsePublicServiceAndProtectDeletes(t *testing.T) {
 	if saved.Agent.ID == "" || saved.Agent.Name != "Reviewer" {
 		t.Fatalf("saved = %#v", saved)
 	}
-	raw, err = server.Call(t.Context(), "agent/save", json.RawMessage(`{"id":"`+saved.Agent.ID+`","name":"Updated","kind":"react","systemPrompt":"review","tools":[]}`))
+	raw, err = server.Call(t.Context(), "agent/save", json.RawMessage(`{"id":"`+saved.Agent.ID+`","name":"Updated","systemPrompt":"review","tools":[]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := json.Unmarshal(raw, &saved); err != nil || saved.Agent.Name != "Updated" {
 		t.Fatalf("updated = %s %v", raw, err)
 	}
-	_, err = server.Call(t.Context(), "agent/save", json.RawMessage(`{"id":"missing","name":"Missing","kind":"react","systemPrompt":"","tools":[]}`))
+	_, err = server.Call(t.Context(), "agent/save", json.RawMessage(`{"id":"missing","name":"Missing","systemPrompt":"","tools":[]}`))
 	assertMethodError(t, err, appserver.CodeNotFound)
 
 	created, err := fixture.service.Create(t.TempDir())
@@ -452,7 +452,7 @@ func TestAgentMethodsUsePublicServiceAndProtectDeletes(t *testing.T) {
 	assertMethodError(t, err, appserver.CodeConflict)
 	_, err = server.Call(t.Context(), "agent/save", json.RawMessage(`{"name":"Bad","kind":"missing","systemPrompt":"","tools":[]}`))
 	assertMethodError(t, err, appserver.CodeInvalidParams)
-	_, err = server.Call(t.Context(), "agent/save", json.RawMessage(`{"name":"Bad tool","kind":"react","systemPrompt":"","tools":["missing"]}`))
+	_, err = server.Call(t.Context(), "agent/save", json.RawMessage(`{"name":"Bad tool","systemPrompt":"","tools":["missing"]}`))
 	assertMethodError(t, err, appserver.CodeInvalidParams)
 }
 

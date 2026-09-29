@@ -26,10 +26,6 @@ type runnerTestLoop struct {
 	run func(context.Context, loops.Invocation) error
 }
 
-func (l *runnerTestLoop) Definition() loops.Definition {
-	return loops.Definition{Kind: "react", Description: "runner test loop"}
-}
-
 func (l *runnerTestLoop) Run(ctx context.Context, invocation loops.Invocation) error {
 	return l.run(ctx, invocation)
 }
@@ -207,17 +203,11 @@ func newRunnerFixtureWithLLM(t *testing.T, loop loops.Loop, client *llm.Client) 
 		ReasoningEffort: "high",
 		Workspace:       t.TempDir(),
 	}}
-	loopRegistry := loops.NewRegistry()
-	err = loopRegistry.Register(loop)
-	if err != nil {
-		t.Fatal(err)
-	}
 	toolRegistry := tools.NewRegistry()
 	skillRegistry := skills.NewRegistry()
 	agentService, err := agents.NewService(
 		newEmptyAgentStore(),
 		settingsStore,
-		loopRegistry,
 		toolRegistry,
 		skillRegistry,
 	)
@@ -229,7 +219,7 @@ func newRunnerFixtureWithLLM(t *testing.T, loop loops.Loop, client *llm.Client) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := NewRunner(sessions, settingsStore, agentService, loopRegistry, eventRegistry, client, toolRegistry, files, localTestMachine(t))
+	r, err := NewRunner(sessions, settingsStore, agentService, loop, eventRegistry, client, toolRegistry, files, localTestMachine(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,7 +296,7 @@ func TestRunPublishesAndPersistsLatestUsage(t *testing.T) {
 		fixture.sessions,
 		fixture.settings,
 		fixture.agents,
-		fixture.runner.loops,
+		fixture.runner.loop,
 		events.NewRegistry(),
 		fixture.runner.llm,
 		fixture.tools,
@@ -988,10 +978,6 @@ func TestRunSettingsUsesLiveRunSnapshot(t *testing.T) {
 	if snapshot != original {
 		t.Fatalf("snapshot = %#v, want %#v", snapshot, original)
 	}
-	got := handle.Settings()
-	if got != original {
-		t.Fatalf("handle settings = %#v, want %#v", got, original)
-	}
 	_, err = fixture.runner.RunSettings("session-1", "other-run")
 	if err == nil {
 		t.Fatal("RunSettings accepted a different run id")
@@ -1213,7 +1199,7 @@ func TestStartReturnsSkillDiscoveryErrorBeforeStartingLoop(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = fixture.agents.Save(agents.Agent{
-		ID: agents.DefaultID, Name: "Harness", Kind: "react", Tools: []string{"read"},
+		ID: agents.DefaultID, Name: "Harness", Tools: []string{"read"},
 	})
 	if err != nil {
 		t.Fatal(err)

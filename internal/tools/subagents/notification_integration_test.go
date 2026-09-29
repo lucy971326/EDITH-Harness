@@ -21,7 +21,6 @@ import (
 	"harness/internal/conversations"
 	"harness/internal/events"
 	"harness/internal/llm"
-	"harness/internal/loops"
 	"harness/internal/loops/react"
 	machinelocal "harness/internal/machine/local"
 	"harness/internal/persist"
@@ -165,18 +164,14 @@ func TestRealReactWaitReceivesCompletionOrUserInput(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = machineService.Close() })
 			eventRegistry := events.NewRegistry()
-			loopRegistry := loops.NewRegistry()
 			toolRegistry := tools.NewRegistry()
 			skillService := skills.NewRegistry()
-			err = loopRegistry.Register(react.New(models, toolRegistry))
+			loop := react.New(models, toolRegistry)
+			agentService, err := agents.NewService(agents.NewStore(files), settingsStore, toolRegistry, skillService)
 			if err != nil {
 				t.Fatal(err)
 			}
-			agentService, err := agents.NewService(agents.NewStore(files), settingsStore, loopRegistry, toolRegistry, skillService)
-			if err != nil {
-				t.Fatal(err)
-			}
-			runService, err := runner.NewRunner(sessions, settingsStore, agentService, loopRegistry, eventRegistry, models, toolRegistry, files, machineService)
+			runService, err := runner.NewRunner(sessions, settingsStore, agentService, loop, eventRegistry, models, toolRegistry, files, machineService)
 			if err != nil {
 				t.Fatal(err)
 			}

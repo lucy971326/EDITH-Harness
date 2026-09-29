@@ -295,20 +295,18 @@ func (s *Service) Session(id string) (SessionInfo, error) {
 	if s.subagents.IsChildSession(id) || s.isDeleted(id) {
 		return SessionInfo{}, fmt.Errorf("%w: %w: session %q", ErrSessionNotFound, os.ErrNotExist, id)
 	}
-	metas, err := s.sessions.List()
+	meta, err := s.sessions.Meta(id)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return SessionInfo{}, fmt.Errorf("%w: session %q: %w", ErrSessionNotFound, id, err)
+		}
 		return SessionInfo{}, err
 	}
-	for _, meta := range metas {
-		if meta.ID == id {
-			setup, err := s.settings.For(id)
-			if err != nil {
-				return SessionInfo{}, fmt.Errorf("%w: settings for %q: %w", ErrSessionSettings, id, err)
-			}
-			return SessionInfo{Meta: meta, Settings: setup}, nil
-		}
+	setup, err := s.settings.For(id)
+	if err != nil {
+		return SessionInfo{}, fmt.Errorf("%w: settings for %q: %w", ErrSessionSettings, id, err)
 	}
-	return SessionInfo{}, fmt.Errorf("%w: %w: session %q", ErrSessionNotFound, os.ErrNotExist, id)
+	return SessionInfo{Meta: meta, Settings: setup}, nil
 }
 
 // Snapshot 返回聊天投影所需的耐久账本、运行状态、草稿和更新边界。
@@ -325,17 +323,6 @@ func (s *Service) Snapshot(sessionID string) (Snapshot, error) {
 		view.Runs = []runner.RunState{}
 	}
 	return Snapshot{Entries: view.Entries, Runs: view.Runs, UpdateSeq: view.UpdateSeq, SeqEpoch: view.SeqEpoch}, nil
-}
-
-// Start 保存下一轮设置并启动 Runner 自己管理的后台 Run。
-func (s *Service) Start(ctx context.Context, input RunInput) error {
-	operation, err := s.operation(input.SessionID)
-	if err != nil {
-		return err
-	}
-	operation.Lock()
-	defer operation.Unlock()
-	return s.start(ctx, input)
 }
 
 func (s *Service) start(ctx context.Context, input RunInput) error {
@@ -381,11 +368,6 @@ func (s *Service) start(ctx context.Context, input RunInput) error {
 		return fmt.Errorf("%w: %w", ErrRunStart, err)
 	}
 	return nil
-}
-
-// Steer 将一条输入交给当前 Run；不修改下一轮设置。
-func (s *Service) Steer(sessionID string, message session.UserMessage) error {
-	return s.steer(context.Background(), sessionID, "", message)
 }
 
 func (s *Service) steer(ctx context.Context, sessionID, expectedRunID string, message session.UserMessage) error {

@@ -115,7 +115,7 @@ SessionSettings
 
 Agent 设置
 └─ 一个 Agent 怎样工作
-   Kind、System Prompt、允许的普通 Tool；不进对话账本
+   System Prompt、允许的普通 Tool（执行固定 ReAct）；不进对话账本
 
 Skill 发现
 └─ 文件系统上的 Skill 定义，不复制进 Agent 或 Session

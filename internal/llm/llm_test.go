@@ -89,9 +89,9 @@ func TestLoadModels(t *testing.T) {
 }
 
 func TestContextWindow(t *testing.T) {
-	client := &Client{models: map[string]model{
+	client := newTestClientState(modelState{models: map[string]model{
 		"deepseek/a": {ContextWindow: 1000},
-	}}
+	}})
 	if client.ContextWindow("deepseek/a") != 1000 {
 		t.Fatalf("window = %d", client.ContextWindow("deepseek/a"))
 	}
@@ -101,22 +101,22 @@ func TestContextWindow(t *testing.T) {
 }
 
 func TestVision(t *testing.T) {
-	client := &Client{models: map[string]model{
+	client := newTestClientState(modelState{models: map[string]model{
 		"sees": {Vision: true},
 		"text": {Vision: false},
-	}}
+	}})
 	if !client.Vision("sees") || client.Vision("text") || client.Vision("missing") {
 		t.Fatalf("vision sees=%v text=%v missing=%v", client.Vision("sees"), client.Vision("text"), client.Vision("missing"))
 	}
 }
 
 func TestModelsExposesWindowAndVision(t *testing.T) {
-	client := &Client{
+	client := newTestClientState(modelState{
 		config: config{Providers: map[string]providerConfig{"deepseek": {APIKey: "k"}}},
 		models: map[string]model{
 			"deepseek/a": {Provider: "deepseek", ID: "a", ContextWindow: 1000, Vision: true},
 		},
-	}
+	})
 	got := client.Models()
 	if len(got) != 1 || got[0].ID != "deepseek/a" || got[0].Provider != "deepseek" || got[0].ContextWindow != 1000 || !got[0].Vision {
 		t.Fatalf("models = %#v", got)
@@ -157,7 +157,7 @@ func TestModelsPreservesReasoningOrder(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			client := &Client{config: config{Providers: map[string]providerConfig{"deepseek": {APIKey: "k"}}}, models: models}
+			client := newTestClientState(modelState{config: config{Providers: map[string]providerConfig{"deepseek": {APIKey: "k"}}}, models: models})
 			got := client.Models()[0].ReasoningEfforts
 			if !reflect.DeepEqual(got, test.want) {
 				t.Fatalf("efforts = %v, want %v", got, test.want)
@@ -508,9 +508,9 @@ func TestConfiguredProtocolsStreamToolCalls(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			client := &Client{config: config{Providers: map[string]providerConfig{"custom": {
+			client := newTestClientState(modelState{config: config{Providers: map[string]providerConfig{"custom": {
 				Protocol: test.protocol, APIKey: "test-key", BaseURL: server.URL,
-			}}}, models: map[string]model{"custom/model-a": definition}}
+			}}}, models: map[string]model{"custom/model-a": definition}})
 			stream, err := client.Stream(t.Context(), RunConfig{Model: "custom/model-a", ReasoningEffort: "low"}, Input{
 				History: []session.Message{{Role: session.RoleUser, Blocks: []session.Block{{Kind: "text", Text: "read"}}}},
 				Tools:   []tools.Definition{{Name: "read_file", Description: "Read a file", InputSchema: json.RawMessage(`{"type":"object"}`)}},
@@ -621,4 +621,10 @@ func TestSettingsCanRecoverAfterLastModelRemoved(t *testing.T) {
 	if err != nil || len(restarted.Models()) != 1 {
 		t.Fatalf("readd after empty catalog: %v", err)
 	}
+}
+
+func newTestClientState(state modelState) *Client {
+	client := &Client{}
+	client.current.Store(&state)
+	return client
 }

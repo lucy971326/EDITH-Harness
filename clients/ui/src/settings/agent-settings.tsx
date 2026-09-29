@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import {
   Collapsible,
@@ -29,7 +28,6 @@ import {
   Wrench,
 } from "../icons";
 import type {
-  AgentKindChoice,
   AgentSaveParams,
   AgentToolChoice,
   AgentView,
@@ -43,15 +41,13 @@ function draftFrom(agent: AgentView): AgentDraft {
   return {
     id: agent.id,
     name: agent.name,
-    kind: agent.kind,
     systemPrompt: agent.systemPrompt,
     tools: [...agent.tools],
   };
 }
 
-export function AgentSettingsPanel({ agents, kinds, tools, loading, error, saving, onReload, onSave, onDelete, onStateChange }: {
+export function AgentSettingsPanel({ agents, tools, loading, error, saving, onReload, onSave, onDelete, onStateChange }: {
   agents: AgentView[] | null;
-  kinds: AgentKindChoice[];
   tools: AgentToolChoice[];
   loading: boolean;
   error: string;
@@ -75,7 +71,7 @@ export function AgentSettingsPanel({ agents, kinds, tools, loading, error, savin
   const selected = agents?.find((agent) => agent.id === selectedID);
   const cannotDelete = !selected || selected.id === "default" || selected.inUse;
   const dirty = !!draft && (!selected || draft.name !== selected.name ||
-    draft.kind !== selected.kind || draft.systemPrompt !== selected.systemPrompt ||
+    draft.systemPrompt !== selected.systemPrompt ||
     draft.tools.length !== selected.tools.length || draft.tools.some((name) => !selected.tools.includes(name)));
 
   function updateDraft(change: Partial<AgentDraft>) {
@@ -93,7 +89,7 @@ export function AgentSettingsPanel({ agents, kinds, tools, loading, error, savin
   function showTarget(target: string | "new") {
     if (target === "new") {
       setSelectedID(null);
-      setDraft({ name: "新 Agent", kind: kinds[0]?.kind ?? "", systemPrompt: "", tools: [] });
+      setDraft({ name: "新 Agent", systemPrompt: "", tools: [] });
       setSaved("");
       return;
     }
@@ -108,7 +104,7 @@ export function AgentSettingsPanel({ agents, kinds, tools, loading, error, savin
   }
 
   async function save(): Promise<boolean> {
-    if (!draft || saving || !dirty || !draft.name.trim() || !draft.kind) return false;
+    if (!draft || saving || !dirty || !draft.name.trim()) return false;
     const result = await onSave({ ...draft, name: draft.name.trim() });
     if (!result) return false;
     setSelectedID(result.id);
@@ -126,7 +122,7 @@ export function AgentSettingsPanel({ agents, kinds, tools, loading, error, savin
         <Button
           size="sm"
           variant="outline"
-          disabled={loading || saving || kinds.length === 0}
+          disabled={loading || saving || agents === null}
           onClick={() => requestTarget("new")}
         >
           <Plus />
@@ -183,15 +179,6 @@ export function AgentSettingsPanel({ agents, kinds, tools, loading, error, savin
             }
           />
           </div>
-          {kinds.length > 1 && <div className="settings-field">
-          <Label htmlFor="agent-kind">运行方式</Label>
-          <Select value={draft.kind} disabled={saving} onValueChange={(kind) => updateDraft({ kind })}>
-            <SelectTrigger id="agent-kind" className="w-full"><SelectValue /></SelectTrigger>
-            <SelectContent>{kinds.map((kind) => <SelectItem key={kind.kind} value={kind.kind}>
-              {kind.kind === "react" ? "ReAct · 推理与工具调用" : kind.kind}
-            </SelectItem>)}</SelectContent>
-          </Select>
-          </div>}
           </div>
           </section>
           <section className="settings-section settings-field">
@@ -293,7 +280,7 @@ export function AgentSettingsPanel({ agents, kinds, tools, loading, error, savin
               else { setDraft(null); setSelectedID(null); setSaved(""); }
             }}>放弃</Button>
             <Button
-              disabled={saving || !dirty || !draft.name.trim() || !draft.kind}
+              disabled={saving || !dirty || !draft.name.trim()}
               onClick={() => void save()}
             >
               {saving ? "保存中…" : "保存"}
@@ -316,7 +303,7 @@ export function AgentSettingsPanel({ agents, kinds, tools, loading, error, savin
               if (pendingTarget) showTarget(pendingTarget);
               setPendingTarget(null);
             }}>放弃更改</AlertDialogAction>
-            <AlertDialogAction disabled={!draft?.name.trim() || !draft.kind || saving} onClick={() => {
+            <AlertDialogAction disabled={!draft?.name.trim() || saving} onClick={() => {
               const target = pendingTarget;
               setPendingTarget(null);
               void save().then((ok) => { if (ok && target) showTarget(target); });

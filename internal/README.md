@@ -19,9 +19,9 @@
 结果  Loop.Emit → runner → session 落账 / events 发布 → appserver 通知 Client
 ```
 
-1. [`backend`](backend/README.md) 在两个进程入口之间复用同一套组装。它把具体实现登记进工具、Loop、Skill 和命令目录；初始化失败或退出时逆序关闭资源。它不拥有会话业务状态。
+1. [`backend`](backend/README.md) 在两个进程入口之间复用同一套组装。它把具体实现登记进工具、Skill 和命令目录，并将 ReAct 直接注入 Runner；初始化失败或退出时逆序关闭资源。它不拥有会话业务状态。
 2. [`appserver`](appserver/README.md) 处理连接、JSON-RPC 校验和方法分发。会话请求交给 [`conversations`](conversations/README.md)；模型、文件等公共请求交给各自的领域服务。空闲发送启动 Run 后返回；插话等 Runner 的检查点接纳。运行过程通过订阅送回 Client。
-3. `conversations` 决定启动新一轮还是向当前轮插话。[`runner`](runner/README.md) 独占这一轮的运行、取消、草稿和收尾；它从 [`session/settings`](session/settings/README.md) 读取本轮设置，让 [`agents`](agents/README.md) 准备提示词、工具与执行类型，再选取 [`loops`](loops/README.md) 中的程序。
+3. `conversations` 决定启动新一轮还是向当前轮插话。[`runner`](runner/README.md) 独占这一轮的运行、取消、草稿和收尾；它从 [`session/settings`](session/settings/README.md) 读取本轮设置，让 [`agents`](agents/README.md) 准备提示词与工具，执行固定的 ReAct；[`loops`](loops/README.md) 只定义执行契约。
 4. 当前程序是 [`loops/react`](loops/react/README.md)：反复调用 [`llm`](llm/README.md)，按模型请求调用 [`tools`](tools/README.md)，并在检查点接收插话。工具登记处先校验参数、运行 [`hooks`](hooks/README.md)，再交给具体工具；需要授权的操作由 [`permissions`](permissions/README.md) 计算规则、[`approvals`](approvals/README.md) 取得本次决定，实际本机操作由 [`machine/local`](machine/local/README.md) 执行。
 5. Loop 将输出交回 Runner。流式片段先作为草稿事件发布；完整消息写入 [`session`](session/README.md) 对话账本后，再通过 [`events`](events/README.md) 发布耐久变化。appserver 把变化送到订阅连接；[`persist`](persist/README.md) 只负责文件读写，格式与恢复仍归各领域。
 

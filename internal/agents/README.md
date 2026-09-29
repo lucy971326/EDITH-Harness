@@ -1,6 +1,6 @@
 # agents
 
-管理 Agent 设置，准备本轮的执行类型、工具与系统提示词。
+管理 Agent 设置，准备本轮的工具与系统提示词。
 
 ```text
 Agent 设置 + 当前工具 / Skills

@@ -19,7 +19,7 @@ func (c *testCommand) Run(_ context.Context, sessionID string) error {
 	return nil
 }
 
-func TestRegistryRegisterListAndCall(t *testing.T) {
+func TestRegistryRegisterListAndRun(t *testing.T) {
 	registry := NewRegistry()
 	compact := &testCommand{name: "compact", description: "compress history"}
 	err := registry.Register(compact)
@@ -34,7 +34,11 @@ func TestRegistryRegisterListAndCall(t *testing.T) {
 	if len(list) != 1 || list[0].Name != "compact" {
 		t.Fatalf("list = %#v", list)
 	}
-	err = registry.Call(context.Background(), "compact", "session-1")
+	command, err := registry.Get("compact")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = command.Run(context.Background(), "session-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,18 +47,10 @@ func TestRegistryRegisterListAndCall(t *testing.T) {
 	}
 }
 
-func TestCallRejectsUnknownAndEmptySession(t *testing.T) {
+func TestGetRejectsUnknown(t *testing.T) {
 	registry := NewRegistry()
-	err := registry.Call(context.Background(), "compact", "session-1")
+	_, err := registry.Get("compact")
 	if err == nil || !strings.Contains(err.Error(), "not registered") {
 		t.Fatalf("unknown command error = %v", err)
-	}
-	err = registry.Register(&testCommand{name: "compact", description: "compress history"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = registry.Call(context.Background(), "compact", "")
-	if err == nil || !strings.Contains(err.Error(), "empty session id") {
-		t.Fatalf("empty session error = %v", err)
 	}
 }

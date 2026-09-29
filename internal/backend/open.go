@@ -16,7 +16,6 @@ import (
 	"harness/internal/events"
 	"harness/internal/hooks"
 	"harness/internal/llm"
-	"harness/internal/loops"
 	"harness/internal/loops/react"
 	machinelocal "harness/internal/machine/local"
 	"harness/internal/persist"
@@ -112,11 +111,7 @@ func Open(dataDir string) (backend *Backend, result error) {
 		return nil, err
 	}
 	registry := events.NewRegistry()
-	loopRegistry := loops.NewRegistry()
-	err = loopRegistry.Register(react.New(models, toolRegistry))
-	if err != nil {
-		return nil, err
-	}
+	loop := react.New(models, toolRegistry)
 	skillService := skills.NewRegistry()
 	builtinSkills, err := skillsbuiltin.New(files)
 	if err != nil {
@@ -131,12 +126,12 @@ func Open(dataDir string) (backend *Backend, result error) {
 	if err != nil {
 		return nil, err
 	}
-	agentService, err := agents.NewService(agents.NewStore(files), settingsStore, loopRegistry, toolRegistry, skillService)
+	agentService, err := agents.NewService(agents.NewStore(files), settingsStore, toolRegistry, skillService)
 	if err != nil {
 		return nil, err
 	}
 	commandService := commands.NewRegistry()
-	runService, err := runner.NewRunner(sessions, settingsStore, agentService, loopRegistry, registry, models, toolRegistry, files, machineService)
+	runService, err := runner.NewRunner(sessions, settingsStore, agentService, loop, registry, models, toolRegistry, files, machineService)
 	if err != nil {
 		return nil, err
 	}

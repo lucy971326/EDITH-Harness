@@ -11,7 +11,6 @@ import (
 	"strings"
 	"sync"
 
-	"harness/internal/loops"
 	"harness/internal/session/settings"
 	"harness/internal/skills"
 	"harness/internal/tools"
@@ -29,7 +28,6 @@ var (
 type Service struct {
 	store    AgentStore
 	settings settings.SessionSettingsStore
-	loops    loops.Loops
 	tools    tools.Tools
 	skills   skills.Skills
 
@@ -38,15 +36,12 @@ type Service struct {
 }
 
 // NewService 组装 Agent 设置服务。
-func NewService(store AgentStore, settingsStore settings.SessionSettingsStore, loopRegistry loops.Loops, toolRegistry tools.Tools, skillRegistry skills.Skills) (*Service, error) {
+func NewService(store AgentStore, settingsStore settings.SessionSettingsStore, toolRegistry tools.Tools, skillRegistry skills.Skills) (*Service, error) {
 	if store == nil {
 		return nil, fmt.Errorf("agents: nil store")
 	}
 	if settingsStore == nil {
 		return nil, fmt.Errorf("agents: nil session settings")
-	}
-	if loopRegistry == nil {
-		return nil, fmt.Errorf("agents: nil loops")
 	}
 	if toolRegistry == nil {
 		return nil, fmt.Errorf("agents: nil tools")
@@ -54,7 +49,7 @@ func NewService(store AgentStore, settingsStore settings.SessionSettingsStore, l
 	if skillRegistry == nil {
 		return nil, fmt.Errorf("agents: nil skills")
 	}
-	service := &Service{store: store, settings: settingsStore, loops: loopRegistry, tools: toolRegistry, skills: skillRegistry}
+	service := &Service{store: store, settings: settingsStore, tools: toolRegistry, skills: skillRegistry}
 	if err := service.ensureDefault(); err != nil {
 		return nil, err
 	}
@@ -150,10 +145,9 @@ func (s *Service) InUse(id string) (bool, error) {
 	return s.settings.UsesAgent(id)
 }
 
-// Choices 返回此刻可被 Agent 选择的 Loop 和普通 Tool。
+// Choices 返回此刻可被 Agent 选择的普通 Tool。
 func (s *Service) Choices() Choices {
 	return Choices{
-		Loops: s.loops.Definitions(),
 		Tools: s.tools.List(),
 	}
 }
@@ -169,9 +163,6 @@ func (s *Service) Prepare(ctx context.Context, id string, workspace string, acce
 	if err != nil {
 		return PreparedAgent{}, err
 	}
-	if _, err := s.loops.Get(agent.Kind); err != nil {
-		return PreparedAgent{}, err
-	}
 	preparedTools, err := s.tools.Prepare(ctx, workspace, agent.Tools, access...)
 	if err != nil {
 		return PreparedAgent{}, err
@@ -182,7 +173,6 @@ func (s *Service) Prepare(ctx context.Context, id string, workspace string, acce
 		return PreparedAgent{}, err
 	}
 	return PreparedAgent{
-		Kind:         agent.Kind,
 		Tools:        preparedTools.Names,
 		SystemPrompt: assemblePrompt(agent.SystemPrompt, skillDefinitions, preparedTools.Instructions, workspace, preparedTools.Names),
 	}, nil
@@ -194,12 +184,6 @@ func (s *Service) validate(agent Agent) error {
 	}
 	if strings.TrimSpace(agent.Name) == "" {
 		return fmt.Errorf("agents: agent %q has empty name", agent.ID)
-	}
-	if strings.TrimSpace(agent.Kind) == "" {
-		return fmt.Errorf("agents: agent %q has empty kind", agent.ID)
-	}
-	if _, err := s.loops.Get(agent.Kind); err != nil {
-		return err
 	}
 	known := make(map[string]struct{})
 	for _, tool := range s.tools.List() {
@@ -234,7 +218,6 @@ func (s *Service) ensureDefault() error {
 	return s.store.PutAgent(Agent{
 		ID:           DefaultID,
 		Name:         "Harness",
-		Kind:         "react",
 		SystemPrompt: defaultSystemPrompt,
 		Tools:        toolNames,
 	})

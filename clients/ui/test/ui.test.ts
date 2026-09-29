@@ -130,7 +130,6 @@ const idleComposer = {
     {
       id: "default",
       name: "Harness",
-      kind: "react",
       systemPrompt: "",
       tools: [],
       inUse: true,
