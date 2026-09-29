@@ -34,7 +34,7 @@ const call: Block = {
   tool: { id: "t", name: "read", args: "{}" },
 };
 
-test("normal answer moves only text outside; reasoning remains in process", () => {
+test("normal answer remains visible; stored reasoning stays out of the process", () => {
   const s = snapshot([
     user,
     entry(
@@ -46,12 +46,52 @@ test("normal answer moves only text outside; reasoning remains in process", () =
   ]);
   const turn = chatTurns(s)[0];
   assert.equal(turn.answer?.text, "答案");
-  assert.deepEqual(
-    turn.items.map((item) => item.text),
-    ["思考"],
-  );
+  assert.deepEqual(turn.items, []);
   assert.equal(turn.prompt?.id, "1");
-  assert.deepEqual(s.entries[1].message.blocks.length, 2);
+  assert.deepEqual(s.entries[1].message.blocks, [
+    { kind: "reasoning", text: "思考" }, text("答案"),
+  ]);
+});
+
+test("reasoning is transient: later text, persisted tools and run end remove it", () => {
+  const event = { sessionID: "s", runID: "r", seqEpoch: "e" };
+  const thinking = applyRunEvent(snapshot([user], "running"), {
+    ...event, kind: "reasoning-delta", entryID: "2", blockSeq: 1,
+    text: "正在分析", afterEntrySeq: 1, updateSeq: 1,
+  })!;
+  assert.deepEqual(chatTurns(thinking)[0].items.map((item) => item.preview), ["正在分析"]);
+  // 重连后的同一份活草稿也只显示一个临时提示。
+  assert.deepEqual(chatTurns(structuredClone(thinking)), chatTurns(thinking));
+  const writing = applyRunEvent(thinking, {
+    ...event, kind: "text-delta", entryID: "2", blockSeq: 2,
+    text: "开始执行", updateSeq: 2,
+  })!;
+  assert.deepEqual(chatTurns(writing)[0].items.map((item) => item.kind), ["text"]);
+  const nextThought = applyRunEvent(writing, {
+    ...event, kind: "reasoning-delta", entryID: "2", blockSeq: 3,
+    text: "检查结果", updateSeq: 3,
+  })!;
+  assert.deepEqual(
+    chatTurns(nextThought)[0].items.filter((item) => item.kind === "reasoning").map((item) => item.text),
+    ["检查结果"],
+  );
+  const saved = applyRunEvent(thinking, {
+    ...event, kind: "message", updateSeq: 2,
+    entry: entry(2, "assistant", [{ kind: "reasoning", text: "正在分析" }, call], 1),
+  })!;
+  assert.deepEqual(chatTurns(saved)[0].items.map((item) => item.kind), ["tool"]);
+  for (const status of ["success", "failed", "cancelled", "interrupted"] as const) {
+    const ended = applyRunEvent(thinking, {
+      ...event, kind: "run-ended", status, updateSeq: 2,
+    })!;
+    assert.deepEqual(chatTurns(ended)[0].items, []);
+  }
+  const opaque = snapshot([user], "running");
+  opaque.runs[0].drafts = [{ entryID: "2", afterEntrySeq: 1, blocks: [{
+    kind: "reasoning",
+    continuation: { provider: "openai", model: "test", api: "responses", data: { encrypted_content: "opaque" } },
+  }] }];
+  assert.deepEqual(chatTurns(opaque)[0].items, []);
 });
 
 test("last assistant only: no backward search through tools, summary or reasoning", () => {
@@ -125,7 +165,7 @@ test("tool result fills its call exactly once, all four statuses derive from sna
   assert.equal(chatTurns(s)[0].items[0].status, "异常");
 });
 
-test("only consecutive tools share a group", () => {
+test("consecutive terminal calls form a group, including a single command", () => {
   const s = snapshot(
     [
       user,
@@ -145,13 +185,23 @@ test("only consecutive tools share a group", () => {
     "running",
   );
   const groups = processGroups(chatTurns(s)[0].items);
-  assert.equal(groups.length, 5);
-  assert.ok(Array.isArray(groups[0]) && groups[0].length === 1);
-  assert.equal(
-    Array.isArray(groups[1]) ? undefined : groups[1].kind,
-    "reasoning",
-  );
-  assert.ok(Array.isArray(groups[2]) && groups[2].length === 1);
+  assert.equal(groups.length, 4);
+  assert.equal(Array.isArray(groups[0]), false);
+  assert.ok(Array.isArray(groups[1]) && groups[1].length === 1);
+
+  const commands = snapshot([
+    user,
+    entry(2, "assistant", [
+      { kind: "tool-call", tool: { id: "a", name: "exec_command", args: '{"cmd":"pwd; ls -la"}' } },
+      { kind: "reasoning", text: "再检查一下" },
+      { kind: "tool-call", tool: { id: "b", name: "exec_command", args: '{"cmd":"git status"}' } },
+      call,
+    ], 1),
+  ]);
+  const commandGroups = processGroups(chatTurns(commands)[0].items);
+  assert.ok(Array.isArray(commandGroups[0]) && commandGroups[0].length === 2);
+  assert.equal(Array.isArray(commandGroups[1]), false);
+  assert.equal(commandGroups[0][0].preview, "pwd; ls -la");
 });
 
 test("draft, durable entry and fresh snapshot share the same presentation", () => {

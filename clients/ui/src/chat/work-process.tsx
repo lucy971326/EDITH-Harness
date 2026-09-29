@@ -8,10 +8,10 @@ import { Button } from "@/components/ui/button";
 import {
   ChevronRight,
   FileText,
-  LoaderCircle,
   Copy,
   Brain,
   Bot,
+  Terminal,
   GitBranch,
   GitCompareArrows,
 } from "../icons";
@@ -88,16 +88,20 @@ function Detail({
   onInspect: () => void;
 }) {
   const collaboration = item.kind === "collaboration";
-  const className = collaboration
-    ? "process-collaboration"
-    : item.kind === "reasoning"
-      ? "process-reasoning"
-      : undefined;
+  const className = collaboration ? "process-collaboration" : undefined;
   const Icon = collaboration
     ? Bot
-    : item.kind === "reasoning"
-      ? Brain
+    : item.title === "exec_command" || item.title === "bash" || item.title === "write_stdin"
+      ? Terminal
       : FileText;
+  let label = item.title;
+  if (item.kind === "tool") {
+    if (item.title === "exec_command" || item.title === "bash") {
+      label = item.status === "等待结果" ? "正在运行" : "已运行";
+    } else {
+      label = toolActions[item.title] ?? item.title;
+    }
+  }
   return (
     <Collapsible
       className={className}
@@ -108,9 +112,14 @@ function Detail({
       <CollapsibleTrigger className="tool-summary process-summary">
         <Icon />
         <span className="process-detail-label">
-          <span>
-            {item.title}
-            {item.status && ` · ${item.status}`}
+          <span className="process-line">
+            <span className="process-line-name">{label}</span>
+            {item.preview && (
+              <span className="process-line-preview">· {item.preview}</span>
+            )}
+            {item.status && item.status !== "已完成" && (
+              <span className="process-line-status">· {item.status === "等待结果" ? "运行中" : item.status}</span>
+            )}
           </span>
           {collaboration && (
             <span className="process-detail-preview">{item.text}</span>
@@ -162,11 +171,78 @@ const toolActions: Record<string, string> = {
   subagent_list: "查看子任务",
   subagent_wait: "等待子任务",
   subagent_stop: "停止子任务",
-  bash: "运行命令",
+  write_stdin: "终端",
+  apply_patch: "修改",
   read: "读取文件",
   write: "写入文件",
   edit: "编辑文件",
 };
+
+function TerminalGroup({ items, onInspect }: { items: ProcessItem[]; onInspect: () => void }) {
+  const failures = items.filter((item) => item.status === "异常").length;
+  return (
+    <Collapsible className="tool-group" onOpenChange={(open) => {
+      if (open) onInspect();
+    }}>
+      <CollapsibleTrigger className="tool-summary process-summary">
+        <Terminal />
+        <span className="process-line">
+          <span className="process-line-name">运行了命令</span>
+          {failures > 0 && <span className="process-line-status">· {failures} 项异常</span>}
+        </span>
+        <ChevronRight />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="tool-list" tabIndex={0} aria-label="终端命令">
+        {items.map((item) => (
+          <Detail key={item.id} item={item} onInspect={onInspect} />
+        ))}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+function ProcessOutput({
+  item,
+  workspace,
+  onOpenFile,
+  skillNames,
+}: {
+  item: ProcessItem;
+  workspace?: string | null;
+  onOpenFile?: (location: FileLocation) => void;
+  skillNames?: string[];
+}) {
+  if (item.kind === "reasoning") {
+    return (
+      <div className="process-reasoning" role="status">
+        <Brain aria-hidden="true" />
+        <span className="process-line-status">{item.title}</span>
+        <span className="process-line-preview">{item.preview}</span>
+      </div>
+    );
+  }
+  if (item.kind === "image" && item.media) {
+    return (
+      <div className={item.status ? "progress-text" : "steer-message"}>
+        {item.status && <span className="metadata">{item.status}</span>}
+        <MessageImages blocks={[{ kind: "image", media: item.media }]} />
+      </div>
+    );
+  }
+  return (
+    <div className={item.kind === "steer" ? "steer-message" : "progress-text"}>
+      {(item.kind === "steer" || item.status) && (
+        <span className="metadata">{item.kind === "steer" ? "已调整方向" : item.status}</span>
+      )}
+      {item.kind === "steer" ? (
+        <UserMessage text={item.text} workspace={workspace} onOpenFile={onOpenFile} skillNames={skillNames} />
+      ) : item.kind === "text" ? (
+        <MessageMarkdown text={item.text} workspace={workspace} onOpenFile={onOpenFile} />
+      ) : item.text}
+      {item.kind === "steer" && <CopyMessage text={item.text} label="复制插话" />}
+    </div>
+  );
+}
 
 function WorkProcessComponent({
   turn,
@@ -195,10 +271,8 @@ function WorkProcessComponent({
 }) {
   const status = turn.run?.status;
   const [open, setOpen] = useState(status !== "success");
-  // 只在运行状态变化时收展；普通增量不覆盖用户的手动选择。
-  useEffect(() => {
-    setOpen(status !== "success");
-  }, [status]);
+  // 只随运行状态切换默认收展；普通增量保留用户的选择。
+  useEffect(() => setOpen(status !== "success"), [status]);
   const promptText =
     turn.prompt?.message.blocks
       .filter((b) => b.kind === "text")
@@ -238,7 +312,6 @@ function WorkProcessComponent({
             <SubagentCard key={item.id} item={item} onOpen={onOpenSubagent} />
           ) : item.kind === "detail" ||
             item.kind === "tool" ||
-            item.kind === "reasoning" ||
             item.kind === "collaboration" ? (
             <Detail key={item.id} item={item} onInspect={onInspect} />
           ) : (
@@ -251,118 +324,41 @@ function WorkProcessComponent({
         (turn.items.length > 0 ||
           (turn.run !== undefined && status !== "success") ||
           !turn.answer) && (
-          <Collapsible open={open} onOpenChange={setOpen} className="process">
+          <Collapsible open={open} onOpenChange={(next) => {
+            setOpen(next);
+            if (next) onInspect();
+          }} className="process">
             <CollapsibleTrigger className="process-heading">
-              {status === "running" && (
-                <LoaderCircle className="animate-spin" />
-              )}
-              工作过程 · {title}
+              <span className="process-heading-title">
+                工作过程{status === "success" ? "" : ` · ${title}`}
+              </span>
               <ChevronRight className={open ? "rotate-90" : ""} />
             </CollapsibleTrigger>
             <CollapsibleContent className="process-body">
               {processGroups(turn.items).map((group) =>
                 Array.isArray(group) ? (
-                  <Collapsible key={group[0].id} className="tool-group">
-                    <CollapsibleTrigger className="tool-summary process-summary">
-                      {group.every((item) =>
-                        item.title.startsWith("subagent_"),
-                      ) ? (
-                        <Bot />
-                      ) : (
-                        <FileText />
-                      )}
-                      <span>
-                        {[
-                          ...new Set(
-                            group.map(
-                              (item) => toolActions[item.title] ?? item.title,
-                            ),
-                          ),
-                        ].join("、")}{" "}
-                        ·{" "}
-                        {group.length === 1
-                          ? group[0].status
-                          : group.length + " 项"}
-                      </span>
-                      <ChevronRight />
-                    </CollapsibleTrigger>
-                    <CollapsibleContent
-                      className="tool-list"
-                      tabIndex={0}
-                      aria-label="工具列表"
-                    >
-                      {group.map((item) => (
-                        <Detail
-                          key={item.id}
-                          item={item}
-                          onInspect={onInspect}
-                        />
-                      ))}
-                    </CollapsibleContent>
-                  </Collapsible>
+                  <TerminalGroup key={group[0].id} items={group} onInspect={onInspect} />
                 ) : group.kind === "subagent" ||
                   (group.kind === "collaboration" && group.taskID) ? (
-                  <SubagentCard
-                    key={group.id}
-                    item={group}
-                    onOpen={onOpenSubagent}
-                  />
+                  <SubagentCard key={group.id} item={group} onOpen={onOpenSubagent} />
                 ) : group.kind === "detail" ||
-                  group.kind === "reasoning" ||
+                  group.kind === "tool" ||
                   group.kind === "collaboration" ? (
                   <Detail key={group.id} item={group} onInspect={onInspect} />
-                ) : group.kind === "image" && group.media ? (
-                  <div
-                    key={group.id}
-                    className={group.status ? "progress-text" : "steer-message"}
-                  >
-                    {group.status && (
-                      <span className="metadata">{group.status}</span>
-                    )}
-                    <MessageImages
-                      blocks={[{ kind: "image", media: group.media }]}
-                    />
-                  </div>
                 ) : (
-                  <div
+                  <ProcessOutput
                     key={group.id}
-                    className={
-                      group.kind === "steer" ? "steer-message" : "progress-text"
-                    }
-                  >
-                    {(group.kind === "steer" || group.status) && (
-                      <span className="metadata">
-                        {group.kind === "steer" ? "已调整方向" : group.status}
-                      </span>
-                    )}
-                    {group.kind === "steer" ? (
-                      <UserMessage
-                        text={group.text}
-                        workspace={workspace}
-                        onOpenFile={onOpenFile}
-                        skillNames={skillNames}
-                      />
-                    ) : group.kind === "text" ? (
-                      <MessageMarkdown
-                        text={group.text}
-                        workspace={workspace}
-                        onOpenFile={onOpenFile}
-                      />
-                    ) : (
-                      group.text
-                    )}
-                    {group.kind === "steer" && (
-                      <CopyMessage text={group.text} label="复制插话" />
-                    )}
-                  </div>
+                    item={group}
+                    workspace={workspace}
+                    onOpenFile={onOpenFile}
+                    skillNames={skillNames}
+                  />
                 ),
               )}
-              {turn.run?.error && (
-                <p className="inline-error">{turn.run.error}</p>
+              {turn.run?.error && <p className="inline-error">{turn.run.error}</p>}
+              {(status !== "success" || !turn.answer) && (
+                <p className="metadata" role="status">{title}</p>
               )}
-              <p className="metadata" role="status">
-                {title}
-              </p>
             </CollapsibleContent>
           </Collapsible>
         )}
@@ -440,6 +436,7 @@ function sameTurn(previous: ChatTurn, next: ChatTurn): boolean {
       item.kind === candidate.kind &&
       item.title === candidate.title &&
       item.text === candidate.text &&
+      item.preview === candidate.preview &&
       item.status === candidate.status &&
       item.media === candidate.media &&
       item.taskID === candidate.taskID &&

@@ -15,6 +15,7 @@ export interface ProcessItem {
     | "image";
   title: string;
   text: string;
+  preview?: string;
   status?: string;
   media?: NonNullable<Block["media"]>;
   taskID?: string;
@@ -27,6 +28,49 @@ export interface ChatTurn {
   prompt?: ChatMessage;
   items: ProcessItem[];
   answer?: { id: string; text: string };
+}
+
+function shortText(value: string): string | undefined {
+  const text = value.replace(/\s+/g, " ").replace(/^\*\*|\*\*$/g, "").trim();
+  return text ? text.slice(0, 96) : undefined;
+}
+
+function commandFromArgs(args: string): string | undefined {
+  try {
+    const input = JSON.parse(args) as Record<string, unknown>;
+    const command = input?.cmd ?? input?.command;
+    return typeof command === "string" ? command.trim() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function toolPreview(name: string, args: string): string | undefined {
+  if (!["exec_command", "bash", "read", "write", "edit", "apply_patch", "subagent_spawn"].includes(name))
+    return undefined;
+  try {
+    const input = JSON.parse(args) as Record<string, unknown>;
+    if (!input || typeof input !== "object" || Array.isArray(input)) return undefined;
+    if (name === "apply_patch" && typeof input.patch === "string") {
+      const file = input.patch.match(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/m)?.[1];
+      return file ? shortText(file.split(/[\\/]/).pop() ?? file) : undefined;
+    }
+    if (name === "subagent_spawn")
+      return typeof input.taskName === "string" ? shortText(input.taskName) : undefined;
+    if (name === "exec_command" || name === "bash") {
+      const command = commandFromArgs(args);
+      if (!command) return undefined;
+      const line = command.split(/\r?\n/, 1)[0].trim();
+      // 折叠行会直接显示命令；疑似凭据留在展开详情中。
+      if (/(?:token|secret|password|api[_-]?key|authorization|bearer|cookie|credential|-----BEGIN)/i.test(line))
+        return undefined;
+      return shortText(line);
+    }
+    const path = input.path ?? input.file_path ?? input.filePath;
+    return typeof path === "string" ? shortText(path) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export function chatTurns(snapshot: Snapshot): ChatTurn[] {
@@ -89,6 +133,9 @@ export function chatTurns(snapshot: Snapshot): ChatTurn[] {
         ? { id: candidate.id, text: answerText }
         : undefined;
 
+    const activeDraftID = run?.status === "running"
+      ? run.drafts?.at(-1)?.entryID
+      : undefined;
     const items: ProcessItem[] = [];
     for (const item of messages) {
       if (item === prompt) continue;
@@ -96,6 +143,26 @@ export function chatTurns(snapshot: Snapshot): ChatTurn[] {
         if (block.kind === "pending") continue;
         if (answer?.id === item.id && block.kind === "text") continue;
         const itemID = `${item.id}:${index}`;
+        if (block.kind === "reasoning") {
+          // 草稿覆盖整条消息；后续正文开始后，前面的思考已不再活跃。
+          // 只投影当前末尾的思考文字，落账原文和续接数据仍保留在 Snapshot。
+          if (
+            item.draft &&
+            item.id === activeDraftID &&
+            index === item.message.blocks.length - 1 &&
+            block.text?.trim()
+          ) {
+            items.push({
+              id: itemID,
+              kind: "reasoning",
+              title: "思考中",
+              text: block.text,
+              preview: shortText(block.text),
+              status: "生成中",
+            });
+          }
+          continue;
+        }
         if (block.tool) {
           const result = results.get(`${id}:${block.tool.id}`);
           const child = subagentFromTool(
@@ -107,6 +174,7 @@ export function chatTurns(snapshot: Snapshot): ChatTurn[] {
             id: itemID,
             kind: child ? "subagent" : "tool",
             title: block.tool.name,
+            preview: toolPreview(block.tool.name, block.tool.args),
             status: result
               ? result.isError
                 ? "异常"
@@ -116,7 +184,9 @@ export function chatTurns(snapshot: Snapshot): ChatTurn[] {
                 : run
                   ? "结果未记录"
                   : "状态未记录",
-            text: `参数\n${block.tool.args}\n\n结果\n${result?.content ?? "尚无结果记录"}`,
+            text: block.tool.name === "exec_command" || block.tool.name === "bash"
+              ? `$ ${commandFromArgs(block.tool.args) ?? block.tool.args}\n\n${result?.content ?? "尚无结果记录"}`
+              : `参数\n${block.tool.args}\n\n结果\n${result?.content ?? "尚无结果记录"}`,
             taskID: child?.taskID,
             taskName: child?.taskName,
           });
@@ -131,8 +201,6 @@ export function chatTurns(snapshot: Snapshot): ChatTurn[] {
               status: block.result.isError ? "异常" : "已完成",
             });
         } else {
-          // 只有续接数据的思考块供下一轮请求使用，不是可展示的思考文字。
-          if (block.kind === "reasoning" && !block.text?.trim()) continue;
           const role = item.message.role;
           const detail =
             block.kind !== "text" ||
@@ -143,27 +211,23 @@ export function chatTurns(snapshot: Snapshot): ChatTurn[] {
             kind:
               block.kind === "image" && block.media
                 ? "image"
-                : block.kind === "reasoning"
-                  ? "reasoning"
-                  : role === "collaboration"
-                    ? "collaboration"
-                    : detail
-                      ? "detail"
-                      : role === "user"
-                        ? "steer"
-                        : "text",
+                : role === "collaboration"
+                  ? "collaboration"
+                  : detail
+                    ? "detail"
+                    : role === "user"
+                      ? "steer"
+                      : "text",
             title:
-              block.kind === "reasoning"
-                ? "思考"
-                : block.kind === "summary"
-                  ? "上下文压缩"
-                  : role === "collaboration"
-                    ? "子任务回报"
-                    : role === "system"
-                      ? "系统记录"
-                      : block.kind === "image"
-                        ? "图片（第 5 步接入）"
-                        : block.kind,
+              block.kind === "summary"
+                ? "上下文压缩"
+                : role === "collaboration"
+                  ? "子任务回报"
+                  : role === "system"
+                    ? "系统记录"
+                    : block.kind === "image"
+                      ? "图片（第 5 步接入）"
+                      : block.kind,
             text:
               block.text ??
               block.error ??
@@ -210,17 +274,24 @@ function subagentFromTool(name: string, args: string, result?: string) {
   }
 }
 
-// 只合并真正连续的工具调用；其他条目保持账本里的同级顺序。
+// 连续终端命令组成一个可展开的操作组；单条命令也保留这一级。
 export function processGroups(
   items: ProcessItem[],
 ): (ProcessItem | ProcessItem[])[] {
   const groups: (ProcessItem | ProcessItem[])[] = [];
+  let commands: ProcessItem[] = [];
+  const flush = () => {
+    if (commands.length > 0) groups.push(commands);
+    commands = [];
+  };
   for (const item of items) {
-    if (item.kind === "tool") {
-      const last = groups.at(-1);
-      if (Array.isArray(last)) last.push(item);
-      else groups.push([item]);
-    } else groups.push(item);
+    if (item.kind === "tool" && (item.title === "exec_command" || item.title === "bash" || item.title === "write_stdin"))
+      commands.push(item);
+    else {
+      flush();
+      groups.push(item);
+    }
   }
+  flush();
   return groups;
 }

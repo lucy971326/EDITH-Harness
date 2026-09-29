@@ -1085,23 +1085,29 @@
 }
 .process-heading {
   display: flex;
-  gap: var(--space-2);
   align-items: center;
-  padding: var(--space-1) var(--space-2);
+  gap: var(--space-2);
+  width: fit-content;
+  max-width: 100%;
   margin-left: calc(-1 * var(--space-2));
+  padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-control);
   color: var(--muted-foreground);
   font-size: var(--font-size-caption);
-  width: fit-content;
-  max-width: 100%;
   text-align: left;
 }
 .process-heading:hover {
   background: var(--muted);
-  color: var(--foreground);
 }
-.process-heading svg:last-child {
+.process-heading-title,
+.process-heading > svg {
+  flex: none;
+}
+.process-heading > svg {
   width: 14px;
+}
+.process-line-status {
+  flex: none;
 }
 .process-body {
   display: flex;
@@ -1145,6 +1151,58 @@
   margin-left: auto;
   width: 14px;
 }
+.tool-summary.process-summary {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  align-self: flex-start;
+  font-size: var(--font-size-caption);
+}
+.tool-summary.process-summary > svg:first-child {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  opacity: 0.75;
+}
+.tool-summary.process-summary > svg:last-child {
+  margin-left: 0;
+  flex: none;
+  opacity: 0;
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+.tool-summary.process-summary:hover > svg:last-child,
+.tool-summary.process-summary:focus-visible > svg:last-child,
+.tool-summary.process-summary[data-state="open"] > svg:last-child {
+  opacity: 1;
+}
+.tool-summary.process-summary[data-state="open"] > svg:last-child {
+  transform: rotate(90deg);
+}
+.process-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  max-width: 100%;
+}
+.process-line-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+.process-line-preview {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted-foreground);
+  opacity: 0.8;
+}
+.process-line .process-line-preview {
+  flex: 1;
+}
 .tool-list {
   max-height: var(--tool-list-height);
   overflow: auto;
@@ -1154,7 +1212,19 @@
   padding-left: var(--space-4);
 }
 .process-reasoning {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
   color: var(--muted-foreground);
+  font-size: var(--font-size-caption);
+}
+.process-reasoning > svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  opacity: 0.75;
 }
 .process-detail-label {
   display: flex;
