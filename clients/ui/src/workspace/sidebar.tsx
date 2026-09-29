@@ -105,9 +105,10 @@ export function Sidebar({
         aria-label="关闭项目侧栏"
         onClick={onClose}
       />
-      <aside className="sidebar workspace-panel">
+      <aside className="sidebar">
         <div className="brand-row">
           <span className="brand"><img className="brand-mark" src="/edith-icon.svg" alt="" />EDITH</span>
+          <span className="sidebar-workspace-label"><Folder />工作区</span>
           <ConnectionIndicator status={connection} detail={connectionDetail} onReconnect={onReconnect} />
           <Button
             variant="ghost"

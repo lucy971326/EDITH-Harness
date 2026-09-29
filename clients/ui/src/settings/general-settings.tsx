@@ -3,11 +3,13 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Bell, Palette } from "../icons";
 import type { NotificationStatus, PlatformNotifications } from "../types";
-import { FontOptions, ThemeOptions } from "./appearance-settings";
+import { FontOptions, PaletteOptions, ThemeOptions, type PaletteID } from "./appearance-settings";
 
-export function GeneralSettingsPanel({ theme, setTheme, notifications, enabled, setEnabled }: {
+export function GeneralSettingsPanel({ theme, setTheme, palette, setPalette, notifications, enabled, setEnabled }: {
   theme: string;
   setTheme: (theme: string) => void;
+  palette: PaletteID;
+  setPalette: (palette: PaletteID) => void;
   notifications: PlatformNotifications;
   enabled: boolean;
   setEnabled: (enabled: boolean) => void;
@@ -79,7 +81,8 @@ export function GeneralSettingsPanel({ theme, setTheme, notifications, enabled, 
             发送测试通知
           </Button>}
         </div>
-        {detail === "appearance" ? <><ThemeOptions theme={theme} setTheme={setTheme} /><FontOptions /></> : <>
+        {detail === "appearance" ? <><ThemeOptions theme={theme} setTheme={setTheme} />
+          <PaletteOptions palette={palette} setPalette={setPalette} /><FontOptions /></> : <>
           <div className="settings-section notification-setting">
             <div>
               <strong>系统通知</strong>

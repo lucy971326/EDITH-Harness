@@ -5,8 +5,7 @@
 
 | 用途 | 文件 / 来源 | 处理 |
 | --- | --- | --- |
-| 固定 UI 英文 | 原有 Ginto OTF | 保持原文件 |
-| 固定 UI 中文、默认内容 | MiSans：用户提供 Downloads/MiSans.zip | 原始 WOFF2，保留 400/500/600/700 |
+| 固定 UI、默认内容 | MiSans：用户提供 Downloads/MiSans.zip | 原始 WOFF2，保留 400/500/600/700 |
 | 可选内容 | [HarmonyOS Sans 官方包](https://developer.huawei.com/images/download/general/HarmonyOS-Sans.zip) | SC 原始 TTF，保留 400/500/700，不改写、不裁剪 |
 | 默认代码 | npm @fontsource-variable/jetbrains-mono | 原包 WOFF2 |
 | 可选代码 | [Cascadia Mono v2407.24](https://github.com/microsoft/cascadia-code/releases/tag/v2407.24) | 正体、斜体可变 TTF 转 WOFF2 |

@@ -130,7 +130,7 @@ export function useEditorTheme(): string {
     });
     observer.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["class"],
+      attributeFilter: ["class", "data-palette"],
     });
     return () => {
       observer.disconnect();

@@ -50,7 +50,6 @@ export async function initializeFonts() {
   let saved = defaults;
   try { saved = { ...defaults, ...JSON.parse(localStorage.getItem(storageKey) ?? "{}") }; } catch { /* 损坏偏好恢复默认。 */ }
   await Promise.all([
-    document.fonts.load('400 14px "Harness Ginto"', "EDITH"),
     document.fonts.load('400 14px "EDITH MiSans"', "设置会话"),
     selectFonts(saved).catch(() => selectFonts(defaults)),
   ]);

@@ -3,6 +3,7 @@ import { DesktopTitlebar } from "./components/desktop-titlebar";
 import { useSessionActivity } from "./workspace/use-session-activity";
 import { Approvals, useApprovalInbox } from "./chat/approvals";
 import { ApprovalSettingsPanel } from "./settings/approval-settings";
+import { paletteOptions, type PaletteID } from "./settings/appearance-settings";
 import { HookSettingsPanel } from "./settings/hook-settings";
 import { MCPSettingsPanel } from "./settings/mcp-settings";
 import { SkillSettingsPanel } from "./settings/skill-settings";
@@ -174,6 +175,10 @@ export default function App({ platform }: { platform: Platform }) {
     typeof window === "undefined" ? 1280 : window.innerWidth,
   );
   const [theme, setTheme] = useState(() => preference("theme", "system"));
+  const [palette, setPalette] = useState<PaletteID>(() => {
+    const saved = preference("palette", "cyan");
+    return paletteOptions.find((option) => option.id === saved)?.id ?? "cyan";
+  });
   const [notificationEnabled, setNotificationEnabled] = useState(() =>
     preference(platform.desktop ? "desktop-notifications" : "web-notifications", "false") === "true",
   );
@@ -1083,6 +1088,10 @@ export default function App({ platform }: { platform: Platform }) {
     return () => query.removeEventListener("change", applyTheme);
   }, [theme]);
   useEffect(() => {
+    document.documentElement.dataset.palette = palette;
+    savePreference("palette", palette);
+  }, [palette]);
+  useEffect(() => {
     savePreference("panel", String(panel));
     savePreference("reading-panel-width", String(panelWidth));
     savePreference("sidebar-width", String(sidebarWidth));
@@ -1165,7 +1174,7 @@ export default function App({ platform }: { platform: Platform }) {
         : openProject()),
     },
     settings: {
-      theme, setTheme, notifications: platform.notifications,
+      theme, setTheme, palette, setPalette, notifications: platform.notifications,
       enabled: notificationEnabled, setEnabled: setNotificationEnabled,
       onBack: () => navigate("/"), setNavigationGuard: setGuard,
       onDesktopState: reportSettingsState,
@@ -1283,7 +1292,7 @@ export default function App({ platform }: { platform: Platform }) {
             onChange={setSidebarWidth}
           />
         )}
-        <main className="main workspace-panel">
+        <main className="main">
           <header className="topbar" hidden={page?.standalone}>
             <div className="topbar-title">
               {!sidebar && (
@@ -1402,7 +1411,6 @@ export default function App({ platform }: { platform: Platform }) {
                 >
                   <div className="empty-chat">
                     <img className="empty-symbol" src="/edith-icon.svg" alt="" />
-                    <span className="welcome-eyebrow">EDITH WORKSPACE</span>
                     <h1>{selectedID && !synchronized ? "正在恢复会话" : "今天，一起完成什么？"}</h1>
                     <p>{selectedID && !synchronized
                       ? "正在同步历史与运行状态，请稍候。"
@@ -1503,7 +1511,7 @@ export default function App({ platform }: { platform: Platform }) {
               onClick={() => setPanel(false)}
             />
           )}
-          <aside className="aux-panel workspace-panel" aria-label="辅助工作区" data-open={panelOpen} inert={!panelOpen} aria-hidden={!panelOpen}>
+          <aside className="aux-panel" aria-label="辅助工作区" data-open={panelOpen} inert={!panelOpen} aria-hidden={!panelOpen}>
             <ResizeHandle
               label="调整辅助工作区宽度"
               value={visiblePanelWidth}

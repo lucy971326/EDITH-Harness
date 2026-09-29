@@ -54,7 +54,7 @@ export function TerminalView({
     });
     themeObserver.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["class"],
+      attributeFilter: ["class", "data-palette"],
     });
 
     let mounted = true;

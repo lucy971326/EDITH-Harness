@@ -10,7 +10,7 @@
 | [STATUS](docs/AGENTS/STATUS.md) | 当前能力、限制、重要验证结论 |
 | [设计书](docs/设计书.md) | 架构与重要决策 |
 | [DATA_MODEL](docs/AGENTS/DATA_MODEL.md) | 数据归属、持久化与恢复 |
-| [VISUAL_DESIGN](docs/AGENTS/VISUAL_DESIGN.md) | 应用与官网共用的品牌视觉语言 |
+| [VISUAL_DESIGN](docs/AGENTS/VISUAL_DESIGN.md) | 应用视觉语言；官网样式独立 |
 | [WEB_UI](docs/AGENTS/WEB_UI.md) | 应用前端状态、交互与视觉细则 |
 
 STATUS 只保留当前能力、未解决限制和影响使用的重要验证结论，不逐次记录完成日志。普通修复、样式调整、例行检查结果只在交付回复说明，修复后的临时问题条目直接删除；重要决策写对应规范。模块 README 只做源码导读。计划只保留正在执行的内容，完成后吸收独有决策并删除。外部研究在 `docs/codex-docs/`，不是 Harness 规范，不作为默认必读。

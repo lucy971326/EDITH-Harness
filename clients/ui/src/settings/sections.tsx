@@ -27,6 +27,7 @@ export function createSettingsSections(props: SettingsContentProps): SettingsSec
   return [
     { id: "general", label: "通用", icon: SlidersHorizontal,
       render: () => <GeneralSettingsPanel theme={props.theme} setTheme={props.setTheme}
+        palette={props.palette} setPalette={props.setPalette}
         notifications={props.notifications} enabled={props.enabled} setEnabled={props.setEnabled} /> },
     { id: "agents", label: "Agent", icon: Bot,
       render: (onStateChange) => <AgentSettingsPanel
