@@ -1156,6 +1156,7 @@
   width: fit-content;
   max-width: 100%;
   align-self: flex-start;
+  color: color-mix(in srgb, var(--muted-foreground) 85%, var(--background));
   font-size: var(--font-size-caption);
 }
 .tool-summary.process-summary > svg:first-child {
@@ -1217,7 +1218,7 @@
   min-width: 0;
   gap: var(--space-2);
   padding: var(--space-1) var(--space-2);
-  color: var(--muted-foreground);
+  color: color-mix(in srgb, var(--muted-foreground) 85%, var(--background));
   font-size: var(--font-size-caption);
 }
 .process-reasoning > svg {
