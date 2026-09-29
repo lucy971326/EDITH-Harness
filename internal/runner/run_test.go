@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -239,6 +240,68 @@ func newRunnerFixtureWithLLM(t *testing.T, loop loops.Loop, client *llm.Client) 
 
 func textInput(text string) session.UserMessage {
 	return session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: text}}}
+}
+
+func TestRunReadsRootProjectInstructionsWithoutSavingThem(t *testing.T) {
+	var invocations []loops.Invocation
+	fixture := newRunnerFixture(t, &runnerTestLoop{run: func(_ context.Context, invocation loops.Invocation) error {
+		invocations = append(invocations, invocation)
+		return nil
+	}})
+	workspace := fixture.settings.value.Workspace
+	path := filepath.Join(workspace, "AGENTS.md")
+	if err := os.WriteFile(path, []byte("First project rule"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(workspace, "nested"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "nested", "AGENTS.md"), []byte("Nested rule"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := fixture.runner.Run(t.Context(), "session-1", textInput("first question")); err != nil {
+		t.Fatal(err)
+	}
+	if len(invocations) != 1 || len(invocations[0].History) != 3 {
+		t.Fatalf("initial invocation = %#v", invocations)
+	}
+	project := invocations[0].History[0]
+	if project.Role != session.RoleUser || !strings.Contains(project.Blocks[0].Text, "First project rule") || strings.Contains(project.Blocks[0].Text, "Nested rule") {
+		t.Fatalf("project context = %#v", project)
+	}
+	if len(fixture.session.History()) != 1 {
+		t.Fatalf("project instructions entered the session: %#v", fixture.session.History())
+	}
+
+	if err := os.WriteFile(path, []byte("Updated project rule"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.runner.Run(t.Context(), "session-1", textInput("second question")); err != nil {
+		t.Fatal(err)
+	}
+	if len(invocations) != 2 || !strings.Contains(invocations[1].History[0].Blocks[0].Text, "Updated project rule") {
+		t.Fatalf("second invocation did not reload project instructions: %#v", invocations)
+	}
+	if len(fixture.session.History()) != 2 {
+		t.Fatalf("session history = %#v", fixture.session.History())
+	}
+}
+
+func TestRunRejectsOversizedProjectInstructionsBeforeSavingInput(t *testing.T) {
+	fixture := newRunnerFixture(t, &runnerTestLoop{run: func(context.Context, loops.Invocation) error {
+		return fmt.Errorf("loop started with oversized project instructions")
+	}})
+	path := filepath.Join(fixture.settings.value.Workspace, "AGENTS.md")
+	if err := os.WriteFile(path, []byte(strings.Repeat("x", 32*1024+1)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.runner.Run(t.Context(), "session-1", textInput("question")); err == nil || !strings.Contains(err.Error(), "AGENTS.md exceeds 32 KiB") {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if len(fixture.session.History()) != 0 {
+		t.Fatalf("input saved after preparation failed: %#v", fixture.session.History())
+	}
 }
 
 type testRunnerSkillErrorProvider struct {

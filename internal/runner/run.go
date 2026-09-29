@@ -6,10 +6,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"harness/internal/agents"
 	"harness/internal/events"
@@ -86,9 +89,10 @@ type toolCallLoc struct {
 
 // 数据。一轮 Run 在进入 Loop 前读取的一致配置快照。
 type runPreparation struct {
-	sess     *session.Session
-	settings settings.SessionSettings
-	prepared agents.PreparedAgent
+	sess                *session.Session
+	settings            settings.SessionSettings
+	prepared            agents.PreparedAgent
+	projectInstructions string
 }
 
 // 活对象。管理尚未结束 Run 的对话运行器。
@@ -321,7 +325,37 @@ func (r *Runner) prepare(ctx context.Context, sessionID, runID string) (runPrepa
 	if err != nil {
 		return runPreparation{}, err
 	}
-	return runPreparation{sess: sess, settings: runSettings, prepared: prepared}, nil
+	projectInstructions, err := readProjectInstructions(runSettings.Workspace)
+	if err != nil {
+		return runPreparation{}, err
+	}
+	return runPreparation{sess: sess, settings: runSettings, prepared: prepared, projectInstructions: projectInstructions}, nil
+}
+
+// readProjectInstructions 只读取工作区根目录的规则；每轮重新读取，且不写入会话账本。
+func readProjectInstructions(workspace string) (string, error) {
+	path := filepath.Join(workspace, "AGENTS.md")
+	file, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("runner: open %s: %w", path, err)
+	}
+	defer file.Close()
+
+	const maxBytes = 32 * 1024
+	data, err := io.ReadAll(io.LimitReader(file, maxBytes+1))
+	if err != nil {
+		return "", fmt.Errorf("runner: read %s: %w", path, err)
+	}
+	if len(data) > maxBytes {
+		return "", fmt.Errorf("runner: %s exceeds 32 KiB", path)
+	}
+	if !utf8.Valid(data) {
+		return "", fmt.Errorf("runner: %s is not UTF-8", path)
+	}
+	return strings.TrimSpace(string(data)), nil
 }
 
 func (r *Runner) executePrepared(runCtx context.Context, sessionID, runID string, input session.UserMessage, current *liveRun, preparation runPreparation) (err error) {
@@ -417,6 +451,10 @@ func (r *Runner) executePrepared(runCtx context.Context, sessionID, runID string
 		return loadErr
 	}
 	history = permissionHistory(history, records)
+	if preparation.projectInstructions != "" {
+		projectContext := fmt.Sprintf("# AGENTS.md instructions for %s\n<INSTRUCTIONS>\n%s\n</INSTRUCTIONS>", runSettings.Workspace, preparation.projectInstructions)
+		history = append([]session.Message{{Role: session.RoleUser, Blocks: []session.Block{{Kind: "text", Text: projectContext}}}}, history...)
+	}
 	invocation := loops.Invocation{
 		Policy:       policy,
 		Reviewer:     reviewer,

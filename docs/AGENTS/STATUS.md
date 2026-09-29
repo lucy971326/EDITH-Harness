@@ -9,7 +9,7 @@
 - Wails v3 Desktop：支持 Windows／macOS，复用同一份 React 构建产物与后台，业务通过 Stream 传完整 JSON-RPC 2.0 消息；单实例唤醒、窗口布局恢复、关窗隐藏到托盘已实现；Windows 自绘标题栏，macOS 保留原生交通灯。Linux 保留 Web，不构建 Desktop；同一份用户数据只允许一个后台运行。
 - 设置：独立导航，通用内含主题与默认关闭的通知开关；Agent 分组表单、个人 Skill 管理、模型与供应商、智能审批方式、可折叠 Hooks 列表，以及全局 MCP Server 的增删改、开关、重连全部全局 Server 和 HTTP OAuth 登录；项目 Skill 只读，项目 MCP 配置只读、确认后可登录。分类切换保留草稿，离开前确认未保存修改。
 - 工作区：Monaco 编辑器、自动保存与冲突保护、文件监听、Run Diff 与受版本保护的撤销、真实 PTY 终端。
-- Agent 能力：命令／持续进程、补丁、MCP、Skills；子任务支持主会话 → 孩子 → 孙子，独立页面、续聊与递归停止。
+- Agent 能力：命令／持续进程、补丁、MCP、Skills；每轮读取工作区根目录 `AGENTS.md`；子任务支持主会话 → 孩子 → 孙子，独立页面、续聊与递归停止。
 - 安全：四档权限、人工／LLM／Jev 审批、项目 MCP 配置信任与逐次工具审批；Linux bwrap + seccomp、macOS Seatbelt。
 - Hooks：PreToolUse 本地命令、全局／项目设置、项目信任、顺序与超时；明确拒绝阻止工具，故障报告后放行，Run 取消停止执行。用户已验证日志 Hook。
 - 后台采用入口显式装配、internal 领域组织；Host、Product、旧路径转发和旧数据迁移已移除。存储格式归领域，persist 只负责可靠文件操作；编辑器文件生命周期集中在 use-files。
