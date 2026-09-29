@@ -173,7 +173,7 @@ func TestProductCreateSelectsConfiguredModel(t *testing.T) {
 		wantModel  string
 		wantFailed bool
 	}{
-		{name: "skip empty key", config: "providers:\n  deepseek:\n    apiKey: \"\"\n  google:\n    apiKey: test-key\n", wantModel: "google/gemini-3.5-flash-lite"},
+		{name: "skip empty key", config: "providers:\n  deepseek:\n    apiKey: \"\"\n  xiaomi:\n    apiKey: test-key\n", wantModel: "xiaomi/"},
 		{name: "no usable key", config: "providers:\n  deepseek:\n    apiKey: \"\"\n", wantFailed: true},
 	}
 	for _, tc := range cases {
@@ -215,7 +215,7 @@ func TestProductCreateSelectsConfiguredModel(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if created.Settings.Model != tc.wantModel {
+			if !strings.HasPrefix(created.Settings.Model, tc.wantModel) {
 				t.Fatalf("model = %q, want %q", created.Settings.Model, tc.wantModel)
 			}
 		})
@@ -273,7 +273,7 @@ func newTestFixture(t *testing.T) testFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = os.WriteFile(filepath.Join(home, ".harness", "config.yaml"), []byte("providers:\n  deepseek:\n    apiKey: test-key\n  google:\n    apiKey: test-key\n"), 0o600)
+	err = os.WriteFile(filepath.Join(home, ".harness", "config.yaml"), []byte("providers:\n  deepseek:\n    apiKey: test-key\n  xiaomi:\n    apiKey: test-key\n"), 0o600)
 	if err != nil {
 		t.Fatal(err)
 	}

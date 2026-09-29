@@ -45,14 +45,23 @@ type ToolResult struct {
 	IsError bool   `json:"isError,omitempty"`
 }
 
+// 数据。供应商用于续接思考的原始块；仅回传给同一供应商和模型。
+type ModelContinuation struct {
+	Provider string          `json:"provider"`
+	Model    string          `json:"model"`
+	API      string          `json:"api"`
+	Data     json.RawMessage `json:"data"`
+}
+
 // 数据。一句消息里的一个有序内容块。
 type Block struct {
-	Kind   string      `json:"kind"`
-	Text   string      `json:"text,omitempty"`
-	Tool   *ToolCall   `json:"tool,omitempty"`
-	Result *ToolResult `json:"result,omitempty"`
-	Media  *Media      `json:"media,omitempty"`
-	Error  string      `json:"error,omitempty"`
+	Kind         string             `json:"kind"`
+	Continuation *ModelContinuation `json:"continuation,omitempty"`
+	Text         string             `json:"text,omitempty"`
+	Tool         *ToolCall          `json:"tool,omitempty"`
+	Result       *ToolResult        `json:"result,omitempty"`
+	Media        *Media             `json:"media,omitempty"`
+	Error        string             `json:"error,omitempty"`
 }
 
 // 数据。账本中的一个完整节点内容。

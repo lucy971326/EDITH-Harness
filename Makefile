@@ -79,3 +79,8 @@ agent-web-test: clients/node_modules/.package-lock.json
 # 按需安装 npm 依赖
 clients/node_modules/.package-lock.json: clients/package.json clients/package-lock.json
 	npm --prefix clients ci --no-audit --no-fund
+
+# 仅开发者显式更新模型快照；普通构建保持离线。
+.PHONY: models-update
+models-update:
+	node build/models.mjs

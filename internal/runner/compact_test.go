@@ -89,11 +89,14 @@ func TestCompactAppendsSummaryAndProjectsHistory(t *testing.T) {
 		t.Fatalf("entries = %#v", entries)
 	}
 	history := fixture.session.History()
-	if len(history) != 1 || history[0].Blocks[0].Kind != "text" || history[0].Blocks[0].Text != "keep going" {
+	if len(history) != 1 || history[0].Role != session.RoleUser || history[0].Blocks[0].Kind != "text" || history[0].Blocks[0].Text != "keep going" {
 		t.Fatalf("history = %#v", history)
 	}
-	if request["tool_choice"] != "none" {
-		t.Fatalf("tool_choice = %#v", request["tool_choice"])
+	if _, ok := request["tools"]; ok {
+		t.Fatalf("compact request included tools: %#v", request["tools"])
+	}
+	if _, ok := request["tool_choice"]; ok {
+		t.Fatalf("compact request included tool choice: %#v", request["tool_choice"])
 	}
 	messages, _ := request["messages"].([]any)
 	if len(messages) == 0 {

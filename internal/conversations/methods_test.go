@@ -213,7 +213,7 @@ func TestSendAcceptsValidatedImageAndRejectsBadImage(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = fixture.service.UpdateSettings(t.Context(), created.Meta.ID, settings.SessionSettings{
-		AgentID: "default", Model: "google/gemini-3.5-flash-lite", ReasoningEffort: "low",
+		AgentID: "default", Model: "xiaomi/mimo-v2.6-pro", ReasoningEffort: "on",
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -3293,6 +3293,15 @@
 .model-settings-auth .inline-notice {
   flex-basis: 100%;
 }
+.model-settings-device-code {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  letter-spacing: 0.08em;
+  user-select: all;
+}
 .model-settings-models {
   margin-top: var(--space-6);
   padding-top: var(--space-6);
@@ -3403,6 +3412,9 @@
   font-size: var(--font-size-caption);
   font-variant-numeric: tabular-nums;
   text-align: center;
+}
+.model-level-options {
+  grid-column: 2 / -1;
 }
 .model-level-actions {
   display: flex;

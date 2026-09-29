@@ -3,13 +3,17 @@ package llm
 import (
 	"context"
 	"fmt"
-	"harness/internal/llm/codex"
-	"harness/internal/persist"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 
-	"github.com/zendev-sh/goai/provider"
+	"harness/internal/llm/codex"
+
+	"harness/internal/llm/oauth"
+
+	"harness/internal/llm/xai"
+	"harness/internal/persist"
 )
 
 // Models 返回当前已配置 Provider 可用的模型、窗口、是否看图和思考档位。
@@ -18,7 +22,7 @@ func (c *Client) Models() []ModelChoice {
 	out := make([]ModelChoice, 0, len(state.models))
 	for id, definition := range state.models {
 		provider, ok := state.provider(definition.Provider)
-		if !ok || !validProtocol(protocolFor(definition.Provider, provider)) || !c.providerReady(definition.Provider, provider) {
+		if !ok || !validProtocol(modelProtocol(definition, provider)) || !c.providerReady(definition.Provider, provider) {
 			continue
 		}
 		efforts := make([]string, 0, len(definition.Reasoning))
@@ -78,7 +82,29 @@ type Client struct {
 	current atomic.Pointer[modelState]
 	editMu  sync.Mutex
 	files   *persist.Files
-	auth    *codex.Auth
+	auth    map[string]modelAuth
+}
+
+// 契约。已实现的内置账号通道，凭据与固定端点由各自实现持有。
+type modelAuth interface {
+	Start() (oauth.View, error)
+	Status() oauth.View
+	Cancel() oauth.View
+	Logout() (oauth.View, error)
+	Authenticated() bool
+	RequestAuth(context.Context) (oauth.Authorization, error)
+	Close()
+}
+
+var builtInProviders = []string{"openai-codex", "xai-oauth"}
+
+func builtInProvider(id string) bool {
+	for _, item := range builtInProviders {
+		if item == id {
+			return true
+		}
+	}
+	return false
 }
 
 type modelState struct {
@@ -87,8 +113,8 @@ type modelState struct {
 }
 
 func (s *modelState) provider(id string) (providerConfig, bool) {
-	if id == "openai-codex" {
-		return providerConfig{Protocol: "openai-codex"}, true
+	if builtInProvider(id) {
+		return providerConfig{Protocol: id}, true
 	}
 	entry, ok := s.config.Providers[id]
 	return entry, ok
@@ -112,20 +138,20 @@ func (c *Client) Pin() *Client {
 	return pinned
 }
 
-// Stream 根据本次调用配置选择模型和思考档位，直接返回 goai 的流事件。
-func (c *Client) Stream(ctx context.Context, config RunConfig, input Input) (<-chan provider.StreamChunk, error) {
+// Stream 固定请求参数，再将供应商流翻译为 Harness 事件。
+func (c *Client) Stream(ctx context.Context, config RunConfig, input Input) (<-chan StreamChunk, error) {
 	state := c.state()
 	definition, ok := state.models[config.Model]
 	if !ok {
 		return nil, fmt.Errorf("llm: unknown model %q", config.Model)
 	}
-	providerConfig, ok := state.provider(definition.Provider)
+	provider, ok := state.provider(definition.Provider)
 	if !ok {
 		return nil, fmt.Errorf("llm: provider %q is not configured", definition.Provider)
 	}
-	protocol := protocolFor(definition.Provider, providerConfig)
-	if protocol != "openai-codex" && providerConfig.APIKey == "" {
-		return nil, fmt.Errorf("llm: provider %q has no API key", definition.Provider)
+	protocol := modelProtocol(definition, provider)
+	if !validProtocol(protocol) {
+		return nil, fmt.Errorf("llm: unsupported protocol %q", protocol)
 	}
 	messages, err := toProviderMessages(input.History, definition.Vision)
 	if err != nil {
@@ -135,46 +161,39 @@ func (c *Client) Stream(ctx context.Context, config RunConfig, input Input) (<-c
 	if err != nil {
 		return nil, err
 	}
-	if protocol == "openai-chat" {
-		copyOptions := make(map[string]any, len(options)+1)
-		for key, value := range options {
-			copyOptions[key] = value
+	request := streamRequest{definition: definition, protocol: protocol, baseURL: modelURL(definition, provider), token: provider.APIKey,
+		system: input.System, messages: messages, tools: toProviderTools(input.Tools), toolChoice: input.ToolChoice, options: options}
+	if strings.ContainsAny(request.baseURL, "{}") {
+		return nil, fmt.Errorf("llm: 请先填写供应商 API 地址中的账号和网关 ID")
+	}
+	if definition.Provider == "github-copilot" {
+		initiator := "user"
+		if len(messages) > 0 && messages[len(messages)-1].Role != RoleUser {
+			initiator = "agent"
 		}
-		copyOptions["useResponsesAPI"] = false
-		options = copyOptions
-	}
-	if protocol == "openai-codex" {
-		options = codex.Options(options)
-	}
-	var model provider.LanguageModel
-	if protocol == "openai-codex" {
-		if c.auth == nil {
-			return nil, fmt.Errorf("llm: ChatGPT is not connected")
+		request.headers = map[string]string{"User-Agent": "GitHubCopilotChat/0.35.0", "Editor-Version": "vscode/1.107.0", "Editor-Plugin-Version": "copilot-chat/0.35.0", "Copilot-Integration-Id": "vscode-chat", "X-Initiator": initiator, "Openai-Intent": "conversation-edits"}
+		for _, message := range messages {
+			for _, part := range message.Content {
+				if part.Type == PartImage {
+					request.headers["Copilot-Vision-Request"] = "true"
+				}
+			}
 		}
-		model, err = c.auth.Model(ctx, definition.ID)
-	} else {
-		model, err = newModel(definition, providerConfig)
 	}
-	if err != nil {
-		return nil, err
+	if auth := c.auth[definition.Provider]; auth != nil {
+		credentials, err := auth.RequestAuth(ctx)
+		if err != nil {
+			return nil, err
+		}
+		request.token = credentials.Token
+		if credentials.AccountID != "" {
+			request.headers = map[string]string{"chatgpt-account-id": credentials.AccountID, "originator": "edith", "OpenAI-Beta": "responses=experimental"}
+		}
 	}
-	toolDefinitions := toProviderTools(input.Tools)
-	system := input.System
-	if protocol == "openai-codex" && system == "" {
-		system = "You are a helpful assistant."
+	if request.token == "" {
+		return nil, fmt.Errorf("llm: provider %q has no credentials", definition.Provider)
 	}
-	params := provider.GenerateParams{
-		System:          system,
-		Messages:        messages,
-		Tools:           toolDefinitions,
-		ToolChoice:      input.ToolChoice,
-		ProviderOptions: options,
-	}
-	stream, err := model.DoStream(ctx, params)
-	if err != nil {
-		return nil, err
-	}
-	return stream.Stream, nil
+	return startStream(ctx, request), nil
 }
 
 // New 从本机配置创建模型客户端。
@@ -187,33 +206,74 @@ func New(files *persist.Files) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	auth, err := codex.New(files)
-	if err != nil {
-		return nil, err
+	client := &Client{files: files, auth: map[string]modelAuth{}}
+	constructors := []struct {
+		id  string
+		new func(*persist.Files) (modelAuth, error)
+	}{
+		{"openai-codex", func(f *persist.Files) (modelAuth, error) { return codex.New(f) }},
+		{"xai-oauth", func(f *persist.Files) (modelAuth, error) { return xai.New(f) }},
 	}
-	client := &Client{files: files, auth: auth}
+	for _, item := range constructors {
+		auth, err := item.new(files)
+		if err != nil {
+			_ = client.Close()
+			return nil, err
+		}
+		client.auth[item.id] = auth
+	}
 	client.current.Store(&modelState{config: cfg, models: models})
 	return client, nil
 }
 
 func (c *Client) providerReady(id string, config providerConfig) bool {
-	if protocolFor(id, config) == "openai-codex" {
-		return c.auth != nil && c.auth.Authenticated()
+	if auth := c.auth[id]; auth != nil {
+		return auth.Authenticated()
 	}
 	return config.APIKey != ""
 }
 
 // Close 取消尚未完成的浏览器授权并释放回调监听器。
 func (c *Client) Close() error {
-	if c.auth != nil {
-		c.auth.Close()
+	for _, auth := range c.auth {
+		auth.Close()
 	}
 	return nil
 }
 
-// StartCodexAuth 开始本机浏览器登录并返回授权网址。
-func (c *Client) StartCodexAuth() (codex.View, error) { return c.auth.Start() }
+func (c *Client) authFor(id string) (modelAuth, error) {
+	auth := c.auth[id]
+	if auth == nil {
+		return nil, fmt.Errorf("%w: 未知账号供应商", ErrInvalidSettings)
+	}
+	return auth, nil
+}
 
-func (c *Client) CodexAuthStatus() codex.View          { return c.auth.Status() }
-func (c *Client) CancelCodexAuth() codex.View          { return c.auth.Cancel() }
-func (c *Client) LogoutCodexAuth() (codex.View, error) { return c.auth.Logout() }
+func (c *Client) StartAuth(id string) (oauth.View, error) {
+	auth, err := c.authFor(id)
+	if err != nil {
+		return oauth.View{}, err
+	}
+	return auth.Start()
+}
+func (c *Client) AuthStatus(id string) (oauth.View, error) {
+	auth, err := c.authFor(id)
+	if err != nil {
+		return oauth.View{}, err
+	}
+	return auth.Status(), nil
+}
+func (c *Client) CancelAuth(id string) (oauth.View, error) {
+	auth, err := c.authFor(id)
+	if err != nil {
+		return oauth.View{}, err
+	}
+	return auth.Cancel(), nil
+}
+func (c *Client) LogoutAuth(id string) (oauth.View, error) {
+	auth, err := c.authFor(id)
+	if err != nil {
+		return oauth.View{}, err
+	}
+	return auth.Logout()
+}

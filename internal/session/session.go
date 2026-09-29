@@ -150,7 +150,7 @@ func projectSummary(message Message) Message {
 	}
 	return Message{
 		RunID:  message.RunID,
-		Role:   RoleAssistant,
+		Role:   RoleUser,
 		Blocks: []Block{{Kind: "text", Text: text}},
 	}
 }

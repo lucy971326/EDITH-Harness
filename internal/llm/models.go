@@ -2,34 +2,29 @@ package llm
 
 import (
 	"bytes"
-	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 
 	"harness/internal/persist"
-
-	"github.com/zendev-sh/goai/provider"
-	"github.com/zendev-sh/goai/provider/anthropic"
-	"github.com/zendev-sh/goai/provider/deepseek"
-	"github.com/zendev-sh/goai/provider/google"
-	"github.com/zendev-sh/goai/provider/openai"
 )
-
-//go:embed models.json
-var modelsJSON []byte
 
 // 数据。models.json 的根对象。
 type modelFile struct {
-	Models map[string]model `json:"models"`
+	Version int              `json:"version,omitempty"`
+	Models  map[string]model `json:"models"`
+	Hidden  []string         `json:"hidden,omitempty"`
 }
 
 // 数据。一条模型定义。
 type model struct {
 	Provider      string          `json:"provider"`
+	Protocol      string          `json:"protocol,omitempty"`
 	ID            string          `json:"id"`
 	ContextWindow int             `json:"contextWindow"`
+	MaxOutput     int             `json:"maxOutput,omitempty"`
+	Manual        bool            `json:"-"`
 	Vision        bool            `json:"vision"`
 	Reasoning     reasoningLevels `json:"reasoning"`
 }
@@ -102,17 +97,24 @@ func (levels reasoningLevels) MarshalJSON() ([]byte, error) {
 }
 
 func loadModels() (map[string]model, error) {
-	return parseModels(modelsJSON)
+	if catalogError != nil {
+		return nil, catalogError
+	}
+	out := make(map[string]model, len(catalog.Models))
+	for key, value := range catalog.Models {
+		out[key] = value
+	}
+	return out, nil
 }
 
 func loadModelsFile(files *persist.Files) (map[string]model, []byte, error) {
 	body, err := files.Read("models.json")
 	if errors.Is(err, os.ErrNotExist) {
-		body = modelsJSON
+		body = []byte(`{"version":2,"models":{}}`)
 		err = files.Write("models.json", body)
 	}
 	if err != nil {
-		return nil, nil, fmt.Errorf("llm: read models: %w", err)
+		return nil, nil, err
 	}
 	models, err := parseModels(body)
 	return models, body, err
@@ -124,15 +126,27 @@ func parseModels(data []byte) (map[string]model, error) {
 	if err != nil {
 		return nil, fmt.Errorf("llm: parse models.json: %w", err)
 	}
-	if file.Models == nil {
-		file.Models = map[string]model{}
+	if file.Version != 2 {
+		return nil, fmt.Errorf("llm: unsupported models file version %d", file.Version)
 	}
-	for id, definition := range file.Models {
-		if definition.ContextWindow <= 0 {
-			return nil, fmt.Errorf("llm: model %q has invalid contextWindow", id)
+	out, err := loadModels()
+	if err != nil {
+		return nil, err
+	}
+	for key, value := range file.Models {
+		if value.Protocol != "" && !validProtocol(value.Protocol) {
+			return nil, fmt.Errorf("llm: unsupported model protocol %q", value.Protocol)
 		}
+		if value.ContextWindow <= 0 || value.MaxOutput < 0 || value.MaxOutput > value.ContextWindow {
+			return nil, fmt.Errorf("llm: model %q has invalid token limits", key)
+		}
+		value.Manual = true
+		out[key] = value
 	}
-	return file.Models, nil
+	for _, key := range file.Hidden {
+		delete(out, key)
+	}
+	return out, nil
 }
 
 func reasoningOptions(definition model, effort string) (map[string]any, error) {
@@ -147,55 +161,35 @@ func reasoningOptions(definition model, effort string) (map[string]any, error) {
 	return nil, fmt.Errorf("llm: model %q does not support reasoning effort %q", definition.ID, effort)
 }
 
-func newModel(definition model, config providerConfig) (provider.LanguageModel, error) {
-	switch protocolFor(definition.Provider, config) {
-	case "deepseek":
-		options := []deepseek.Option{deepseek.WithAPIKey(config.APIKey)}
-		if config.BaseURL != "" {
-			options = append(options, deepseek.WithBaseURL(config.BaseURL))
-		}
-		return deepseek.Chat(definition.ID, options...), nil
-	case "google":
-		options := []google.Option{google.WithAPIKey(config.APIKey)}
-		if config.BaseURL != "" {
-			options = append(options, google.WithBaseURL(config.BaseURL))
-		}
-		return google.Chat(definition.ID, options...), nil
-	case "openai-chat", "openai-responses":
-		options := []openai.Option{openai.WithAPIKey(config.APIKey)}
-		if config.BaseURL != "" {
-			options = append(options, openai.WithBaseURL(config.BaseURL))
-		}
-		return openai.Chat(definition.ID, options...), nil
-	case "anthropic":
-		options := []anthropic.Option{anthropic.WithAPIKey(config.APIKey)}
-		if config.BaseURL != "" {
-			options = append(options, anthropic.WithBaseURL(config.BaseURL))
-		}
-		return anthropic.Chat(definition.ID, options...), nil
-	default:
-		return nil, fmt.Errorf("llm: provider %q has unsupported protocol", definition.Provider)
-	}
-}
-
 func protocolFor(id string, config providerConfig) string {
-	if id == "openai-codex" {
-		return id
+	if builtInProvider(id) {
+		return catalog.Providers[id].Protocol
 	}
 	if config.Protocol != "" {
 		return config.Protocol
 	}
-	if id == "deepseek" || id == "google" {
-		return id
+	return catalog.Providers[id].Protocol
+}
+
+// 混合网关按模型选择协议，其余沿用供应商协议。
+func modelProtocol(definition model, config providerConfig) string {
+	if definition.Protocol != "" {
+		return definition.Protocol
 	}
-	return ""
+	return protocolFor(definition.Provider, config)
 }
 
 func validProtocol(value string) bool {
 	switch value {
-	case "deepseek", "google", "openai-chat", "openai-responses", "anthropic", "openai-codex":
+	case "openai-chat", "openai-responses", "anthropic", "openai-codex":
 		return true
-	default:
-		return false
 	}
+	return false
+}
+
+func settingsProtocol(id string, config providerConfig) string {
+	if format := catalog.Providers[id].ThinkingFormat; format != "" {
+		return format
+	}
+	return protocolFor(id, config)
 }

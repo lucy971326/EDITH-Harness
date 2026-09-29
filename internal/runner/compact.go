@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/zendev-sh/goai/provider"
-
 	"harness/internal/llm"
 	"harness/internal/loops"
 	"harness/internal/permissions"
@@ -123,10 +121,6 @@ func (r *Runner) runCompact(runCtx context.Context, sessionID, runID string, cur
 		return err
 	}
 
-	definitions, err := r.tools.Definitions(tools.WithAccess(runCtx, tools.Access{Mode: permissions.ReadOnly}), prepared.settings.Workspace, prepared.toolNames)
-	if err != nil {
-		return err
-	}
 	history := append([]session.Message(nil), sess.History()...)
 	history = append(history, session.Message{
 		Role:   session.RoleUser,
@@ -135,10 +129,6 @@ func (r *Runner) runCompact(runCtx context.Context, sessionID, runID string, cur
 	input := llm.Input{
 		System:  prepared.systemPrompt,
 		History: history,
-		Tools:   definitions,
-	}
-	if len(definitions) > 0 {
-		input.ToolChoice = "none"
 	}
 	stream, err := modelClient.Stream(runCtx, llm.RunConfig{
 		Model:           prepared.settings.Model,
@@ -159,8 +149,8 @@ func (r *Runner) runCompact(runCtx context.Context, sessionID, runID string, cur
 
 	text := ""
 	sawToolCall := false
-	finishReason := provider.FinishReason("")
-	var usage provider.Usage
+	finishReason := llm.FinishReason("")
+	var usage llm.Usage
 	for {
 		select {
 		case <-runCtx.Done():
@@ -170,9 +160,9 @@ func (r *Runner) runCompact(runCtx context.Context, sessionID, runID string, cur
 				return r.finishCompact(runCtx, sessionID, runID, sess, current, modelClient, prepared.settings.Model, entryID, text, sawToolCall, finishReason, usage)
 			}
 			switch chunk.Type {
-			case provider.ChunkReasoning:
+			case llm.ChunkReasoning:
 				continue
-			case provider.ChunkText:
+			case llm.ChunkText:
 				text += chunk.Text
 				err = r.applyDelta(runCtx, sessionID, runID, current, loops.Event{
 					Kind:     loops.EventTextDelta,
@@ -183,18 +173,14 @@ func (r *Runner) runCompact(runCtx context.Context, sessionID, runID string, cur
 				if err != nil {
 					return err
 				}
-			case provider.ChunkToolCall:
+			case llm.ChunkToolCall:
 				sawToolCall = true
-			case provider.ChunkStepFinish:
-				if chunk.FinishReason != "" {
-					finishReason = chunk.FinishReason
-				}
-			case provider.ChunkFinish:
+			case llm.ChunkFinish:
 				usage = chunk.Usage
 				if chunk.FinishReason != "" {
 					finishReason = chunk.FinishReason
 				}
-			case provider.ChunkError:
+			case llm.ChunkError:
 				if chunk.Error == nil {
 					return fmt.Errorf("runner: compact stream failed")
 				}
@@ -212,18 +198,18 @@ func (r *Runner) finishCompact(
 	modelClient *llm.Client,
 	model, entryID, text string,
 	sawToolCall bool,
-	finishReason provider.FinishReason,
-	usage provider.Usage,
+	finishReason llm.FinishReason,
+	usage llm.Usage,
 ) error {
 	if sawToolCall {
 		return fmt.Errorf("runner: compact requested a tool")
 	}
 	switch finishReason {
-	case provider.FinishStop:
+	case llm.FinishStop:
 		if strings.TrimSpace(text) == "" {
 			return fmt.Errorf("runner: compact produced empty summary")
 		}
-	case provider.FinishLength:
+	case llm.FinishLength:
 		return fmt.Errorf("runner: compact was truncated")
 	case "":
 		return fmt.Errorf("runner: compact finished without a stop reason")

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -37,14 +38,7 @@ func (c *Client) readDiskLocked() (config, map[string]model, []byte, []byte, err
 	if cfg.Providers == nil {
 		cfg.Providers = map[string]providerConfig{}
 	}
-	modelBody, err := c.files.Read("models.json")
-	if errors.Is(err, os.ErrNotExist) {
-		return cfg, map[string]model{}, configBody, nil, nil
-	}
-	if err != nil {
-		return config{}, nil, nil, nil, err
-	}
-	models, err := parseModels(modelBody)
+	models, modelBody, err := loadModelsFile(c.files)
 	return cfg, models, configBody, modelBody, err
 }
 
@@ -67,29 +61,39 @@ func (c *Client) ReadSettings() (SettingsView, error) {
 func settingsView(cfg config, models map[string]model, configBody, modelBody []byte) SettingsView {
 	view := SettingsView{Providers: []ProviderSettings{}, Models: []ModelSettings{}, Presets: []ModelSettings{},
 		ProviderRevision: revision(configBody), ModelRevision: revision(modelBody)}
-	ids := map[string]bool{"openai-codex": true}
+	ids := map[string]bool{}
+	for _, id := range builtInProviders {
+		ids[id] = true
+	}
 	for id := range cfg.Providers {
 		ids[id] = true
 	}
 	for _, item := range models {
-		ids[item.Provider] = true
+		if item.Manual {
+			ids[item.Provider] = true
+		}
 	}
+	for id, preset := range catalog.Providers {
+		preset.ID = id
+		view.ProviderPresets = append(view.ProviderPresets, preset)
+	}
+	sort.Slice(view.ProviderPresets, func(i, j int) bool { return view.ProviderPresets[i].ID < view.ProviderPresets[j].ID })
 	for id := range ids {
 		entry := cfg.Providers[id]
 		view.Providers = append(view.Providers, ProviderSettings{
-			ID: id, Protocol: protocolFor(id, entry), BaseURL: entry.BaseURL, HasAPIKey: entry.APIKey != "",
+			ID: id, Protocol: protocolFor(id, entry), BaseURL: providerURL(id, entry), HasAPIKey: entry.APIKey != "",
 		})
 	}
 	sort.Slice(view.Providers, func(i, j int) bool { return view.Providers[i].ID < view.Providers[j].ID })
 	for key, item := range models {
 		entry := cfg.Providers[item.Provider]
-		view.Models = append(view.Models, modelSettings(key, item, protocolFor(item.Provider, entry)))
+		view.Models = append(view.Models, modelSettings(key, item, settingsProtocol(item.Provider, entry)))
 	}
 	sort.Slice(view.Models, func(i, j int) bool { return view.Models[i].Key < view.Models[j].Key })
 	presets, err := loadModels()
 	if err == nil {
 		for key, item := range presets {
-			view.Presets = append(view.Presets, modelSettings(key, item, item.Provider))
+			view.Presets = append(view.Presets, modelSettings(key, item, settingsProtocol(item.Provider, cfg.Providers[item.Provider])))
 		}
 		sort.Slice(view.Presets, func(i, j int) bool { return view.Presets[i].Key < view.Presets[j].Key })
 	}
@@ -97,8 +101,11 @@ func settingsView(cfg config, models map[string]model, configBody, modelBody []b
 }
 
 func modelSettings(key string, item model, protocol string) ModelSettings {
-	setting := ModelSettings{Key: key, Provider: item.Provider, ID: item.ID,
-		ContextWindow: item.ContextWindow, Vision: item.Vision, Reasoning: []ReasoningSettings{}}
+	if item.Protocol != "" {
+		protocol = item.Protocol
+	}
+	setting := ModelSettings{Protocol: item.Protocol, Key: key, Provider: item.Provider, ID: item.ID,
+		ContextWindow: item.ContextWindow, MaxOutput: item.MaxOutput, Manual: item.Manual, Vision: item.Vision, Reasoning: []ReasoningSettings{}}
 	for _, level := range item.Reasoning {
 		setting.Reasoning = append(setting.Reasoning, levelSettings(level, protocol))
 	}
@@ -113,12 +120,12 @@ func levelSettings(level reasoningLevel, protocol string) ReasoningSettings {
 	switch protocol {
 	case "deepseek":
 		result.Effort, _ = level.Options["reasoning_effort"].(string)
-	case "google":
-		google, _ := level.Options["google"].(map[string]any)
-		thinking, _ := google["thinkingConfig"].(map[string]any)
-		result.Effort, _ = thinking["thinkingLevel"].(string)
-	case "openai-chat", "openai-responses", "openai-codex":
+	case "qwen", "openai-chat", "openai-responses", "openai-codex":
 		result.Effort, _ = level.Options["reasoning_effort"].(string)
+	case "openrouter":
+		if value, ok := level.Options["reasoning"].(map[string]any); ok {
+			result.Effort, _ = value["effort"].(string)
+		}
 	case "anthropic":
 		thinking, _ := level.Options["thinking"].(map[string]any)
 		if kind, _ := thinking["type"].(string); kind == "adaptive" {
@@ -128,6 +135,9 @@ func levelSettings(level reasoningLevel, protocol string) ReasoningSettings {
 			result.BudgetTokens = int(budget)
 		}
 		result.Effort, _ = level.Options["effort"].(string)
+	}
+	if result.Mode != "off" && result.Effort == "" {
+		result.Effort = level.Effort
 	}
 	return result
 }
@@ -149,8 +159,12 @@ func validateProvider(input SaveProviderInput) error {
 	if !validProviderID(input.ID) || !validProtocol(input.Protocol) || input.ClearAPIKey && input.APIKey != "" {
 		return fmt.Errorf("%w: 供应商 ID、协议或密钥操作无效", ErrInvalidSettings)
 	}
-	if input.ID == "openai-codex" || input.Protocol == "openai-codex" {
-		return fmt.Errorf("%w: ChatGPT 订阅连接由内置登录管理", ErrInvalidSettings)
+	if builtInProvider(input.ID) || builtInProvider(input.Protocol) {
+		return fmt.Errorf("%w: 账号连接由内置登录管理", ErrInvalidSettings)
+	}
+	resolvedURL := providerURL(input.ID, providerConfig{Protocol: input.Protocol, BaseURL: strings.TrimSpace(input.BaseURL)})
+	if strings.ContainsAny(resolvedURL, "{}") {
+		return fmt.Errorf("%w: 请填写 API 地址中的账号和网关 ID", ErrInvalidSettings)
 	}
 	if strings.TrimSpace(input.BaseURL) != "" {
 		parsed, err := url.Parse(input.BaseURL)
@@ -200,7 +214,7 @@ func (c *Client) SaveProvider(input SaveProviderInput) (SettingsView, error) {
 	if revision(configBody) != input.Revision {
 		return SettingsView{}, ErrSettingsChanged
 	}
-	if existing, ok := cfg.Providers[input.ID]; ok && protocolFor(input.ID, existing) != input.Protocol {
+	if existing := cfg.Providers[input.ID]; protocolFor(input.ID, existing) != "" && protocolFor(input.ID, existing) != input.Protocol {
 		for _, item := range models {
 			if item.Provider == input.ID {
 				return SettingsView{}, fmt.Errorf("%w: 请先删除该供应商下的模型，再切换请求协议", ErrInvalidSettings)
@@ -229,7 +243,20 @@ func (c *Client) SaveProvider(input SaveProviderInput) (SettingsView, error) {
 }
 
 func encodeModels(models map[string]model) ([]byte, error) {
-	body, err := json.MarshalIndent(modelFile{Models: models}, "", "  ")
+	file := modelFile{Version: 2, Models: map[string]model{}}
+	for key, value := range models {
+		original, exists := catalog.Models[key]
+		if value.Manual || !exists || !reflect.DeepEqual(value, original) {
+			file.Models[key] = value
+		}
+	}
+	for key := range catalog.Models {
+		if _, exists := models[key]; !exists {
+			file.Hidden = append(file.Hidden, key)
+		}
+	}
+	sort.Strings(file.Hidden)
+	body, err := json.MarshalIndent(file, "", "  ")
 	if err != nil {
 		return nil, err
 	}
@@ -238,11 +265,11 @@ func encodeModels(models map[string]model) ([]byte, error) {
 
 func modelFromSettings(input ModelSettings, protocol string) (string, model, error) {
 	if !validProviderID(input.Provider) || strings.TrimSpace(input.ID) != input.ID || input.ID == "" || len(input.ID) > 200 ||
-		strings.ContainsAny(input.ID, "\r\n\t") || input.ContextWindow <= 0 || input.ContextWindow > 100000000 || len(input.Reasoning) == 0 {
+		strings.ContainsAny(input.ID, "\r\n\t") || input.ContextWindow <= 0 || input.ContextWindow > 100000000 || input.MaxOutput < 0 || input.MaxOutput > input.ContextWindow || len(input.Reasoning) == 0 {
 		return "", model{}, fmt.Errorf("%w: 模型 ID、窗口或档位无效", ErrInvalidSettings)
 	}
 	key := input.Provider + "/" + input.ID
-	item := model{Provider: input.Provider, ID: input.ID, ContextWindow: input.ContextWindow,
+	item := model{Provider: input.Provider, ID: input.ID, ContextWindow: input.ContextWindow, MaxOutput: input.MaxOutput, Manual: true,
 		Vision: input.Vision, Reasoning: make(reasoningLevels, 0, len(input.Reasoning))}
 	seen := map[string]bool{}
 	for _, value := range input.Reasoning {
@@ -254,6 +281,15 @@ func modelFromSettings(input ModelSettings, protocol string) (string, model, err
 		options, err := levelOptions(value, protocol)
 		if err != nil {
 			return "", model{}, err
+		}
+		if protocol == "anthropic" && value.Mode == "enabled" && value.Effort != "auto" {
+			maximum := input.MaxOutput
+			if maximum == 0 {
+				maximum = min(16384, input.ContextWindow)
+			}
+			if value.BudgetTokens >= maximum {
+				return "", model{}, fmt.Errorf("%w: 思考预算必须小于最大输出", ErrInvalidSettings)
+			}
 		}
 		item.Reasoning = append(item.Reasoning, reasoningLevel{Effort: value.Name, Options: options})
 	}
@@ -268,25 +304,37 @@ func levelOptions(value ReasoningSettings, protocol string) (map[string]any, err
 		return nil, fmt.Errorf("%w: 思考强度不能为空", ErrInvalidSettings)
 	}
 	switch protocol {
+	case "openrouter":
+		if value.Mode == "off" {
+			return map[string]any{"reasoning": map[string]any{"enabled": false}}, nil
+		}
+		return map[string]any{"reasoning": map[string]any{"effort": value.Effort}}, nil
+	case "qwen":
+		options := map[string]any{"enable_thinking": value.Mode != "off"}
+		if value.Mode != "off" && value.Effort != "on" && value.Effort != "auto" {
+			options["reasoning_effort"] = value.Effort
+		}
+		return options, nil
 	case "deepseek":
+		if value.Mode != "off" && (value.Effort == "on" || value.Effort == "auto") {
+			return map[string]any{"thinking": map[string]any{"type": "enabled"}}, nil
+		}
 		if value.Mode == "off" {
 			return map[string]any{"thinking": map[string]any{"type": "disabled"}}, nil
 		}
 		return map[string]any{"thinking": map[string]any{"type": "enabled"}, "reasoning_effort": value.Effort}, nil
-	case "google":
-		if value.Mode == "off" {
-			return map[string]any{"google": map[string]any{"thinkingConfig": false}}, nil
-		}
-		level := value.Effort
-		return map[string]any{"google": map[string]any{"thinkingConfig": map[string]any{
-			"thinkingLevel": level, "includeThoughts": true,
-		}}}, nil
 	case "openai-chat", "openai-responses", "openai-codex":
+		if value.Effort == "auto" {
+			return map[string]any{}, nil
+		}
 		if value.Mode == "off" {
 			return map[string]any{"reasoning_effort": "none"}, nil
 		}
 		return map[string]any{"reasoning_effort": value.Effort}, nil
 	case "anthropic":
+		if value.Effort == "auto" {
+			return map[string]any{}, nil
+		}
 		if value.Mode == "off" {
 			return map[string]any{}, nil
 		}
@@ -297,7 +345,11 @@ func levelOptions(value ReasoningSettings, protocol string) (map[string]any, err
 			}
 			thinking["budgetTokens"] = value.BudgetTokens
 		}
-		return map[string]any{"thinking": thinking, "effort": value.Effort}, nil
+		result := map[string]any{"thinking": thinking}
+		if value.Effort != "on" {
+			result["effort"] = value.Effort
+		}
+		return result, nil
 	default:
 		return nil, fmt.Errorf("%w: 不支持的供应商协议", ErrInvalidSettings)
 	}
@@ -315,16 +367,33 @@ func (c *Client) SaveModel(input SaveModelInput) (SettingsView, error) {
 		return SettingsView{}, ErrSettingsChanged
 	}
 	provider, ok := cfg.Providers[input.Model.Provider]
-	if input.Model.Provider == "openai-codex" {
-		provider, ok = providerConfig{Protocol: "openai-codex"}, true
+	if builtInProvider(input.Model.Provider) {
+		provider, ok = providerConfig{Protocol: input.Model.Provider}, true
 	}
 	if !ok || !validProtocol(protocolFor(input.Model.Provider, provider)) {
 		return SettingsView{}, fmt.Errorf("%w: 请先保存供应商", ErrInvalidSettings)
 	}
-	key, item, err := modelFromSettings(input.Model, protocolFor(input.Model.Provider, provider))
-	if err != nil {
-		return SettingsView{}, err
+	key := input.Model.Provider + "/" + input.Model.ID
+	item, fromCatalog := catalog.Models[key]
+	if input.Model.Manual || !fromCatalog {
+		profile := settingsProtocol(input.Model.Provider, provider)
+		routedProtocol := input.Model.Protocol
+		if routedProtocol == "" {
+			routedProtocol = item.Protocol
+		}
+		if routedProtocol != "" {
+			if !validProtocol(routedProtocol) {
+				return SettingsView{}, fmt.Errorf("%w: 模型协议无效", ErrInvalidSettings)
+			}
+			profile = routedProtocol
+		}
+		key, item, err = modelFromSettings(input.Model, profile)
+		item.Protocol = routedProtocol
+		if err != nil {
+			return SettingsView{}, err
+		}
 	}
+
 	if input.Model.Key != "" && input.Model.Key != key {
 		return SettingsView{}, fmt.Errorf("%w: 模型 ID 不可修改", ErrInvalidSettings)
 	}
@@ -375,7 +444,7 @@ func (c *Client) DeleteModel(key, expectedRevision string) (SettingsView, error)
 
 // DeleteProvider 删除供应商及其模型；若第二次写入失败，按磁盘状态恢复当前目录。
 func (c *Client) DeleteProvider(id, providerRevision, modelRevision string) (SettingsView, error) {
-	if id == "openai-codex" {
+	if builtInProvider(id) {
 		return SettingsView{}, fmt.Errorf("%w: ChatGPT 内置连接不可删除", ErrInvalidSettings)
 	}
 	c.editMu.Lock()
@@ -405,6 +474,12 @@ func (c *Client) DeleteProvider(id, providerRevision, modelRevision string) (Set
 			delete(models, key)
 		}
 	}
+	for key, item := range catalog.Models {
+		if item.Provider == id {
+			models[key] = item
+		}
+	}
+
 	newModels, err := encodeModels(models)
 	if err != nil {
 		return SettingsView{}, err

@@ -7,6 +7,7 @@ import (
 
 	"harness/internal/llm"
 	"harness/internal/llm/codex"
+	"harness/internal/llm/oauth"
 )
 
 // 数据。模型目录不接受过滤参数。
@@ -94,24 +95,32 @@ func (s *Server) handleModelDefinitionDelete(_ context.Context, input ModelDefin
 	return view, modelSettingsError(err)
 }
 
-func (s *Server) handleModelAuthStart(_ context.Context, _ ModelListParams) (codex.View, error) {
-	view, err := s.models.StartCodexAuth()
+// 数据。内置账号通道的稳定供应商 ID。
+type ModelAuthParams struct {
+	ProviderID string `json:"providerID"`
+}
+
+func (s *Server) handleModelAuthStart(_ context.Context, input ModelAuthParams) (oauth.View, error) {
+	view, err := s.models.StartAuth(input.ProviderID)
 	if errors.Is(err, codex.ErrCallbackBusy) {
 		return view, &Error{Code: CodeConflict, Message: "ChatGPT 登录端口 1455 已被占用，请结束其他登录后重试", Cause: err}
 	}
-	return view, err
+	return view, modelSettingsError(err)
 }
 
-func (s *Server) handleModelAuthStatus(_ context.Context, _ ModelListParams) (codex.View, error) {
-	return s.models.CodexAuthStatus(), nil
+func (s *Server) handleModelAuthStatus(_ context.Context, input ModelAuthParams) (oauth.View, error) {
+	view, err := s.models.AuthStatus(input.ProviderID)
+	return view, modelSettingsError(err)
 }
 
-func (s *Server) handleModelAuthCancel(_ context.Context, _ ModelListParams) (codex.View, error) {
-	return s.models.CancelCodexAuth(), nil
+func (s *Server) handleModelAuthCancel(_ context.Context, input ModelAuthParams) (oauth.View, error) {
+	view, err := s.models.CancelAuth(input.ProviderID)
+	return view, modelSettingsError(err)
 }
 
-func (s *Server) handleModelAuthLogout(_ context.Context, _ ModelListParams) (codex.View, error) {
-	return s.models.LogoutCodexAuth()
+func (s *Server) handleModelAuthLogout(_ context.Context, input ModelAuthParams) (oauth.View, error) {
+	view, err := s.models.LogoutAuth(input.ProviderID)
+	return view, modelSettingsError(err)
 }
 
 func modelSettingsError(err error) error {

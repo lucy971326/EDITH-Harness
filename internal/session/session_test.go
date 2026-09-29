@@ -269,7 +269,7 @@ func TestHistoryStartsFromLatestSummary(t *testing.T) {
 	}
 	got := s.History()
 	if len(got) != 3 ||
-		got[0].Role != RoleAssistant || got[0].Blocks[0].Kind != "text" || got[0].Blocks[0].Text != "sum-1" ||
+		got[0].Role != RoleUser || got[0].Blocks[0].Kind != "text" || got[0].Blocks[0].Text != "sum-1" ||
 		got[1].Blocks[0].Text != "three" ||
 		got[2].Blocks[0].Text != "b" {
 		t.Fatalf("history = %#v", got)
@@ -297,7 +297,7 @@ func TestHistoryRecompactUsesLatestSummary(t *testing.T) {
 		}
 	}
 	got := s.History()
-	if len(got) != 1 || got[0].Blocks[0].Kind != "text" || got[0].Blocks[0].Text != "sum-2" {
+	if len(got) != 1 || got[0].Role != RoleUser || got[0].Blocks[0].Kind != "text" || got[0].Blocks[0].Text != "sum-2" {
 		t.Fatalf("history = %#v", got)
 	}
 }

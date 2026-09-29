@@ -8,8 +8,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/zendev-sh/goai/provider"
-
 	"harness/internal/llm"
 	"harness/internal/loops"
 	"harness/internal/session"
@@ -112,7 +110,7 @@ func (l *reactLoop) request(
 
 	message := session.Message{Role: session.RoleAssistant}
 	var calls []session.ToolCall
-	var usage provider.Usage
+	var usage llm.Usage
 	fail := func(cause error) (session.Message, string, []session.ToolCall, error) {
 		return l.failRequest(ctx, invocation, entryID, message, cause)
 	}
@@ -135,19 +133,27 @@ func (l *reactLoop) request(
 				return message, entryID, calls, nil
 			}
 			switch chunk.Type {
-			case provider.ChunkReasoning:
+			case llm.ChunkReasoning:
 				blockSeq := appendTextBlock(&message, "reasoning", chunk.Text)
 				err = invocation.Emit(ctx, loops.Event{Kind: loops.EventReasoningDelta, EntryID: entryID, BlockSeq: blockSeq, Text: chunk.Text})
 				if err != nil {
 					return session.Message{}, "", nil, err
 				}
-			case provider.ChunkText:
+			case llm.ChunkText:
 				blockSeq := appendTextBlock(&message, "text", chunk.Text)
 				err = invocation.Emit(ctx, loops.Event{Kind: loops.EventTextDelta, EntryID: entryID, BlockSeq: blockSeq, Text: chunk.Text})
 				if err != nil {
 					return session.Message{}, "", nil, err
 				}
-			case provider.ChunkToolCall:
+			case llm.ChunkContinuation:
+				// 协议续接块是账本事实；空的思考块允许只携带签名或加密内容。
+				index := len(message.Blocks) - 1
+				if index >= 0 && message.Blocks[index].Kind == "reasoning" && message.Blocks[index].Continuation == nil {
+					message.Blocks[index].Continuation = chunk.Continuation
+				} else {
+					message.Blocks = append(message.Blocks, session.Block{Kind: "reasoning", Continuation: chunk.Continuation})
+				}
+			case llm.ChunkToolCall:
 				if chunk.ToolCallID == "" || chunk.ToolName == "" {
 					return session.Message{}, "", nil, fmt.Errorf("react: tool call needs id and name")
 				}
@@ -157,10 +163,10 @@ func (l *reactLoop) request(
 					Args: chunk.ToolInput,
 				}
 				calls = append(calls, call)
-				message.Blocks = append(message.Blocks, session.Block{Kind: "tool-call", Tool: &call})
-			case provider.ChunkFinish:
+				message.Blocks = append(message.Blocks, session.Block{Kind: "tool-call", Tool: &call, Continuation: chunk.Continuation})
+			case llm.ChunkFinish:
 				usage = chunk.Usage
-			case provider.ChunkError:
+			case llm.ChunkError:
 				if chunk.Error == nil {
 					return fail(fmt.Errorf("react: model stream failed"))
 				}
@@ -182,7 +188,7 @@ func (l *reactLoop) failRequest(ctx context.Context, invocation loops.Invocation
 	return session.Message{}, "", nil, cause
 }
 
-func (l *reactLoop) emitUsage(ctx context.Context, modelClient *llm.Client, invocation loops.Invocation, entryID string, usage provider.Usage) error {
+func (l *reactLoop) emitUsage(ctx context.Context, modelClient *llm.Client, invocation loops.Invocation, entryID string, usage llm.Usage) error {
 	return invocation.Emit(ctx, loops.Event{
 		Kind:    loops.EventUsage,
 		EntryID: entryID,
@@ -325,6 +331,7 @@ func incompleteAssistant(message session.Message) (session.Message, bool) {
 	blocks := make([]session.Block, 0, len(message.Blocks))
 	for _, block := range message.Blocks {
 		if (block.Kind == "text" || block.Kind == "reasoning") && block.Text != "" {
+			block.Continuation = nil
 			blocks = append(blocks, block)
 		}
 	}
@@ -354,7 +361,7 @@ func appendTextBlock(message *session.Message, kind string, text string) uint64 
 		return uint64(len(message.Blocks))
 	}
 	last := len(message.Blocks) - 1
-	if last >= 0 && message.Blocks[last].Kind == kind {
+	if last >= 0 && message.Blocks[last].Kind == kind && message.Blocks[last].Continuation == nil {
 		message.Blocks[last].Text += text
 		return uint64(last + 1)
 	}

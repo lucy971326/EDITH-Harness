@@ -260,7 +260,10 @@ func (r *Registry) Call(ctx context.Context, call Call) (Result, error) {
 	if hooks != nil {
 		reason, err := hooks.Check(ctx, call, call.Notice)
 		if err != nil {
-			return Result{}, err
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return Result{}, ctxErr
+			}
+			return toolError(err), nil
 		}
 		if reason != "" {
 			return toolError(fmt.Errorf("tool %q denied by PreToolUse hook: %s", call.Name, reason)), nil

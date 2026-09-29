@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"harness/internal/llm/oauth"
 	"harness/internal/persist"
 )
 
@@ -26,7 +27,6 @@ const (
 	codexRedirect     = "http://localhost:1455/auth/callback"
 	codexAuthorizeURL = "https://auth.openai.com/oauth/authorize"
 	codexTokenURL     = "https://auth.openai.com/oauth/token"
-	credentialFile    = "codex.json"
 )
 
 var ErrCallbackBusy = errors.New("llm: ChatGPT callback port is in use")
@@ -39,7 +39,7 @@ type credential struct {
 }
 
 type authTask struct {
-	view     View
+	view     oauth.View
 	verifier string
 	state    string
 	server   *http.Server
@@ -51,7 +51,7 @@ type authTask struct {
 type Auth struct {
 	mu           sync.Mutex
 	workers      sync.WaitGroup
-	files        *persist.Files
+	files        *oauth.Store
 	credential   *credential
 	loadError    string
 	task         *authTask
@@ -59,30 +59,27 @@ type Auth struct {
 	client       *http.Client
 	tokenURL     string
 	authorizeURL string
-	baseURL      string
 }
 
 // New 读取本机订阅凭据，损坏凭据由设置页提示重新登录。
 func New(files *persist.Files) (*Auth, error) {
-	scope, err := files.Scope("model-auth")
+	scope, err := oauth.NewStore(files, "codex")
 	if err != nil {
 		return nil, err
 	}
 	auth := &Auth{files: scope, client: &http.Client{Timeout: 20 * time.Second},
-		tokenURL: codexTokenURL, authorizeURL: codexAuthorizeURL,
-		baseURL: "https://chatgpt.com/backend-api/codex"}
-	body, err := scope.Read(credentialFile)
+		tokenURL: codexTokenURL, authorizeURL: codexAuthorizeURL}
+	body, err := scope.Read()
 	if errors.Is(err, os.ErrNotExist) {
 		return auth, nil
 	}
-	if err != nil {
+	if err != nil && !errors.Is(err, oauth.ErrUnreadable) {
 		return nil, err
 	}
-	plain, err := openOAuthCredential(body)
 	if err == nil {
 		var credential credential
-		err = json.Unmarshal(plain, &credential)
-		clear(plain)
+		err = json.Unmarshal(body, &credential)
+		clear(body)
 		if err == nil && credential.Access != "" && credential.Refresh != "" && credential.AccountID != "" {
 			auth.credential = &credential
 			return auth, nil
@@ -98,19 +95,19 @@ func (a *Auth) Authenticated() bool {
 	return a.credential != nil
 }
 
-func (a *Auth) viewLocked() View {
+func (a *Auth) viewLocked() oauth.View {
 	if a.task != nil {
 		view := a.task.view
 		view.Authenticated = a.credential != nil
 		return view
 	}
 	if a.credential != nil {
-		return View{Authenticated: true, State: "connected"}
+		return oauth.View{Authenticated: true, State: "connected"}
 	}
-	return View{State: "disconnected", Message: a.loadError}
+	return oauth.View{State: "disconnected", Message: a.loadError}
 }
 
-func (a *Auth) Status() View {
+func (a *Auth) Status() oauth.View {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.viewLocked()
@@ -124,34 +121,34 @@ func randomHex(size int) (string, error) {
 	return hex.EncodeToString(value), nil
 }
 
-func (a *Auth) Start() (View, error) {
+func (a *Auth) Start() (oauth.View, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.closed {
-		return View{}, fmt.Errorf("llm: OAuth service is closed")
+		return oauth.View{}, fmt.Errorf("llm: OAuth service is closed")
 	}
 	if a.task != nil && (a.task.view.State == "waiting" || a.task.view.State == "connecting") {
 		return a.viewLocked(), nil
 	}
 	listener, err := net.Listen("tcp", "127.0.0.1:1455")
 	if err != nil {
-		return View{}, fmt.Errorf("%w: %v", ErrCallbackBusy, err)
+		return oauth.View{}, fmt.Errorf("%w: %v", ErrCallbackBusy, err)
 	}
 	verifier, err := randomHex(32)
 	if err != nil {
 		_ = listener.Close()
-		return View{}, err
+		return oauth.View{}, err
 	}
 	state, err := randomHex(16)
 	if err != nil {
 		_ = listener.Close()
-		return View{}, err
+		return oauth.View{}, err
 	}
 	challenge := sha256.Sum256([]byte(verifier))
 	address, err := url.Parse(a.authorizeURL)
 	if err != nil {
 		_ = listener.Close()
-		return View{}, err
+		return oauth.View{}, err
 	}
 	query := address.Query()
 	query.Set("response_type", "code")
@@ -166,7 +163,7 @@ func (a *Auth) Start() (View, error) {
 	query.Set("originator", "edith")
 	address.RawQuery = query.Encode()
 	ctx, cancel := context.WithCancel(context.Background())
-	task := &authTask{view: View{State: "waiting", URL: address.String()},
+	task := &authTask{view: oauth.View{State: "waiting", URL: address.String()},
 		verifier: verifier, state: state, ctx: ctx, cancel: cancel}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/auth/callback", func(w http.ResponseWriter, r *http.Request) { a.callback(task, w, r) })
@@ -180,7 +177,7 @@ func (a *Auth) Start() (View, error) {
 		case <-time.After(10 * time.Minute):
 			a.mu.Lock()
 			if a.task == task && task.view.State == "waiting" {
-				task.view = View{State: "failed", Message: "登录超时，请重试"}
+				task.view = oauth.View{State: "failed", Message: "登录超时，请重试"}
 				task.cancel()
 				_ = task.server.Close()
 			}
@@ -211,7 +208,7 @@ func (a *Auth) callback(task *authTask, w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "授权已结束", http.StatusGone)
 		return
 	}
-	task.view = View{State: "connecting"}
+	task.view = oauth.View{State: "connecting"}
 	a.workers.Add(1)
 	a.mu.Unlock()
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -234,12 +231,12 @@ func (a *Auth) finish(task *authTask, code string) {
 		err = a.saveLocked(credential)
 	}
 	if err != nil {
-		task.view = View{State: "failed", Message: err.Error()}
+		task.view = oauth.View{State: "failed", Message: err.Error()}
 		return
 	}
 	a.credential = credential
 	a.loadError = ""
-	task.view = View{Authenticated: true, State: "complete"}
+	task.view = oauth.View{Authenticated: true, State: "complete"}
 }
 
 func (a *Auth) exchange(ctx context.Context, values url.Values) (*credential, error) {
@@ -300,12 +297,9 @@ func (a *Auth) saveLocked(credential *credential) error {
 	if err != nil {
 		return err
 	}
-	sealed, err := sealOAuthCredential(body)
+	err = a.files.Write(body)
 	clear(body)
-	if err != nil {
-		return err
-	}
-	return a.files.Write(credentialFile, sealed)
+	return err
 }
 
 func (a *Auth) token(ctx context.Context) (*credential, error) {
@@ -332,18 +326,18 @@ func (a *Auth) token(ctx context.Context) (*credential, error) {
 	return &copy, nil
 }
 
-func (a *Auth) Cancel() View {
+func (a *Auth) Cancel() oauth.View {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.task != nil && (a.task.view.State == "waiting" || a.task.view.State == "connecting") {
-		a.task.view = View{State: "cancelled"}
+		a.task.view = oauth.View{State: "cancelled"}
 		a.task.cancel()
 		_ = a.task.server.Close()
 	}
 	return a.viewLocked()
 }
 
-func (a *Auth) Logout() (View, error) {
+func (a *Auth) Logout() (oauth.View, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.task != nil {
@@ -351,7 +345,7 @@ func (a *Auth) Logout() (View, error) {
 		_ = a.task.server.Close()
 		a.task = nil
 	}
-	err := a.files.Remove(credentialFile)
+	err := a.files.Remove()
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return a.viewLocked(), err
 	}

@@ -13,14 +13,22 @@ export interface ModelChoice {
 
 export interface ProviderSettings {
   id: string;
-  protocol: 'deepseek' | 'google' | 'openai-chat' | 'openai-responses' | 'anthropic' | 'openai-codex';
+  protocol: 'openai-chat' | 'openai-responses' | 'anthropic' | 'openai-codex';
   baseURL: string;
   hasAPIKey: boolean;
 }
-export interface CodexAuthView {
+export interface ProviderPreset {
+  id?: string;
+  name: string;
+  protocol: ProviderSettings['protocol'];
+  baseURL: string;
+  thinkingFormat?: string;
+}
+export interface ModelAuthView {
   authenticated: boolean;
   state: 'disconnected' | 'waiting' | 'connecting' | 'complete' | 'connected' | 'failed' | 'cancelled';
   url?: string;
+  userCode?: string;
   message?: string;
 }
 export interface ReasoningSettings {
@@ -30,14 +38,18 @@ export interface ReasoningSettings {
   budgetTokens: number;
 }
 export interface ModelSettings {
+  protocol?: ProviderSettings["protocol"];
   key: string;
   provider: string;
   id: string;
   contextWindow: number;
+  maxOutput?: number;
+  manual?: boolean;
   vision: boolean;
   reasoning: ReasoningSettings[];
 }
 export interface ModelSettingsView {
+  providerPresets: ProviderPreset[];
   providers: ProviderSettings[];
   models: ModelSettings[];
   presets: ModelSettings[];
@@ -262,10 +274,10 @@ export interface ServerMethods {
   'model/provider/delete': { params: { id: string; providerRevision: string; modelRevision: string }; result: ModelSettingsView };
   'model/definition/save': { params: { model: ModelSettings; revision: string }; result: ModelSettingsView };
   'model/definition/delete': { params: { key: string; revision: string }; result: ModelSettingsView };
-  'model/auth/start': { params: Record<string, never>; result: CodexAuthView };
-  'model/auth/status': { params: Record<string, never>; result: CodexAuthView };
-  'model/auth/cancel': { params: Record<string, never>; result: CodexAuthView };
-  'model/auth/logout': { params: Record<string, never>; result: CodexAuthView };
+  'model/auth/start': { params: { providerID: string }; result: ModelAuthView };
+  'model/auth/status': { params: { providerID: string }; result: ModelAuthView };
+  'model/auth/cancel': { params: { providerID: string }; result: ModelAuthView };
+  'model/auth/logout': { params: { providerID: string }; result: ModelAuthView };
   'agent/list': { params: Record<string, never>; result: AgentListResult };
   'agent/save': { params: AgentSaveParams; result: { agent: AgentView } };
   'agent/delete': { params: { agentID: string }; result: Record<string, never> };

@@ -55,7 +55,7 @@ func TestTypeScriptClient(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = os.WriteFile(filepath.Join(data, "config.yaml"), []byte(fmt.Sprintf("providers:\n  deepseek:\n    apiKey: test-key\n    baseURL: %s\n  google:\n    apiKey: test-key\n    baseURL: %s\n", modelServer.URL, modelServer.URL)), 0600)
+	err = os.WriteFile(filepath.Join(data, "config.yaml"), []byte(fmt.Sprintf("providers:\n  deepseek:\n    apiKey: test-key\n    baseURL: %s\n  xiaomi:\n    apiKey: test-key\n    baseURL: %s\n", modelServer.URL, modelServer.URL)), 0600)
 	if err != nil {
 		t.Fatal(err)
 	}

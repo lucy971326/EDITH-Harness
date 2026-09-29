@@ -131,6 +131,8 @@ export function chatTurns(snapshot: Snapshot): ChatTurn[] {
               status: block.result.isError ? "异常" : "已完成",
             });
         } else {
+          // 只有续接数据的思考块供下一轮请求使用，不是可展示的思考文字。
+          if (block.kind === "reasoning" && !block.text?.trim()) continue;
           const role = item.message.role;
           const detail =
             block.kind !== "text" ||

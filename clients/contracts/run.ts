@@ -1,6 +1,7 @@
 // 手工对应 internal/session/types.go、internal/runner/types.go 与产品 Snapshot。
 export interface Block {
   kind: string;
+  continuation?: { provider: string; model: string; api: string; data: unknown };
   text?: string;
   tool?: { id: string; name: string; args: string };
   result?: { id: string; name: string; content: string; isError?: boolean };

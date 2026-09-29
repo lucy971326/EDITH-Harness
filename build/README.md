@@ -1,9 +1,10 @@
-# Desktop 构建输入
+# 构建与开发输入
 
 ```text
 build/
 ├─ config.yml       Wails 开发模式配置（CLI 默认位置）
 ├─ version.txt      唯一产品版本号
+├─ models.mjs       开发时生成供应商与模型能力快照
 ├─ desktop.mjs      工具检查、桌面编译、版本资源与 EXE / APP / 安装包生成
 ├─ windows/         Windows 图标、manifest、NSIS 安装脚本及上游许可证
 └─ macos/           macOS 图标
@@ -59,3 +60,11 @@ Windows 另需 `winget install --id NSIS.NSIS --exact`，或将官方便携版�
 Windows 仅当前用户安装，目录固定为 `%LOCALAPPDATA%\Programs\EDITH`。升级与卸载前须从托盘退出 EDITH；拒绝降级，卸载保留用户数据和安装目录中的其他文件。缺少 WebView2 时需要网络下载运行环境。静默 `/S` 的错误码：10 为应用或安装器运行中，11 为降级，20 为 WebView2 失败，30 为文件或登记失败，64/65 为系统或架构不符。
 
 macOS 必须在 Mac 上打包；DMG 内拖拽 EDITH 到 Applications。更新前退出应用，再替换旧 `.app`。当前只有本机临时签名，不包含开发者签名、公证或自动更新。
+
+## 模型目录
+
+`make models-update` 从 [models.dev](https://models.dev) 拉取数据，筛选支持的供应商和可调用工具的文本模型，生成 `internal/llm/catalog.json`。脚本另有明确的协议、思考参数和订阅模型映射；不是把任意元数据当请求参数发送。输出记录来源与内容摘要，更新后审查 diff 并提交快照。普通构建与运行不调用该脚本。
+
+可用 `node build/models.mjs .build/temp/models-dev.json` 从保存的输入重现生成结果。缺失必要字段时失败，保留原快照。
+
+供应商名单对齐本地 Pi 的 OpenAI／Anthropic 入口，ID、地区与套餐分支在 `models.mjs` 显式维护；不自动收录源站新增供应商。Bedrock、Google／Vertex、Azure 专用适配、Mistral Conversations、Radius 和 TypeSafe 排除，混合网关只生成支持的协议模型。Ant Ling 在源站缺少独立目录时采用 Pi 的明确模型定义。现有 xAI OAuth 作为独立认证入口保留。

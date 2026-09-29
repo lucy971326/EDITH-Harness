@@ -134,6 +134,13 @@ func TestRegistryRunsHookAfterValidationForStaticAndDynamicTools(t *testing.T) {
 	if err != nil || called != 2 {
 		t.Fatalf("Hook called %d times after invalid arguments; error = %v", called, err)
 	}
+	registry.SetPreToolUse(testPreToolUse(func(_ context.Context, _ Call, _ func(string)) (string, error) {
+		return "", errors.New("hook failed")
+	}))
+	result, err := registry.Call(context.Background(), Call{Name: "read", Arguments: json.RawMessage(`{"path":"a"}`), Allow: []string{"read"}})
+	if err != nil || !result.IsError || !strings.Contains(result.Content, "hook failed") {
+		t.Fatalf("Hook failure = %#v, %v", result, err)
+	}
 }
 
 func TestRegistry_convertsToolErrorAndPreservesCancellation(t *testing.T) {

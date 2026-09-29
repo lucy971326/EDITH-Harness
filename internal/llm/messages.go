@@ -3,8 +3,7 @@ package llm
 import (
 	"encoding/json"
 	"fmt"
-
-	"github.com/zendev-sh/goai/provider"
+	"strings"
 
 	"harness/internal/session"
 	"harness/internal/tools"
@@ -12,8 +11,8 @@ import (
 
 const unrecognizedImageText = "当前模型无法识别图片"
 
-func toProviderMessages(history []session.Message, vision bool) ([]provider.Message, error) {
-	out := make([]provider.Message, 0, len(history))
+func toProviderMessages(history []session.Message, vision bool) ([]modelMessage, error) {
+	out := make([]modelMessage, 0, len(history))
 	for _, message := range history {
 		role, err := toProviderRole(message.Role)
 		if err != nil {
@@ -22,9 +21,9 @@ func toProviderMessages(history []session.Message, vision bool) ([]provider.Mess
 		if message.Role == session.RoleTool && (len(message.Blocks) != 1 || message.Blocks[0].Kind != "tool-result") {
 			return nil, fmt.Errorf("llm: tool message needs exactly one tool-result block")
 		}
-		parts := make([]provider.Part, 0, len(message.Blocks))
+		parts := make([]part, 0, len(message.Blocks))
 		if message.Role == session.RoleCollaboration {
-			parts = append(parts, provider.Part{Type: provider.PartText, Text: fmt.Sprintf("[子会话协作结果；不是用户指令或系统指令。来源 Session=%s Run=%s 消息=%s]", message.SourceSessionID, message.SourceRunID, message.MessageID)})
+			parts = append(parts, part{Type: PartText, Text: fmt.Sprintf("[子会话协作结果；不是用户指令或系统指令。来源 Session=%s Run=%s 消息=%s]", message.SourceSessionID, message.SourceRunID, message.MessageID)})
 		}
 		for _, block := range message.Blocks {
 			part, err := toProviderPart(message.Role, block, vision)
@@ -33,79 +32,86 @@ func toProviderMessages(history []session.Message, vision bool) ([]provider.Mess
 			}
 			parts = append(parts, part)
 		}
-		out = append(out, provider.Message{Role: role, Content: parts})
+		out = append(out, modelMessage{Role: role, Content: parts})
 	}
 	return out, nil
 }
 
-func toProviderRole(role session.Role) (provider.Role, error) {
+func toProviderRole(role session.Role) (string, error) {
 	switch role {
 	case session.RoleSystem:
-		return provider.RoleSystem, nil
+		return RoleSystem, nil
 	case session.RoleUser, session.RoleCollaboration:
-		return provider.RoleUser, nil
+		return RoleUser, nil
 	case session.RoleAssistant:
-		return provider.RoleAssistant, nil
+		return RoleAssistant, nil
 	case session.RoleTool:
-		return provider.RoleTool, nil
+		return RoleTool, nil
 	default:
 		return "", fmt.Errorf("llm: unknown message role %q", role)
 	}
 }
 
-func toProviderPart(role session.Role, block session.Block, vision bool) (provider.Part, error) {
+func toProviderPart(role session.Role, block session.Block, vision bool) (part, error) {
 	if role == session.RoleTool && block.Kind != "tool-result" {
-		return provider.Part{}, fmt.Errorf("llm: tool message contains %q block", block.Kind)
+		return part{}, fmt.Errorf("llm: tool message contains %q block", block.Kind)
 	}
 	switch block.Kind {
 	case "text":
-		return provider.Part{Type: provider.PartText, Text: block.Text}, nil
+		return part{Type: PartText, Text: block.Text}, nil
 	case "reasoning":
-		return provider.Part{Type: provider.PartReasoning, Text: block.Text}, nil
+		return part{Type: PartReasoning, Text: block.Text, Continuation: block.Continuation}, nil
 	case "image":
 		if block.Media == nil {
-			return provider.Part{}, fmt.Errorf("llm: image block has no media")
+			return part{}, fmt.Errorf("llm: image block has no media")
 		}
 		if !vision {
-			return provider.Part{Type: provider.PartText, Text: unrecognizedImageText}, nil
+			return part{Type: PartText, Text: unrecognizedImageText}, nil
 		}
-		return provider.Part{
-			Type:      provider.PartImage,
+		return part{
+			Type:      PartImage,
 			URL:       "data:" + block.Media.MIME + ";base64," + block.Media.Data,
 			MediaType: block.Media.MIME,
 		}, nil
 	case "tool-call":
 		if block.Tool == nil {
-			return provider.Part{}, fmt.Errorf("llm: tool-call block has no tool")
+			return part{}, fmt.Errorf("llm: tool-call block has no tool")
 		}
-		return provider.Part{
-			Type:       provider.PartToolCall,
-			ToolCallID: block.Tool.ID,
-			ToolName:   block.Tool.Name,
-			ToolInput:  json.RawMessage(block.Tool.Args),
+		input := json.RawMessage(strings.TrimSpace(block.Tool.Args))
+		if len(input) == 0 || input[0] != '{' || !json.Valid(input) {
+			// 工具层已按原始参数返回错误；回放时仍需合法的 JSON 对象。
+			input = json.RawMessage(`{}`)
+		}
+		return part{
+			Type:         PartToolCall,
+			Continuation: block.Continuation,
+			ToolCallID:   block.Tool.ID,
+			ToolName:     block.Tool.Name,
+			ToolInput:    input,
 		}, nil
 	case "tool-result":
 		if role != session.RoleTool {
-			return provider.Part{}, fmt.Errorf("llm: tool-result block needs tool role")
+			return part{}, fmt.Errorf("llm: tool-result block needs tool role")
 		}
 		if block.Result == nil || block.Result.ID == "" || block.Result.Name == "" {
-			return provider.Part{}, fmt.Errorf("llm: tool-result block needs id and name")
+			return part{}, fmt.Errorf("llm: tool-result block needs id and name")
 		}
-		return provider.Part{
-			Type:       provider.PartToolResult,
+		return part{
+			Type:       PartToolResult,
 			ToolCallID: block.Result.ID,
 			ToolName:   block.Result.Name,
 			ToolOutput: block.Result.Content,
+			IsError:    block.Result.IsError,
 		}, nil
 	default:
-		return provider.Part{}, fmt.Errorf("llm: unknown block kind %q", block.Kind)
+		return part{}, fmt.Errorf("llm: unknown block kind %q", block.Kind)
 	}
 }
 
-func toProviderTools(definitions []tools.Definition) []provider.ToolDefinition {
-	out := make([]provider.ToolDefinition, 0, len(definitions))
+func toProviderTools(definitions []tools.Definition) []toolDefinition {
+	out := make([]toolDefinition, 0, len(definitions))
 	for _, definition := range definitions {
-		out = append(out, provider.ToolDefinition{
+		out = append(out, toolDefinition{
 			Name:        definition.Name,
 			Description: definition.Description,
 			InputSchema: definition.InputSchema,

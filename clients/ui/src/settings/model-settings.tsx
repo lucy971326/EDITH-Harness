@@ -11,7 +11,7 @@ import {
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { CodexAuthView, ModelSettings, ModelSettingsView, ProviderSettings, ReasoningSettings, SaveProviderSettings } from "../../../contracts/appserver";
+import type { ModelAuthView, ModelSettings, ModelSettingsView, ProviderSettings, ReasoningSettings, SaveProviderSettings } from "../../../contracts/appserver";
 import { RPCClient, formatRPCError } from "../client/rpc";
 import { ArrowLeft, ArrowUp, ArrowDown, Brain, Building2, ChevronRight, Plus, Pencil, Trash2, X } from "../icons";
 import type { SettingsDraftState } from "./types";
@@ -26,17 +26,12 @@ type Target =
   | { kind: "model"; key: string }
   | { kind: "add-model"; providerID: string; presetKey?: string };
 const protocols: { id: ProviderSettings["protocol"]; label: string; address: string }[] = [
-  { id: "deepseek", label: "DeepSeek", address: "https://api.deepseek.com" },
-  { id: "google", label: "Google Gemini", address: "https://generativelanguage.googleapis.com" },
   { id: "openai-chat", label: "OpenAI Chat Completions", address: "https://api.openai.com/v1" },
   { id: "openai-responses", label: "OpenAI Responses", address: "https://api.openai.com/v1" },
   { id: "openai-codex", label: "ChatGPT 订阅", address: "https://chatgpt.com/backend-api/codex" },
   { id: "anthropic", label: "Anthropic", address: "https://api.anthropic.com" },
 ];
-const presets: { id: string; protocol: ProviderSettings["protocol"] }[] = [
-  { id: "deepseek", protocol: "deepseek" }, { id: "google", protocol: "google" },
-  { id: "openai", protocol: "openai-responses" }, { id: "anthropic", protocol: "anthropic" },
-];
+const accountProviders = ["openai-codex", "xai-oauth"];
 
 export function providerDraft(provider: ProviderSettings, revision: string): ProviderDraft {
   return { id: provider.id, protocol: provider.protocol, baseURL: provider.baseURL,
@@ -44,7 +39,7 @@ export function providerDraft(provider: ProviderSettings, revision: string): Pro
 }
 
 function emptyModel(provider: string): ModelSettings {
-  return { key: "", provider, id: "", contextWindow: 1000000, vision: false,
+  return { key: "", provider, id: "", contextWindow: 32768, maxOutput: 8192, manual: true, vision: false,
     reasoning: [{ name: "off", mode: "off", effort: "", budgetTokens: 0 }] };
 }
 
@@ -75,14 +70,26 @@ export function ModelSettingsPanel({ client, openExternal, onSaved, onStateChang
   const [saved, setSaved] = useState("");
   const [saving, setSaving] = useState(false);
   const [reload, setReload] = useState(0);
-  const [auth, setAuth] = useState<CodexAuthView | null>(null);
+  const [authViews, setAuthViews] = useState<Record<string, ModelAuthView>>({});
+  const [modelSearch, setModelSearch] = useState("");
+  const presets = view?.providerPresets ?? [];
+  const accountID = provider?.id ?? "";
+  const selectedProtocol = (editor === "model" ? model?.protocol : undefined) ?? provider?.protocol ?? "openai-chat";
+  const accountProvider = accountProviders.includes(accountID);
+  const auth = authViews[accountID];
+  function setAuth(result: ModelAuthView) {
+    setAuthViews((current) => ({ ...current, [accountID]: result }));
+  }
 
   useEffect(() => {
     let active = true;
     setView(null); setProvider(null); setModel(null); setEditor("overview");
-    setCreatingProvider(false); setPendingTarget(null); setError(""); setAuth(null);
+    setCreatingProvider(false); setPendingTarget(null); setError(""); setAuthViews({});
     if (!client?.connected) return;
-    void client.call("model/auth/status", {}).then((result) => { if (active) setAuth(result); })
+    void Promise.all(accountProviders.map(async (providerID) => ({ providerID,
+      result: await client.call("model/auth/status", { providerID }) }))).then((items) => {
+        if (active) setAuthViews(Object.fromEntries(items.map((item) => [item.providerID, item.result])));
+      })
       .catch((cause: unknown) => { if (active) setError(formatRPCError(cause, "读取登录状态失败")); });
     void client.call("model/config/read", {}).then((result) => {
       if (!active) return;
@@ -98,9 +105,9 @@ export function ModelSettingsPanel({ client, openExternal, onSaved, onStateChang
     if (!client?.connected || (auth?.state !== "waiting" && auth?.state !== "connecting")) return;
     let active = true;
     const timer = window.setInterval(() => {
-      void client.call("model/auth/status", {}).then(async (result) => {
+      void client.call("model/auth/status", { providerID: accountID }).then(async (result) => {
         if (!active) return;
-        setAuth(result);
+        setAuthViews((current) => ({ ...current, [accountID]: result }));
         if (result.state === "complete") {
           setView(await client.call("model/config/read", {}));
           onSaved();
@@ -108,22 +115,22 @@ export function ModelSettingsPanel({ client, openExternal, onSaved, onStateChang
       }).catch((cause: unknown) => { if (active) setError(formatRPCError(cause, "读取登录状态失败")); });
     }, 1000);
     return () => { active = false; window.clearInterval(timer); };
-  }, [client, auth?.state]);
+  }, [client, accountID, auth?.state]);
 
   async function startAuth() {
     if (!client?.connected || saving) return;
     setSaving(true); setError("");
     try {
-      const result = await client.call("model/auth/start", {});
+      const result = await client.call("model/auth/start", { providerID: accountID });
       setAuth(result);
       if (result.url) await openExternal(result.url);
-    } catch (cause) { setError(formatRPCError(cause, "ChatGPT 登录启动失败")); }
+    } catch (cause) { setError(formatRPCError(cause, "登录启动失败")); }
     finally { setSaving(false); }
   }
 
   async function cancelAuth() {
     if (!client?.connected) return;
-    try { setAuth(await client.call("model/auth/cancel", {})); }
+    try { setAuth(await client.call("model/auth/cancel", { providerID: accountID })); }
     catch (cause) { setError(formatRPCError(cause, "取消登录失败")); }
   }
 
@@ -131,7 +138,7 @@ export function ModelSettingsPanel({ client, openExternal, onSaved, onStateChang
     if (!client?.connected || saving) return;
     setSaving(true); setError("");
     try {
-      setAuth(await client.call("model/auth/logout", {}));
+      setAuth(await client.call("model/auth/logout", { providerID: accountID }));
       setView(await client.call("model/config/read", {}));
       onSaved();
     } catch (cause) { setError(formatRPCError(cause, "退出登录失败")); }
@@ -154,9 +161,10 @@ export function ModelSettingsPanel({ client, openExternal, onSaved, onStateChang
   useEffect(() => { onStateChange({ dirty, saving }); }, [dirty, saving, onStateChange]);
 
   function showTarget(target: Target, current: ModelSettingsView) {
+    setModelSearch("");
     if (target.kind === "add-provider") {
       const preset = presets.find((item) => item.id === target.presetID);
-      setProvider({ id: preset?.id ?? "", protocol: preset?.protocol ?? "openai-chat", baseURL: "",
+      setProvider({ id: preset?.id ?? "", protocol: preset?.protocol ?? "openai-chat", baseURL: preset?.baseURL ?? "",
         apiKey: "", clearAPIKey: false, revision: current.providerRevision });
       setCreatingProvider(true); setModel(null); setEditor("provider");
       return;
@@ -280,7 +288,7 @@ export function ModelSettingsPanel({ client, openExternal, onSaved, onStateChang
       effort: effort === "off" ? "" : effort,
       mode: effort === "off" ? "off" : level.mode === "adaptive" ? "adaptive" : "enabled",
       // 已配置的协议参数继续保留；Anthropic 手动思考沿用最小预算默认值。
-      budgetTokens: provider?.protocol === "anthropic" ? level.budgetTokens || 1024 : level.budgetTokens,
+      budgetTokens: selectedProtocol === "anthropic" ? level.budgetTokens || 1024 : level.budgetTokens,
     } : level) });
     setSaved("");
   }
@@ -292,7 +300,6 @@ export function ModelSettingsPanel({ client, openExternal, onSaved, onStateChang
     setModel({ ...model, reasoning }); setSaved("");
   }
 
-  const selectedProtocol = provider?.protocol ?? "openai-chat";
   const selectedProvider = storedProvider;
   const protocolLabel = protocols.find((item) => item.id === selectedProtocol)?.label ?? selectedProtocol;
   const canSaveCurrent = editor === "provider"
@@ -305,9 +312,9 @@ export function ModelSettingsPanel({ client, openExternal, onSaved, onStateChang
       {view && <DropdownMenu>
         <DropdownMenuTrigger asChild><Button size="sm" variant="outline" disabled={saving}><Plus />添加供应商</Button></DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          {presets.filter((item) => !view.providers.some((savedProvider) => savedProvider.id === item.id))
+          {presets.filter((item) => !!item.id && !accountProviders.includes(item.id) && !view.providers.some((savedProvider) => savedProvider.id === item.id))
             .map((item) => <DropdownMenuItem key={item.id}
-              onSelect={() => requestTarget({ kind: "add-provider", presetID: item.id })}>{item.id}</DropdownMenuItem>)}
+              onSelect={() => requestTarget({ kind: "add-provider", presetID: item.id })}>{item.name}</DropdownMenuItem>)}
           <DropdownMenuItem onSelect={() => requestTarget({ kind: "add-provider" })}>手动添加</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>}
@@ -327,7 +334,7 @@ export function ModelSettingsPanel({ client, openExternal, onSaved, onStateChang
             return <Button key={item.id} variant="ghost" className="settings-subnav-item"
               aria-pressed={selectedProvider?.id === item.id} disabled={saving}
               onClick={() => requestTarget({ kind: "provider", id: item.id })}>
-              <Building2 /><span className="settings-subnav-copy"><span className="settings-subnav-name">{item.id}</span>
+              <Building2 /><span className="settings-subnav-copy"><span className="settings-subnav-name">{presets.find((preset) => preset.id === item.id)?.name ?? item.id}</span>
               <span className="settings-subnav-meta">{count} 个模型</span></span>
             </Button>;
           })}
@@ -336,22 +343,23 @@ export function ModelSettingsPanel({ client, openExternal, onSaved, onStateChang
       <div className="model-settings-detail">
         {editor === "overview" && selectedProvider && <>
           <div className="settings-detail-title-row">
-            <div className="settings-identity"><span className="settings-identity-icon"><Building2 /></span><div><h3>{selectedProvider.id}</h3>
-              <p className="model-settings-summary">{protocolLabel} · {selectedProtocol === "openai-codex"
+            <div className="settings-identity"><span className="settings-identity-icon"><Building2 /></span><div><h3>{presets.find((preset) => preset.id === selectedProvider.id)?.name ?? selectedProvider.id}</h3>
+              <p className="model-settings-summary">{protocolLabel} · {accountProvider
                 ? auth?.authenticated ? "已登录" : "未登录" : selectedProvider.hasAPIKey ? "密钥已设置" : "未设置密钥"}</p>
             </div></div>
-            {selectedProtocol !== "openai-codex" && <Button size="sm" variant="outline" disabled={saving}
+            {!accountProvider && <Button size="sm" variant="outline" disabled={saving}
               onClick={() => requestTarget({ kind: "edit-provider", id: selectedProvider.id })}><Pencil />编辑连接</Button>}
           </div>
-          {selectedProtocol === "openai-codex" ? <div className="model-settings-auth">
+          {accountProvider ? <div className="model-settings-auth">
             {auth?.message && <p className="inline-notice" role="status">{auth.message}</p>}
             {auth?.state === "waiting" || auth?.state === "connecting" ? <>
               <span className="metadata">{auth.state === "waiting" ? "等待浏览器授权…" : "正在完成登录…"}</span>
+              {auth.userCode && <strong className="model-settings-device-code">{auth.userCode}</strong>}
               {auth.url && <Button size="sm" variant="outline" onClick={() => void openExternal(auth.url!)}>打开授权页</Button>}
               <Button size="sm" variant="ghost" onClick={() => void cancelAuth()}>取消</Button>
             </> : auth?.authenticated ? <Button size="sm" variant="outline" disabled={saving}
-              onClick={() => void logoutAuth()}>退出 ChatGPT</Button> : <Button size="sm" disabled={saving}
-              onClick={() => void startAuth()}>登录 ChatGPT</Button>}
+              onClick={() => void logoutAuth()}>退出账号</Button> : <Button size="sm" disabled={saving}
+              onClick={() => void startAuth()}>登录账号</Button>}
           </div> : <p className="model-settings-address">{selectedProvider.baseURL || protocols.find((item) => item.id === selectedProtocol)?.address}</p>}
           <section className="model-settings-models">
             <div className="model-settings-title-row"><h4>模型 <span className="model-settings-count">{providerModels.length}</span></h4>
@@ -359,7 +367,7 @@ export function ModelSettingsPanel({ client, openExternal, onSaved, onStateChang
                 <DropdownMenuTrigger asChild><Button size="sm" variant="outline" disabled={saving}><Plus />添加模型</Button></DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onSelect={() => requestTarget({ kind: "add-model", providerID: selectedProvider.id })}>手动添加</DropdownMenuItem>
-                  {view.presets.filter((item) => item.provider === selectedProtocol &&
+                  {view.presets.filter((item) => item.provider === selectedProvider.id &&
                     !providerModels.some((existing) => existing.id === item.id)).map((item) =>
                       <DropdownMenuItem key={item.key}
                         onSelect={() => requestTarget({ kind: "add-model", providerID: selectedProvider.id, presetKey: item.key })}>
@@ -368,8 +376,9 @@ export function ModelSettingsPanel({ client, openExternal, onSaved, onStateChang
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
+            {providerModels.length > 8 && <Input aria-label="搜索模型" placeholder="搜索模型" value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} />}
             <div className="model-entry-list">
-              {providerModels.map((item) => <Button key={item.key} variant="ghost" className="model-entry-row" disabled={saving}
+              {providerModels.filter((item) => item.id.toLowerCase().includes(modelSearch.toLowerCase())).map((item) => <Button key={item.key} variant="ghost" className="model-entry-row" disabled={saving}
                 onClick={() => requestTarget({ kind: "model", key: item.key })}>
                 <Brain /><span className="model-entry-name">{item.id}</span>
                 <span className="model-entry-meta">{windowLabel(item.contextWindow)}{item.vision ? " · 支持图片" : ""}</span><ChevronRight />
@@ -392,24 +401,25 @@ export function ModelSettingsPanel({ client, openExternal, onSaved, onStateChang
                 {duplicateProviderID && <span className="settings-description" role="alert">供应商 ID 已存在</span>}
               </div>
               <div className="settings-field"><Label htmlFor="provider-protocol">请求协议</Label>
-                <Select value={provider.protocol} disabled={saving || (!!storedProvider && providerModels.length > 0)}
+                <Select value={provider.protocol} disabled={saving || (!!provider.id && view.models.some((item) => item.provider === provider.id))}
                   onValueChange={(value) => setProvider({ ...provider, protocol: value as ProviderSettings["protocol"] })}>
                   <SelectTrigger id="provider-protocol" className="w-full"><SelectValue /></SelectTrigger>
-                  <SelectContent>{protocols.filter((item) => item.id !== "openai-codex").map((item) =>
+                  <SelectContent>{protocols.filter((item) => !accountProviders.includes(item.id)).map((item) =>
                     <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent>
                 </Select>
                 {!!storedProvider && providerModels.length > 0 &&
                   <span className="settings-description">删除该供应商的模型后可更改协议。</span>}
               </div>
             </div>
-            {selectedProtocol !== "openai-codex" && <><div className="settings-field"><Label htmlFor="provider-url">API 地址</Label><Input id="provider-url" value={provider.baseURL}
+            {!accountProvider && <><div className="settings-field"><Label htmlFor="provider-url">API 地址</Label><Input id="provider-url" value={provider.baseURL}
               disabled={saving} placeholder={protocols.find((item) => item.id === selectedProtocol)?.address}
               onChange={(event) => setProvider({ ...provider, baseURL: event.target.value })} />
-              <span className="settings-description">留空使用该协议的默认地址。</span></div>
-            <div className="settings-field"><Label htmlFor="provider-key">API 密钥</Label>
+              <span className="settings-description">{provider.id.startsWith("cloudflare-") ? "填写完整地址并替换账号／网关 ID；AI Gateway 填网关根地址。" : "留空使用供应商的默认地址。"}</span></div>
+            <div className="settings-field"><Label htmlFor="provider-key">{provider.id === "github-copilot" ? "Copilot API Token" : "API 密钥"}</Label>
               <Input id="provider-key" type="password" autoComplete="off" value={provider.apiKey} disabled={saving || provider.clearAPIKey}
                 placeholder={storedProvider?.hasAPIKey ? "已配置 · 留空表示保持原密钥" : "输入 API 密钥"}
                 onChange={(event) => setProvider({ ...provider, apiKey: event.target.value })} />
+              {provider.id === "github-copilot" && <span className="settings-description">填写已换取的 Copilot API Token，不是 GitHub PAT。</span>}
               {storedProvider?.hasAPIKey && <div className="model-settings-check"><Switch id="provider-clear-key" checked={provider.clearAPIKey}
                 disabled={saving} onCheckedChange={(checked) => setProvider({ ...provider, clearAPIKey: checked, apiKey: "" })} />
                 <Label htmlFor="provider-clear-key">清除已保存的密钥</Label></div>}
@@ -434,6 +444,14 @@ export function ModelSettingsPanel({ client, openExternal, onSaved, onStateChang
             onClick={() => requestTarget({ kind: "overview", id: provider.id })}><ArrowLeft />返回概况</Button>
           <h3 className="model-settings-editor-title">{model.key ? `编辑模型 · ${model.id}` : "添加模型"}</h3>
           <div className="model-settings-form">
+            {view.presets.some((item) => item.key === `${model.provider}/${model.id}`) && <label className="model-settings-check">
+              <Switch checked={!!model.manual} disabled={saving} onCheckedChange={(manual) => {
+                const preset = view.presets.find((item) => item.key === `${model.provider}/${model.id}`);
+                setModel(manual || !preset ? { ...model, manual } : { ...preset, key: model.key, manual: false });
+              }} />高级手动配置
+            </label>}
+            {!model.manual && <p className="metadata">能力来自内置模型目录，随应用版本更新。</p>}
+
             <div className="settings-fields">
               <div className="settings-field"><Label htmlFor="model-id">模型 ID</Label><Input id="model-id" value={model.id}
                 disabled={saving || !!model.key} aria-invalid={!!duplicateModelID}
@@ -441,31 +459,41 @@ export function ModelSettingsPanel({ client, openExternal, onSaved, onStateChang
                 {duplicateModelID && <span className="settings-description" role="alert">模型 ID 已存在</span>}
               </div>
               <div className="settings-field"><Label htmlFor="model-window">上下文窗口 · token</Label><Input id="model-window" type="number" min={1} value={model.contextWindow}
-                disabled={saving} onChange={(event) => setModel({ ...model, contextWindow: Number(event.target.value) })} /></div>
+                disabled={saving || !model.manual} onChange={(event) => setModel({ ...model, contextWindow: Number(event.target.value) })} /></div>
             </div>
-            <label className="model-settings-check"><Switch checked={model.vision} disabled={saving}
+            {model.manual && <div className="settings-field"><Label htmlFor="model-output">最大输出 · token</Label><Input id="model-output" type="number" min={1} max={model.contextWindow} value={model.maxOutput ?? ""} disabled={saving} onChange={(event) => setModel({ ...model, maxOutput: Number(event.target.value) })} /></div>}
+            <label className="model-settings-check"><Switch checked={model.vision} disabled={saving || !model.manual}
               onCheckedChange={(checked) => setModel({ ...model, vision: checked })} />支持图片输入</label>
             <div className="settings-section-header"><h4>思考档位</h4>
-              <Button size="sm" variant="ghost" disabled={saving || levelValues.includes("")} onClick={() => {
+              <Button size="sm" variant="ghost" disabled={saving || !model.manual || levelValues.includes("")} onClick={() => {
                 setModel({ ...model, reasoning: [...model.reasoning, levelDefault(selectedProtocol)] });
                 setSaved("");
               }}><Plus />添加档位</Button></div>
             <ol className="model-levels" aria-label="思考档位顺序">
-              {model.reasoning.map((_, index) => <li className="model-level" key={index}>
+              {model.reasoning.map((level, index) => <li className="model-level" key={index}>
                 <span className="model-level-index" aria-hidden="true">{index + 1}</span>
-                <Input aria-label={`第 ${index + 1} 档思考强度`} value={levelValues[index]} disabled={saving}
-                  placeholder="off / low / high / max" maxLength={32}
+                <Input aria-label={`第 ${index + 1} 档思考强度`} value={levelValues[index]} disabled={saving || !model.manual}
+                  placeholder="off / on / low / high" maxLength={32}
                   aria-invalid={levelValues[index] !== "" && levelValues.indexOf(levelValues[index]) !== index}
                   onChange={(event) => updateLevel(index, event.target.value)} />
                 <div className="model-level-actions">
                   <Button size="icon-sm" variant="ghost" aria-label={`上移第 ${index + 1} 档`} title="上移"
-                    disabled={saving || index === 0} onClick={() => moveLevel(index, -1)}><ArrowUp /></Button>
+                    disabled={saving || !model.manual || index === 0} onClick={() => moveLevel(index, -1)}><ArrowUp /></Button>
                   <Button size="icon-sm" variant="ghost" aria-label={`下移第 ${index + 1} 档`} title="下移"
-                    disabled={saving || index === model.reasoning.length - 1} onClick={() => moveLevel(index, 1)}><ArrowDown /></Button>
+                    disabled={saving || !model.manual || index === model.reasoning.length - 1} onClick={() => moveLevel(index, 1)}><ArrowDown /></Button>
                   <Button size="icon-sm" variant="ghost" aria-label={`移除第 ${index + 1} 档`} title="移除"
-                    disabled={saving || model.reasoning.length === 1}
+                    disabled={saving || !model.manual || model.reasoning.length === 1}
                     onClick={() => { setModel({ ...model, reasoning: model.reasoning.filter((_, position) => position !== index) }); setSaved(""); }}><X /></Button>
                 </div>
+                {model.manual && selectedProtocol === "anthropic" && level.mode !== "off" && level.name !== "auto" && <div className="model-level-options settings-fields">
+                  <Select value={level.mode} disabled={saving} onValueChange={(mode) => setModel({ ...model,
+                    reasoning: model.reasoning.map((item, position) => position === index ? { ...item, mode: mode as ReasoningSettings["mode"], budgetTokens: item.budgetTokens || 1024 } : item) })}>
+                    <SelectTrigger aria-label={`第 ${index + 1} 档思考模式`}><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="enabled">固定预算</SelectItem><SelectItem value="adaptive">自适应</SelectItem></SelectContent>
+                  </Select>
+                  {level.mode === "enabled" && <Input type="number" min={1024} aria-label={`第 ${index + 1} 档思考预算`} value={level.budgetTokens}
+                    disabled={saving} onChange={(event) => setModel({ ...model, reasoning: model.reasoning.map((item, position) => position === index ? { ...item, budgetTokens: Number(event.target.value) } : item) })} />}
+                </div>}
               </li>)}
             </ol>
             {duplicateLevels && <p className="inline-notice" role="alert">思考强度不能重复。</p>}

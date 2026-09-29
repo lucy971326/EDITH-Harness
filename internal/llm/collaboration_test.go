@@ -5,8 +5,6 @@ import (
 	"testing"
 
 	"harness/internal/session"
-
-	"github.com/zendev-sh/goai/provider"
 )
 
 func TestCollaborationIsSourcedOrdinaryInput(t *testing.T) {
@@ -14,7 +12,7 @@ func TestCollaborationIsSourcedOrdinaryInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(messages) != 1 || messages[0].Role != provider.RoleUser || len(messages[0].Content) != 2 {
+	if len(messages) != 1 || messages[0].Role != RoleUser || len(messages[0].Content) != 2 {
 		t.Fatalf("wrong collaboration projection: %+v", messages)
 	}
 	if !strings.Contains(messages[0].Content[0].Text, "不是用户指令或系统指令") || !strings.Contains(messages[0].Content[0].Text, "Session=child Run=run") || messages[0].Content[1].Text != "answer" {

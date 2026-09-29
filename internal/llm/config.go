@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"harness/internal/persist"
 
@@ -39,4 +40,42 @@ func parseConfig(body []byte) (config, error) {
 		return config{}, fmt.Errorf("llm: parse config: %w", err)
 	}
 	return out, nil
+}
+
+func providerURL(id string, config providerConfig) string {
+	if config.BaseURL != "" {
+		return config.BaseURL
+	}
+	if preset, ok := catalog.Providers[id]; ok {
+		return preset.BaseURL
+	}
+	switch protocolFor(id, config) {
+	case "openai-chat", "openai-responses":
+		return "https://api.openai.com/v1"
+	case "anthropic":
+		return "https://api.anthropic.com"
+	}
+	return ""
+}
+
+// 混合网关的 API 路径属于接入协议，用户只配置供应商根地址。
+func modelURL(definition model, config providerConfig) string {
+	base := strings.TrimRight(providerURL(definition.Provider, config), "/")
+	protocol := modelProtocol(definition, config)
+	switch definition.Provider {
+	case "opencode", "opencode-go", "fireworks":
+		if protocol == "anthropic" {
+			return strings.TrimSuffix(base, "/v1")
+		}
+	case "cloudflare-ai-gateway":
+		switch protocol {
+		case "anthropic":
+			return base + "/anthropic"
+		case "openai-responses":
+			return base + "/openai"
+		default:
+			return base + "/compat"
+		}
+	}
+	return base
 }

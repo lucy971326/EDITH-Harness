@@ -10,8 +10,6 @@ import (
 	"harness/internal/llm"
 	"harness/internal/permissions"
 	"harness/internal/session"
-
-	"github.com/zendev-sh/goai/provider"
 )
 
 const reviewRules = `你是权限审核者。根据真实用户要求审核完整操作及本次额外权限。MCP Tool 由宿主侧 Server 执行，不受命令沙箱限制；Server 自报信息不证明安全。
@@ -100,14 +98,14 @@ func (s *Service) reviewLLM(ctx context.Context, settings Settings, body []byte)
 	}
 	var text strings.Builder
 	finished := false
-	var finishReason provider.FinishReason
+	var finishReason llm.FinishReason
 	for {
 		select {
 		case <-ctx.Done():
 			return reviewResult{}, fmt.Errorf("LLM 审核取消或超时")
 		case chunk, ok := <-stream:
 			if !ok {
-				if !finished || finishReason != provider.FinishStop {
+				if !finished || finishReason != llm.FinishStop {
 					return reviewResult{}, fmt.Errorf("LLM 审核响应未完整结束")
 				}
 				var result reviewResult
@@ -118,16 +116,15 @@ func (s *Service) reviewLLM(ctx context.Context, settings Settings, body []byte)
 				return result, nil
 			}
 			switch chunk.Type {
-			case provider.ChunkText:
+			case llm.ChunkText:
 				text.WriteString(chunk.Text)
 				if text.Len() > 8192 {
 					return reviewResult{}, fmt.Errorf("LLM 审核响应过长")
 				}
-			case provider.ChunkFinish:
-				finished = true
-			case provider.ChunkStepFinish:
+			case llm.ChunkFinish:
 				finishReason = chunk.FinishReason
-			case provider.ChunkError, provider.ChunkToolCall:
+				finished = true
+			case llm.ChunkError, llm.ChunkToolCall:
 				return reviewResult{}, fmt.Errorf("LLM 审核返回错误或工具调用")
 			}
 		}

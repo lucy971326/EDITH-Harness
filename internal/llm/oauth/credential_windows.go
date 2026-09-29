@@ -1,6 +1,6 @@
 //go:build windows
 
-package codex
+package oauth
 
 import (
 	"errors"
@@ -11,7 +11,7 @@ import (
 )
 
 // Windows 凭据通过 DPAPI 绑定当前用户；文件仍由 persist 原子写入。
-func sealOAuthCredential(data []byte) ([]byte, error) {
+func sealCredential(data []byte) ([]byte, error) {
 	if len(data) == 0 {
 		return nil, errors.New("empty OAuth credential")
 	}
@@ -26,7 +26,7 @@ func sealOAuthCredential(data []byte) ([]byte, error) {
 	return append([]byte(nil), unsafe.Slice(output.Data, int(output.Size))...), nil
 }
 
-func openOAuthCredential(data []byte) ([]byte, error) {
+func openCredential(data []byte) ([]byte, error) {
 	if len(data) == 0 {
 		return nil, errors.New("empty OAuth credential")
 	}

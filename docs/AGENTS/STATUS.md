@@ -5,7 +5,7 @@
 ## 当前能力
 
 - React Web：项目与会话、归档与恢复、永久删除、文字／图片聊天、实时过程、Steer、停止、分叉、压缩、上下文引用。
-- 模型选择：供应商二级列表与独立思考滑块，档位沿用用户目录 models.json 配置顺序；新会话默认取第一档。设置页可配置 DeepSeek、Google、OpenAI Chat Completions／Responses、Anthropic 的供应商密钥和模型能力；ChatGPT 订阅通过独立的 Codex OAuth 登录与 Responses 请求通道接入。
+- 模型选择：按供应商展示与独立思考滑块；开发时从 models.dev 生成内置目录，供应商名单对齐 Pi 的 OpenAI／Anthropic 协议入口，覆盖 DeepSeek、MiMo、MiniMax、Qwen、Kimi、GLM 等。已知模型自动提供能力，设置支持高级手动覆盖。协议使用 OpenAI Chat／Responses 与 Anthropic Messages 官方 SDK；内置账号登录保留 ChatGPT、xAI。
 - Wails v3 Desktop：支持 Windows／macOS，复用同一份 React 构建产物与后台，业务通过 Stream 传完整 JSON-RPC 2.0 消息；单实例唤醒、窗口布局恢复、关窗隐藏到托盘已实现；Windows 自绘标题栏，macOS 保留原生交通灯。Linux 保留 Web，不构建 Desktop；同一份用户数据只允许一个后台运行。
 - 设置：独立导航，通用内含主题与默认关闭的通知开关；Agent 分组表单、个人 Skill 管理、模型与供应商、智能审批方式、可折叠 Hooks 列表，以及全局 MCP Server 的增删改、开关、重连全部全局 Server 和 HTTP OAuth 登录；项目 Skill 只读，项目 MCP 配置只读、确认后可登录。分类切换保留草稿，离开前确认未保存修改。
 - 工作区：Monaco 编辑器、自动保存与冲突保护、文件监听、Run Diff 与受版本保护的撤销、真实 PTY 终端。
@@ -30,12 +30,12 @@ make test          # 完整串行验收
 
 Web 开发页 `http://127.0.0.1:5173/`，业务连接同源 `/rpc` 并代理到 Go 后台 `127.0.0.1:8888`；Go 改动后重启 `make run`。Desktop 不开放业务 TCP 端口。前端 dist 由 Go embed 打包，不提交 Git。`make build` 仍完整构建前端并产出二进制。
 
-模型供应商密钥与 Jev 密钥保存在 `~/.harness/config.yaml`；模型目录保存在 `~/.harness/models.json`，也可在设置页编辑。其他数据位置与所有者见 DATA_MODEL。没有旧数据迁移，升级开发版本前自行决定是否清理数据。
+模型供应商密钥与 Jev 密钥保存在 `~/.harness/config.yaml`；内置模型快照随程序发布，`~/.harness/models.json` 只保存覆盖与隐藏项。其他数据位置与所有者见 DATA_MODEL。不提供旧数据迁移；旧 models.json 需由用户移走后重新配置。
 
 ## 限制与未验证项
 
 - MCP 表单的亮暗主题与窄屏显示待用户截图验收。
-- 模型二级选择、ChatGPT 登录状态与思考滑块的视觉、亮暗主题和窄屏交互待用户截图验收。ChatGPT 浏览器授权和真实订阅额度调用仍待账号实机验收；第三方调用 Codex 订阅接口的稳定性没有公开承诺。
+- 模型二级选择、账号登录状态与思考滑块的视觉、亮暗主题和窄屏交互待用户截图验收。四家账号的真实授权、刷新和模型调用仍待账号实机验收；第三方客户端身份与订阅接口的稳定性没有公开承诺。
 - Windows 受限 Agent 沙箱未实现，Full Access 可用；原生目录选择仍需交互式 Windows 验收。
 - Desktop 已通过构建与连接入口检查；Windows 用户实机确认可双击启动且无控制台，Agent 命令不再弹窗仍待用户实机验收，聊天／终端等交互未逐项验收；新标题栏、单实例、关窗、托盘与窗口恢复仍待实机验收，macOS 窗口交互亦待验收。
 - Windows 安装器仅当前用户安装；升级／卸载拦截运行中的 EDITH，拒绝降级，保留用户数据及非安装器文件。macOS DMG 打包流程已接入，仍需 Mac 实机验证；真实 WebView2 缺失环境的下载与安装待验收，失败分支已用隔离登记和模拟引导程序验证。
@@ -55,3 +55,5 @@ Web 开发页 `http://127.0.0.1:5173/`，业务连接同源 `/rpc` 并代理到 
 headless CLI、通用服务端反向请求、业务操作防重与完整多 Client 协调、辅助浏览器、Windows 沙箱。新的 Hook 事件仅在有具体需求时设计，不预建框架。
 
 现有 Web 与 Desktop 的共用边界见[设计书](../设计书.md)。
+
+- LLM 新适配的真实供应商调用、订阅账号权限及 macOS 登录仍需实机验证；自动化使用本地假服务覆盖请求、流事件和失败处理，不代表所有目录模型逐一通过远端验收。
