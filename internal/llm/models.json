@@ -1,5 +1,17 @@
 {
   "models": {
+    "openai-codex/gpt-6-sol": {
+      "provider": "openai-codex",
+      "id": "gpt-6-sol",
+      "contextWindow": 128000,
+      "vision": true,
+      "reasoning": {
+        "low": { "reasoning_effort": "low" },
+        "medium": { "reasoning_effort": "medium" },
+        "high": { "reasoning_effort": "high" },
+        "xhigh": { "reasoning_effort": "xhigh" }
+      }
+    },
     "deepseek/deepseek-flash": {
       "provider": "deepseek",
       "id": "deepseek-flash",

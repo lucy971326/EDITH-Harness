@@ -10,6 +10,7 @@ RunConfig + Input
 - `client.go`：构造、模型查询、Stream 主线。
 - `config.go`：本机 `config.yaml`；`models.go / models.json`：内置模型能力与思考档位。
 - `messages.go`：账本消息与工具转成 Provider 输入。
+- `codex/`：ChatGPT 订阅浏览器登录、凭据保护与固定地址的 Responses 请求；`llm` 只负责模型选择和消息转换。
 - `types.go`：调用配置与输入形状。
 
 ReAct、压缩与智能审核复用此客户端。配置更新原子替换 current；ReAct 与压缩通过 Pin 固定本轮目录；这里不保存会话，也不决定本轮执行流程。

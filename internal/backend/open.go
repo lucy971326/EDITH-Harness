@@ -77,6 +77,7 @@ func Open(dataDir string) (backend *Backend, result error) {
 	if err != nil {
 		return nil, err
 	}
+	closers = append(closers, models.Close)
 	machineService, err := machinelocal.New()
 	if err != nil {
 		return nil, err

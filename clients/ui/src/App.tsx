@@ -1174,6 +1174,7 @@ export default function App({ platform }: { platform: Platform }) {
       saving: agentSaving, onSave: saveAgent, onDelete: deleteAgent,
       onReload: () => { if (clientRef.current?.connected) void loadAgents(clientRef.current); },
       modelSettings: (onStateChange) => <ModelSettingsPanel client={approvalClient}
+        openExternal={platform.openExternal}
         onStateChange={onStateChange} onSaved={() => {
           if (clientRef.current?.connected) {
             void loadModels(clientRef.current);

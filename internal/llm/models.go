@@ -179,6 +179,9 @@ func newModel(definition model, config providerConfig) (provider.LanguageModel, 
 }
 
 func protocolFor(id string, config providerConfig) string {
+	if id == "openai-codex" {
+		return id
+	}
 	if config.Protocol != "" {
 		return config.Protocol
 	}
@@ -190,7 +193,7 @@ func protocolFor(id string, config providerConfig) string {
 
 func validProtocol(value string) bool {
 	switch value {
-	case "deepseek", "google", "openai-chat", "openai-responses", "anthropic":
+	case "deepseek", "google", "openai-chat", "openai-responses", "anthropic", "openai-codex":
 		return true
 	default:
 		return false

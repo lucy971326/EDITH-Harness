@@ -13,9 +13,15 @@ export interface ModelChoice {
 
 export interface ProviderSettings {
   id: string;
-  protocol: 'deepseek' | 'google' | 'openai-chat' | 'openai-responses' | 'anthropic';
+  protocol: 'deepseek' | 'google' | 'openai-chat' | 'openai-responses' | 'anthropic' | 'openai-codex';
   baseURL: string;
   hasAPIKey: boolean;
+}
+export interface CodexAuthView {
+  authenticated: boolean;
+  state: 'disconnected' | 'waiting' | 'connecting' | 'complete' | 'connected' | 'failed' | 'cancelled';
+  url?: string;
+  message?: string;
 }
 export interface ReasoningSettings {
   name: string;
@@ -256,6 +262,10 @@ export interface ServerMethods {
   'model/provider/delete': { params: { id: string; providerRevision: string; modelRevision: string }; result: ModelSettingsView };
   'model/definition/save': { params: { model: ModelSettings; revision: string }; result: ModelSettingsView };
   'model/definition/delete': { params: { key: string; revision: string }; result: ModelSettingsView };
+  'model/auth/start': { params: Record<string, never>; result: CodexAuthView };
+  'model/auth/status': { params: Record<string, never>; result: CodexAuthView };
+  'model/auth/cancel': { params: Record<string, never>; result: CodexAuthView };
+  'model/auth/logout': { params: Record<string, never>; result: CodexAuthView };
   'agent/list': { params: Record<string, never>; result: AgentListResult };
   'agent/save': { params: AgentSaveParams; result: { agent: AgentView } };
   'agent/delete': { params: { agentID: string }; result: Record<string, never> };

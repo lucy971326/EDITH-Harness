@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"fmt"
+	"harness/internal/llm/codex"
 	"harness/internal/persist"
 	"sort"
 	"sync"
@@ -16,8 +17,8 @@ func (c *Client) Models() []ModelChoice {
 	state := c.state()
 	out := make([]ModelChoice, 0, len(state.models))
 	for id, definition := range state.models {
-		provider, ok := state.config.Providers[definition.Provider]
-		if !ok || provider.APIKey == "" || !validProtocol(protocolFor(definition.Provider, provider)) {
+		provider, ok := state.provider(definition.Provider)
+		if !ok || !validProtocol(protocolFor(definition.Provider, provider)) || !c.providerReady(definition.Provider, provider) {
 			continue
 		}
 		efforts := make([]string, 0, len(definition.Reasoning))
@@ -36,11 +37,15 @@ func (c *Client) Models() []ModelChoice {
 	return out
 }
 
-// ValidateConfig 检查模型对应的本地 Provider 是否配置了密钥。
+// ValidateConfig 检查模型对应的本地 Provider 是否具备可用凭据。
 func (c *Client) ValidateConfig(id string) error {
 	state := c.state()
 	definition, ok := state.models[id]
-	if !ok || state.config.Providers[definition.Provider].APIKey == "" {
+	if !ok {
+		return fmt.Errorf("llm: model provider is not configured")
+	}
+	providerConfig, configured := state.provider(definition.Provider)
+	if !configured || !c.providerReady(definition.Provider, providerConfig) {
 		return fmt.Errorf("llm: model provider is not configured")
 	}
 	return nil
@@ -73,11 +78,20 @@ type Client struct {
 	current atomic.Pointer[modelState]
 	editMu  sync.Mutex
 	files   *persist.Files
+	auth    *codex.Auth
 }
 
 type modelState struct {
 	config config
 	models map[string]model
+}
+
+func (s *modelState) provider(id string) (providerConfig, bool) {
+	if id == "openai-codex" {
+		return providerConfig{Protocol: "openai-codex"}, true
+	}
+	entry, ok := s.config.Providers[id]
+	return entry, ok
 }
 
 func (c *Client) state() *modelState {
@@ -93,7 +107,7 @@ func (c *Client) state() *modelState {
 // Pin 固定一轮运行使用的目录，避免多步工具调用期间切换供应商设置。
 func (c *Client) Pin() *Client {
 	state := c.state()
-	pinned := &Client{}
+	pinned := &Client{auth: c.auth}
 	pinned.current.Store(state)
 	return pinned
 }
@@ -105,14 +119,14 @@ func (c *Client) Stream(ctx context.Context, config RunConfig, input Input) (<-c
 	if !ok {
 		return nil, fmt.Errorf("llm: unknown model %q", config.Model)
 	}
-	providerConfig, ok := state.config.Providers[definition.Provider]
+	providerConfig, ok := state.provider(definition.Provider)
 	if !ok {
 		return nil, fmt.Errorf("llm: provider %q is not configured", definition.Provider)
 	}
-	if providerConfig.APIKey == "" {
+	protocol := protocolFor(definition.Provider, providerConfig)
+	if protocol != "openai-codex" && providerConfig.APIKey == "" {
 		return nil, fmt.Errorf("llm: provider %q has no API key", definition.Provider)
 	}
-
 	messages, err := toProviderMessages(input.History, definition.Vision)
 	if err != nil {
 		return nil, err
@@ -121,7 +135,7 @@ func (c *Client) Stream(ctx context.Context, config RunConfig, input Input) (<-c
 	if err != nil {
 		return nil, err
 	}
-	if protocolFor(definition.Provider, providerConfig) == "openai-chat" {
+	if protocol == "openai-chat" {
 		copyOptions := make(map[string]any, len(options)+1)
 		for key, value := range options {
 			copyOptions[key] = value
@@ -129,13 +143,28 @@ func (c *Client) Stream(ctx context.Context, config RunConfig, input Input) (<-c
 		copyOptions["useResponsesAPI"] = false
 		options = copyOptions
 	}
-	model, err := newModel(definition, providerConfig)
+	if protocol == "openai-codex" {
+		options = codex.Options(options)
+	}
+	var model provider.LanguageModel
+	if protocol == "openai-codex" {
+		if c.auth == nil {
+			return nil, fmt.Errorf("llm: ChatGPT is not connected")
+		}
+		model, err = c.auth.Model(ctx, definition.ID)
+	} else {
+		model, err = newModel(definition, providerConfig)
+	}
 	if err != nil {
 		return nil, err
 	}
 	toolDefinitions := toProviderTools(input.Tools)
+	system := input.System
+	if protocol == "openai-codex" && system == "" {
+		system = "You are a helpful assistant."
+	}
 	params := provider.GenerateParams{
-		System:          input.System,
+		System:          system,
 		Messages:        messages,
 		Tools:           toolDefinitions,
 		ToolChoice:      input.ToolChoice,
@@ -158,7 +187,33 @@ func New(files *persist.Files) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	client := &Client{files: files}
+	auth, err := codex.New(files)
+	if err != nil {
+		return nil, err
+	}
+	client := &Client{files: files, auth: auth}
 	client.current.Store(&modelState{config: cfg, models: models})
 	return client, nil
 }
+
+func (c *Client) providerReady(id string, config providerConfig) bool {
+	if protocolFor(id, config) == "openai-codex" {
+		return c.auth != nil && c.auth.Authenticated()
+	}
+	return config.APIKey != ""
+}
+
+// Close 取消尚未完成的浏览器授权并释放回调监听器。
+func (c *Client) Close() error {
+	if c.auth != nil {
+		c.auth.Close()
+	}
+	return nil
+}
+
+// StartCodexAuth 开始本机浏览器登录并返回授权网址。
+func (c *Client) StartCodexAuth() (codex.View, error) { return c.auth.Start() }
+
+func (c *Client) CodexAuthStatus() codex.View          { return c.auth.Status() }
+func (c *Client) CancelCodexAuth() codex.View          { return c.auth.Cancel() }
+func (c *Client) LogoutCodexAuth() (codex.View, error) { return c.auth.Logout() }

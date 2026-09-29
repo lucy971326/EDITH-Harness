@@ -3283,6 +3283,16 @@
   margin-top: var(--space-2);
   overflow-wrap: anywhere;
 }
+.model-settings-auth {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+.model-settings-auth .inline-notice {
+  flex-basis: 100%;
+}
 .model-settings-models {
   margin-top: var(--space-6);
   padding-top: var(--space-6);

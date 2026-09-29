@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"harness/internal/llm"
+	"harness/internal/llm/codex"
 )
 
 // 数据。模型目录不接受过滤参数。
@@ -37,7 +38,19 @@ func (s *Server) BindModels(client *llm.Client) error {
 	if err := Register(s, "model/definition/save", s.handleModelDefinitionSave); err != nil {
 		return err
 	}
-	return Register(s, "model/definition/delete", s.handleModelDefinitionDelete)
+	if err := Register(s, "model/definition/delete", s.handleModelDefinitionDelete); err != nil {
+		return err
+	}
+	if err := Register(s, "model/auth/start", s.handleModelAuthStart); err != nil {
+		return err
+	}
+	if err := Register(s, "model/auth/status", s.handleModelAuthStatus); err != nil {
+		return err
+	}
+	if err := Register(s, "model/auth/cancel", s.handleModelAuthCancel); err != nil {
+		return err
+	}
+	return Register(s, "model/auth/logout", s.handleModelAuthLogout)
 }
 
 func (s *Server) handleModelList(_ context.Context, _ ModelListParams) (ModelListResult, error) {
@@ -79,6 +92,26 @@ func (s *Server) handleModelDefinitionSave(_ context.Context, input llm.SaveMode
 func (s *Server) handleModelDefinitionDelete(_ context.Context, input ModelDefinitionDeleteParams) (llm.SettingsView, error) {
 	view, err := s.models.DeleteModel(input.Key, input.Revision)
 	return view, modelSettingsError(err)
+}
+
+func (s *Server) handleModelAuthStart(_ context.Context, _ ModelListParams) (codex.View, error) {
+	view, err := s.models.StartCodexAuth()
+	if errors.Is(err, codex.ErrCallbackBusy) {
+		return view, &Error{Code: CodeConflict, Message: "ChatGPT 登录端口 1455 已被占用，请结束其他登录后重试", Cause: err}
+	}
+	return view, err
+}
+
+func (s *Server) handleModelAuthStatus(_ context.Context, _ ModelListParams) (codex.View, error) {
+	return s.models.CodexAuthStatus(), nil
+}
+
+func (s *Server) handleModelAuthCancel(_ context.Context, _ ModelListParams) (codex.View, error) {
+	return s.models.CancelCodexAuth(), nil
+}
+
+func (s *Server) handleModelAuthLogout(_ context.Context, _ ModelListParams) (codex.View, error) {
+	return s.models.LogoutCodexAuth()
 }
 
 func modelSettingsError(err error) error {

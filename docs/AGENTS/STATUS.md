@@ -5,7 +5,7 @@
 ## 当前能力
 
 - React Web：项目与会话、归档与恢复、永久删除、文字／图片聊天、实时过程、Steer、停止、分叉、压缩、上下文引用。
-- 模型选择：供应商二级列表与独立思考滑块，档位沿用用户目录 models.json 配置顺序；新会话默认取第一档。设置页可配置 DeepSeek、Google、OpenAI Chat Completions／Responses、Anthropic 的供应商密钥和模型能力。
+- 模型选择：供应商二级列表与独立思考滑块，档位沿用用户目录 models.json 配置顺序；新会话默认取第一档。设置页可配置 DeepSeek、Google、OpenAI Chat Completions／Responses、Anthropic 的供应商密钥和模型能力；ChatGPT 订阅通过独立的 Codex OAuth 登录与 Responses 请求通道接入。
 - Wails v3 Desktop：支持 Windows／macOS，复用同一份 React 构建产物与后台，业务通过 Stream 传完整 JSON-RPC 2.0 消息；单实例唤醒、窗口布局恢复、关窗隐藏到托盘已实现；Windows 自绘标题栏，macOS 保留原生交通灯。Linux 保留 Web，不构建 Desktop；同一份用户数据只允许一个后台运行。
 - 设置：独立导航，通用内含主题与默认关闭的通知开关；Agent 分组表单、个人 Skill 管理、模型与供应商、智能审批方式、可折叠 Hooks 列表，以及全局 MCP Server 的增删改、开关、重连全部全局 Server 和 HTTP OAuth 登录；项目 Skill 只读，项目 MCP 配置只读、确认后可登录。分类切换保留草稿，离开前确认未保存修改。
 - 工作区：Monaco 编辑器、自动保存与冲突保护、文件监听、Run Diff 与受版本保护的撤销、真实 PTY 终端。
@@ -35,7 +35,7 @@ Web 开发页 `http://127.0.0.1:5173/`，业务连接同源 `/rpc` 并代理到 
 ## 限制与未验证项
 
 - MCP 表单的亮暗主题与窄屏显示待用户截图验收。
-- 模型二级选择与思考滑块的视觉、亮暗主题和窄屏交互待用户截图验收。
+- 模型二级选择、ChatGPT 登录状态与思考滑块的视觉、亮暗主题和窄屏交互待用户截图验收。ChatGPT 浏览器授权和真实订阅额度调用仍待账号实机验收；第三方调用 Codex 订阅接口的稳定性没有公开承诺。
 - Windows 受限 Agent 沙箱未实现，Full Access 可用；原生目录选择仍需交互式 Windows 验收。
 - Desktop 已通过构建与连接入口检查；Windows 用户实机确认可双击启动且无控制台，Agent 命令不再弹窗仍待用户实机验收，聊天／终端等交互未逐项验收；新标题栏、单实例、关窗、托盘与窗口恢复仍待实机验收，macOS 窗口交互亦待验收。
 - Windows 安装器仅当前用户安装；升级／卸载拦截运行中的 EDITH，拒绝降级，保留用户数据及非安装器文件。macOS DMG 打包流程已接入，仍需 Mac 实机验证；真实 WebView2 缺失环境的下载与安装待验收，失败分支已用隔离登记和模拟引导程序验证。

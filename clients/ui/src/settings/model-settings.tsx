@@ -11,7 +11,7 @@ import {
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { ModelSettings, ModelSettingsView, ProviderSettings, ReasoningSettings, SaveProviderSettings } from "../../../contracts/appserver";
+import type { CodexAuthView, ModelSettings, ModelSettingsView, ProviderSettings, ReasoningSettings, SaveProviderSettings } from "../../../contracts/appserver";
 import { RPCClient, formatRPCError } from "../client/rpc";
 import { ArrowLeft, ArrowUp, ArrowDown, Brain, Building2, ChevronRight, Plus, Pencil, Trash2, X } from "../icons";
 import type { SettingsDraftState } from "./types";
@@ -30,6 +30,7 @@ const protocols: { id: ProviderSettings["protocol"]; label: string; address: str
   { id: "google", label: "Google Gemini", address: "https://generativelanguage.googleapis.com" },
   { id: "openai-chat", label: "OpenAI Chat Completions", address: "https://api.openai.com/v1" },
   { id: "openai-responses", label: "OpenAI Responses", address: "https://api.openai.com/v1" },
+  { id: "openai-codex", label: "ChatGPT 订阅", address: "https://chatgpt.com/backend-api/codex" },
   { id: "anthropic", label: "Anthropic", address: "https://api.anthropic.com" },
 ];
 const presets: { id: string; protocol: ProviderSettings["protocol"] }[] = [
@@ -58,8 +59,9 @@ function windowLabel(tokens: number): string {
   return `${tokens.toLocaleString()} token`;
 }
 
-export function ModelSettingsPanel({ client, onSaved, onStateChange }: {
+export function ModelSettingsPanel({ client, openExternal, onSaved, onStateChange }: {
   client: RPCClient | null;
+  openExternal: (url: string) => Promise<void>;
   onSaved: () => void;
   onStateChange: (state: SettingsDraftState) => void;
 }) {
@@ -73,12 +75,15 @@ export function ModelSettingsPanel({ client, onSaved, onStateChange }: {
   const [saved, setSaved] = useState("");
   const [saving, setSaving] = useState(false);
   const [reload, setReload] = useState(0);
+  const [auth, setAuth] = useState<CodexAuthView | null>(null);
 
   useEffect(() => {
     let active = true;
     setView(null); setProvider(null); setModel(null); setEditor("overview");
-    setCreatingProvider(false); setPendingTarget(null); setError("");
+    setCreatingProvider(false); setPendingTarget(null); setError(""); setAuth(null);
     if (!client?.connected) return;
+    void client.call("model/auth/status", {}).then((result) => { if (active) setAuth(result); })
+      .catch((cause: unknown) => { if (active) setError(formatRPCError(cause, "读取登录状态失败")); });
     void client.call("model/config/read", {}).then((result) => {
       if (!active) return;
       setView(result);
@@ -88,6 +93,50 @@ export function ModelSettingsPanel({ client, onSaved, onStateChange }: {
     });
     return () => { active = false; };
   }, [client, reload]);
+
+  useEffect(() => {
+    if (!client?.connected || (auth?.state !== "waiting" && auth?.state !== "connecting")) return;
+    let active = true;
+    const timer = window.setInterval(() => {
+      void client.call("model/auth/status", {}).then(async (result) => {
+        if (!active) return;
+        setAuth(result);
+        if (result.state === "complete") {
+          setView(await client.call("model/config/read", {}));
+          onSaved();
+        }
+      }).catch((cause: unknown) => { if (active) setError(formatRPCError(cause, "读取登录状态失败")); });
+    }, 1000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [client, auth?.state]);
+
+  async function startAuth() {
+    if (!client?.connected || saving) return;
+    setSaving(true); setError("");
+    try {
+      const result = await client.call("model/auth/start", {});
+      setAuth(result);
+      if (result.url) await openExternal(result.url);
+    } catch (cause) { setError(formatRPCError(cause, "ChatGPT 登录启动失败")); }
+    finally { setSaving(false); }
+  }
+
+  async function cancelAuth() {
+    if (!client?.connected) return;
+    try { setAuth(await client.call("model/auth/cancel", {})); }
+    catch (cause) { setError(formatRPCError(cause, "取消登录失败")); }
+  }
+
+  async function logoutAuth() {
+    if (!client?.connected || saving) return;
+    setSaving(true); setError("");
+    try {
+      setAuth(await client.call("model/auth/logout", {}));
+      setView(await client.call("model/config/read", {}));
+      onSaved();
+    } catch (cause) { setError(formatRPCError(cause, "退出登录失败")); }
+    finally { setSaving(false); }
+  }
 
   const storedProvider = creatingProvider ? undefined : view?.providers.find((item) => item.id === provider?.id);
   const storedModel = view?.models.find((item) => item.key === model?.key);
@@ -288,12 +337,22 @@ export function ModelSettingsPanel({ client, onSaved, onStateChange }: {
         {editor === "overview" && selectedProvider && <>
           <div className="settings-detail-title-row">
             <div className="settings-identity"><span className="settings-identity-icon"><Building2 /></span><div><h3>{selectedProvider.id}</h3>
-              <p className="model-settings-summary">{protocolLabel} · {selectedProvider.hasAPIKey ? "密钥已设置" : "未设置密钥"}</p>
+              <p className="model-settings-summary">{protocolLabel} · {selectedProtocol === "openai-codex"
+                ? auth?.authenticated ? "已登录" : "未登录" : selectedProvider.hasAPIKey ? "密钥已设置" : "未设置密钥"}</p>
             </div></div>
-            <Button size="sm" variant="outline" disabled={saving}
-              onClick={() => requestTarget({ kind: "edit-provider", id: selectedProvider.id })}><Pencil />编辑连接</Button>
+            {selectedProtocol !== "openai-codex" && <Button size="sm" variant="outline" disabled={saving}
+              onClick={() => requestTarget({ kind: "edit-provider", id: selectedProvider.id })}><Pencil />编辑连接</Button>}
           </div>
-          <p className="model-settings-address">{selectedProvider.baseURL || protocols.find((item) => item.id === selectedProtocol)?.address}</p>
+          {selectedProtocol === "openai-codex" ? <div className="model-settings-auth">
+            {auth?.message && <p className="inline-notice" role="status">{auth.message}</p>}
+            {auth?.state === "waiting" || auth?.state === "connecting" ? <>
+              <span className="metadata">{auth.state === "waiting" ? "等待浏览器授权…" : "正在完成登录…"}</span>
+              {auth.url && <Button size="sm" variant="outline" onClick={() => void openExternal(auth.url!)}>打开授权页</Button>}
+              <Button size="sm" variant="ghost" onClick={() => void cancelAuth()}>取消</Button>
+            </> : auth?.authenticated ? <Button size="sm" variant="outline" disabled={saving}
+              onClick={() => void logoutAuth()}>退出 ChatGPT</Button> : <Button size="sm" disabled={saving}
+              onClick={() => void startAuth()}>登录 ChatGPT</Button>}
+          </div> : <p className="model-settings-address">{selectedProvider.baseURL || protocols.find((item) => item.id === selectedProtocol)?.address}</p>}
           <section className="model-settings-models">
             <div className="model-settings-title-row"><h4>模型 <span className="model-settings-count">{providerModels.length}</span></h4>
               <DropdownMenu>
@@ -336,13 +395,14 @@ export function ModelSettingsPanel({ client, onSaved, onStateChange }: {
                 <Select value={provider.protocol} disabled={saving || (!!storedProvider && providerModels.length > 0)}
                   onValueChange={(value) => setProvider({ ...provider, protocol: value as ProviderSettings["protocol"] })}>
                   <SelectTrigger id="provider-protocol" className="w-full"><SelectValue /></SelectTrigger>
-                  <SelectContent>{protocols.map((item) => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent>
+                  <SelectContent>{protocols.filter((item) => item.id !== "openai-codex").map((item) =>
+                    <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent>
                 </Select>
                 {!!storedProvider && providerModels.length > 0 &&
                   <span className="settings-description">删除该供应商的模型后可更改协议。</span>}
               </div>
             </div>
-            <div className="settings-field"><Label htmlFor="provider-url">API 地址</Label><Input id="provider-url" value={provider.baseURL}
+            {selectedProtocol !== "openai-codex" && <><div className="settings-field"><Label htmlFor="provider-url">API 地址</Label><Input id="provider-url" value={provider.baseURL}
               disabled={saving} placeholder={protocols.find((item) => item.id === selectedProtocol)?.address}
               onChange={(event) => setProvider({ ...provider, baseURL: event.target.value })} />
               <span className="settings-description">留空使用该协议的默认地址。</span></div>
@@ -353,7 +413,7 @@ export function ModelSettingsPanel({ client, onSaved, onStateChange }: {
               {storedProvider?.hasAPIKey && <div className="model-settings-check"><Switch id="provider-clear-key" checked={provider.clearAPIKey}
                 disabled={saving} onCheckedChange={(checked) => setProvider({ ...provider, clearAPIKey: checked, apiKey: "" })} />
                 <Label htmlFor="provider-clear-key">清除已保存的密钥</Label></div>}
-            </div>
+            </div></>}
           </div>
           {storedProvider && <div className="settings-danger-row">
             <Button variant="ghost" className="settings-delete" disabled={saving}

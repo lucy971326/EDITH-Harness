@@ -67,7 +67,7 @@ func (c *Client) ReadSettings() (SettingsView, error) {
 func settingsView(cfg config, models map[string]model, configBody, modelBody []byte) SettingsView {
 	view := SettingsView{Providers: []ProviderSettings{}, Models: []ModelSettings{}, Presets: []ModelSettings{},
 		ProviderRevision: revision(configBody), ModelRevision: revision(modelBody)}
-	ids := map[string]bool{}
+	ids := map[string]bool{"openai-codex": true}
 	for id := range cfg.Providers {
 		ids[id] = true
 	}
@@ -117,7 +117,7 @@ func levelSettings(level reasoningLevel, protocol string) ReasoningSettings {
 		google, _ := level.Options["google"].(map[string]any)
 		thinking, _ := google["thinkingConfig"].(map[string]any)
 		result.Effort, _ = thinking["thinkingLevel"].(string)
-	case "openai-chat", "openai-responses":
+	case "openai-chat", "openai-responses", "openai-codex":
 		result.Effort, _ = level.Options["reasoning_effort"].(string)
 	case "anthropic":
 		thinking, _ := level.Options["thinking"].(map[string]any)
@@ -148,6 +148,9 @@ func validProviderID(id string) bool {
 func validateProvider(input SaveProviderInput) error {
 	if !validProviderID(input.ID) || !validProtocol(input.Protocol) || input.ClearAPIKey && input.APIKey != "" {
 		return fmt.Errorf("%w: 供应商 ID、协议或密钥操作无效", ErrInvalidSettings)
+	}
+	if input.ID == "openai-codex" || input.Protocol == "openai-codex" {
+		return fmt.Errorf("%w: ChatGPT 订阅连接由内置登录管理", ErrInvalidSettings)
 	}
 	if strings.TrimSpace(input.BaseURL) != "" {
 		parsed, err := url.Parse(input.BaseURL)
@@ -278,7 +281,7 @@ func levelOptions(value ReasoningSettings, protocol string) (map[string]any, err
 		return map[string]any{"google": map[string]any{"thinkingConfig": map[string]any{
 			"thinkingLevel": level, "includeThoughts": true,
 		}}}, nil
-	case "openai-chat", "openai-responses":
+	case "openai-chat", "openai-responses", "openai-codex":
 		if value.Mode == "off" {
 			return map[string]any{"reasoning_effort": "none"}, nil
 		}
@@ -312,6 +315,9 @@ func (c *Client) SaveModel(input SaveModelInput) (SettingsView, error) {
 		return SettingsView{}, ErrSettingsChanged
 	}
 	provider, ok := cfg.Providers[input.Model.Provider]
+	if input.Model.Provider == "openai-codex" {
+		provider, ok = providerConfig{Protocol: "openai-codex"}, true
+	}
 	if !ok || !validProtocol(protocolFor(input.Model.Provider, provider)) {
 		return SettingsView{}, fmt.Errorf("%w: 请先保存供应商", ErrInvalidSettings)
 	}
@@ -369,6 +375,9 @@ func (c *Client) DeleteModel(key, expectedRevision string) (SettingsView, error)
 
 // DeleteProvider 删除供应商及其模型；若第二次写入失败，按磁盘状态恢复当前目录。
 func (c *Client) DeleteProvider(id, providerRevision, modelRevision string) (SettingsView, error) {
+	if id == "openai-codex" {
+		return SettingsView{}, fmt.Errorf("%w: ChatGPT 内置连接不可删除", ErrInvalidSettings)
+	}
 	c.editMu.Lock()
 	defer c.editMu.Unlock()
 	cfg, models, configBody, modelBody, err := c.readDiskLocked()

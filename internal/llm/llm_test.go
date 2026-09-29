@@ -405,7 +405,7 @@ func TestSettingsModelsOrderDeleteAndPin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(view.Models) != 3 {
+	if len(view.Models) != 4 {
 		t.Fatalf("built-in models lost: %d", len(view.Models))
 	}
 }
@@ -459,7 +459,7 @@ func TestSettingsInvalidInputAndExternalChange(t *testing.T) {
 	}
 }
 
-// 五条接入路径都必须把 UI 档位、鉴权和工具定义交给对应的流协议。
+// 五条 API Key 接入路径都必须把 UI 档位、鉴权和工具定义交给对应的流协议。
 func TestConfiguredProtocolsStreamToolCalls(t *testing.T) {
 	chatSSE := `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"tc1","type":"function","function":{"name":"read_file","arguments":"{}"}}]},"index":0}]}` + "\n\n" +
 		`data: {"choices":[{"delta":{},"index":0,"finish_reason":"tool_calls"}]}` + "\n\n" + "data: [DONE]\n\n"
@@ -607,7 +607,7 @@ func TestSettingsCanRecoverAfterLastModelRemoved(t *testing.T) {
 		t.Fatal(err)
 	}
 	view, err = restarted.ReadSettings()
-	if err != nil || len(view.Models) != 0 || len(view.Presets) != 3 {
+	if err != nil || len(view.Models) != 0 || len(view.Presets) != 4 {
 		t.Fatalf("empty catalog cannot reopen with presets: models=%d presets=%d, %v", len(view.Models), len(view.Presets), err)
 	}
 	view, err = restarted.SaveProvider(SaveProviderInput{ID: "openai", Protocol: "openai-chat", APIKey: "key", Revision: view.ProviderRevision})
