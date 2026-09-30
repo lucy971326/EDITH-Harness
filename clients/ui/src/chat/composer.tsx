@@ -51,7 +51,7 @@ export interface ComposerTrigger {
 }
 
 type Suggestion =
-  | { kind: "command"; name: string; description: string }
+  | ({ kind: "command" } & CommandView)
   | { kind: "skill"; name: string; description: string; scope: string }
   | { kind: "path"; name: string; description: string; reference: ContextReference };
 
@@ -95,6 +95,7 @@ export function isComposerSubmitKey(event: {
 
 export function Composer({
   draft,
+  commandID,
   images,
   notice,
   agents,
@@ -136,6 +137,7 @@ export function Composer({
   onRemoveReference,
 }: {
   draft: string;
+  commandID?: string;
   images: Attachment[];
   notice: string;
   agents: AgentView[] | null;
@@ -171,7 +173,7 @@ export function Composer({
   onModelChange: (value: ModelSelection) => void;
   onAgentChange: (agentID: string) => void;
   onRetryModels: () => void;
-  onCommand: (name: string, selection: CommandSelection) => Promise<void>;
+  onCommand: (command: CommandView, selection: CommandSelection) => Promise<void>;
   onDismissNotice: () => void;
   composerRef?: RefObject<ComposerHandle | null>;
   references?: ReferenceAttachment[];
@@ -181,10 +183,12 @@ export function Composer({
   onRemoveReference?: (id: string) => void;
 }) {
   const input = useRef<SkillEditorHandle>(null);
+  const selectedCommand = commands.find((item) => item.type === "prompt" && item.id === commandID);
   const imageInput = useRef<HTMLInputElement>(null);
   const suggestionList = useRef<HTMLDivElement>(null);
   const [cursor, setCursor] = useState(draft.length);
   const [activeSuggestion, setActiveSuggestion] = useState(0);
+  const keyboardSuggestionChosen = useRef(false);
   const [dismissedTrigger, setDismissedTrigger] = useState("");
   const [composing, setComposing] = useState(false);
   const [pathSearch, setPathSearch] = useState<(PathSearchResult & {
@@ -232,9 +236,11 @@ export function Composer({
     const matches = (name: string) =>
       name.toLowerCase().includes(trigger.query);
     const items: Suggestion[] = [];
-    if (trigger.prefix === "/" && !running && !commandBusy) {
+    if (trigger.prefix === "/" && !commandBusy) {
       for (const command of commands) {
-        if (matches(command.name)) items.push({ kind: "command", ...command });
+        if (matches(command.name) &&
+          (command.type === "action" ? !running : trigger.start === 0))
+          items.push({ kind: "command", ...command });
       }
     }
     for (const skill of skills) {
@@ -260,6 +266,7 @@ export function Composer({
 
   useEffect(() => {
     setActiveSuggestion(0);
+    keyboardSuggestionChosen.current = false;
   }, [triggerKey, suggestions.length]);
   useEffect(() => {
     suggestionList.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
@@ -287,7 +294,7 @@ export function Composer({
       replaceTrigger("", trigger);
       return;
     }
-    await onCommand(item.name, {
+    await onCommand(item, {
       draft,
       start: trigger.start,
       end: trigger.end,
@@ -325,7 +332,7 @@ export function Composer({
                     {kind === "command" ? "命令" : kind === "skill" ? "Skills" : "文件与目录"}
                   </div>
                   {group.map(({ item, index }) => <button
-                    key={`${item.kind}:${item.name}`}
+                    key={item.kind === "command" ? item.id || `command:${index}` : `${item.kind}:${item.name}`}
                     type="button"
                     role="option"
                     aria-selected={index === activeSuggestion}
@@ -341,6 +348,7 @@ export function Composer({
                       <strong>{item.name}</strong>
                       <small>{item.description}</small>
                     </span>
+                    {item.kind === "command" && <small className="suggestion-scope">{item.scope === "workspace" ? "工作区" : item.scope === "user" ? "用户" : "内置"}</small>}
                     {item.kind === "skill" && <small className="suggestion-scope">{item.scope}</small>}
                   </button>)}
                 </div>;
@@ -378,11 +386,13 @@ export function Composer({
             <SkillEditor
               ref={input}
               names={skills.map((skill) => skill.name)}
+              command={selectedCommand}
               placeholder={running ? "发送以调整当前任务" : "说说你的想法"}
               value={draft}
               onChange={(text, position) => {
                 setCursor(position);
                 setDismissedTrigger("");
+                keyboardSuggestionChosen.current = false;
                 onDraftChange(text);
               }}
               onCursor={setCursor}
@@ -396,6 +406,7 @@ export function Composer({
                   if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                     event.preventDefault();
                     if (suggestions.length === 0) return;
+                    keyboardSuggestionChosen.current = true;
                     const direction = event.key === "ArrowDown" ? 1 : -1;
                     setActiveSuggestion(
                       (activeSuggestion + direction + suggestions.length) %
@@ -410,6 +421,12 @@ export function Composer({
                   }
                   if (isComposerSubmitKey(event)) {
                     event.preventDefault();
+                    const exactName = /^\/([a-zA-Z0-9_-]+)$/.exec(draft)?.[1];
+                    if (exactName && !keyboardSuggestionChosen.current &&
+                      commands.filter((command) => command.name === exactName).length > 1) {
+                      onSend();
+                      return;
+                    }
                     const item = suggestions[activeSuggestion] ?? suggestions[0];
                     if (item) void selectSuggestion(item);
                     return;

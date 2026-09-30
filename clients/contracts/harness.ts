@@ -70,6 +70,7 @@ export interface ImageInput {
 }
 
 export interface SendParams {
+	commandID?: string;
   sessionID: string;
   text?: string;
   images?: ImageInput[];

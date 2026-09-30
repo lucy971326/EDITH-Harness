@@ -14,6 +14,7 @@ import (
 type RunInput struct {
 	SessionID       string
 	ExpectedRunID   string
+	CommandID       string
 	AgentID         string
 	Model           string
 	ReasoningEffort string

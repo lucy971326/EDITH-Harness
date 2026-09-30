@@ -581,7 +581,8 @@ func errorText(err error) string {
 func messageFromInput(runID string, input session.UserMessage) session.Message {
 	return session.Message{
 		RunID: runID, Role: session.RoleUser, Blocks: cloneBlocks(input.Blocks),
-		UserAuthored:    input.SourceSessionID == "",
+		UserAuthored:    input.SourceSessionID == "" && input.CommandID == "",
+		DisplayText:     input.DisplayText,
 		SourceSessionID: input.SourceSessionID, SourceRunID: input.SourceRunID,
 	}
 }

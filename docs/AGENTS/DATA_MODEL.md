@@ -12,6 +12,7 @@
 ├─ mcp.json / mcp/oauth/             全局 MCP 配置与独立 OAuth 凭据
 ├─ approvals/{settings,mcp-trust}.json 审核设置、项目 MCP 信任
 ├─ hooks/                            全局 Hook 设置与项目配置摘要信任
+├─ commands/settings.json             用户提示词命令
 ├─ agents/ / skills/ / skills.json   Agent、个人 Skill 与开关
 ├─ reading/<session-id>.json         单调前进的本机已读位置
 ├─ subagents/tasks/<task-id>.json    父子关系与委派，不重复保存子 Run 状态
@@ -25,7 +26,7 @@
    └─ diffs/<run-id>.json.gz          Run 的文件前后内容及 revision
 ```
 
-项目文件不属于这棵用户数据目录。项目 MCP／Hook 配置在项目内，信任记录在 `~/.harness`；永久删除项目只删 Harness 会话与相关信任，不删真实项目目录。模型目录只接受当前格式，不迁移旧数据；内置快照不复制进用户文件。
+项目文件不属于这棵用户数据目录。项目 MCP／Hook 配置及工作区提示词命令文件 `.harness/commands.json` 在项目内；MCP／Hook 信任记录在 `~/.harness`。永久删除项目只删 Harness 会话与相关信任，不删真实项目目录。模型目录只接受当前格式，不迁移旧数据；内置快照不复制进用户文件。
 
 ## 事实主人
 
@@ -39,6 +40,7 @@
 | 长期 Agent 进程 | `machine/local` | 跨 Turn 存活、进程退出清理；不写账本 |
 | 用户终端 | Client 连接与 machine | 断线终止；不与 Agent 进程表或 Session 生命周期混用 |
 | 页面投影、草稿、折叠和主题 | Client | 草稿按会话保存在内存；刷新不承诺恢复 |
+| 提示词命令 | `commands` | 用户和工作区各自存配置；发送时按来源 ID 读取最新模板并展开，旧版本保存拒绝覆盖 |
 
 `messages.jsonl` 每行一个带 `id`、`parent`、`seq`、`body` 的 Entry；`parent` 是分支关系，`seq` 只在落账时分配。`body` 可含 text、image、reasoning、tool-call、tool-result、summary；工具调用与结果按 ToolCall.ID 配对，结果仍有自己的 Entry.ID。协作消息记录可信来源，只进入直属父账本，发给模型时作为普通输入，不提升为系统指令。上下文引用是用户 text 末尾的版本化文本，不另建引用表。
 

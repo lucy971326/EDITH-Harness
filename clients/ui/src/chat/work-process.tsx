@@ -273,11 +273,11 @@ function WorkProcessComponent({
   const [open, setOpen] = useState(status !== "success");
   // 只随运行状态切换默认收展；普通增量保留用户的选择。
   useEffect(() => setOpen(status !== "success"), [status]);
-  const promptText =
-    turn.prompt?.message.blocks
+  const promptText = turn.prompt?.message.displayText ??
+    (turn.prompt?.message.blocks
       .filter((b) => b.kind === "text")
       .map((b) => b.text ?? "")
-      .join("\n\n") ?? "";
+      .join("\n\n") ?? "");
   const title =
     stopping && status === "running" ? "停止中，正在收尾" : runLabel(status);
   const diff = turn.run?.diff;

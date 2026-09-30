@@ -8,7 +8,7 @@
 - 会话支持文字／图片、实时过程、插话、停止、压缩、上下文引用、定点或末尾回答分叉、重命名、归档／恢复、永久删除及已读状态。工作区提供 Monaco 编辑器、版本保护保存与撤销、Run Diff、PTY 终端。
 - Agent 支持命令／持续进程、补丁、MCP、Skills、Hooks 和两级子任务；每轮读取工作区根目录 `AGENTS.md`。权限有四档，人工／LLM／Jev 审批；Linux 使用 bwrap + seccomp，macOS 使用 Seatbelt。
 - 模型目录在开发时由 models.dev 生成，运行时使用内置快照和用户覆盖；适配 OpenAI Chat／Responses、Anthropic Messages。ChatGPT 与 xAI 有内置账号登录，其余选定供应商使用 API Key。模型能力不等于账号权限。
-- 设置集中管理外观、通知、Agent、模型、Skills、审批、Hooks 与 MCP；HTTP MCP 可从本机 Web／Desktop 发起 OAuth 授权。Windows 安装包与 macOS DMG 已接入构建。
+- 设置集中管理外观、通知、Agent、模型、Skills、用户／工作区提示词命令、审批、Hooks 与 MCP；HTTP MCP 可从本机 Web／Desktop 发起 OAuth 授权。Windows 安装包与 macOS DMG 已接入构建。
 
 ## 技术债
 

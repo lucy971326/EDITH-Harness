@@ -59,9 +59,13 @@ export function SettingsPage({ onBack, setNavigationGuard, onDesktopState, ...co
           </Button>
           <h1>设置</h1>
           <TabsList className="settings-nav" aria-label="设置分类">
-            {sections.map((section) => <TabsTrigger key={section.id} value={section.id}>
-              <section.icon />{section.label}
-            </TabsTrigger>)}
+            {Array.from(new Set(sections.map((section) => section.group))).map((group) => <div className="settings-nav-group" key={group}>
+              <span className="settings-nav-label">{group}</span>
+              {sections.filter((section) => section.group === group).map((section) => <TabsTrigger key={section.id} value={section.id}>
+                <section.icon /><span>{section.label}</span>
+                {states[section.id]?.dirty && <span className="settings-nav-draft" aria-label="未保存">未保存</span>}
+              </TabsTrigger>)}
+            </div>)}
           </TabsList>
         </div>
         <div className="settings-content">

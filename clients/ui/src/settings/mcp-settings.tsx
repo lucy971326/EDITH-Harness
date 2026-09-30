@@ -12,8 +12,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import type { MCPServerView, MCPSettingsView, MCPSaveInput, MCPOAuthTaskView } from "../../../contracts/appserver";
 import { RPCClient, formatRPCError } from "../client/rpc";
-import { ArrowLeft, ChevronRight, ExternalLink, FileText, KeyRound, LogOut, Plus, RefreshCw, Pencil, Server, Trash2, Wrench, X } from "../icons";
+import { ChevronRight, ExternalLink, FileText, KeyRound, LogOut, Plus, RefreshCw, Pencil, Server, Trash2, Wrench, X } from "../icons";
 import type { SettingsDraftState } from "./types";
+import { SettingsHeader, SettingsListToolbar, SettingsResourceRow, SettingsScope, SettingsEmpty } from "./settings-primitives";
 
 type Scope = "global" | "project";
 type Target = { scope: Scope; name: string; edit: boolean; create: boolean };
@@ -79,6 +80,9 @@ export function MCPSettingsPanel({ client, currentWorkspace, onOpenFile, onState
   const [authTask, setAuthTask] = useState<MCPOAuthTaskView | null>(null);
   const [authTaskTarget, setAuthTaskTarget] = useState<{ scope: Scope; name: string; workspace: string } | null>(null);
   const [trustPrompt, setTrustPrompt] = useState(false);
+  const [query, setQuery] = useState("");
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const inList = !target.name && !target.edit;
 
   const current = target.scope === "project" ? view?.project : view?.global;
   const selected = current?.find((item) => item.name === target.name);
@@ -94,6 +98,7 @@ export function MCPSettingsPanel({ client, currentWorkspace, onOpenFile, onState
 
   useEffect(() => {
     let active = true;
+    if (draft) return;
     if (!client?.connected) return;
     void client.call("mcp/read", { workspace: currentWorkspace }).then((result) => {
       if (!active) return;
@@ -101,7 +106,7 @@ export function MCPSettingsPanel({ client, currentWorkspace, onOpenFile, onState
       setTarget((old) => {
         const items = old.scope === "project" ? result.project : result.global;
         return items.some((item) => item.name === old.name) || old.create ? old :
-          { ...old, name: items[0]?.name ?? "", edit: false, create: false };
+          { ...old, name: "", edit: false, create: false };
       });
     }).catch((cause: unknown) => { if (active) setError(formatRPCError(cause, "MCP 配置读取失败")); });
     return () => { active = false; };
@@ -190,7 +195,7 @@ export function MCPSettingsPanel({ client, currentWorkspace, onOpenFile, onState
     try {
       const result = await client.call("mcp/save", input, { timeoutMs: null });
       await refreshAfterMutation(result);
-      setTarget({ scope: "global", name: input.name, edit: false, create: false });
+      setTarget({ scope: "global", name: "", edit: false, create: false });
       setDraft(null);
       if (authTask?.state === "failed" || authTask?.state === "cancelled") {
         setAuthTask(null);
@@ -229,7 +234,8 @@ export function MCPSettingsPanel({ client, currentWorkspace, onOpenFile, onState
     try {
       const result = await client.call("mcp/delete", { name: selected.name, revision: view.revision }, { timeoutMs: null });
       await refreshAfterMutation(result); setDraft(null);
-      setTarget({ scope: "global", name: result.global[0]?.name ?? "", edit: false, create: false });
+      setTarget({ scope: "global", name: "", edit: false, create: false });
+      setDeleteOpen(false);
     } catch (cause) {
       setError(formatRPCError(cause, "删除失败"));
       try { await refreshDisk(); } catch { /* 保留错误 */ }
@@ -354,28 +360,39 @@ export function MCPSettingsPanel({ client, currentWorkspace, onOpenFile, onState
     </div>;
   }
 
-  return <div className="model-settings-page">
-    <header className="settings-heading"><h2>MCP</h2></header>
+  return <div className="mcp-settings-page">
+    <SettingsHeader title={inList ? "MCP" : target.create ? "添加 MCP Server" : target.edit ? `编辑 ${target.name}` : target.name}
+      description={inList ? "连接外部服务，为 Agent 提供更多工具。" : target.scope === "project" ? "工作区配置 · 只读" : undefined}
+      back={!inList ? { label: target.edit && !target.create ? target.name : "MCP", disabled: saving,
+        onClick: () => select({ scope: target.scope, name: target.edit && !target.create ? target.name : "", edit: false, create: false }) } : undefined}
+      actions={inList && target.scope === "global" ? <Button size="sm" disabled={!view || saving || !client?.connected || !!view.globalError}
+        onClick={() => select({ scope: "global", name: "", edit: true, create: true })}><Plus />添加 Server</Button> :
+        !target.edit && selected && target.scope === "global" ? <>
+          <Button variant="outline" size="sm" disabled={saving || !client?.connected} onClick={() => select({ ...target, edit: true })}><Pencil />编辑连接</Button>
+          <Switch aria-label={`启用 ${selected.name}`} checked={selected.enabled} disabled={saving || !client?.connected}
+            onCheckedChange={(enabled) => void toggle(selected, enabled)} />
+        </> : undefined} />
     {error && <div className="inline-notice" role="alert">{error} <Button variant="ghost" size="sm" onClick={() => setReload((n) => n + 1)}>重新加载</Button></div>}
-    <div className="settings-two-pane">
-      <aside className="settings-subnav">
-        <div className="settings-split-heading"><h3>全局</h3><Button size="icon-sm" variant="ghost" aria-label="添加 MCP Server"
-          disabled={saving || !!view?.globalError} onClick={() => select({ scope: "global", name: "", edit: true, create: true })}><Plus /></Button></div>
-        <div className="settings-subnav-list">{view?.global.map((item) => <Button key={item.name} variant="ghost"
-          className="settings-subnav-item" aria-pressed={target.scope === "global" && target.name === item.name && !target.create}
-          onClick={() => select({ scope: "global", name: item.name, edit: false, create: false })}>
-          <Server /><span className="settings-subnav-copy"><span className="settings-subnav-name">{item.name}</span>
-            <span className="settings-subnav-meta">{statusLabel(item)}</span></span>
-        </Button>)}</div>
-        {!!view?.project.length && <h3 className="mcp-project-heading">项目 · 只读</h3>}
-        <div className="settings-subnav-list">{view?.project.map((item) => <Button key={item.name} variant="ghost"
-          className="settings-subnav-item" aria-pressed={target.scope === "project" && target.name === item.name}
-          onClick={() => select({ scope: "project", name: item.name, edit: false, create: false })}>
-          <Server /><span className="settings-subnav-copy"><span className="settings-subnav-name">{item.name}</span>
-            <span className="settings-subnav-meta">只读 · {statusLabel(item)}</span></span>
-        </Button>)}</div>
-      </aside>
-      <div className="settings-detail-pane">
+    {!client?.connected && <p className="inline-notice">连接后台后可管理 MCP。</p>}
+    {!view && client?.connected && !error && <p className="metadata">正在加载…</p>}
+    {inList && <>
+      <SettingsListToolbar query={query} onQueryChange={setQuery} placeholder="搜索 MCP Server"
+        actions={<Hint text="刷新 MCP"><Button size="icon-sm" variant="ghost" aria-label="刷新 MCP" disabled={saving || !client?.connected}
+          onClick={() => setReload((n) => n + 1)}><RefreshCw /></Button></Hint>}>
+        <SettingsScope value={target.scope === "global" ? "user" : "workspace"} workspace={currentWorkspace} disabled={saving}
+          onChange={(value) => select({ scope: value === "user" ? "global" : "project", name: "", edit: false, create: false })} />
+      </SettingsListToolbar>
+      {view && <section className="settings-resource-group"><h3>{target.scope === "global" ? "已添加" : "工作区 · 只读"}<span>{current?.length ?? 0}</span></h3>
+        <div className="settings-resource-list">{current?.filter((item) => item.name.toLowerCase().includes(query.toLowerCase())).map((item) =>
+          <SettingsResourceRow key={item.name} icon={<Server />} name={item.name}
+            description={item.type === "stdio" ? "本地进程 · STDIO" : "远程服务 · HTTP"}
+            meta={<span className="settings-connection-status" data-status={item.status}>{statusLabel(item)}</span>}
+            onClick={() => select({ ...target, name: item.name })} disabled={saving} />)}
+        </div>
+        {!current?.some((item) => item.name.toLowerCase().includes(query.toLowerCase())) &&
+          <SettingsEmpty>{query ? "没有匹配的 Server" : target.scope === "global" ? "还没有 MCP Server，点击添加开始。" : "当前工作区没有 MCP 配置。"}</SettingsEmpty>}
+      </section>}
+    </>}
         {view?.globalError && <section className="settings-section"><h3>全局配置无法读取</h3>
           <p className="metadata">{view.globalPath}</p><Button variant="outline" onClick={() => setResetPrompt(true)}>备份并重建空配置</Button></section>}
         {view?.projectError && <section className="settings-section"><h3>项目配置无法读取</h3>
@@ -384,9 +401,7 @@ export function MCPSettingsPanel({ client, currentWorkspace, onOpenFile, onState
               onClick={() => onOpenFile(path)}>打开</Button><Button size="sm" variant="ghost"
               onClick={() => void navigator.clipboard.writeText(path)}>复制路径</Button></div>)}</section>}
         {!view?.globalError && target.edit && draft && <>
-          <Button size="sm" variant="ghost" onClick={() => select({ scope: "global", name: selected?.name ?? "", edit: false, create: false })}><ArrowLeft />返回概况</Button>
-          <h3 className="model-settings-editor-title">{target.create ? "添加 Server" : `编辑 · ${draft.name}`}</h3>
-          <div className="model-settings-form mcp-settings-form">
+          <fieldset className="settings-form-card" disabled={saving || !client?.connected}>
             <div className="settings-fields"><div className="settings-field"><Label htmlFor="mcp-name">名称</Label>
               <Input id="mcp-name" value={draft.name} disabled={!target.create || saving}
                 onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></div>
@@ -443,24 +458,13 @@ export function MCPSettingsPanel({ client, currentWorkspace, onOpenFile, onState
                   onChange={(event) => setDraft({ ...draft, excludeTools: event.target.value })} /></div>
               </CollapsibleContent>
             </Collapsible>
-          </div>
-          {!target.create && <Button variant="ghost" className="settings-delete" onClick={() => void deleteServer()}><Trash2 />删除 Server</Button>}
-          <div className="settings-savebar"><span className="settings-save-status">{dirty ? "有未保存的更改" : "尚无更改"}</span>
-            <Button variant="ghost" onClick={() => show({ scope: "global", name: selected?.name ?? "", edit: false, create: false })}>放弃</Button>
-            <Button disabled={saving || !dirty} onClick={() => void save()}>保存</Button></div>
+          </fieldset>
+          <div className="settings-form-actions">
+            {!target.create && <Button variant="ghost" className="settings-delete" disabled={saving || !client?.connected} onClick={() => setDeleteOpen(true)}><Trash2 />删除 Server</Button>}
+            <Button variant="ghost" disabled={saving} onClick={() => select({ scope: "global", name: selected?.name ?? "", edit: false, create: false })}>取消</Button>
+            <Button disabled={saving || !dirty || !client?.connected} onClick={() => void save()}>{saving ? "保存中…" : "保存"}</Button></div>
         </>}
         {(!view?.globalError || target.scope === "project") && !target.edit && selected && <>
-          <div className="settings-detail-title-row">
-            <div className="settings-identity">
-              <span className="settings-identity-icon"><Server /></span>
-              <div><h3>{selected.name}</h3><p>{selected.type === "stdio" ? "STDIO" : "Streamable HTTP"}</p></div>
-            </div>
-            {target.scope === "global" && <div className="settings-toolbar">
-              <Button variant="outline" size="sm" onClick={() => select({ ...target, edit: true })}><Pencil />编辑连接</Button>
-              <Switch aria-label={`启用 ${selected.name}`} checked={selected.enabled} disabled={saving}
-                onCheckedChange={(enabled) => void toggle(selected, enabled)} />
-            </div>}
-          </div>
           {selected.error && !authNeeded && <div className="inline-notice" role="status">{selected.error}</div>}
           <dl className="settings-facts">
             <div><dt>连接状态</dt><dd>
@@ -510,9 +514,13 @@ export function MCPSettingsPanel({ client, currentWorkspace, onOpenFile, onState
               : <div className="settings-empty"><Wrench /><p>暂无可用工具</p></div>}
           </section>
         </>}
-        {(!view?.globalError || target.scope === "project") && !target.edit && !selected && !view?.projectError && <p className="metadata">暂无 MCP Server</p>}
-      </div>
-    </div>
+    <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}><AlertDialogContent>
+      <AlertDialogHeader><AlertDialogTitle>删除 {selected?.name}？</AlertDialogTitle>
+        <AlertDialogDescription>移除连接配置并停用这个 Server 提供的工具。</AlertDialogDescription></AlertDialogHeader>
+      {error && <p className="inline-notice" role="alert">{error}</p>}
+      <AlertDialogFooter><AlertDialogCancel disabled={saving}>取消</AlertDialogCancel>
+        <Button variant="destructive" disabled={saving} onClick={() => void deleteServer()}>删除</Button></AlertDialogFooter>
+    </AlertDialogContent></AlertDialog>
     <AlertDialog open={!!pending} onOpenChange={(open) => { if (!open) setPending(null); }}>
       <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>保存当前更改？</AlertDialogTitle>
         <AlertDialogDescription>切换 Server 前处理当前草稿。</AlertDialogDescription></AlertDialogHeader>

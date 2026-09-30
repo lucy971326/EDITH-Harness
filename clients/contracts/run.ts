@@ -11,6 +11,7 @@ export interface Block {
 
 export interface Message {
 	userAuthored?: boolean;
+  displayText?: string;
   messageID?: string;
   sourceSessionID?: string;
   sourceTaskID?: string;

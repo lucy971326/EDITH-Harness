@@ -7,8 +7,10 @@ import {
   type KeyboardEvent,
 } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { BookOpenCheck } from "../icons";
+import { BookOpenCheck, Command } from "../icons";
 import { replaceSkillText, skillParts } from "./skill-mentions";
+
+type CommandToken = { id: string; name: string; scope: string };
 
 export interface SkillEditorHandle {
   focus(): void;
@@ -16,6 +18,24 @@ export interface SkillEditorHandle {
 }
 
 const iconHTML = renderToStaticMarkup(<BookOpenCheck aria-hidden="true" />);
+const commandIconHTML = renderToStaticMarkup(<Command aria-hidden="true" />);
+
+function commandNode(command: CommandToken): HTMLSpanElement {
+  const chip = document.createElement("span");
+  chip.className = "skill-token command-token";
+  chip.dataset.commandName = command.name;
+  chip.contentEditable = "false";
+  const scope = command.scope === "workspace" ? "工作区" : "用户";
+  chip.setAttribute("aria-label", `${scope}命令 ${command.name}`);
+  chip.innerHTML = commandIconHTML;
+  const label = document.createElement("span");
+  label.textContent = command.name;
+  const source = document.createElement("span");
+  source.className = "command-token-scope";
+  source.textContent = scope;
+  chip.append(label, source);
+  return chip;
+}
 
 function skillNode(name: string): HTMLSpanElement {
   const chip = document.createElement("span");
@@ -30,11 +50,18 @@ function skillNode(name: string): HTMLSpanElement {
   return chip;
 }
 
+function tokenText(node: HTMLElement): string | null {
+  if (node.dataset.commandName) return `/${node.dataset.commandName}`;
+  if (node.dataset.skillName) return `$${node.dataset.skillName}`;
+  return null;
+}
+
 function plainText(node: Node): string {
   if (node.nodeType === Node.TEXT_NODE)
     return (node.textContent ?? "").replace(/\u00a0/g, " ");
   if (node instanceof HTMLElement) {
-    if (node.dataset.skillName) return `$${node.dataset.skillName}`;
+    const token = tokenText(node);
+    if (token) return token;
     if (node.tagName === "BR") return "\n";
   }
   return Array.from(node.childNodes, plainText).join("");
@@ -49,14 +76,19 @@ function editorText(root: HTMLElement): string {
   return plainText(root);
 }
 
-function renderDraft(root: HTMLElement, text: string, names: ReadonlySet<string>) {
+function renderDraft(root: HTMLElement, text: string, names: ReadonlySet<string>, command?: CommandToken) {
   const fragment = document.createDocumentFragment();
+  const invocation = command ? `/${command.name}` : "";
+  if (command && (text === invocation || text.startsWith(`${invocation} `) || text.startsWith(`${invocation}\n`))) {
+    fragment.append(commandNode(command));
+    text = text.slice(invocation.length);
+  }
   for (const part of skillParts(text, names))
     fragment.append(part.kind === "skill" ? skillNode(part.name) : document.createTextNode(part.value));
   root.replaceChildren(fragment);
 }
 
-// 光标位置用原始 $name 文本的偏移量表示，与草稿、候选范围保持一致。
+// 光标位置用原始 $name 或 /name 文本的偏移量表示，与草稿、候选范围保持一致。
 function pointAt(root: HTMLElement, target: number, endOfSelection = false): [Node, number] {
   let passed = 0;
   function visit(node: Node): [Node, number] | null {
@@ -66,9 +98,10 @@ function pointAt(root: HTMLElement, target: number, endOfSelection = false): [No
       passed += length;
       return null;
     }
-    if (node instanceof HTMLElement && node.dataset.skillName) {
+    const token = node instanceof HTMLElement ? tokenText(node) : null;
+    if (token) {
       const index = Array.prototype.indexOf.call(node.parentNode?.childNodes, node) as number;
-      const length = node.dataset.skillName.length + 1;
+      const length = token.length;
       if (target <= passed + length)
         return [node.parentNode!, index + (target === passed ? 0 :
           target === passed + length || endOfSelection ? 1 : 0)];
@@ -135,6 +168,7 @@ function escapeHTML(value: string): string {
 export const SkillEditor = forwardRef<SkillEditorHandle, {
   value: string;
   names: string[];
+  command?: CommandToken;
   placeholder: string;
   onChange(value: string, cursor: number): void;
   onCursor(cursor: number): void;
@@ -142,13 +176,15 @@ export const SkillEditor = forwardRef<SkillEditorHandle, {
   onCompositionChange(composing: boolean, cursor: number): void;
   onPasteImages(files: File[]): void;
 }>(function SkillEditor({
-  value, names, placeholder, onChange, onCursor, onKeyDown, onCompositionChange, onPasteImages,
+  value, names, command, placeholder, onChange, onCursor, onKeyDown, onCompositionChange, onPasteImages,
 }, ref) {
   const root = useRef<HTMLDivElement>(null);
   const composing = useRef(false);
   const reported = useRef(value);
   const namesKey = names.join("\0");
   const renderedNames = useRef("");
+  const commandKey = command?.id ?? "";
+  const renderedCommand = useRef("");
 
   function emit() {
     if (!root.current) return;
@@ -190,7 +226,7 @@ export const SkillEditor = forwardRef<SkillEditorHandle, {
     }
     const expected = replaceSkillText(before, start, end, skillName ? `$${skillName} ` : text);
     if (editorText(element) !== expected) {
-      renderDraft(element, expected, new Set(names));
+      renderDraft(element, expected, new Set(names), command);
       const position = start + (skillName ? skillName.length + 2 : text.length);
       selectRange(element, position, position);
     }
@@ -201,17 +237,20 @@ export const SkillEditor = forwardRef<SkillEditorHandle, {
     const element = root.current;
     if (!element || composing.current) return;
     const current = editorText(element);
-    if (current === value && renderedNames.current === namesKey) return;
+    if (current === value && renderedNames.current === namesKey && renderedCommand.current === commandKey) return;
     const focused = document.activeElement === element;
-    const cursor = focused ? cursorOffset(element) : value.length;
-    renderDraft(element, value, new Set(names));
+    const cursor = focused && command && renderedCommand.current !== commandKey
+      ? Math.min(value.length, command.name.length + 2)
+      : focused ? cursorOffset(element) : value.length;
+    renderDraft(element, value, new Set(names), command);
     reported.current = value;
     renderedNames.current = namesKey;
+    renderedCommand.current = commandKey;
     if (focused) {
       selectRange(element, Math.min(cursor, value.length), Math.min(cursor, value.length));
       onCursor(cursorOffset(element));
     }
-  }, [value, namesKey]);
+  }, [value, namesKey, commandKey]);
 
   useImperativeHandle(ref, () => ({
     focus: () => {
@@ -242,15 +281,15 @@ export const SkillEditor = forwardRef<SkillEditorHandle, {
     }
   }
 
-  function deleteAdjacentSkill(element: HTMLElement, backward: boolean): boolean {
+  function deleteAdjacentToken(element: HTMLElement, backward: boolean): boolean {
     const [start, end] = selectedOffsets(element);
     if (start !== end) return false;
-    for (const chip of element.querySelectorAll<HTMLElement>("[data-skill-name]")) {
+    for (const chip of element.querySelectorAll<HTMLElement>("[data-skill-name], [data-command-name]")) {
       const before = document.createRange();
       before.selectNodeContents(element);
       before.setEndBefore(chip);
       const position = plainText(before.cloneContents()).length;
-      const length = (chip.dataset.skillName?.length ?? 0) + 1;
+      const length = tokenText(chip)?.length ?? 0;
       if ((backward && end === position + length) || (!backward && start === position)) {
         replace(position, position + length, "");
         return true;
@@ -276,7 +315,7 @@ export const SkillEditor = forwardRef<SkillEditorHandle, {
         onKeyDown(event);
         if (event.defaultPrevented || composing.current || event.nativeEvent.isComposing) return;
         if ((event.key === "Backspace" || event.key === "Delete") &&
-          deleteAdjacentSkill(event.currentTarget, event.key === "Backspace")) {
+          deleteAdjacentToken(event.currentTarget, event.key === "Backspace")) {
           event.preventDefault();
           return;
         }

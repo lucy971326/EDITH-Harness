@@ -42,6 +42,7 @@ workspace/workspace-tabs -> editor / review / terminal / subagent
 - `workspace/workspace-tabs.tsx / workspace/auxiliary-panel.tsx`：辅助面板与标签编排；[`editor/`](src/editor/README.md)：文件草稿、保存、冲突和监听。
 - `review/ / terminal/ / subagent/`：Diff、终端与子任务工作页。
 - `settings/settings-page.tsx / settings/general-settings.tsx / settings/approval-settings.tsx`：通用与业务设置；`styles.css / components/ui/`：视觉规则与基础控件。
+- `settings/settings-primitives.tsx`：设置页共用标题、返回、搜索、作用域与资源列表；各分类自己持有列表选择、编辑草稿和保存动作。
 
 Client 保存界面状态和服务端投影，账本与 Run 仍以后台为准。关闭标签或断线不停止后台任务。
 

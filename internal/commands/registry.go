@@ -11,12 +11,18 @@ import (
 type Registry struct {
 	mu      sync.RWMutex
 	entries map[string]Command
+	prompts *PromptStore
 }
 
 // NewRegistry 造一张空的命令登记处。
 func NewRegistry() *Registry {
 	return &Registry{entries: make(map[string]Command)}
 }
+
+// SetPrompts 在入口组装阶段接入提示词命令来源。
+func (r *Registry) SetPrompts(prompts *PromptStore) { r.prompts = prompts }
+
+func (r *Registry) Prompts() *PromptStore { return r.prompts }
 
 // Register 填入一条启动时固定的命令。
 func (r *Registry) Register(command Command) error {
@@ -57,7 +63,7 @@ func (r *Registry) List() []Definition {
 	defer r.mu.RUnlock()
 	out := make([]Definition, 0, len(r.entries))
 	for _, command := range r.entries {
-		out = append(out, Definition{Name: command.Name(), Description: command.Description()})
+		out = append(out, Definition{ID: "builtin:" + command.Name(), Kind: "action", Name: command.Name(), Description: command.Description(), Scope: "builtin", Source: "builtin"})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		return out[i].Name < out[j].Name

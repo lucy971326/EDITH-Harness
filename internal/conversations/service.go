@@ -105,6 +105,40 @@ func (p *Service) Send(ctx context.Context, input RunInput) (string, error) {
 		operation.Unlock()
 		return "", fmt.Errorf("%w: %w", ErrInvalidMessage, err)
 	}
+	if input.CommandID != "" {
+		if p.commands.Prompts() == nil {
+			operation.Unlock()
+			return "", fmt.Errorf("%w: prompt commands unavailable", ErrInvalidCommand)
+		}
+		item, resolveErr := p.commands.Prompts().Resolve(info.Settings.Workspace, input.CommandID)
+		if resolveErr != nil {
+			operation.Unlock()
+			return "", fmt.Errorf("%w: %w", ErrInvalidCommand, resolveErr)
+		}
+		textIndex := -1
+		for index, block := range input.Message.Blocks {
+			if block.Kind == "text" {
+				if textIndex >= 0 {
+					operation.Unlock()
+					return "", fmt.Errorf("%w: prompt command has multiple text blocks", ErrInvalidMessage)
+				}
+				textIndex = index
+			}
+		}
+		if textIndex < 0 {
+			operation.Unlock()
+			return "", fmt.Errorf("%w: prompt commands require text", ErrInvalidMessage)
+		}
+		original := input.Message.Blocks[textIndex].Text
+		expanded, expandErr := commands.Expand(item, original)
+		if expandErr != nil {
+			operation.Unlock()
+			return "", fmt.Errorf("%w: %w", ErrInvalidCommand, expandErr)
+		}
+		input.Message.Blocks[textIndex].Text = expanded
+		input.Message.DisplayText = original
+		input.Message.CommandID = input.CommandID
+	}
 	if _, running := p.runner.State(input.SessionID); running || input.ExpectedRunID != "" {
 		// Runner 负责身份与输入准入；等待检查点时不能占住其他会话的发送锁。
 		operation.Unlock()

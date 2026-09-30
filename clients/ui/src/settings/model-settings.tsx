@@ -16,6 +16,7 @@ import type { ModelAuthView, ModelSettings, ModelSettingsView, ProviderSettings,
 import { RPCClient, formatRPCError } from "../client/rpc";
 import { ArrowLeft, ArrowUp, ArrowDown, Brain, Building2, ChevronRight, Plus, Pencil, Trash2, X } from "../icons";
 import type { SettingsDraftState } from "./types";
+import { SettingsHeader, SettingsEmpty } from "./settings-primitives";
 
 type ProviderDraft = SaveProviderSettings;
 type Editor = "overview" | "provider" | "model";
@@ -73,6 +74,8 @@ export function ModelSettingsPanel({ client, openExternal, onSaved, onStateChang
   const [reload, setReload] = useState(0);
   const [authViews, setAuthViews] = useState<Record<string, ModelAuthView>>({});
   const [modelSearch, setModelSearch] = useState("");
+  const [providerSearch, setProviderSearch] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<"provider" | "model" | null>(null);
   const presets = view?.providerPresets ?? [];
   const accountID = provider?.id ?? "";
   const selectedProtocol = (editor === "model" ? model?.protocol : undefined) ?? provider?.protocol ?? "openai-chat";
@@ -84,6 +87,8 @@ export function ModelSettingsPanel({ client, openExternal, onSaved, onStateChang
 
   useEffect(() => {
     let active = true;
+    // 重连不能清空正在编辑的表单；保存继续携带原版本处理冲突。
+    if (editor !== "overview" && (provider || model)) return;
     setView(null); setProvider(null); setModel(null); setEditor("overview");
     setCreatingProvider(false); setPendingTarget(null); setError(""); setAuthViews({});
     if (!client?.connected) return;
@@ -239,6 +244,7 @@ export function ModelSettingsPanel({ client, openExternal, onSaved, onStateChang
       setView(result);
       setProvider(result.providers[0] ? providerDraft(result.providers[0], result.providerRevision) : null);
       setModel(null); setEditor("overview"); onSaved(); setSaved("供应商已删除");
+      setDeleteTarget(null);
     } catch (cause) { await refreshAfterFailure(cause); }
     finally { setSaving(false); }
   }
@@ -264,6 +270,7 @@ export function ModelSettingsPanel({ client, openExternal, onSaved, onStateChang
     try {
       const result = await client.call("model/definition/delete", { key: model.key, revision: view.modelRevision });
       setView(result); setModel(null); setEditor("overview"); onSaved(); setSaved("模型已删除");
+      setDeleteTarget(null);
     } catch (cause) { await refreshAfterFailure(cause); }
     finally { setSaving(false); }
   }
@@ -308,18 +315,16 @@ export function ModelSettingsPanel({ client, openExternal, onSaved, onStateChang
     : !!model?.id && modelDirty && !invalidLevels && !duplicateModelID;
 
   return <div className="model-settings-page">
-    <header className="settings-heading model-settings-heading">
-      <h2>模型与供应商</h2>
-      {view && <DropdownMenu>
-        <DropdownMenuTrigger asChild><Button size="sm" variant="outline" disabled={saving}><Plus />添加供应商</Button></DropdownMenuTrigger>
+    <SettingsHeader title="模型与供应商" description="连接模型服务，管理可用模型与思考档位。"
+      actions={view && <DropdownMenu>
+        <DropdownMenuTrigger asChild><Button size="sm" disabled={saving || !client?.connected}><Plus />添加供应商</Button></DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           {presets.filter((item) => !!item.id && !accountProviders.includes(item.id) && !view.providers.some((savedProvider) => savedProvider.id === item.id))
             .map((item) => <DropdownMenuItem key={item.id}
               onSelect={() => requestTarget({ kind: "add-provider", presetID: item.id })}>{item.name}</DropdownMenuItem>)}
           <DropdownMenuItem onSelect={() => requestTarget({ kind: "add-provider" })}>手动添加</DropdownMenuItem>
         </DropdownMenuContent>
-      </DropdownMenu>}
-    </header>
+      </DropdownMenu>} />
     {!client?.connected && <p className="inline-notice">连接后台后可修改。</p>}
     {error && <div className="inline-notice" role="alert">{error}
       {!view && <Button size="sm" variant="ghost" onClick={() => setReload((value) => value + 1)}>重新加载</Button>}
@@ -328,9 +333,9 @@ export function ModelSettingsPanel({ client, openExternal, onSaved, onStateChang
     {saved && <p className="settings-save-status" role="status">{saved}</p>}
     {view && <div className="model-settings-layout">
       <aside className="model-provider-nav" aria-label="供应商">
-        <h3>供应商</h3>
+        <Input className="model-provider-search" aria-label="搜索供应商" placeholder="搜索供应商" value={providerSearch} onChange={(event) => setProviderSearch(event.target.value)} />
         <div className="model-provider-list">
-          {view.providers.map((item) => {
+          {view.providers.filter((item) => `${item.id} ${presets.find((preset) => preset.id === item.id)?.name ?? ""}`.toLowerCase().includes(providerSearch.toLowerCase())).map((item) => {
             const count = view.models.filter((entry) => entry.provider === item.id).length;
             return <Button key={item.id} variant="ghost" className="settings-subnav-item"
               aria-pressed={selectedProvider?.id === item.id} disabled={saving}
@@ -339,6 +344,7 @@ export function ModelSettingsPanel({ client, openExternal, onSaved, onStateChang
               <span className="settings-subnav-meta">{count} 个模型</span></span>
             </Button>;
           })}
+          {!view.providers.some((item) => `${item.id} ${presets.find((preset) => preset.id === item.id)?.name ?? ""}`.toLowerCase().includes(providerSearch.toLowerCase())) && <p className="metadata">没有匹配的供应商</p>}
         </div>
       </aside>
       <div className="model-settings-detail">
@@ -377,7 +383,7 @@ export function ModelSettingsPanel({ client, openExternal, onSaved, onStateChang
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
-            {providerModels.length > 8 && <Input aria-label="搜索模型" placeholder="搜索模型" value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} />}
+            {providerModels.length > 0 && <Input className="model-list-search" aria-label="搜索模型" placeholder="搜索模型" value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} />}
             <div className="model-entry-list">
               {providerModels.filter((item) => item.id.toLowerCase().includes(modelSearch.toLowerCase())).map((item) => <Button key={item.key} variant="ghost" className="model-entry-row" disabled={saving}
                 onClick={() => requestTarget({ kind: "model", key: item.key })}>
@@ -385,10 +391,11 @@ export function ModelSettingsPanel({ client, openExternal, onSaved, onStateChang
                 <span className="model-entry-meta">{windowLabel(item.contextWindow)}{item.vision ? " · 支持图片" : ""}</span><ChevronRight />
               </Button>)}
               {providerModels.length === 0 && <p className="metadata">暂无模型</p>}
+              {providerModels.length > 0 && !providerModels.some((item) => item.id.toLowerCase().includes(modelSearch.toLowerCase())) && <p className="metadata">没有匹配的模型</p>}
             </div>
           </section>
         </>}
-        {editor === "overview" && !selectedProvider && <p className="metadata">暂无供应商</p>}
+        {editor === "overview" && !selectedProvider && <SettingsEmpty>添加供应商后配置模型。</SettingsEmpty>}
         {editor === "provider" && provider && <>
           <Button size="sm" variant="ghost" className="model-settings-back" disabled={saving}
             onClick={() => requestTarget({ kind: "overview", id: provider.id })}><ArrowLeft />返回概况</Button>
@@ -426,18 +433,14 @@ export function ModelSettingsPanel({ client, openExternal, onSaved, onStateChang
                 <Label htmlFor="provider-clear-key">清除已保存的密钥</Label></div>}
             </div></>}
           </div>
-          {storedProvider && <div className="settings-danger-row">
+          <div className="settings-form-actions">
+          {storedProvider &&
             <Button variant="ghost" className="settings-delete" disabled={saving}
-              onClick={() => void deleteProvider()}>
+              onClick={() => setDeleteTarget("provider")}>
               <Trash2 />{providerModels.length > 0 ? `删除供应商及 ${providerModels.length} 个模型` : "删除供应商"}
-            </Button>
-          </div>}
-          <div className="settings-savebar">
-            <span className="settings-save-status" role="status">{providerDirty ? "有未保存的更改" : "尚无更改"}</span>
-            <Button variant="ghost" disabled={saving} onClick={() => {
-              showTarget({ kind: "overview", id: provider.id }, view); setError("");
-            }}>{providerDirty ? "放弃更改" : "返回概况"}</Button>
-            <Button disabled={saving || !canSaveCurrent} onClick={() => void saveProvider()}>保存</Button>
+            </Button>}
+            <Button variant="ghost" disabled={saving} onClick={() => requestTarget({ kind: "overview", id: provider.id })}>取消</Button>
+            <Button disabled={saving || !canSaveCurrent || !client?.connected} onClick={() => void saveProvider()}>{saving ? "保存中…" : "保存"}</Button>
           </div>
         </>}
         {editor === "model" && model && provider && <>
@@ -499,20 +502,26 @@ export function ModelSettingsPanel({ client, openExternal, onSaved, onStateChang
             </ol>
             {duplicateLevels && <p className="inline-notice" role="alert">思考强度不能重复。</p>}
           </div>
-          {!!model.key && <div className="settings-danger-row">
+          <div className="settings-form-actions">
+          {!!model.key &&
             <Button variant="ghost" className="settings-delete" disabled={saving}
-              onClick={() => void deleteModel()}><Trash2 />删除模型</Button>
-          </div>}
-          <div className="settings-savebar">
-            <span className="settings-save-status" role="status">{modelDirty ? "有未保存的更改" : "尚无更改"}</span>
-            <Button variant="ghost" disabled={saving} onClick={() => {
-              showTarget({ kind: "overview", id: provider.id }, view); setError("");
-            }}>{modelDirty ? "放弃更改" : "返回概况"}</Button>
-            <Button disabled={saving || !canSaveCurrent} onClick={() => void saveModel()}>保存</Button>
+              onClick={() => setDeleteTarget("model")}><Trash2 />删除模型</Button>}
+            <Button variant="ghost" disabled={saving} onClick={() => requestTarget({ kind: "overview", id: provider.id })}>取消</Button>
+            <Button disabled={saving || !canSaveCurrent || !client?.connected} onClick={() => void saveModel()}>{saving ? "保存中…" : "保存"}</Button>
           </div>
         </>}
       </div>
     </div>}
+    <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open && !saving) setDeleteTarget(null); }}>
+      <AlertDialogContent><AlertDialogHeader>
+        <AlertDialogTitle>{deleteTarget === "provider" ? `删除供应商 ${storedProvider?.id}？` : `删除模型 ${model?.id}？`}</AlertDialogTitle>
+        <AlertDialogDescription>{deleteTarget === "provider" ? `同时移除该供应商下的 ${providerModels.length} 个模型。` : "移除后，这个模型将不再出现在模型选择列表中。"}</AlertDialogDescription>
+      </AlertDialogHeader>
+      {error && <p className="inline-notice" role="alert">{error}</p>}
+      <AlertDialogFooter><AlertDialogCancel disabled={saving}>取消</AlertDialogCancel>
+        <Button variant="destructive" disabled={saving || !client?.connected} onClick={() => void (deleteTarget === "provider" ? deleteProvider() : deleteModel())}>删除</Button>
+      </AlertDialogFooter></AlertDialogContent>
+    </AlertDialog>
     <AlertDialog open={!!pendingTarget} onOpenChange={(open) => { if (!open) setPendingTarget(null); }}>
       <AlertDialogContent>
         <AlertDialogHeader>

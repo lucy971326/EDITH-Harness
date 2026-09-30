@@ -259,8 +259,8 @@ export class RPCClient {
     return this.call("skill/list", { sessionID });
   }
 
-  commands() {
-    return this.call("command/list", {});
+  commands(workspace?: string) {
+    return this.call("command/list", workspace ? { workspace } : {});
   }
 
   callCommand(sessionID: string, name: string) {

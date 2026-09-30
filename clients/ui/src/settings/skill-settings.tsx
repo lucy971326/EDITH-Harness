@@ -12,10 +12,11 @@ import type { SkillDocument, SkillSettingsItem } from "../../../contracts/appser
 import { MessageMarkdown } from "../chat/message-markdown";
 import { RPCClient, formatRPCError } from "../client/rpc";
 import { workspaceName } from "../state/projects";
-import { ArrowLeft, BookOpenCheck, ChevronRight, Copy, Pencil, Plus, Trash2 } from "../icons";
+import { BookOpenCheck, ChevronRight, Copy, Pencil, Plus, RefreshCw, Trash2 } from "../icons";
 import type { SettingsDraftState } from "./types";
+import { SettingsHeader, SettingsListToolbar, SettingsResourceRow, SettingsEmpty } from "./settings-primitives";
 
-type Mode = "overview" | "edit" | "new";
+type Mode = "list" | "overview" | "edit" | "new";
 
 function itemKey(item: SkillSettingsItem): string {
   return `${item.source}:${item.name}`;
@@ -55,7 +56,7 @@ export function SkillSettingsPanel({ client, currentWorkspace, onStateChange, on
   const [items, setItems] = useState<SkillSettingsItem[]>([]);
   const [selectedKey, setSelectedKey] = useState("");
   const [document, setDocument] = useState<SkillDocument | null>(null);
-  const [mode, setMode] = useState<Mode>("overview");
+  const [mode, setMode] = useState<Mode>("list");
   const [draft, setDraft] = useState("");
   const [newName, setNewName] = useState("");
   const [query, setQuery] = useState("");
@@ -75,13 +76,13 @@ export function SkillSettingsPanel({ client, currentWorkspace, onStateChange, on
 
   useEffect(() => {
     let active = true;
+    if (mode === "edit" || mode === "new") return;
     if (!client?.connected) { setLoading(false); return; }
     setLoading(true);
     void client.call("skill/settings/read", { workspace: currentWorkspace }).then((result) => {
       if (!active) return;
       setItems(result.items);
-      setSelectedKey((key) => result.items.some((item) => itemKey(item) === key) ? key :
-        result.items.length ? itemKey(result.items[0]) : "");
+      setSelectedKey((key) => result.items.some((item) => itemKey(item) === key) ? key : "");
       setError("");
     }).catch((cause: unknown) => {
       if (active) setError(formatRPCError(cause, "Skill 列表读取失败"));
@@ -91,6 +92,7 @@ export function SkillSettingsPanel({ client, currentWorkspace, onStateChange, on
 
   useEffect(() => {
     let active = true;
+    if (mode === "edit" || mode === "new") return;
     if (!client?.connected || !selected) return;
     void client.call("skill/settings/document", {
       workspace: currentWorkspace, source: selected.source, name: selected.name,
@@ -104,7 +106,7 @@ export function SkillSettingsPanel({ client, currentWorkspace, onStateChange, on
 
   function show(key: string) {
     setSelectedKey(key);
-    setMode("overview");
+    setMode(key ? "overview" : "list");
     if (key !== selectedKey) setDocument(null);
     setDraft("");
     setPreviewOpen(false);
@@ -133,7 +135,7 @@ export function SkillSettingsPanel({ client, currentWorkspace, onStateChange, on
   }
 
   async function save(): Promise<boolean> {
-    if (!client?.connected || saving || mode === "overview" || mode === "edit" && !document) return false;
+    if (!client?.connected || saving || (mode !== "new" && mode !== "edit") || mode === "edit" && !document) return false;
     const name = mode === "new" ? newName.trim() : selected?.name ?? "";
     if (!name) { setError("填写 Skill 名称"); return false; }
     setSaving(true);
@@ -143,8 +145,8 @@ export function SkillSettingsPanel({ client, currentWorkspace, onStateChange, on
         name, content: draft, version: mode === "new" ? "" : document?.version ?? "", create: mode === "new",
       });
       setDocument(result);
-      setSelectedKey(`personal:${name}`);
-      setMode("overview");
+      setSelectedKey("");
+      setMode("list");
       setPreviewOpen(false);
       await refresh();
       return true;
@@ -173,7 +175,8 @@ export function SkillSettingsPanel({ client, currentWorkspace, onStateChange, on
       await client.call("skill/settings/delete", { name: selected.name, version: document.version });
       setDeleteOpen(false);
       setDocument(null);
-      setMode("overview");
+      setMode("list");
+      setSelectedKey("");
       await refresh();
     } catch (cause) {
       setError(formatRPCError(cause, "Skill 删除失败"));
@@ -191,34 +194,35 @@ export function SkillSettingsPanel({ client, currentWorkspace, onStateChange, on
   ].filter((group) => group.items.length);
   const personal = selected?.source === "personal";
 
-  return <>
-    <header className="settings-heading settings-split-heading">
-      <h2>Skills</h2>
-      <Button size="sm" variant="outline" disabled={!client?.connected || saving} onClick={startNew}><Plus />新建 Skill</Button>
-    </header>
-    {error && <div className="inline-notice" role="alert">{error}<Button size="sm" variant="ghost" onClick={() => {
+  return <div className="skill-settings-page">
+    <SettingsHeader title={mode === "list" ? "Skills" : mode === "new" ? "新建 Skill" : selected?.name ?? "Skill"}
+      description={mode === "list" ? "管理 Agent 可以使用的技能与工作流程。" : mode === "new" ? "创建个人 Skill，保存后可在聊天中使用。" : undefined}
+      back={mode !== "list" ? { label: mode === "edit" ? selected?.name ?? "Skill" : "Skills",
+        onClick: () => request(() => show(mode === "edit" ? selectedKey : "")), disabled: saving } : undefined}
+      actions={mode === "list" ? <Button size="sm" disabled={!client?.connected || saving} onClick={startNew}><Plus />新建 Skill</Button> :
+        mode === "overview" && personal ? <Button variant="outline" size="sm" disabled={!document || saving || !client?.connected}
+          onClick={() => { setDraft(document?.content ?? ""); setMode("edit"); setError(""); }}><Pencil />编辑</Button> : undefined} />
+    {error && <div className="inline-notice" role="alert">{error}<Button size="sm" variant="ghost" disabled={dirty || saving || !client?.connected} onClick={() => {
       setReload((value) => value + 1);
       setDocumentReload((value) => value + 1);
     }}>重新读取</Button></div>}
-    <div className="settings-two-pane skill-settings-page">
-      <aside className="settings-subnav" aria-label="Skill 列表">
-        <Input aria-label="搜索 Skill" placeholder="搜索 Skill" value={query} onChange={(event) => setQuery(event.target.value)} />
+    {mode === "list" ? <>
+        <SettingsListToolbar query={query} onQueryChange={setQuery} placeholder="搜索 Skill"
+          actions={<Hint text="刷新 Skills"><Button size="icon-sm" variant="ghost" aria-label="刷新 Skills" disabled={loading || !client?.connected}
+            onClick={() => void refresh()}><RefreshCw /></Button></Hint>}>
+          <span className="settings-description">{items.length} 个 Skill</span>
+        </SettingsListToolbar>
         {loading && <p className="metadata">正在读取…</p>}
-        {!loading && !groups.length && <p className="metadata">{query ? "没有匹配的 Skill" : "还没有 Skill"}</p>}
-        {groups.map((group) => <div className="skill-group" key={group.title}>
-          <h3>{group.title} · {group.items.length}</h3>
-          <div className="settings-subnav-list">{group.items.map((item) => <Button key={itemKey(item)} variant="ghost"
-            className="settings-subnav-item" aria-pressed={mode !== "new" && selectedKey === itemKey(item)}
-            onClick={() => request(() => show(itemKey(item)))}>
-            <BookOpenCheck /><span className="settings-subnav-copy"><span className="settings-subnav-name">{item.name}</span>
-              <span className="settings-subnav-meta">{statusLabel(item)}</span></span>
-          </Button>)}</div>
-        </div>)}
-      </aside>
-      <div className="settings-detail-pane">
+        {!client?.connected && <p className="inline-notice">连接后台后可管理 Skills。</p>}
+        {!loading && !groups.length && !error && <SettingsEmpty>{query ? "没有匹配的 Skill" : "还没有 Skill，点击新建开始。"}</SettingsEmpty>}
+        {groups.map((group) => <section className="settings-resource-group" key={group.title}>
+          <h3>{group.title}<span>{group.items.length}</span></h3>
+          <div className="settings-resource-list">{group.items.map((item) => <SettingsResourceRow key={itemKey(item)}
+            icon={<BookOpenCheck />} name={item.name} description={item.description} meta={statusLabel(item)}
+            disabled={saving} onClick={() => request(() => show(itemKey(item)))} />)}</div>
+        </section>)}
+    </> : <div className="settings-editor">
         {mode === "new" ? <>
-          <Button variant="ghost" size="sm" className="model-settings-back" onClick={() => request(() => show(selectedKey))}><ArrowLeft />返回</Button>
-          <h3 className="model-settings-editor-title">新建 Skill</h3>
           <div className="settings-field"><label htmlFor="skill-name">名称</label><Input id="skill-name" value={newName}
             placeholder="例如 architecture-review" disabled={saving} onChange={(event) => {
               const next = event.target.value;
@@ -228,25 +232,18 @@ export function SkillSettingsPanel({ client, currentWorkspace, onStateChange, on
           <div className="settings-field skill-source-field"><label htmlFor="skill-source">SKILL.md</label>
             <Textarea id="skill-source" className="skill-source" spellCheck={false} value={draft} disabled={saving}
               onChange={(event) => setDraft(event.target.value)} /></div>
-          <div className="settings-savebar"><span className="settings-save-status">未保存</span>
-            <Button variant="ghost" size="sm" disabled={saving} onClick={() => show(selectedKey)}>放弃</Button>
-            <Button size="sm" disabled={saving} onClick={() => void save()}>保存</Button></div>
+          <div className="settings-savebar">
+            <Button variant="ghost" size="sm" disabled={saving} onClick={() => request(() => show(""))}>取消</Button>
+            <Button size="sm" disabled={saving || !client?.connected || !newName.trim()} onClick={() => void save()}>{saving ? "保存中…" : "保存"}</Button></div>
         </> : selected && mode === "edit" ? <>
-          <Button variant="ghost" size="sm" className="model-settings-back" onClick={() => request(() => show(selectedKey))}><ArrowLeft />返回概况</Button>
-          <h3 className="model-settings-editor-title">编辑 · {selected.name}</h3>
           <div className="settings-field skill-source-field"><label htmlFor="skill-source">SKILL.md</label>
             <Textarea id="skill-source" className="skill-source" spellCheck={false} value={draft} disabled={saving}
               onChange={(event) => setDraft(event.target.value)} /></div>
-          <div className="settings-savebar"><span className="settings-save-status">{dirty ? "未保存" : "所有更改已保存"}</span>
-            <Button variant="ghost" size="sm" disabled={saving} onClick={() => show(selectedKey)}>放弃</Button>
-            <Button size="sm" disabled={saving || !dirty} onClick={() => void save()}>保存</Button></div>
+          <div className="settings-savebar">
+            <Button variant="ghost" size="sm" disabled={saving} onClick={() => request(() => show(selectedKey))}>取消</Button>
+            <Button size="sm" disabled={saving || !dirty || !client?.connected} onClick={() => void save()}>{saving ? "保存中…" : "保存"}</Button></div>
         </> : selected ? <>
-          <div className="settings-detail-title-row"><div className="settings-identity">
-            <span className="settings-identity-icon"><BookOpenCheck /></span>
-            <div><h3>{selected.name}</h3>
-              {(selected.error || selected.overridden || !selected.enabled) && <p className="metadata">{statusLabel(selected)}</p>}</div>
-          </div>{personal && <Button variant="outline" size="sm" disabled={!document || saving}
-            onClick={() => { setDraft(document?.content ?? ""); setMode("edit"); setError(""); }}><Pencil />编辑</Button>}</div>
+          {(selected.error || selected.overridden || !selected.enabled) && <p className="settings-notice">{statusLabel(selected)}</p>}
           <section className="settings-section"><div className="settings-section-header"><h3>概况</h3></div>
             {selected.description && <Hint text={selected.description}><p className="skill-description">{selected.description}</p></Hint>}
             {selected.error && <p className="skill-error">{selected.error}</p>}
@@ -277,9 +274,8 @@ export function SkillSettingsPanel({ client, currentWorkspace, onStateChange, on
             <Button variant="ghost" size="sm" className="settings-delete" disabled={!document || saving}
               onClick={() => setDeleteOpen(true)}><Trash2 />永久删除</Button>
           </section>}
-        </> : !loading && <p className="metadata">选择一个 Skill 查看详情</p>}
-      </div>
-    </div>
+        </> : !loading && <SettingsEmpty>这个 Skill 已不可用，请返回列表刷新。</SettingsEmpty>}
+    </div>}
     <AlertDialog open={!!pending} onOpenChange={(open) => { if (!open) setPending(null); }}><AlertDialogContent>
       <AlertDialogHeader><AlertDialogTitle>保存当前修改？</AlertDialogTitle>
         <AlertDialogDescription>还有未保存的 SKILL.md。</AlertDialogDescription></AlertDialogHeader>
@@ -295,5 +291,5 @@ export function SkillSettingsPanel({ client, currentWorkspace, onStateChange, on
         <Button variant="destructive" disabled={saving} onClick={() => void remove()}>永久删除</Button>
       </AlertDialogFooter>
     </AlertDialogContent></AlertDialog>
-  </>;
+  </div>;
 }

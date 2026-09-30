@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { Bell, Palette } from "../icons";
+import { SettingsHeader } from "./settings-primitives";
 import type { NotificationStatus, PlatformNotifications } from "../types";
 import { FontOptions, PaletteOptions, ThemeOptions, type PaletteID } from "./appearance-settings";
 
@@ -14,7 +14,6 @@ export function GeneralSettingsPanel({ theme, setTheme, palette, setPalette, not
   enabled: boolean;
   setEnabled: (enabled: boolean) => void;
 }) {
-  const [detail, setDetail] = useState<"appearance" | "notifications">("appearance");
   const [status, setStatus] = useState<NotificationStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [testMessage, setTestMessage] = useState("");
@@ -24,7 +23,7 @@ export function GeneralSettingsPanel({ theme, setTheme, palette, setPalette, not
     void notifications.status().then((next) => { if (active) setStatus(next); })
       .catch(() => { if (active) setStatus({ permission: "unavailable", message: "无法读取通知权限" }); });
     return () => { active = false; };
-  }, [notifications, detail]);
+  }, [notifications]);
 
   async function toggle(next: boolean) {
     if (busy) return;
@@ -59,31 +58,17 @@ export function GeneralSettingsPanel({ theme, setTheme, palette, setPalette, not
   }
 
   return <>
-    <header className="settings-heading"><h2>通用</h2></header>
-    <div className="settings-two-pane">
-      <aside className="settings-subnav" aria-label="通用项目">
-        <h3>通用</h3>
-        <div className="settings-subnav-list">
-          <Button variant="ghost" className="settings-subnav-item" aria-pressed={detail === "appearance"}
-            onClick={() => setDetail("appearance")}><Palette /><span className="settings-subnav-name">外观</span></Button>
-          <Button variant="ghost" className="settings-subnav-item" aria-pressed={detail === "notifications"}
-            onClick={() => setDetail("notifications")}><Bell /><span className="settings-subnav-name">通知</span></Button>
-        </div>
-      </aside>
-      <section className="settings-detail-pane">
-        <div className="settings-detail-title-row">
-          <div className="settings-identity">
-            <span className="settings-identity-icon">{detail === "appearance" ? <Palette /> : <Bell />}</span>
-            <h3>{detail === "appearance" ? "外观" : "后台通知"}</h3>
-          </div>
-          {detail === "notifications" && <Button variant="ghost" size="sm" className="text-muted-foreground"
-            disabled={busy || !enabled || status?.permission !== "granted"} onClick={() => void sendTest()}>
-            发送测试通知
-          </Button>}
-        </div>
-        {detail === "appearance" ? <><ThemeOptions theme={theme} setTheme={setTheme} />
-          <PaletteOptions palette={palette} setPalette={setPalette} /><FontOptions /></> : <>
-          <div className="settings-section notification-setting">
+    <SettingsHeader title="通用" description="调整外观与通知，修改后立即生效。" />
+    <section className="settings-section">
+      <div className="settings-section-header"><h3>外观</h3></div>
+      <ThemeOptions theme={theme} setTheme={setTheme} />
+      <PaletteOptions palette={palette} setPalette={setPalette} />
+    </section>
+    <FontOptions />
+    <section className="settings-section">
+      <div className="settings-section-header"><h3>通知</h3></div>
+      <div className="settings-group-card">
+          <div className="settings-option-row notification-setting">
             <div>
               <strong>系统通知</strong>
               <p className="settings-description">窗口未聚焦时，提醒待审批操作和任务结果。</p>
@@ -91,14 +76,17 @@ export function GeneralSettingsPanel({ theme, setTheme, palette, setPalette, not
             <Switch aria-label="系统通知" checked={enabled} disabled={busy || status?.permission === "unavailable"}
               onCheckedChange={(next) => void toggle(next)} />
           </div>
+          <div className="settings-option-row"><span>检查系统通知是否正常显示</span>
+            <Button variant="outline" size="sm" disabled={busy || !enabled || status?.permission !== "granted"}
+              onClick={() => void sendTest()}>发送测试通知</Button>
+          </div>
+      </div>
           {(status?.permission === "denied" || status?.permission === "not-granted") && status.message ?
             <p className="settings-notice" role="status">{status.message}</p> : null}
           {status?.permission === "unavailable" && <p className="settings-notice" role="status">
             {status.message} <Button variant="ghost" size="sm" onClick={() => void notifications.status().then(setStatus)}>重试检测</Button>
           </p>}
           {testMessage && <p className="settings-description notification-test-status" role="status">{testMessage}</p>}
-        </>}
-      </section>
-    </div>
+    </section>
   </>;
 }

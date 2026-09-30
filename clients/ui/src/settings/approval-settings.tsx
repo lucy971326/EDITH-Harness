@@ -4,7 +4,8 @@ import type { ApprovalSettings, ApprovalSettingsView } from "../../../contracts/
 import type { ModelChoice } from "../../../contracts/appserver";
 import { RPCClient, formatRPCError } from "../client/rpc";
 import { ModelMenu } from "../components/model-menu";
-import { Brain, Plug, Shield, Check, ChevronRight } from "../icons";
+import { Brain, Plug, Check } from "../icons";
+import { SettingsHeader } from "./settings-primitives";
 import type { SettingsDraftState } from "./types";
 
 export function ApprovalSettingsPanel({ client, models, modelError, onReloadModels, onSaved, onStateChange }: {
@@ -21,10 +22,10 @@ export function ApprovalSettingsPanel({ client, models, modelError, onReloadMode
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [reload, setReload] = useState(0);
-  const [detail, setDetail] = useState<"method" | "target">("method");
 
   useEffect(() => {
     let active = true;
+    if (draft && view && (draft.engine !== view.settings.engine || draft.model !== view.settings.model || draft.reasoningEffort !== view.settings.reasoningEffort)) return;
     setView(null);
     setDraft(null);
     setError("");
@@ -69,28 +70,13 @@ export function ApprovalSettingsPanel({ client, models, modelError, onReloadMode
   const dirty = !!draft && !!view && (draft.engine !== view.settings.engine || draft.model !== view.settings.model || draft.reasoningEffort !== view.settings.reasoningEffort);
   useEffect(() => { onStateChange({ dirty, saving }); }, [dirty, saving, onStateChange]);
   return <>
-    <header className="settings-heading"><h2>智能审批</h2></header>
+    <SettingsHeader title="智能审批" description="选择审核工具操作的方式与模型。" />
     {!client?.connected && <p className="inline-notice">连接后台后可修改。</p>}
     {error && <p className="inline-notice" role="alert">{error}</p>}
     {!view && client?.connected && !error && <p className="metadata">正在加载…</p>}
-    {view && draft && <div className="settings-two-pane">
-      <aside className="settings-subnav" aria-label="智能审批项目">
-        <h3>智能审批</h3>
-        <div className="settings-subnav-list">
-          <Button variant="ghost" className="settings-subnav-item" aria-pressed={detail === "method"}
-            onClick={() => setDetail("method")}>
-            <Shield /><span className="settings-subnav-copy"><span className="settings-subnav-name">审核方式</span></span>
-          </Button>
-          <Button variant="ghost" className="settings-subnav-item" aria-pressed={detail === "target"}
-            onClick={() => setDetail("target")}>
-            {draft.engine === "llm" ? <Brain /> : <Plug />}<span className="settings-subnav-copy"><span className="settings-subnav-name">
-              {draft.engine === "llm" ? "审核模型" : "服务连接"}</span></span>
-          </Button>
-        </div>
-      </aside>
-      <div className="settings-detail-pane">
-      {detail === "method" && <section className="settings-section">
-      <div className="settings-detail-title-row"><div className="settings-identity"><span className="settings-identity-icon"><Shield /></span><h3>审核方式</h3></div></div>
+    {view && draft && <>
+      <section className="settings-section">
+      <div className="settings-section-header"><h3>审核方式</h3></div>
       <div className="settings-choice-grid" role="group" aria-label="审核方式">
         {(["llm", "jev"] as const).map((engine) => <button key={engine}
           className="settings-choice ui-focus"
@@ -103,13 +89,9 @@ export function ApprovalSettingsPanel({ client, models, modelError, onReloadMode
           <span className="theme-check">{draft.engine === engine && <Check />}</span>
         </button>)}
       </div>
-      <Button variant="outline" className="settings-next-step" disabled={saving} onClick={() => setDetail("target")}>
-        {draft.engine === "llm" ? <Brain /> : <Plug />}<span>{draft.engine === "llm" ? "审核模型" : "服务连接"}</span>
-        <span className="metadata">{draft.engine === "llm" ? (modelValid ? draft.model : "待选择") : (view.jevConfigured ? "已配置" : "待配置")}</span><ChevronRight />
-      </Button>
-      </section>}
-      {detail === "target" && <section className="settings-section">
-      <div className="settings-detail-title-row"><div className="settings-identity"><span className="settings-identity-icon">{draft.engine === "llm" ? <Brain /> : <Plug />}</span><h3>{draft.engine === "llm" ? "审核模型" : "服务连接"}</h3></div></div>
+      </section>
+      <section className="settings-section">
+      <div className="settings-section-header"><h3>{draft.engine === "llm" ? "审核模型" : "服务连接"}</h3></div>
       {draft.engine === "llm" ? <div className="settings-model-field"><ModelMenu
         models={models} value={draft} disabled={saving || !client?.connected}
         error={modelError} onRetry={onReloadModels} requiresVision={false}
@@ -119,16 +101,17 @@ export function ApprovalSettingsPanel({ client, models, modelError, onReloadMode
         ? "Jev 密钥已配置，可以使用。"
         : "尚未配置密钥：在 ~/.harness/config.yaml 添加 jev.apiKey，然后重启后台。"}</p>}
       {draft.engine === "llm" && !modelValid && <p className="settings-notice">{models === null ? "正在加载可用模型…" : "请选择可用的审核模型与思考档位。"}</p>}
-      </section>}
-      <div className="settings-savebar">
-      <span className="settings-save-status" role="status">{dirty ? "有未保存的更改" : saved ? "已保存" : view.available ? "当前配置可用" : "当前配置尚未就绪"}</span>
+      </section>
+      {(dirty || saving) && <div className="settings-savebar">
+      <span className="settings-save-status" role="status">有未保存的更改</span>
       <Button variant="ghost" disabled={saving || !dirty} onClick={() => edit(view.settings)}>放弃</Button>
       <Button disabled={!client?.connected || saving || !dirty || !canSave} onClick={() => void save()}>
         {saving ? "保存中…" : "保存"}
       </Button>
-      </div>
-      </div>
-    </div>}
+      </div>}
+      {!dirty && saved && <p className="settings-description" role="status">已保存</p>}
+      {!dirty && !view.available && <p className="settings-notice" role="status">当前审核配置尚未就绪，请检查以上设置。</p>}
+    </>}
     {error && <Button variant="ghost" disabled={saving || !client?.connected} onClick={() => setReload((value) => value + 1)}>重新加载</Button>}
   </>;
 }

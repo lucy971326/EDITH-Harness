@@ -132,6 +132,11 @@ func Open(dataDir string) (backend *Backend, result error) {
 		return nil, err
 	}
 	commandService := commands.NewRegistry()
+	promptCommands, err := commands.NewPromptStore(files, machineService)
+	if err != nil {
+		return nil, err
+	}
+	commandService.SetPrompts(promptCommands)
 	runService, err := runner.NewRunner(sessions, settingsStore, agentService, loop, registry, models, toolRegistry, files, machineService)
 	if err != nil {
 		return nil, err

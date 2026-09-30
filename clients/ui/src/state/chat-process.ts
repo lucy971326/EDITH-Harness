@@ -229,9 +229,11 @@ export function chatTurns(snapshot: Snapshot): ChatTurn[] {
                       ? "图片（第 5 步接入）"
                       : block.kind,
             text:
-              block.text ??
-              block.error ??
-              (block.kind === "image" ? "图片" : JSON.stringify(block)),
+              role === "user" && block.kind === "text" && item.message.displayText
+                ? item.message.displayText
+                : block.text ??
+                  block.error ??
+                  (block.kind === "image" ? "图片" : JSON.stringify(block)),
             media: block.media,
             status: item.message.incomplete
               ? "未完成"

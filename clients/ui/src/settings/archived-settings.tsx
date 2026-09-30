@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Hint } from "@/components/ui/tooltip";
-import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { SessionView } from "../../../contracts/harness.ts";
 import { groupSessions } from "../state/projects";
-import { Archive, ArchiveRestore, Folder, Folders, Search, Trash2 } from "../icons";
+import { ArchiveRestore, Trash2 } from "../icons";
+import { SettingsHeader, SettingsListToolbar, SettingsEmpty } from "./settings-primitives";
 
 export function ArchivedSettingsPanel({ sessions, error, onView, onRestore, onDeleteSession, onDeleteProject }: {
   sessions: SessionView[] | null;
@@ -25,31 +26,20 @@ export function ArchivedSettingsPanel({ sessions, error, onView, onRestore, onDe
     item.settings.workspace.toLocaleLowerCase().includes(normalized)),
   ));
   return <div className="archived-settings-page">
-    <header className="settings-heading"><h2>已归档会话</h2></header>
-    <div className="settings-two-pane">
-    <aside className="settings-subnav" aria-label="归档项目">
-      <h3>项目</h3><div className="settings-subnav-list">
-        <Button variant="ghost" className="settings-subnav-item" aria-pressed={!selected} onClick={() => setWorkspace(null)}>
-          <Folders /><span className="settings-subnav-copy"><span>全部项目</span><span className="settings-subnav-meta">{sessions?.length ?? 0} 个会话</span></span>
-        </Button>
-        {projects.map((group) => <Hint key={group.workspace} text={group.workspace}><Button variant="ghost" className="settings-subnav-item"
-          aria-pressed={selected?.workspace === group.workspace} onClick={() => setWorkspace(group.workspace)}>
-          <Folder /><span className="settings-subnav-copy"><span className="settings-subnav-name">{group.name}</span>
-            <span className="settings-subnav-meta">{group.sessions.length} 个会话</span></span>
-        </Button></Hint>)}
-      </div>
-    </aside>
-    <div className="settings-detail-pane">
-    <div className="settings-detail-title-row"><div className="settings-identity"><span className="settings-identity-icon">{selected ? <Folder /> : <Archive />}</span>
-      <h3>{selected?.name ?? "全部归档"}</h3></div></div>
-    <div className="archived-search"><Search aria-hidden="true" />
-      <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索会话或项目" aria-label="搜索已归档会话" />
-    </div>
+    <SettingsHeader title="已归档会话" description="查看历史会话，恢复后可继续聊天。" />
+    <SettingsListToolbar query={query} onQueryChange={setQuery} placeholder="搜索会话或项目">
+      <Select value={selected?.workspace || "all"} onValueChange={(value) => setWorkspace(value === "all" ? null : value)}>
+        <SelectTrigger aria-label="筛选项目"><SelectValue /></SelectTrigger>
+        <SelectContent><SelectItem value="all">全部项目</SelectItem>
+          {projects.filter((group) => group.workspace).map((group) => <SelectItem key={group.workspace} value={group.workspace}>{group.name}</SelectItem>)}
+        </SelectContent>
+      </Select>
+    </SettingsListToolbar>
     {error && <p className="inline-notice" role="alert">{error}</p>}
     {!sessions && !error && <p className="metadata">正在加载…</p>}
-    {sessions && !groups.length && <p className="metadata">{query ? "没有匹配的会话" : "还没有已归档会话"}</p>}
+    {sessions && !groups.length && <SettingsEmpty>{query ? "没有匹配的会话" : "还没有已归档会话"}</SettingsEmpty>}
     {groups.map((group) => <section className="archived-group" key={group.workspace}>
-      <header><div><h3>{group.name}</h3><p className="metadata">{group.workspace}</p></div>
+      <header><Hint text={group.workspace}><h3>{group.name}<span className="settings-count">{group.sessions.length}</span></h3></Hint>
         <Hint text="永久删除项目"><Button variant="ghost" size="icon-sm" className="settings-delete" aria-label={`永久删除项目 ${group.workspace}`} onClick={() => onDeleteProject(group.workspace)}><Trash2 /></Button></Hint>
       </header>
       <div className="archived-list">
@@ -62,6 +52,5 @@ export function ArchivedSettingsPanel({ sessions, error, onView, onRestore, onDe
         </div>)}
       </div>
     </section>)}
-    </div></div>
   </div>;
 }

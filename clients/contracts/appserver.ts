@@ -99,9 +99,26 @@ export interface SkillView {
 }
 
 export interface CommandView {
+  id: string;
+  type: 'action' | 'prompt';
   name: string;
   description: string;
+  scope: 'builtin' | 'user' | 'workspace';
+  source: 'builtin' | 'local' | 'plugin';
+  argumentHint?: string;
 }
+
+export interface PromptCommand {
+  id?: string;
+  name: string;
+  description?: string;
+  argumentHint?: string;
+  prompt: string;
+  scope?: 'user' | 'workspace';
+  source?: 'local' | 'plugin';
+}
+
+export interface PromptCommandFile { commands: PromptCommand[]; hash: string }
 
 export interface FileEntry {
   fileName: string;
@@ -287,8 +304,11 @@ export interface ServerMethods {
   'skill/settings/save': { params: { name: string; content: string; version: string; create: boolean }; result: SkillDocument };
   'skill/settings/toggle': { params: { name: string; enabled: boolean }; result: Record<string, never> };
   'skill/settings/delete': { params: { name: string; version: string }; result: Record<string, never> };
-  'command/list': { params: Record<string, never>; result: { commands: CommandView[] } };
+  'command/list': { params: { workspace?: string }; result: { commands: CommandView[] } };
   'command/call': { params: { sessionID: string; name: string }; result: Record<string, never> };
+  'command/settings/read': { params: { scope: 'user' | 'workspace'; workspace?: string }; result: PromptCommandFile };
+  'command/settings/save': { params: { scope: 'user' | 'workspace'; workspace?: string; hash: string; create: boolean; command: PromptCommand }; result: PromptCommandFile };
+  'command/settings/delete': { params: { scope: 'user' | 'workspace'; workspace?: string; hash: string; name: string }; result: PromptCommandFile };
   'fs/readFile': { params: { path: string }; result: { dataBase64: string; hash: string } };
   'fs/writeFile': { params: { path: string; dataBase64: string; expectedHash: string }; result: { hash: string } };
   'fs/readDirectory': { params: { path: string }; result: { entries: FileEntry[] } };

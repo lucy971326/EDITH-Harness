@@ -7,6 +7,7 @@ import { paletteOptions, type PaletteID } from "./settings/appearance-settings";
 import { HookSettingsPanel } from "./settings/hook-settings";
 import { MCPSettingsPanel } from "./settings/mcp-settings";
 import { SkillSettingsPanel } from "./settings/skill-settings";
+import { CommandSettingsPanel } from "./settings/command-settings";
 import { ModelSettingsPanel } from "./settings/model-settings";
 import { ArchivedSettingsPanel } from "./settings/archived-settings";
 import {
@@ -86,6 +87,7 @@ type Draft = {
   text: string;
   images: Attachment[];
   references: ReferenceAttachment[];
+  commandID?: string;
 };
 
 function emptyDraft(): Draft {
@@ -124,6 +126,7 @@ export function chatSendParams(
   text: string,
   images: Attachment[],
   expectedRunID?: string,
+  commandID?: string,
 ): SendParams {
   return {
     sessionID,
@@ -132,6 +135,7 @@ export function chatSendParams(
       ? { images: images.map(({ mime, data }) => ({ mime, data })) }
       : {}),
     ...(expectedRunID ? { expectedRunID } : {}),
+    ...(commandID ? { commandID } : {}),
   };
 }
 
@@ -259,6 +263,7 @@ export default function App({ platform }: { platform: Platform }) {
   const listGeneration = useRef(0);
   const modelGeneration = useRef(0);
   const skillGeneration = useRef(0);
+  const commandGeneration = useRef(0);
   const openNotificationRef = useRef<(sessionID: string) => void>(() => {});
   const pendingNotificationOpen = useRef<string | null>(null);
 
@@ -357,7 +362,11 @@ export default function App({ platform }: { platform: Platform }) {
   }
 
   function editDraft(text: string) {
-    updateDraft({ text, version: draftRef.current.version + 1 });
+    const selectedCommand = commands.find((item) => item.id === draftRef.current.commandID);
+    updateDraft({ text, commandID: selectedCommand &&
+      (text === `/${selectedCommand.name}` || text.startsWith(`/${selectedCommand.name} `) || text.startsWith(`/${selectedCommand.name}\n`))
+      ? selectedCommand.id : undefined,
+      version: draftRef.current.version + 1 });
   }
 
   const referenceWorkspace = selected?.settings.workspace;
@@ -784,13 +793,14 @@ export default function App({ platform }: { platform: Platform }) {
     }
   }
 
-  async function loadCommands(client: RPCClient) {
+  async function loadCommands(client: RPCClient, workspace = "") {
+    const generation = ++commandGeneration.current;
     try {
-      const result = await client.commands();
-      if (client !== clientRef.current || !client.connected) return;
+      const result = await client.commands(workspace);
+      if (generation !== commandGeneration.current || client !== clientRef.current || !client.connected) return;
       setCommands(result.commands);
     } catch (error) {
-      if (client !== clientRef.current) return;
+      if (generation !== commandGeneration.current || client !== clientRef.current) return;
       setCommands([]);
       setNotice(formatRPCError(error, "命令目录加载失败"));
     }
@@ -891,6 +901,18 @@ export default function App({ platform }: { platform: Platform }) {
     )
       return;
     const text = draftRef.current.text;
+    let commandID = draftRef.current.commandID;
+    if (!commandID) {
+      const name = /^\/([a-zA-Z0-9_-]+)(?:\s|$)/.exec(text)?.[1];
+      if (name) {
+        if (commands.filter((item) => item.name === name).length > 1) {
+          setNotice(`/${name} 有多个来源，请从命令菜单选择。`);
+          return;
+        }
+        const matches = commands.filter((item) => item.type === "prompt" && item.name === name);
+        commandID = matches[0]?.id;
+      }
+    }
     const submittedImages = [...draftRef.current.images];
     const submittedReferences = [...draftRef.current.references];
     const version = drafts.current.get(id)?.version ?? 0;
@@ -907,6 +929,7 @@ export default function App({ platform }: { platform: Platform }) {
           ),
           submittedImages,
           currentRun?.runID,
+          commandID,
         ),
       );
       // 文字按编辑版本清理；图片和引用按 ID 清理，保留等待期间的新输入。
@@ -931,6 +954,8 @@ export default function App({ platform }: { platform: Platform }) {
         text: shouldClearSubmittedDraft(drafts.current, id, version)
           ? ""
           : currentDraft.text,
+        commandID: shouldClearSubmittedDraft(drafts.current, id, version)
+          ? undefined : currentDraft.commandID,
         images: currentDraft.images.filter(
           (image) => !submittedImageIDs.has(image.id),
         ),
@@ -985,9 +1010,15 @@ export default function App({ platform }: { platform: Platform }) {
   }
 
   async function executeCommand(
-    name: string,
+    command: CommandView,
     selection: CommandSelection,
   ): Promise<void> {
+    if (command.type === "prompt") {
+      const nextText = `${selection.draft.slice(0, selection.start)}/${command.name} ${selection.draft.slice(selection.end)}`;
+      updateDraft({ text: nextText, commandID: command.id, version: draftRef.current.version + 1 });
+      composer.current?.focus();
+      return;
+    }
     const client = clientRef.current;
     const sessionID = selectedIDRef.current;
     if (
@@ -1004,7 +1035,7 @@ export default function App({ platform }: { platform: Platform }) {
     setCommandBusy(true);
     setNotice("");
     try {
-      await client.callCommand(sessionID, name);
+      await client.callCommand(sessionID, command.name);
 
       const visible = selectedIDRef.current === sessionID;
       const currentDraft = visible ? draftRef.current : drafts.current.get(key);
@@ -1142,6 +1173,10 @@ export default function App({ platform }: { platform: Platform }) {
     if (!notificationEnabled || !connected || !approvalClient) return;
     return platform.notifications.subscribe?.(approvalClient, (id) => openNotificationRef.current(id));
   }, [notificationEnabled, connected, approvalClient, platform.notifications]);
+  useEffect(() => {
+    const client = clientRef.current;
+    if (connected && client) void loadCommands(client, selected?.settings.workspace ?? "");
+  }, [connected, selected?.settings.workspace]);
   useEffect(
     () => () => {
       objectUrls.current.forEach((url) => URL.revokeObjectURL(url));
@@ -1239,6 +1274,12 @@ export default function App({ platform }: { platform: Platform }) {
           const client = clientRef.current;
           const sessionID = selectedIDRef.current;
           if (client?.connected && sessionID) void loadSkills(client, sessionID);
+        }} />,
+      commandSettings: (onStateChange) => <CommandSettingsPanel client={approvalClient}
+        currentWorkspace={selected?.settings.workspace ?? ""} onStateChange={onStateChange}
+        onChanged={() => {
+          const client = clientRef.current;
+          if (client?.connected) void loadCommands(client, selected?.settings.workspace ?? "");
         }} />,
       approvalSettings: (onStateChange) => <ApprovalSettingsPanel client={approvalClient}
         models={models} modelError={modelError} onStateChange={onStateChange}
@@ -1466,6 +1507,7 @@ export default function App({ platform }: { platform: Platform }) {
                     onAddReference={addContextReference}
                     onRemoveReference={removeReference}
                     draft={draft}
+                    commandID={composerDraft.commandID}
                     images={images}
                     notice={notice}
                     agents={agentCatalog?.agents ?? null}

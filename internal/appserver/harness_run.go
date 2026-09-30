@@ -30,7 +30,7 @@ func (s *Server) handleSend(ctx context.Context, input SendParams) (SendResult, 
 		return SendResult{}, err
 	}
 	mode, err := s.conversations.Send(ctx, conversations.RunInput{
-		SessionID: input.SessionID, ExpectedRunID: input.ExpectedRunID, Message: message,
+		SessionID: input.SessionID, ExpectedRunID: input.ExpectedRunID, CommandID: input.CommandID, Message: message,
 	})
 	return SendResult{Mode: mode}, methodError(err)
 }

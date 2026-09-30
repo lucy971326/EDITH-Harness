@@ -118,6 +118,7 @@ type ImageInput struct {
 type SendParams struct {
 	SessionID     string       `json:"sessionID" jsonschema:"minLength=1"`
 	Text          string       `json:"text,omitempty"`
+	CommandID     string       `json:"commandID,omitempty"`
 	Images        []ImageInput `json:"images,omitempty" jsonschema:"maxItems=4"`
 	ExpectedRunID string       `json:"expectedRunID,omitempty" jsonschema:"minLength=1"`
 }

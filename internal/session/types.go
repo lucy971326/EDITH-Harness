@@ -69,6 +69,7 @@ type Block struct {
 type Message struct {
 	// UserAuthored 由 Runner 标记真实用户输入；未标记的输入不作为自动授权证据。
 	UserAuthored    bool    `json:"userAuthored,omitempty"`
+	DisplayText     string  `json:"displayText,omitempty"`
 	MessageID       string  `json:"messageID,omitempty"`
 	SourceSessionID string  `json:"sourceSessionID,omitempty"`
 	SourceTaskID    string  `json:"sourceTaskID,omitempty"`
@@ -93,6 +94,9 @@ type Entry struct {
 // 数据。Runner 交给 Session 的用户输入。
 type UserMessage struct {
 	Blocks []Block `json:"blocks"`
+	// 提示词命令的展开内容来自配置文件，不作为用户直接授权的证据。
+	DisplayText string `json:"-"`
+	CommandID   string `json:"-"`
 	// 仅进程内委派填写，网络输入不能指定来源。
 	SourceSessionID string `json:"-"`
 	SourceRunID     string `json:"-"`

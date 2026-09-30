@@ -1,0 +1,10 @@
+{
+  "commands": [
+    {
+      "name": "hello",
+      "description": "测试工作区命令与参数传递",
+      "argumentHint": "<随便说点什么>",
+      "prompt": "这是一条工作区测试命令。请先明确回复「工作区命令已生效」，再用一句话回应我提供的内容：$ARGUMENTS"
+    }
+  ]
+}

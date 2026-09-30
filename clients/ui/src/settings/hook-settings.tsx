@@ -6,14 +6,17 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ArrowDown, ArrowUp, ChevronRight, Folder, FolderOpen, Globe, Plus, RefreshCw, Trash2, Webhook } from "../icons";
+import { ArrowDown, ArrowUp, ChevronRight, Plus, RefreshCw, Trash2, Webhook } from "../icons";
 import type { HookConfig, HookView } from "../../../contracts/appserver.ts";
 import { RPCClient, formatRPCError } from "../client/rpc";
 import type { SettingsDraftState } from "./types";
+import { SettingsHeader, SettingsListToolbar, SettingsResourceRow, SettingsScope, SettingsEmpty } from "./settings-primitives";
 
 type Scope = "global" | "project";
 type Draft = Omit<HookConfig, "args" | "tools"> & { argsText: string; toolsText: string };
@@ -59,7 +62,6 @@ export function HookSettingsPanel({ client, currentWorkspace, onStateChange }: {
 }) {
   const [scope, setScope] = useState<Scope>("global");
   const [workspace, setWorkspace] = useState(currentWorkspace);
-  const [workspaceText, setWorkspaceText] = useState(currentWorkspace);
   const [view, setView] = useState<HookView | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [pendingTarget, setPendingTarget] = useState<Target | null>(null);
@@ -67,10 +69,12 @@ export function HookSettingsPanel({ client, currentWorkspace, onStateChange }: {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [reload, setReload] = useState(0);
+  const [query, setQuery] = useState("");
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const source = view?.[scope];
   const outdatedBackend = source?.hooks.some((hook) => !hook.flow) ?? false;
-  const projectReady = scope !== "project" || (!!workspace && workspaceText === workspace);
+  const projectReady = scope !== "project" || !!workspace;
   const storedHook = editor?.index === null ? null : source?.hooks[editor?.index ?? -1];
   const dirty = !!editor && (editor.index === null || !storedHook ||
     JSON.stringify(editor.draft) !== JSON.stringify(toDraft(storedHook)));
@@ -80,11 +84,11 @@ export function HookSettingsPanel({ client, currentWorkspace, onStateChange }: {
   useEffect(() => {
     if (dirty) return;
     setWorkspace(currentWorkspace);
-    setWorkspaceText(currentWorkspace);
   }, [currentWorkspace]);
 
   useEffect(() => {
     let active = true;
+    if (editor) return;
     setView(null);
     setEditor(null);
     setError("");
@@ -110,7 +114,6 @@ export function HookSettingsPanel({ client, currentWorkspace, onStateChange }: {
       const picked = await client.call("workspace/select", {});
       if (!picked.canceled && picked.workspace) {
         setWorkspace(picked.workspace);
-        setWorkspaceText(picked.workspace);
       }
     } catch (cause) {
       setError(formatRPCError(cause, "选择工作区失败"));
@@ -230,10 +233,17 @@ export function HookSettingsPanel({ client, currentWorkspace, onStateChange }: {
       setError("");
       setSaved(false);
     };
-    return <form className="agent-form hook-form" onSubmit={(event) => {
+    return <form className="settings-form-card" onSubmit={(event) => {
       event.preventDefault();
       void submitEditor();
     }}>
+      <div className="settings-field"><Label htmlFor={id + "-flow"}>触发时机</Label>
+        <Select value={draft.flow} disabled={saving || editor.index !== null} onValueChange={(flow) =>
+          setEditor({ ...editor, flow, draft: { ...draft, flow } })}>
+          <SelectTrigger id={id + "-flow"}><SelectValue /></SelectTrigger>
+          <SelectContent>{view?.flows.map((flow) => <SelectItem key={flow} value={flow}>{flow}</SelectItem>)}</SelectContent>
+        </Select>
+      </div>
       <div className="settings-actions">
         <Switch id={id + "-enabled"} checked={draft.enabled} disabled={saving}
           onCheckedChange={(enabled) => update({ enabled })} />
@@ -261,62 +271,39 @@ export function HookSettingsPanel({ client, currentWorkspace, onStateChange }: {
             <span className="settings-description">0 使用默认 10 秒</span></div>
         </CollapsibleContent>
       </Collapsible>
-      <div className="hook-form-footer">
+      <div className="settings-form-actions">
         {editor.index !== null && source && <Button type="button" size="sm" variant="ghost"
           className="settings-delete" disabled={saving || !projectReady || (!!source.error && !source.hash)}
-          onClick={() => void persist(source.hooks.filter((_, index) => index !== editor.index))}>
+          onClick={() => setDeleteOpen(true)}>
           <Trash2 />删除 Hook
         </Button>}
         <Button type="button" size="sm" variant="ghost" disabled={saving}
-          onClick={() => setEditor(null)}>放弃</Button>
+          onClick={() => requestTarget({ kind: "close" })}>取消</Button>
         <Button type="submit" size="sm" disabled={saving || !dirty || !draft.name.trim() ||
           !draft.command.trim() || !client?.connected || (!!source?.error && !source.hash) ||
           !projectReady}>
-          {saving ? "保存中…" : editor.index === null ? "添加 Hook" : "保存"}
+          {saving ? "保存中…" : "保存"}
         </Button>
       </div>
     </form>;
   }
 
   return <>
-    <header className="settings-heading"><h2>Hooks</h2></header>
-    <div className="settings-two-pane">
-      <aside className="settings-subnav" aria-label="Hook 生效范围">
-        <h3>生效范围</h3>
-        <div className="settings-subnav-list">
-          {(["global", "project"] as const).map((item) => <Button key={item}
-            variant="ghost" className="settings-subnav-item" aria-pressed={scope === item} disabled={saving}
-            onClick={() => requestTarget({ kind: "scope", scope: item })}>
-            {item === "global" ? <Globe /> : <Folder />}
-            <span className="settings-subnav-copy">
-              <span className="settings-subnav-name">{item === "global" ? "全局" : "项目"}</span>
-              {view && <span className="settings-subnav-meta">{view[item].hooks.length} 个 Hook</span>}
-            </span>
-          </Button>)}
-        </div>
-      </aside>
-      <div className="settings-detail-pane">
-        <div className="settings-detail-title-row">
-          <div className="settings-identity"><span className="settings-identity-icon"><Webhook /></span><h3>{scope === "global" ? "全局 Hooks" : "项目 Hooks"}</h3></div>
-          <Hint text="重新加载"><Button size="icon-sm" variant="ghost" aria-label="重新加载 Hook 配置"
-            disabled={saving || !client?.connected}
-            onClick={() => requestTarget({ kind: "reload" })}><RefreshCw /></Button></Hint>
-        </div>
-        {scope === "project" && <div className="settings-field hook-workspace">
-          <Label htmlFor="hook-workspace">工作区</Label>
-          <Input id="hook-workspace" value={workspaceText} disabled={saving}
-            placeholder="选择或输入项目目录" onChange={(event) => setWorkspaceText(event.target.value)} />
-          <div className="settings-actions">
-            <Button size="sm" variant="outline" disabled={saving} onClick={() => {
-              if (protectDraft()) return;
-              if (workspace === workspaceText) setReload((value) => value + 1);
-              else setWorkspace(workspaceText);
-            }}>加载</Button>
-            <Button size="sm" variant="outline" disabled={saving}
-              onClick={() => void pickWorkspace()}><FolderOpen />选择文件夹</Button>
-          </div>
-          {!projectReady && <span className="settings-description">先加载工作区，再编辑项目 Hook。</span>}
-        </div>}
+    <SettingsHeader title={editor ? editor.index === null ? "新建 Hook" : storedHook?.name ?? "编辑 Hook" : "Hooks"}
+      description={editor ? `${scope === "global" ? "用户" : "工作区"} Hook` : "在指定时机自动执行命令，按列表顺序运行。"}
+      back={editor ? { label: "Hooks", onClick: () => requestTarget({ kind: "close" }), disabled: saving } : undefined}
+      actions={!editor && <DropdownMenu><DropdownMenuTrigger asChild>
+        <Button size="sm" disabled={saving || !client?.connected || !view?.flows?.length || !projectReady || (!!source?.error && !source.hash)}><Plus />新建 Hook</Button>
+      </DropdownMenuTrigger><DropdownMenuContent align="end">
+        {view?.flows?.map((flow) => <DropdownMenuItem key={flow} onSelect={() => requestTarget({ kind: "add", flow })}>{flow}</DropdownMenuItem>)}
+      </DropdownMenuContent></DropdownMenu>} />
+    {!editor && <SettingsListToolbar query={query} onQueryChange={setQuery} placeholder="搜索 Hook"
+      actions={<Hint text="刷新 Hooks"><Button size="icon-sm" variant="ghost" aria-label="刷新 Hooks" disabled={saving || !client?.connected}
+        onClick={() => requestTarget({ kind: "reload" })}><RefreshCw /></Button></Hint>}>
+      <SettingsScope value={scope === "global" ? "user" : "workspace"} workspace={workspace} disabled={saving || !client?.connected}
+        onChange={(value) => requestTarget({ kind: "scope", scope: value === "user" ? "global" : "project" })}
+        onChooseWorkspace={() => void pickWorkspace()} />
+    </SettingsListToolbar>}
         {!client?.connected && <p className="inline-notice">连接后台后可修改。</p>}
         {error && <div className="inline-notice" role="alert">{error}
           {!view && <Button size="sm" variant="ghost" disabled={saving || !client?.connected}
@@ -332,34 +319,22 @@ export function HookSettingsPanel({ client, currentWorkspace, onStateChange }: {
             <Button size="sm" variant="outline" disabled={saving || dirty || !projectReady || !!source.error}
               onClick={() => void trust()}>信任当前项目配置</Button>
           </>}
-          <div className="hook-flows">
+          {editor ? renderEditor() : <>
             {view.flows.map((flow) => {
               const items = source.hooks.map((hook, index) => ({ hook, index }))
                 .filter((entry) => entry.hook.flow === flow);
-              return <section className="hook-flow" key={flow}>
-                <div className="hook-flow-header">
-                  <h4>{flow} <span className="settings-badge">{items.length}</span></h4>
-                  <Hint text="添加 Hook"><Button size="icon-sm" variant="outline" aria-label={"在 " + flow + " 添加 Hook"}
-                    disabled={saving || !client?.connected ||
-                      (!!source.error && !source.hash) || !projectReady}
-                    onClick={() => requestTarget({ kind: "add", flow })}><Plus /></Button></Hint>
-                </div>
-                {editor?.flow === flow && editor.index === null && renderEditor()}
-                {items.length === 0 && editor?.flow !== flow &&
-                  <p className="metadata hook-flow-empty">暂无 Hook</p>}
-                <div className="hook-list">
-                  {items.map(({ hook, index }, position) => {
-                    const open = editor?.flow === flow && editor.index === index;
-                    return <div className="hook-item" key={hook.name + index}>
-                      <div className="hook-summary">
-                        <button type="button" className="hook-summary-main" aria-expanded={open}
-                          disabled={!projectReady}
-                          onClick={() => requestTarget(open ? { kind: "close" } : { kind: "edit", flow, index })}>
-                          <ChevronRight className={open ? "disclosure-chevron open" : "disclosure-chevron"} />
-                          <span className="hook-summary-name">{hook.name}</span>
-                          <span className="metadata">{hook.enabled ? "已启用" : "已停用"}</span>
-                        </button>
-                        <div className="hook-summary-actions">
+              const visible = items.filter(({ hook }) => `${hook.name} ${hook.command} ${flow}`.toLowerCase().includes(query.toLowerCase()));
+              if (!visible.length) return null;
+              return <section className="settings-resource-group" key={flow}>
+                <h3>{flow}<span>{visible.length}</span></h3>
+                <div className="settings-resource-list">
+                  {visible.map(({ hook, index }) => {
+                    const position = items.findIndex((item) => item.index === index);
+                    return <div className="settings-resource-with-actions" key={hook.name + index}>
+                        <SettingsResourceRow icon={<Webhook />} name={hook.name} description={hook.command}
+                          meta={hook.enabled ? "已启用" : "已停用"} disabled={saving || !projectReady}
+                          onClick={() => requestTarget({ kind: "edit", flow, index })} />
+                        <div className="settings-row-actions">
                           <Hint text="上移"><Button size="icon-sm" variant="ghost"
                             aria-label={"上移 " + hook.name} disabled={saving || !projectReady || position === 0}
                             onClick={() => requestTarget({ kind: "move", index, other: items[position - 1].index })}>
@@ -371,19 +346,26 @@ export function HookSettingsPanel({ client, currentWorkspace, onStateChange }: {
                             <ArrowDown />
                           </Button></Hint>
                         </div>
-                      </div>
-                      {open && renderEditor()}
                     </div>;
                   })}
                 </div>
               </section>;
             })}
-          </div>
+            {!source.hooks.some((hook) => `${hook.name} ${hook.command} ${hook.flow}`.toLowerCase().includes(query.toLowerCase())) &&
+              <SettingsEmpty>{!projectReady ? "选择工作区后管理 Hooks。" : query ? "没有匹配的 Hook" : "还没有 Hook，点击新建选择触发时机。"}</SettingsEmpty>}
+          </>}
           {saved && <p className="settings-save-status" role="status">已保存</p>}
           {view.lastError && <p className="inline-notice" role="status">最近一次 Hook 问题：{view.lastError}</p>}
         </>}
-      </div>
-    </div>
+    <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}><AlertDialogContent>
+      <AlertDialogHeader><AlertDialogTitle>删除 {storedHook?.name}？</AlertDialogTitle>
+        <AlertDialogDescription>删除后，这条 Hook 将不再执行。</AlertDialogDescription></AlertDialogHeader>
+      {error && <p className="inline-notice" role="alert">{error}</p>}
+      <AlertDialogFooter><AlertDialogCancel disabled={saving}>取消</AlertDialogCancel>
+        <Button variant="destructive" disabled={saving} onClick={() => {
+          if (source && editor) void persist(source.hooks.filter((_, index) => index !== editor.index)).then((result) => { if (result) setDeleteOpen(false); });
+        }}>删除</Button></AlertDialogFooter>
+    </AlertDialogContent></AlertDialog>
     <AlertDialog open={pendingTarget !== null}
       onOpenChange={(open) => { if (!open) setPendingTarget(null); }}>
       <AlertDialogContent>

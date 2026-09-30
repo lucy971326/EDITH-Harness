@@ -34,6 +34,7 @@ import type {
 } from "../../../contracts/appserver.ts";
 
 import type { SettingsDraftState } from "./types";
+import { SettingsHeader, SettingsListToolbar, SettingsResourceRow, SettingsEmpty } from "./settings-primitives";
 
 type AgentDraft = AgentSaveParams & { id?: string };
 
@@ -59,14 +60,8 @@ export function AgentSettingsPanel({ agents, tools, loading, error, saving, onRe
 }) {
   const [selectedID, setSelectedID] = useState<string | null>(null);
   const [draft, setDraft] = useState<AgentDraft | null>(null);
-  const [saved, setSaved] = useState("");
+  const [query, setQuery] = useState("");
   const [pendingTarget, setPendingTarget] = useState<string | "new" | null>(null);
-
-  useEffect(() => {
-    if (draft || !agents?.length) return;
-    setSelectedID(agents[0].id);
-    setDraft(draftFrom(agents[0]));
-  }, [agents, draft]);
 
   const selected = agents?.find((agent) => agent.id === selectedID);
   const cannotDelete = !selected || selected.id === "default" || selected.inUse;
@@ -77,20 +72,18 @@ export function AgentSettingsPanel({ agents, tools, loading, error, saving, onRe
   function updateDraft(change: Partial<AgentDraft>) {
     if (!draft) return;
     setDraft({ ...draft, ...change });
-    setSaved("");
   }
 
   function edit(agent: AgentView) {
     setSelectedID(agent.id);
     setDraft(draftFrom(agent));
-    setSaved("");
   }
 
   function showTarget(target: string | "new") {
+    if (target === "list") { setSelectedID(null); setDraft(null); return; }
     if (target === "new") {
       setSelectedID(null);
       setDraft({ name: "新 Agent", systemPrompt: "", tools: [] });
-      setSaved("");
       return;
     }
     const agent = agents?.find((item) => item.id === target);
@@ -107,9 +100,8 @@ export function AgentSettingsPanel({ agents, tools, loading, error, saving, onRe
     if (!draft || saving || !dirty || !draft.name.trim()) return false;
     const result = await onSave({ ...draft, name: draft.name.trim() });
     if (!result) return false;
-    setSelectedID(result.id);
-    setDraft(draftFrom(result));
-    setSaved("已保存。");
+    setSelectedID(null);
+    setDraft(null);
     return true;
   }
 
@@ -117,18 +109,18 @@ export function AgentSettingsPanel({ agents, tools, loading, error, saving, onRe
 
   return (
     <>
-      <header className="settings-heading settings-split-heading">
-        <h2>Agent</h2>
+      <SettingsHeader title={draft ? selected?.name ?? "新建 Agent" : "Agent"}
+        description={draft ? "设置名称、系统提示词与可用工具。" : "配置不同任务使用的 Agent。"}
+        back={draft ? { label: "Agent", onClick: () => requestTarget("list"), disabled: saving } : undefined}
+        actions={!draft &&
         <Button
           size="sm"
-          variant="outline"
           disabled={loading || saving || agents === null}
           onClick={() => requestTarget("new")}
         >
           <Plus />
           新建 Agent
-        </Button>
-      </header>
+        </Button>} />
 
       {error && (
         <div role="status" className="inline-notice">
@@ -139,32 +131,21 @@ export function AgentSettingsPanel({ agents, tools, loading, error, saving, onRe
         </div>
       )}
       {loading && <p className="metadata">正在加载 Agent…</p>}
-      <div className="settings-two-pane">
-        <aside className="settings-subnav" aria-label="Agent 列表">
-          <h3>Agent</h3>
-          <div className="settings-subnav-list">
-            {agents?.map((agent) => (
-              <Button key={agent.id} variant="ghost" className="settings-subnav-item"
-                aria-pressed={selectedID === agent.id} disabled={saving}
-                onClick={() => requestTarget(agent.id)}>
-                <Bot />
-                <span className="settings-subnav-copy">
-                  <span className="settings-subnav-name">{agent.name}</span>
-                  {agent.id === "default" && <span className="settings-subnav-meta">默认</span>}
-                </span>
-              </Button>
-            ))}
-            {draft && selectedID === null && <Button variant="ghost" className="settings-subnav-item" aria-pressed="true"
-              disabled={saving} onClick={() => requestTarget("new")}>
-              <Bot /><span className="settings-subnav-copy"><span className="settings-subnav-name">{draft.name}</span>
-                <span className="settings-subnav-meta">未创建</span></span>
-            </Button>}
-          </div>
-        </aside>
-        <div className="settings-detail-pane">
+      {!draft && <>
+        <SettingsListToolbar query={query} onQueryChange={setQuery} placeholder="搜索 Agent">
+          <span className="settings-description">{agents?.length ?? 0} 个 Agent</span>
+        </SettingsListToolbar>
+        <div className="settings-resource-list">{agents?.filter((agent) => agent.name.toLowerCase().includes(query.toLowerCase())).map((agent) =>
+          <SettingsResourceRow key={agent.id} icon={<Bot />} name={agent.name}
+            description={agent.systemPrompt || "尚未设置系统提示词"}
+            meta={agent.id === "default" ? "默认" : `${agent.tools.length} 个工具`}
+            disabled={saving} onClick={() => requestTarget(agent.id)} />)}
+        </div>
+        {agents && !loading && !agents.some((agent) => agent.name.toLowerCase().includes(query.toLowerCase())) &&
+          <SettingsEmpty>{query ? "没有匹配的 Agent" : "还没有 Agent，点击新建开始。"}</SettingsEmpty>}
+      </>}
       {draft && (
-        <div className="agent-form">
-          <div className="settings-detail-title-row"><div className="settings-identity"><span className="settings-identity-icon"><Bot /></span><h3>{selected ? selected.name : "新建 Agent"}</h3></div></div>
+        <div className="agent-form settings-editor">
           <section className="settings-section">
             <div className="settings-section-header"><div><h3>基本信息</h3></div></div>
           <div className="settings-fields">
@@ -231,11 +212,9 @@ export function AgentSettingsPanel({ agents, tools, loading, error, saving, onRe
               ))}
             </CollapsibleContent>
           </Collapsible>
-          <div className="settings-danger-row">
-            <p className="settings-description">
-              {selected?.id === "default" ? "默认 Agent 不可删除。" : selected?.inUse ? "该 Agent 正被会话使用，暂时无法删除。" : ""}
-            </p>
-            <AlertDialog>
+          <div className="settings-form-actions">
+            {selected?.inUse && selected.id !== "default" && <span className="settings-save-status">正在使用，暂不可删除</span>}
+            {selected && selected.id !== "default" && <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="ghost" className="settings-delete" disabled={saving || cannotDelete}>
                   <Trash2 />
@@ -256,13 +235,8 @@ export function AgentSettingsPanel({ agents, tools, loading, error, saving, onRe
                       void (async () => {
                         if (!selected || !(await onDelete(selected.id)))
                           return;
-                        const fallback =
-                          agents?.find(
-                            (agent) => agent.id !== selected.id,
-                          ) ?? null;
-                        setSelectedID(fallback?.id ?? null);
-                        setDraft(fallback ? draftFrom(fallback) : null);
-                        setSaved("");
+                        setSelectedID(null);
+                        setDraft(null);
                       })()
                     }
                   >
@@ -270,15 +244,8 @@ export function AgentSettingsPanel({ agents, tools, loading, error, saving, onRe
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
-            </AlertDialog>
-          </div>
-          <div className="settings-savebar">
-            <span className="settings-save-status" role="status">{dirty ? "有未保存的更改" : saved || "所有更改已保存"}</span>
-            <Button variant="ghost" disabled={saving || !dirty} onClick={() => {
-              const fallback = selected ?? agents?.[0];
-              if (fallback) edit(fallback);
-              else { setDraft(null); setSelectedID(null); setSaved(""); }
-            }}>放弃</Button>
+            </AlertDialog>}
+            <Button variant="ghost" disabled={saving} onClick={() => requestTarget("list")}>取消</Button>
             <Button
               disabled={saving || !dirty || !draft.name.trim()}
               onClick={() => void save()}
@@ -289,8 +256,6 @@ export function AgentSettingsPanel({ agents, tools, loading, error, saving, onRe
 
         </div>
       )}
-        </div>
-      </div>
       <AlertDialog open={pendingTarget !== null} onOpenChange={(open) => { if (!open) setPendingTarget(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
