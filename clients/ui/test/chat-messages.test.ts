@@ -56,7 +56,7 @@ test("long history finds run statuses with linear work", () => {
     createElement(ChatMessages, { sessionID: "session", snapshot }),
   );
   assert.equal((html.match(/data-entry-id=/g) ?? []).length, count);
-  assert.equal((html.match(/已完成/g) ?? []).length, count / 2);
+  assert.equal((html.match(/已完成/g) ?? []).length, 0);
   // 计访问次数而非耗时，避免机器快慢影响回归；每条消息留足常数次访问。
   assert.ok(runReads <= count * 20, `repeated history scans: ${runReads}`);
 });

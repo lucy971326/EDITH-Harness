@@ -647,6 +647,14 @@ export default function App({ platform }: { platform: Platform }) {
     }
   }
 
+  async function renameSession(sessionID: string, title: string) {
+    const client = clientRef.current;
+    if (!client?.connected) throw new Error("尚未连接后台");
+    const result = await client.rename(sessionID, title);
+    if (client !== clientRef.current || !client.connected) throw new Error("连接已变化，请重新加载会话列表确认名称");
+    replaceSession(result.session);
+  }
+
   async function restoreSession(sessionID: string) {
     const client = clientRef.current;
     if (!client?.connected) return;
@@ -1067,6 +1075,28 @@ export default function App({ platform }: { platform: Platform }) {
     }
   }
 
+  async function forkLatestSession(sourceID: string) {
+    const client = clientRef.current;
+    if (!client?.connected) throw new Error("尚未连接后台");
+    if (forkPending.current) throw new Error("另一场分叉尚未完成");
+    forkPending.current = true;
+    try {
+      const result = await client.forkLatest(sourceID);
+      if (client !== clientRef.current || !client.connected) throw new Error("连接已变化，请重新加载会话列表确认分叉结果");
+      setSessions((current) => [result.session, ...(current ?? []).filter((item) => item.sessionID !== result.session.sessionID)]);
+      navigate("/", false, () => {
+        setCurrentSession(result.session.sessionID, result.session);
+        applyDraft(result.session.sessionID);
+        setNotice("已从最新完整回答创建分叉会话；两个会话共用当前项目文件。");
+        void loadSkills(client, result.session.sessionID);
+        if (window.innerWidth < 760) setSidebar(false);
+      });
+      void loadSessions(client);
+    } finally {
+      forkPending.current = false;
+    }
+  }
+
   useEffect(() => {
     function measureViewport() {
       setViewportWidth(window.innerWidth);
@@ -1270,6 +1300,8 @@ export default function App({ platform }: { platform: Platform }) {
             onCreate={(workspace) => void createInWorkspace(workspace)}
             onReconnect={reconnect}
             onArchiveSession={(id) => void archiveSession(id)}
+            onRenameSession={renameSession}
+            onForkLatest={forkLatestSession}
             onDeleteSession={requestDeleteSession}
             onDeleteProject={requestDeleteProject}
           />

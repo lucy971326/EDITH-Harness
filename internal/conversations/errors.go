@@ -9,6 +9,10 @@ var (
 	ErrInvalidMessage = errors.New("conversation: invalid message")
 	// ErrSessionNotFound 区分普通会话不存在与底层文件读取失败。
 	ErrSessionNotFound = errors.New("conversation: session not found")
+	// ErrInvalidTitle 标记不合法的会话标题。
+	ErrInvalidTitle = errors.New("conversation: invalid session title")
+	// ErrNoForkableAnswer 标记会话末尾没有完整回答。
+	ErrNoForkableAnswer = errors.New("conversation: no forkable answer")
 	// ErrWorkspace 标记创建输入中的工作区不可用。
 	ErrWorkspace = errors.New("conversation: invalid workspace")
 	// ErrSessionSettings 标记读取目标会话设置失败。

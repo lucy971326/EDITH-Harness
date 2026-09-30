@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"unicode"
+	"unicode/utf8"
 
 	"harness/internal/agents"
 	"harness/internal/approvals"
@@ -172,6 +174,30 @@ func (p *Service) UpdateSettings(ctx context.Context, sessionID string, next set
 	return info, nil
 }
 
+// Rename 保存一场普通会话的手动标题；运行中也可改名。
+func (s *Service) Rename(sessionID, title string) (SessionInfo, error) {
+	operation, err := s.operation(sessionID)
+	if err != nil {
+		return SessionInfo{}, err
+	}
+	operation.Lock()
+	defer operation.Unlock()
+
+	if strings.IndexFunc(title, unicode.IsControl) >= 0 {
+		return SessionInfo{}, ErrInvalidTitle
+	}
+	title = strings.TrimSpace(title)
+	if title == "" || utf8.RuneCountInString(title) > 80 {
+		return SessionInfo{}, ErrInvalidTitle
+	}
+	info, err := s.Session(sessionID)
+	if err != nil {
+		return SessionInfo{}, err
+	}
+	info.Meta, err = s.sessions.SetTitle(sessionID, title)
+	return info, err
+}
+
 // Create 创建或复用指定工作区中的空会话。
 func (s *Service) Create(workspace string) (SessionInfo, error) {
 	err := checkWorkspace(workspace)
@@ -186,7 +212,7 @@ func (s *Service) Create(workspace string) (SessionInfo, error) {
 		return SessionInfo{}, err
 	}
 	for _, info := range infos {
-		if info.Settings.Workspace != workspace {
+		if info.Settings.Workspace != workspace || info.Meta.TitleEdited {
 			continue
 		}
 		sess, err := s.sessions.Get(info.Meta.ID)
@@ -421,7 +447,32 @@ func (s *Service) Fork(input ForkInput) (string, error) {
 	}
 	operation.Lock()
 	defer operation.Unlock()
+	return s.forkLocked(input)
+}
 
+// ForkLatest 从会话末尾的完整回答创建分叉，供侧栏按会话 ID 调用。
+func (s *Service) ForkLatest(sessionID string) (string, error) {
+	operation, err := s.operation(sessionID)
+	if err != nil {
+		return "", err
+	}
+	operation.Lock()
+	defer operation.Unlock()
+	if _, running := s.runner.State(sessionID); running {
+		return "", ErrRunActive
+	}
+	view, err := s.runner.SessionView(sessionID)
+	if err != nil {
+		return "", err
+	}
+	input, err := latestAnswerForkInput(sessionID, view)
+	if err != nil {
+		return "", err
+	}
+	return s.forkLocked(input)
+}
+
+func (s *Service) forkLocked(input ForkInput) (string, error) {
 	if input.SessionID == "" || input.RunID == "" || input.BoundaryEntryID == "" {
 		return "", fmt.Errorf("conversation: fork has empty required field")
 	}
@@ -453,7 +504,7 @@ func (s *Service) Fork(input ForkInput) (string, error) {
 		return "", fmt.Errorf("conversation: copy session settings: %w", err)
 	}
 	sourceEntries := sess.Entries()
-	_, err = s.sessions.Fork(input.SessionID, destinationID, through, info.Meta.Title+" · 分叉")
+	_, err = s.sessions.Fork(input.SessionID, destinationID, through, info.Meta.Title)
 	if err != nil {
 		return "", fmt.Errorf("conversation: copy session: %w", err)
 	}
@@ -470,6 +521,67 @@ func (s *Service) Fork(input ForkInput) (string, error) {
 		return "", fmt.Errorf("conversation: copy run records: %w", err)
 	}
 	return destinationID, nil
+}
+
+func latestAnswerForkInput(sessionID string, view runner.SessionView) (ForkInput, error) {
+	latestRunID := ""
+	for index := len(view.Entries) - 1; index >= 0; index-- {
+		if view.Entries[index].Message.RunID != "" {
+			latestRunID = view.Entries[index].Message.RunID
+			break
+		}
+	}
+	completed := false
+	for _, run := range view.Runs {
+		if run.RunID == latestRunID && run.Status == runner.RunSucceeded {
+			completed = true
+			break
+		}
+	}
+	if !completed {
+		return ForkInput{}, ErrNoForkableAnswer
+	}
+
+	lastInputSeq := uint64(0)
+	lastUserID := ""
+	var answer session.Entry
+	for _, entry := range view.Entries {
+		if entry.Message.RunID != latestRunID {
+			continue
+		}
+		if entry.Message.Role == session.RoleUser || entry.Message.Role == session.RoleCollaboration {
+			lastInputSeq = entry.Seq
+		}
+		if entry.Message.Role == session.RoleUser {
+			lastUserID = entry.ID
+		}
+		if entry.Message.Role == session.RoleAssistant {
+			answer = entry
+		}
+	}
+	if lastUserID == "" || answer.ID == "" || answer.Message.Incomplete {
+		return ForkInput{}, ErrNoForkableAnswer
+	}
+	afterSeq := answer.Message.AfterSeq
+	if afterSeq == 0 {
+		afterSeq = answer.Seq
+	}
+	if afterSeq < lastInputSeq {
+		return ForkInput{}, ErrNoForkableAnswer
+	}
+	text := ""
+	for _, block := range answer.Message.Blocks {
+		if block.Tool != nil || block.Kind == "tool-call" || block.Kind == "summary" {
+			return ForkInput{}, ErrNoForkableAnswer
+		}
+		if block.Kind == "text" {
+			text += block.Text
+		}
+	}
+	if strings.TrimSpace(text) == "" {
+		return ForkInput{}, ErrNoForkableAnswer
+	}
+	return ForkInput{SessionID: sessionID, RunID: latestRunID, BoundaryEntryID: lastUserID}, nil
 }
 
 // CallCommand 执行一条平台命令。

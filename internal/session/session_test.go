@@ -83,6 +83,49 @@ func TestFirstUserMessageNamesSessionOnlyOnce(t *testing.T) {
 	}
 }
 
+func TestManualTitleSurvivesFirstMessageAndSaveFailure(t *testing.T) {
+	store, disk := newTestStore(t)
+	sess, err := store.Create("chat1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta, err := store.SetTitle("chat1", "新对话")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !meta.TitleEdited {
+		t.Fatal("manual title was not marked")
+	}
+	_, err = sess.Append(textMessage(RoleUser, "first question"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta, err = disk.LoadMeta("chat1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta.Title != "新对话" || !meta.TitleEdited {
+		t.Fatalf("first message replaced manual title: %#v", meta)
+	}
+
+	failing := NewStore(failingMetaPersistence{Persistence: disk})
+	_, err = failing.SetTitle("chat1", "unsaved")
+	if err == nil {
+		t.Fatal("metadata save failure was ignored")
+	}
+	meta, err = disk.LoadMeta("chat1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta.Title != "新对话" {
+		t.Fatalf("failed write changed durable title: %#v", meta)
+	}
+}
+
+type failingMetaPersistence struct{ Persistence }
+
+func (f failingMetaPersistence) SaveMeta(SessionMeta) error { return errors.New("disk full") }
+
 func TestEmptySessionSurvivesNewStoreAndList(t *testing.T) {
 	dir := t.TempDir()
 	files, err := persist.NewFiles(dir)

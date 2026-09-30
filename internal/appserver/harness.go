@@ -21,8 +21,10 @@ const (
 	deleteSessionMethod      = "harness/session/delete"
 	deleteProjectMethod      = "harness/project/delete"
 	getMethod                = "harness/session/get"
+	renameMethod             = "harness/session/rename"
 	updateSettingsMethod     = "harness/session/settings/update"
 	forkMethod               = "harness/session/fork"
+	forkLatestMethod         = "harness/session/fork/latest"
 	sendMethod               = "harness/session/send"
 	snapshotMethod           = "harness/session/snapshot"
 	subscribeMethod          = "harness/session/subscribe"
@@ -97,11 +99,19 @@ func (s *Server) BindHarness(product *conversations.Service, runService *runner.
 	if err != nil {
 		return err
 	}
+	err = registerSession(s, renameMethod, func(input RenameSessionParams) string { return input.SessionID }, s.handleRename)
+	if err != nil {
+		return err
+	}
 	err = registerSession(s, updateSettingsMethod, func(input UpdateSettingsParams) string { return input.SessionID }, s.handleUpdateSettings)
 	if err != nil {
 		return err
 	}
 	err = registerSession(s, forkMethod, func(input ForkParams) string { return input.SessionID }, s.handleFork)
+	if err != nil {
+		return err
+	}
+	err = registerSession(s, forkLatestMethod, func(input SessionIDParams) string { return input.SessionID }, s.handleForkLatest)
 	if err != nil {
 		return err
 	}
@@ -226,6 +236,11 @@ func (s *Server) handleGet(_ context.Context, input SessionIDParams) (SessionRes
 	return SessionResult{Session: sessionView(info)}, methodError(err)
 }
 
+func (s *Server) handleRename(_ context.Context, input RenameSessionParams) (SessionResult, error) {
+	info, err := s.conversations.Rename(input.SessionID, input.Title)
+	return SessionResult{Session: sessionView(info)}, methodError(err)
+}
+
 func (s *Server) handleUpdateSettings(ctx context.Context, input UpdateSettingsParams) (SessionResult, error) {
 	info, err := s.conversations.UpdateSettings(ctx, input.SessionID, settings.SessionSettings{
 		AgentID:         input.AgentID,
@@ -243,6 +258,16 @@ func (s *Server) handleFork(_ context.Context, input ForkParams) (SessionResult,
 		RunID:           input.RunID,
 		BoundaryEntryID: input.BoundaryEntryID,
 	})
+	if err != nil {
+		return SessionResult{}, methodError(err)
+	}
+	info, err := s.conversations.Session(destinationID)
+	return SessionResult{Session: sessionView(info)}, methodError(err)
+}
+
+func (s *Server) handleForkLatest(_ context.Context, input SessionIDParams) (SessionResult, error) {
+	defer s.invalidateActivity()
+	destinationID, err := s.conversations.ForkLatest(input.SessionID)
 	if err != nil {
 		return SessionResult{}, methodError(err)
 	}
@@ -291,6 +316,12 @@ func methodError(err error) error {
 	if errors.Is(err, conversations.ErrInvalidMessage) {
 		return &Error{Code: CodeInvalidParams, Message: "message is empty", Cause: err}
 	}
+	if errors.Is(err, conversations.ErrInvalidTitle) {
+		return &Error{Code: CodeInvalidParams, Message: "会话名称须为 1 至 80 个字符，且不能包含换行或控制字符", Cause: err}
+	}
+	if errors.Is(err, conversations.ErrNoForkableAnswer) {
+		return &Error{Code: CodeConflict, Message: "会话末尾没有可分叉的完整回答", Cause: err}
+	}
 	if errors.Is(err, conversations.ErrWorkspace) {
 		return &Error{Code: CodeInvalidParams, Message: "workspace is not available", Cause: err}
 	}
@@ -298,7 +329,7 @@ func methodError(err error) error {
 		return &Error{Code: CodeInvalidParams, Message: "model, reasoning effort or agent is unavailable", Cause: err}
 	}
 	if errors.Is(err, conversations.ErrRunActive) {
-		return &Error{Code: CodeConflict, Message: "session has an active run", Cause: err}
+		return &Error{Code: CodeConflict, Message: "会话正在运行，请结束后重试", Cause: err}
 	}
 	if errors.Is(err, conversations.ErrArchived) {
 		return &Error{Code: CodeConflict, Message: "restore archived session before starting another run", Cause: err}

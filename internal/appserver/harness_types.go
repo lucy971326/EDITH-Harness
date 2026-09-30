@@ -64,6 +64,12 @@ type SessionIDParams struct {
 	SessionID string `json:"sessionID" jsonschema:"minLength=1"`
 }
 
+// 数据。手动修改会话标题的接口输入。
+type RenameSessionParams struct {
+	SessionID string `json:"sessionID" jsonschema:"minLength=1"`
+	Title     string `json:"title" jsonschema:"minLength=1"`
+}
+
 // 对外会话接口：共享结果与会话数据
 
 // 数据。创建与单个查询返回同一种会话封套。

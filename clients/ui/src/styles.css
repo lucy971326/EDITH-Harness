@@ -977,7 +977,7 @@
   align-items: center;
   gap: var(--space-2);
   min-height: var(--navigation-row-height);
-  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
+  padding: var(--space-1) var(--space-2);
   text-align: left;
   border-radius: var(--radius-control);
   font-size: var(--font-size-label);
@@ -992,17 +992,6 @@
   color: var(--secondary-foreground);
   font-weight: 600;
   outline: 1px solid var(--glass-border);
-}
-.session-row.selected::before {
-  content: "";
-  position: absolute;
-  left: var(--space-1);
-  top: 50%;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--activity);
-  transform: translateY(-50%);
 }
 .running-dot {
   width: 6px;
@@ -2489,6 +2478,8 @@
   padding: 0 var(--space-1);
 }
 .session-link span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.session-rename-input { flex: 1; min-width: 0; height: var(--control-compact); padding: 0 var(--space-1); border: 1px solid var(--border); border-radius: var(--radius-control); background: var(--card); color: var(--foreground); font: inherit; }
+.session-row-error { margin: 0 var(--space-2) var(--space-2); color: var(--destructive); font-size: var(--font-size-caption); overflow-wrap: anywhere; }
 .session-row[data-unread="true"] .session-link { font-weight: 600; }
 .session-indicator-target { display: grid; place-items: center; flex: 0 0 var(--space-4); height: var(--space-4); border-radius: var(--radius-control); }
 .session-indicator { width: 6px; height: 6px; border-radius: 50%; background: var(--activity); }
@@ -2507,7 +2498,8 @@
   border-radius: var(--radius-control);
 }
 .session-row:hover .session-actions,
-.session-row:focus-within .session-actions { opacity: 1; pointer-events: auto; }
+.session-row:focus-within .session-actions,
+.session-row:has([data-state="open"]) .session-actions { opacity: 1; pointer-events: auto; }
 .session-row:not(:has(.session-indicator-target)):hover .session-link,
 .session-row:not(:has(.session-indicator-target)):focus-within .session-link { padding-right: calc(var(--control-compact) * 2); }
 @media (hover: none) {
@@ -2522,6 +2514,7 @@
 .sidebar-row-action { opacity: 0; flex-shrink: 0; }
 .session-row:hover .sidebar-row-action,
 .session-row:focus-within .sidebar-row-action,
+.session-row:has([data-state="open"]) .sidebar-row-action,
 .project-heading:hover .sidebar-row-action,
 .project-heading:focus-within .sidebar-row-action { opacity: 1; }
 .sidebar-row-action svg { width: 14px; height: 14px; }

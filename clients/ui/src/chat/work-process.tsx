@@ -407,9 +407,6 @@ function WorkProcessComponent({
           <span className="run-diff-action">审查改动 <ChevronRight aria-hidden="true" /></span>
         </button>
       )}
-      {status === "success" && turn.items.length === 0 && turn.answer && (
-        <span className="metadata">已完成</span>
-      )}
     </article>
   );
 }

@@ -227,12 +227,20 @@ export class RPCClient {
     return this.call("harness/session/get", { sessionID });
   }
 
+  rename(sessionID: string, title: string) {
+    return this.call("harness/session/rename", { sessionID, title });
+  }
+
   fork(sessionID: string, runID: string, boundaryEntryID: string) {
     return this.call("harness/session/fork", {
       sessionID,
       runID,
       boundaryEntryID,
     });
+  }
+
+  forkLatest(sessionID: string) {
+    return this.call("harness/session/fork/latest", { sessionID });
   }
 
   selectWorkspace() {

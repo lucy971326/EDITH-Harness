@@ -76,7 +76,7 @@ func (s *Session) renameFirstUserMessage(message Message) error {
 	if err != nil {
 		return fmt.Errorf("session: load metadata: %w", err)
 	}
-	if meta.Title != "新对话" {
+	if meta.TitleEdited || meta.Title != "新对话" {
 		return nil
 	}
 	meta.Title = title

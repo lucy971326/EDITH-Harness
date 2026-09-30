@@ -4,7 +4,7 @@
 
 ## 当前能力
 
-- React Web：项目与会话、归档与恢复、永久删除、文字／图片聊天、实时过程、Steer、停止、分叉、压缩、上下文引用。
+- React Web：项目与会话、会话重命名、归档与恢复、永久删除、文字／图片聊天、实时过程、Steer、停止、从回答或会话末尾分叉、压缩、上下文引用。
 - 模型选择：按供应商展示与独立思考滑块；开发时从 models.dev 生成内置目录，供应商名单对齐 Pi 的 OpenAI／Anthropic 协议入口，覆盖 DeepSeek、MiMo、MiniMax、Qwen、Kimi、GLM 等。已知模型自动提供能力，设置支持高级手动覆盖。协议使用 OpenAI Chat／Responses 与 Anthropic Messages 官方 SDK；内置账号登录保留 ChatGPT、xAI。
 - Wails v3 Desktop：支持 Windows／macOS，复用同一份 React 构建产物与后台，业务通过 Stream 传完整 JSON-RPC 2.0 消息；单实例唤醒、窗口布局恢复、关窗隐藏到托盘已实现；Windows 自绘标题栏，macOS 保留原生交通灯。Linux 保留 Web，不构建 Desktop；同一份用户数据只允许一个后台运行。
 - 设置：独立导航，通用内含主题与默认关闭的通知开关；Agent 分组表单、个人 Skill 管理、模型与供应商、智能审批方式、可折叠 Hooks 列表，以及全局 MCP Server 的增删改、开关、重连全部全局 Server 和 HTTP OAuth 登录；项目 Skill 只读，项目 MCP 配置只读、确认后可登录。分类切换保留草稿，离开前确认未保存修改。

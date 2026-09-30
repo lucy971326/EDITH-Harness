@@ -75,7 +75,7 @@ Web 与 Desktop 启动前都独占 `.lock` 文件的操作系统锁；同一份�
    ├─ messages.jsonl
    │  对话账本
    ├─ meta.json
-   │  会话元数据；可选 archivedAt 只影响普通列表，不停止已运行的 Run
+   │  会话元数据；titleEdited 标记手动标题并阻止首条消息自动命名及空会话复用；可选 archivedAt 只影响普通列表，不停止已运行的 Run
    ├─ settings.json
    │  此会话的运行设置
    ├─ runs.json

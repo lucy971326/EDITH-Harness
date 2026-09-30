@@ -5,13 +5,17 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"harness/internal/appserver"
 	"harness/internal/conversations"
+	"harness/internal/events"
 	"harness/internal/runner"
 	"harness/internal/session"
 	"harness/internal/session/settings"
@@ -116,6 +120,116 @@ func TestSessionMethodsUseRealProduct(t *testing.T) {
 	} {
 		_, err = server.Call(context.Background(), test.name, json.RawMessage(test.params))
 		assertMethodError(t, err, test.code)
+	}
+}
+
+func TestSessionMenuRenameAndForkLatest(t *testing.T) {
+	fixture := newTestFixture(t)
+	defer fixture.close()
+	server := newRPCServer(t, fixture)
+	defer server.Close()
+	workspace := t.TempDir()
+	file := filepath.Join(workspace, "unchanged.txt")
+	if err := os.WriteFile(file, []byte("original"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	created, err := fixture.service.Create(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	callRename := func(title string) (appserver.SessionResult, error) {
+		raw, callErr := server.Call(t.Context(), "harness/session/rename", mustJSON(t, appserver.RenameSessionParams{SessionID: created.Meta.ID, Title: title}))
+		if callErr != nil {
+			return appserver.SessionResult{}, callErr
+		}
+		var result appserver.SessionResult
+		callErr = json.Unmarshal(raw, &result)
+		return result, callErr
+	}
+	result, err := callRename("  我的会话  ")
+	if err != nil || result.Session.Title != "我的会话" {
+		t.Fatalf("rename = %#v, %v", result, err)
+	}
+	for _, title := range []string{" ", "bad\nname", "bad\n", strings.Repeat("a", 81)} {
+		_, err = callRename(title)
+		assertMethodError(t, err, appserver.CodeInvalidParams)
+	}
+	meta, err := fixture.sessions.Meta(created.Meta.ID)
+	if err != nil || meta.Title != "我的会话" || !meta.TitleEdited {
+		t.Fatalf("durable title = %#v, %v", meta, err)
+	}
+	empty, err := fixture.service.Create(workspace)
+	if err != nil || empty.Meta.ID == created.Meta.ID {
+		t.Fatalf("renamed empty session reused: %#v, %v", empty, err)
+	}
+	_, err = server.Call(t.Context(), "harness/session/fork/latest", mustJSON(t, appserver.SessionIDParams{SessionID: empty.Meta.ID}))
+	assertMethodError(t, err, appserver.CodeConflict)
+
+	ended := make(chan runner.RunEvent, 8)
+	unsubscribe, err := events.Subscribe(fixture.events, func(_ context.Context, event runner.RunEvent) error {
+		if event.Kind == runner.RunEnded {
+			ended <- event
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unsubscribe()
+	_, err = fixture.service.Send(t.Context(), conversations.RunInput{SessionID: empty.Meta.ID,
+		Message: session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "stop before answer"}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.loop.waitStarted(t)
+	if err = fixture.service.Stop(empty.Meta.ID); err != nil {
+		t.Fatal(err)
+	}
+	waitEnded(t, ended, empty.Meta.ID)
+	_, err = server.Call(t.Context(), "harness/session/fork/latest", mustJSON(t, appserver.SessionIDParams{SessionID: empty.Meta.ID}))
+	assertMethodError(t, err, appserver.CodeConflict)
+
+	_, err = fixture.service.Send(t.Context(), conversations.RunInput{SessionID: created.Meta.ID,
+		Message: session.UserMessage{Blocks: []session.Block{{Kind: "text", Text: "first question"}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.loop.waitStarted(t)
+	_, err = server.Call(t.Context(), "harness/session/fork/latest", mustJSON(t, appserver.SessionIDParams{SessionID: created.Meta.ID}))
+	assertMethodError(t, err, appserver.CodeConflict)
+	result, err = callRename("运行中改名")
+	if err != nil || result.Session.Title != "运行中改名" {
+		t.Fatalf("rename during run = %#v, %v", result, err)
+	}
+	fixture.loop.release()
+	waitEnded(t, ended, created.Meta.ID)
+	meta, err = fixture.sessions.Meta(created.Meta.ID)
+	if err != nil || meta.Title != "运行中改名" {
+		t.Fatalf("first message replaced title: %#v, %v", meta, err)
+	}
+	source, err := fixture.service.Snapshot(created.Meta.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := server.Call(t.Context(), "harness/session/fork/latest", mustJSON(t, appserver.SessionIDParams{SessionID: created.Meta.ID}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = json.Unmarshal(raw, &result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	branch, err := fixture.service.Snapshot(result.Session.SessionID)
+	if err != nil || len(branch.Entries) != len(source.Entries) || result.Session.Settings.Workspace != workspace {
+		t.Fatalf("forked session = %#v, %v", result.Session, err)
+	}
+	after, err := fixture.service.Snapshot(created.Meta.ID)
+	if err != nil || !reflect.DeepEqual(source.Entries, after.Entries) {
+		t.Fatalf("source changed after fork: %v", err)
+	}
+	contents, err := os.ReadFile(file)
+	if err != nil || string(contents) != "original" {
+		t.Fatalf("workspace file changed: %q, %v", contents, err)
 	}
 }
 

@@ -22,6 +22,11 @@ export interface SessionIDParams {
   sessionID: string;
 }
 
+export interface RenameSessionParams {
+  sessionID: string;
+  title: string;
+}
+
 // 共享结果与会话数据。
 export interface SessionResult {
   session: SessionView;
@@ -159,11 +164,13 @@ export interface Methods {
   "harness/session/delete": { params: SessionIDParams; result: DeleteResult };
   "harness/project/delete": { params: DeleteProjectParams; result: DeleteResult };
   "harness/session/get": { params: SessionIDParams; result: SessionResult };
+  "harness/session/rename": { params: RenameSessionParams; result: SessionResult };
   "harness/session/settings/update": {
     params: UpdateSettingsParams;
     result: SessionResult;
   };
   "harness/session/fork": { params: ForkParams; result: SessionResult };
+  "harness/session/fork/latest": { params: SessionIDParams; result: SessionResult };
   "harness/session/send": {
     params: SendParams;
     result: { mode: "started" | "steered" };

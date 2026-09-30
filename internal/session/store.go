@@ -165,6 +165,28 @@ func (s *Store) List() ([]SessionMeta, error) {
 	return s.persist.List()
 }
 
+// SetTitle 保存手动标题；与首条消息自动命名共用账本锁。
+func (s *Store) SetTitle(id, title string) (SessionMeta, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sess := s.live[id]
+	if sess != nil {
+		sess.mu.Lock()
+		defer sess.mu.Unlock()
+	}
+	meta, err := s.persist.LoadMeta(id)
+	if err != nil {
+		return SessionMeta{}, err
+	}
+	meta.Title = title
+	meta.TitleEdited = true
+	err = s.persist.SaveMeta(meta)
+	if err != nil {
+		return SessionMeta{}, err
+	}
+	return meta, nil
+}
+
 // SetArchived 更新会话归档时间；与首条消息自动命名使用同一本账的锁。
 func (s *Store) SetArchived(id string, archived bool) (SessionMeta, error) {
 	s.mu.Lock()
