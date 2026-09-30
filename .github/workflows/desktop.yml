@@ -10,6 +10,9 @@ on:
 permissions:
   contents: read
 
+env:
+  NODE_OPTIONS: --max-old-space-size=4096
+
 concurrency:
   group: desktop-${{ github.ref }}
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
@@ -80,8 +83,6 @@ jobs:
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Build installer
         shell: bash
-        env:
-          NODE_OPTIONS: --max-old-space-size=4096
         run: make desktop-package
       - name: Check installer
         shell: bash
