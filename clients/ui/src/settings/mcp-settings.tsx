@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Hint } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -464,15 +465,15 @@ export function MCPSettingsPanel({ client, currentWorkspace, onOpenFile, onState
           <dl className="settings-facts">
             <div><dt>连接状态</dt><dd>
               <span className="settings-connection-status" data-status={selected.status}>{statusLabel(selected)}</span>
-              {target.scope === "global" && selected.enabled && <Button variant="ghost" size="icon-sm" disabled={saving}
-                aria-label="重连全部全局 Server" title="重连全部全局 Server" onClick={() => void retry()}><RefreshCw /></Button>}
+              {target.scope === "global" && selected.enabled && <Hint text="重连全部全局 Server"><Button variant="ghost" size="icon-sm" disabled={saving}
+                aria-label="重连全部全局 Server" onClick={() => void retry()}><RefreshCw /></Button></Hint>}
             </dd></div>
             <div><dt>{selected.type === "stdio" ? "启动配置" : "服务地址"}</dt><dd>{selected.type === "stdio"
               ? `${selected.hasCommand ? "命令已设置" : "命令未设置"} · ${selected.argCount} 个参数`
               : selected.hasURL ? "已设置" : "未设置"}</dd></div>
-            {selected.source && <div><dt>配置来源</dt><dd title={selected.source}><FileText />
+            {selected.source && <div><dt>配置来源</dt><Hint text={selected.source}><dd><FileText />
               <span className="settings-truncate">{target.scope === "global" ? "全局" : "项目 · 只读"} · {selected.source.split(/[\\/]/).pop()}</span>
-            </dd></div>}
+            </dd></Hint></div>}
           </dl>
           {showOAuth && <div className="mcp-auth-action" data-attention={authNeeded && !authBusy} role="status">
             <span className="mcp-auth-icon"><KeyRound /></span>
@@ -504,7 +505,7 @@ export function MCPSettingsPanel({ client, currentWorkspace, onOpenFile, onState
           <section className="settings-section mcp-tools">
             <div className="settings-section-header"><h3>可用工具 <span className="settings-badge">{selected.tools.length}</span></h3></div>
             {selected.tools.length ? <div className="settings-item-list">{selected.tools.map((tool) =>
-              <div className="mcp-tool-row" key={tool} title={tool}><Wrench /><span>{tool.startsWith(`mcp__${selected.name}__`)
+              <div className="mcp-tool-row" key={tool}><Wrench /><span>{tool.startsWith(`mcp__${selected.name}__`)
                 ? tool.slice(`mcp__${selected.name}__`.length) : tool}</span></div>)}</div>
               : <div className="settings-empty"><Wrench /><p>暂无可用工具</p></div>}
           </section>

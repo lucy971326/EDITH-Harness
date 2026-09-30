@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { DiffEditor } from "@monaco-editor/react";
 import { Button } from "@/components/ui/button";
+import { Hint } from "@/components/ui/tooltip";
 import { ResizeHandle } from "@/components/resize-handle";
 import type { RPCClient } from "../client/rpc";
 import { Columns2, FileText, PanelRight, Rows3, Undo2 } from "../icons";
@@ -209,9 +210,9 @@ export function ReviewView({
   return (
     <div className="review-view">
       <div className="review-toolbar">
-        <span title={selectedPath}>
+        <Hint text={selectedPath ?? "审查更改"}><span>
           {selected ? displayPath(workspace, selected.path) : "审查更改"}
-        </span>
+        </span></Hint>
         <div className="review-toolbar-actions">
           <Button
             variant="ghost"
@@ -222,16 +223,15 @@ export function ReviewView({
           >
             {renderSideBySide ? <Rows3 /> : <Columns2 />}
           </Button>
-          <Button
+          <Hint text={runActive ? "运行结束后才能撤销" : ""}><span className="inline-flex"><Button
             variant="ghost"
             size="xs"
             disabled={!selected || runActive || reverting || !client?.connected}
-            title={runActive ? "运行结束后才能撤销" : undefined}
             onClick={() => void revertSelected()}
           >
             <Undo2 />
             {reverting ? "撤销中…" : "撤销此文件"}
-          </Button>
+          </Button></span></Hint>
           <Button
             variant="ghost"
             size="icon-xs"
@@ -314,11 +314,9 @@ export function ReviewView({
               aria-label="本轮变更文件"
             >
               {summary.files.map((item) => (
-                <button
-                  key={item.path}
+                <Hint key={item.path} text={`${item.path} · ${operationLabel(item.operation)}`}><button
                   role="option"
                   aria-selected={item.path === selectedPath}
-                  title={`${item.path} · ${operationLabel(item.operation)}`}
                   aria-label={`${displayPath(workspace, item.path)}，${operationLabel(item.operation)}，新增 ${item.additions} 行，删除 ${item.deletions} 行`}
                   onClick={() => setSelectedPath(item.path)}
                 >
@@ -328,7 +326,7 @@ export function ReviewView({
                   </span>
                   <i className="diff-additions">+{item.additions}</i>
                   <i className="diff-deletions">-{item.deletions}</i>
-                </button>
+                </button></Hint>
               ))}
             </div>
           </aside>

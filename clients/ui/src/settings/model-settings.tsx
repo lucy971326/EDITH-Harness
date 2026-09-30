@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Hint } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -477,13 +478,13 @@ export function ModelSettingsPanel({ client, openExternal, onSaved, onStateChang
                   aria-invalid={levelValues[index] !== "" && levelValues.indexOf(levelValues[index]) !== index}
                   onChange={(event) => updateLevel(index, event.target.value)} />
                 <div className="model-level-actions">
-                  <Button size="icon-sm" variant="ghost" aria-label={`上移第 ${index + 1} 档`} title="上移"
-                    disabled={saving || !model.manual || index === 0} onClick={() => moveLevel(index, -1)}><ArrowUp /></Button>
-                  <Button size="icon-sm" variant="ghost" aria-label={`下移第 ${index + 1} 档`} title="下移"
-                    disabled={saving || !model.manual || index === model.reasoning.length - 1} onClick={() => moveLevel(index, 1)}><ArrowDown /></Button>
-                  <Button size="icon-sm" variant="ghost" aria-label={`移除第 ${index + 1} 档`} title="移除"
+                  <Hint text="上移"><Button size="icon-sm" variant="ghost" aria-label={`上移第 ${index + 1} 档`}
+                    disabled={saving || !model.manual || index === 0} onClick={() => moveLevel(index, -1)}><ArrowUp /></Button></Hint>
+                  <Hint text="下移"><Button size="icon-sm" variant="ghost" aria-label={`下移第 ${index + 1} 档`}
+                    disabled={saving || !model.manual || index === model.reasoning.length - 1} onClick={() => moveLevel(index, 1)}><ArrowDown /></Button></Hint>
+                  <Hint text="移除"><Button size="icon-sm" variant="ghost" aria-label={`移除第 ${index + 1} 档`}
                     disabled={saving || !model.manual || model.reasoning.length === 1}
-                    onClick={() => { setModel({ ...model, reasoning: model.reasoning.filter((_, position) => position !== index) }); setSaved(""); }}><X /></Button>
+                    onClick={() => { setModel({ ...model, reasoning: model.reasoning.filter((_, position) => position !== index) }); setSaved(""); }}><X /></Button></Hint>
                 </div>
                 {model.manual && selectedProtocol === "anthropic" && level.mode !== "off" && level.name !== "auto" && <div className="model-level-options settings-fields">
                   <Select value={level.mode} disabled={saving} onValueChange={(mode) => setModel({ ...model,

@@ -22,7 +22,6 @@ function skillNode(name: string): HTMLSpanElement {
   chip.className = "skill-token";
   chip.dataset.skillName = name;
   chip.contentEditable = "false";
-  chip.title = `Skill · ${name}`;
   chip.setAttribute("aria-label", `Skill ${name}`);
   chip.innerHTML = iconHTML;
   const label = document.createElement("span");
@@ -169,7 +168,7 @@ export const SkillEditor = forwardRef<SkillEditorHandle, {
     const before = editorText(element);
     const range = selectRange(element, start, end);
     const html = skillName
-      ? `<span class="skill-token" data-skill-name="${escapeHTML(skillName)}" contenteditable="false" title="Skill · ${escapeHTML(skillName)}" aria-label="Skill ${escapeHTML(skillName)}">${iconHTML}<span>${escapeHTML(skillName)}</span></span>&nbsp;`
+      ? `<span class="skill-token" data-skill-name="${escapeHTML(skillName)}" contenteditable="false" aria-label="Skill ${escapeHTML(skillName)}">${iconHTML}<span>${escapeHTML(skillName)}</span></span>&nbsp;`
       : text.includes("\n") ? escapeHTML(text).replace(/ /g, "&nbsp;").replace(/\n/g, "<br data-skill-break>") : "";
     const inserted = document.execCommand(skillName || text.includes("\n") ? "insertHTML" : "insertText", false,
       html || text);

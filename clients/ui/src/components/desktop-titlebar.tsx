@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Minus, Square, X } from "../icons";
+import { Hint } from "@/components/ui/tooltip";
 import type { DesktopWindowControls } from "../types";
 
 function RestoreWindowIcon() {
@@ -23,11 +24,11 @@ export function DesktopTitlebar({ controls }: { controls?: DesktopWindowControls
       <span>EDITH</span>
     </div>
     {controls && <div className="desktop-window-controls">
-      <button type="button" className="desktop-window-button" aria-label="最小化窗口" title="最小化" onClick={() => invoke(controls.minimize)}><Minus /></button>
-      <button type="button" className="desktop-window-button" aria-label={maximized ? "还原窗口" : "最大化窗口"} title={maximized ? "还原" : "最大化"} onClick={() => invoke(controls.toggleMaximize)}>
+      <Hint text="最小化"><button type="button" className="desktop-window-button" aria-label="最小化窗口" onClick={() => invoke(controls.minimize)}><Minus /></button></Hint>
+      <Hint text={maximized ? "还原" : "最大化"}><button type="button" className="desktop-window-button" aria-label={maximized ? "还原窗口" : "最大化窗口"} onClick={() => invoke(controls.toggleMaximize)}>
         {maximized ? <RestoreWindowIcon /> : <Square />}
-      </button>
-      <button type="button" className="desktop-window-button desktop-window-close" aria-label="关闭窗口" title="关闭" onClick={() => invoke(controls.close)}><X /></button>
+      </button></Hint>
+      <Hint text="关闭"><button type="button" className="desktop-window-button desktop-window-close" aria-label="关闭窗口" onClick={() => invoke(controls.close)}><X /></button></Hint>
     </div>}
   </header>;
 }

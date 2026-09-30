@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { FileEntry } from "../../../contracts/appserver";
 import type { RPCClient } from "../client/rpc";
 import { ChevronRight, FileText, Folder, FolderOpen } from "../icons";
+import { Hint } from "@/components/ui/tooltip";
 import { fileName, joinPath } from "./files";
 
 export function FileTree({
@@ -107,10 +108,9 @@ function DirectoryNode({
 
   return (
     <div className="file-tree-node">
-      <button
+      <Hint text={path}><button
         className="file-tree-row"
         style={{ paddingLeft: `${8 + depth * 14}px` }}
-        title={path}
         data-file-path={path}
         data-reference-kind="directory"
         onClick={toggle}
@@ -118,7 +118,7 @@ function DirectoryNode({
         <ChevronRight className="file-tree-chevron" data-open={open} />
         {open ? <FolderOpen /> : <Folder />}
         <span>{name}</span>
-      </button>
+      </button></Hint>
       {open && (
         <div role="group">
           {!entries && !error && (
@@ -154,19 +154,17 @@ function DirectoryNode({
                 />
               );
             return (
-              <button
-                key={childPath}
+              <Hint key={childPath} text={childPath}><button
                 className="file-tree-row"
                 data-active={childPath === activePath}
                 style={{ paddingLeft: `${26 + depth * 14}px` }}
-                title={childPath}
                 data-file-path={childPath}
                 data-reference-kind={entry.isFile ? "file" : undefined}
                 onClick={() => void openEntry(entry, childPath)}
               >
                 <FileText />
                 <span>{entry.fileName}</span>
-              </button>
+              </button></Hint>
             );
           })}
           {entries?.length === 0 && (

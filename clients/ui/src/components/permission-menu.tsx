@@ -20,7 +20,7 @@ export function PermissionMenu({ modes, value, disabled, onChange }: {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="permission-trigger" disabled={disabled || !modes.length}
-          aria-label={`权限模式：${label}`} title={label}>
+          aria-label={`权限模式：${label}`}>
           <Shield />
           <span className="permission-label">{label}</span>
         </Button>

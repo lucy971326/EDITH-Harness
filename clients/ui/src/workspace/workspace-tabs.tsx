@@ -1,5 +1,6 @@
 import { lazy, memo, Suspense, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Hint } from "@/components/ui/tooltip";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -369,9 +370,9 @@ function WorkspaceTabsComponent({
       render: () => (
         <div className="editor-view">
           <div className="editor-toolbar" data-status={activeFile?.status}>
-            <span title={activeFile?.path ?? workspace ?? ""}>
+            <Hint text={activeFile?.path ?? workspace ?? ""}><span>
               {editorBreadcrumb(workspace, activeFile?.path)}
-            </span>
+            </span></Hint>
             {activeFile && <strong>{statusLabel(activeFile)}</strong>}
             <Button
               variant="ghost"

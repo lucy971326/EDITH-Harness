@@ -708,6 +708,12 @@
     box-shadow: var(--shadow-floating);
     animation-duration: var(--duration-normal);
   }
+  .ui-tooltip {
+    max-width: min(28rem, calc(100vw - 24px));
+    border-radius: var(--radius-control);
+    overflow-wrap: anywhere;
+    line-height: var(--leading-caption);
+  }
   .ui-menu-item {
     padding: var(--space-1) var(--space-2);
     font-weight: 500;
@@ -1224,7 +1230,7 @@
   text-align: left;
 }
 .process-heading:hover {
-  background: var(--muted);
+  background: var(--accent);
 }
 .process-heading-title,
 .process-heading > svg {
@@ -1257,7 +1263,7 @@
   border-radius: var(--radius-control);
 }
 .process-summary:hover {
-  background: var(--muted);
+  background: var(--accent);
 }
 .tool-summary {
   display: flex;
@@ -3109,7 +3115,7 @@
   font-size: var(--font-size-label);
   text-align: left;
 }
-.palette-option:hover,
+.palette-option:hover { background: var(--accent); }
 .palette-option.active { background: color-mix(in srgb, var(--surface-base) 45%, var(--card)); }
 .palette-option.active { border-color: var(--border-strong); }
 .palette-swatch {
@@ -3146,7 +3152,7 @@
   transition: border-color var(--duration-fast), background var(--duration-fast);
 }
 .theme-option:hover {
-  background: var(--muted);
+  background: var(--accent);
 }
 .theme-option.active {
   border-color: var(--ring);
@@ -3726,7 +3732,7 @@
   text-align: left;
 }
 .hook-summary:hover {
-  background: var(--muted);
+  background: var(--accent);
 }
 .hook-summary-main {
   display: flex;
@@ -3849,7 +3855,7 @@
 }
 .tool-permission-summary > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .tool-permission-summary > svg { flex: none; color: var(--muted-foreground); }
-.tool-permission-summary:hover { color: var(--muted-foreground); }
+.tool-permission-summary:hover { background: var(--accent); }
 .tool-permission-description:not([hidden]) {
   padding: 0 var(--space-4) var(--space-4);
   color: var(--muted-foreground);

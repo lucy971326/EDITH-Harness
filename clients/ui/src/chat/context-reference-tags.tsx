@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Hint, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ChevronRight, FileText, Folder, MessageSquareQuote, X } from "../icons";
 import { referenceLabel, type ContextReference } from "./context-references";
 
@@ -22,17 +22,16 @@ export function ContextReferenceTag({
       <div className="context-reference-tag">
         <Icon />
         {reference.kind === "selection" ? (
-          <button
+          <Hint text={label}><button
             type="button"
             className="context-reference-label"
-            title={label}
             aria-label={`预览代码 ${label}`}
             aria-expanded={expanded}
             onClick={() => setExpanded((value) => !value)}
           >
             <span>{label}</span>
             <ChevronRight className={expanded ? "rotate-90" : ""} />
-          </button>
+          </button></Hint>
         ) : reference.kind === "assistant-selection" ? (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -52,7 +51,7 @@ export function ContextReferenceTag({
               <pre>{reference.content}</pre>
             </TooltipContent>
           </Tooltip>
-        ) : <span className="context-reference-label" title={label}>{label}</span>}
+        ) : <Hint text={label}><span className="context-reference-label">{label}</span></Hint>}
         {onRemove && (
           <button
             type="button"

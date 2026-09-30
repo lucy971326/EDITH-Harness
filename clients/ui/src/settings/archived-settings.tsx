@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Hint } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import type { SessionView } from "../../../contracts/harness.ts";
 import { groupSessions } from "../state/projects";
@@ -31,11 +32,11 @@ export function ArchivedSettingsPanel({ sessions, error, onView, onRestore, onDe
         <Button variant="ghost" className="settings-subnav-item" aria-pressed={!selected} onClick={() => setWorkspace(null)}>
           <Folders /><span className="settings-subnav-copy"><span>全部项目</span><span className="settings-subnav-meta">{sessions?.length ?? 0} 个会话</span></span>
         </Button>
-        {projects.map((group) => <Button key={group.workspace} variant="ghost" className="settings-subnav-item"
-          title={group.workspace} aria-pressed={selected?.workspace === group.workspace} onClick={() => setWorkspace(group.workspace)}>
+        {projects.map((group) => <Hint key={group.workspace} text={group.workspace}><Button variant="ghost" className="settings-subnav-item"
+          aria-pressed={selected?.workspace === group.workspace} onClick={() => setWorkspace(group.workspace)}>
           <Folder /><span className="settings-subnav-copy"><span className="settings-subnav-name">{group.name}</span>
             <span className="settings-subnav-meta">{group.sessions.length} 个会话</span></span>
-        </Button>)}
+        </Button></Hint>)}
       </div>
     </aside>
     <div className="settings-detail-pane">
@@ -48,16 +49,16 @@ export function ArchivedSettingsPanel({ sessions, error, onView, onRestore, onDe
     {!sessions && !error && <p className="metadata">正在加载…</p>}
     {sessions && !groups.length && <p className="metadata">{query ? "没有匹配的会话" : "还没有已归档会话"}</p>}
     {groups.map((group) => <section className="archived-group" key={group.workspace}>
-      <header><div><h3>{group.name}</h3><p className="metadata" title={group.workspace}>{group.workspace}</p></div>
-        <Button variant="ghost" size="icon-sm" className="settings-delete" title="永久删除项目" aria-label={`永久删除项目 ${group.workspace}`} onClick={() => onDeleteProject(group.workspace)}><Trash2 /></Button>
+      <header><div><h3>{group.name}</h3><p className="metadata">{group.workspace}</p></div>
+        <Hint text="永久删除项目"><Button variant="ghost" size="icon-sm" className="settings-delete" aria-label={`永久删除项目 ${group.workspace}`} onClick={() => onDeleteProject(group.workspace)}><Trash2 /></Button></Hint>
       </header>
       <div className="archived-list">
         {group.sessions.map((item) => <div className="archived-row" key={item.sessionID}>
-          <button className="archived-session-link ui-focus" onClick={() => onView(item.sessionID)} title={item.title}>
+          <Hint text={item.title}><button className="archived-session-link ui-focus" onClick={() => onView(item.sessionID)}>
             <strong>{item.title}</strong><span className="metadata">{new Date(item.archivedAt ?? item.createdAt).toLocaleString()}</span>
-          </button>
+          </button></Hint>
           <Button variant="ghost" size="sm" onClick={() => onRestore(item.sessionID)}><ArchiveRestore />恢复</Button>
-          <Button variant="ghost" size="icon-sm" className="settings-delete" title="永久删除会话" aria-label={`永久删除会话 ${item.title}`} onClick={() => onDeleteSession(item.sessionID)}><Trash2 /></Button>
+          <Hint text="永久删除会话"><Button variant="ghost" size="icon-sm" className="settings-delete" aria-label={`永久删除会话 ${item.title}`} onClick={() => onDeleteSession(item.sessionID)}><Trash2 /></Button></Hint>
         </div>)}
       </div>
     </section>)}

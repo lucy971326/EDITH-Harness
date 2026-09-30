@@ -73,7 +73,7 @@ export function ModelMenu({
       }}
     >
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="sm" className="model-trigger" disabled={disabled} aria-label="模型与思考" title={value.model ? `${value.model} · ${value.reasoningEffort}` : undefined}>
+        <Button variant="ghost" size="sm" className="model-trigger" disabled={disabled} aria-label="模型与思考">
           <span className="model-name">{modelName || "选择模型"}</span>
           <span className="muted">· {value.reasoningEffort || "思考"}</span>
         </Button>

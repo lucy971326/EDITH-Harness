@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
+import { Hint } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -297,9 +298,9 @@ export function HookSettingsPanel({ client, currentWorkspace, onStateChange }: {
       <div className="settings-detail-pane">
         <div className="settings-detail-title-row">
           <div className="settings-identity"><span className="settings-identity-icon"><Webhook /></span><h3>{scope === "global" ? "全局 Hooks" : "项目 Hooks"}</h3></div>
-          <Button size="icon-sm" variant="ghost" aria-label="重新加载 Hook 配置"
-            title="重新加载" disabled={saving || !client?.connected}
-            onClick={() => requestTarget({ kind: "reload" })}><RefreshCw /></Button>
+          <Hint text="重新加载"><Button size="icon-sm" variant="ghost" aria-label="重新加载 Hook 配置"
+            disabled={saving || !client?.connected}
+            onClick={() => requestTarget({ kind: "reload" })}><RefreshCw /></Button></Hint>
         </div>
         {scope === "project" && <div className="settings-field hook-workspace">
           <Label htmlFor="hook-workspace">工作区</Label>
@@ -338,10 +339,10 @@ export function HookSettingsPanel({ client, currentWorkspace, onStateChange }: {
               return <section className="hook-flow" key={flow}>
                 <div className="hook-flow-header">
                   <h4>{flow} <span className="settings-badge">{items.length}</span></h4>
-                  <Button size="icon-sm" variant="outline" aria-label={"在 " + flow + " 添加 Hook"}
-                    title="添加 Hook" disabled={saving || !client?.connected ||
+                  <Hint text="添加 Hook"><Button size="icon-sm" variant="outline" aria-label={"在 " + flow + " 添加 Hook"}
+                    disabled={saving || !client?.connected ||
                       (!!source.error && !source.hash) || !projectReady}
-                    onClick={() => requestTarget({ kind: "add", flow })}><Plus /></Button>
+                    onClick={() => requestTarget({ kind: "add", flow })}><Plus /></Button></Hint>
                 </div>
                 {editor?.flow === flow && editor.index === null && renderEditor()}
                 {items.length === 0 && editor?.flow !== flow &&
@@ -359,16 +360,16 @@ export function HookSettingsPanel({ client, currentWorkspace, onStateChange }: {
                           <span className="metadata">{hook.enabled ? "已启用" : "已停用"}</span>
                         </button>
                         <div className="hook-summary-actions">
-                          <Button size="icon-sm" variant="ghost" title="上移"
+                          <Hint text="上移"><Button size="icon-sm" variant="ghost"
                             aria-label={"上移 " + hook.name} disabled={saving || !projectReady || position === 0}
                             onClick={() => requestTarget({ kind: "move", index, other: items[position - 1].index })}>
                             <ArrowUp />
-                          </Button>
-                          <Button size="icon-sm" variant="ghost" title="下移"
+                          </Button></Hint>
+                          <Hint text="下移"><Button size="icon-sm" variant="ghost"
                             aria-label={"下移 " + hook.name} disabled={saving || !projectReady || position === items.length - 1}
                             onClick={() => requestTarget({ kind: "move", index, other: items[position + 1].index })}>
                             <ArrowDown />
-                          </Button>
+                          </Button></Hint>
                         </div>
                       </div>
                       {open && renderEditor()}

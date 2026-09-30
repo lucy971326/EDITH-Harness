@@ -32,7 +32,7 @@ export function skillParts(text: string, names: ReadonlySet<string>): SkillPart[
 
 export function SkillTag({ name }: { name: string }) {
   return (
-    <span className="skill-token" aria-label={`Skill ${name}`} title={`Skill · ${name}`}>
+    <span className="skill-token" aria-label={`Skill ${name}`}>
       <BookOpenCheck aria-hidden="true" />
       <span>{name}</span>
     </span>

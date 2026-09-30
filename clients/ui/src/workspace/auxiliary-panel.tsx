@@ -1,5 +1,6 @@
 import type { ComponentType, ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { Hint } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -64,10 +65,9 @@ export function AuxiliaryPanel({
                 data-active={tab.id === activeTabID}
                 key={tab.id}
               >
-                <button
+                <Hint text={tab.contextPath ?? tab.title}><button
                   role="tab"
                   aria-selected={tab.id === activeTabID}
-                  title={tab.contextPath ?? tab.title}
                   data-file-path={tab.contextPath}
                   onClick={() => onActivateTab(tab)}
                 >
@@ -81,7 +81,7 @@ export function AuxiliaryPanel({
                       aria-label={tab.status}
                     />
                   )}
-                </button>
+                </button></Hint>
                 {tab.closable !== false && (
                   <Button
                     variant="ghost"

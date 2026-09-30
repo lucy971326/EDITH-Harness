@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Hint } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
@@ -205,7 +206,7 @@ export function SkillSettingsPanel({ client, currentWorkspace, onStateChange, on
         {loading && <p className="metadata">正在读取…</p>}
         {!loading && !groups.length && <p className="metadata">{query ? "没有匹配的 Skill" : "还没有 Skill"}</p>}
         {groups.map((group) => <div className="skill-group" key={group.title}>
-          <h3 title={group.title}>{group.title} · {group.items.length}</h3>
+          <h3>{group.title} · {group.items.length}</h3>
           <div className="settings-subnav-list">{group.items.map((item) => <Button key={itemKey(item)} variant="ghost"
             className="settings-subnav-item" aria-pressed={mode !== "new" && selectedKey === itemKey(item)}
             onClick={() => request(() => show(itemKey(item)))}>
@@ -247,12 +248,12 @@ export function SkillSettingsPanel({ client, currentWorkspace, onStateChange, on
           </div>{personal && <Button variant="outline" size="sm" disabled={!document || saving}
             onClick={() => { setDraft(document?.content ?? ""); setMode("edit"); setError(""); }}><Pencil />编辑</Button>}</div>
           <section className="settings-section"><div className="settings-section-header"><h3>概况</h3></div>
-            {selected.description && <p className="skill-description" title={selected.description}>{selected.description}</p>}
+            {selected.description && <Hint text={selected.description}><p className="skill-description">{selected.description}</p></Hint>}
             {selected.error && <p className="skill-error">{selected.error}</p>}
             <div className="skill-facts"><span>来源</span><strong>{sourceLabel(selected)}</strong>
               <span>文件</span><div className="skill-path"><code>{selected.path}</code>
-                <Button variant="ghost" size="icon-sm" aria-label="复制文件位置" title="复制文件位置"
-                  onClick={() => void navigator.clipboard.writeText(selected.path).catch(() => setError("复制失败"))}><Copy /></Button></div></div>
+                <Hint text="复制文件位置"><Button variant="ghost" size="icon-sm" aria-label="复制文件位置"
+                  onClick={() => void navigator.clipboard.writeText(selected.path).catch(() => setError("复制失败"))}><Copy /></Button></Hint></div></div>
           </section>
           <section className="settings-section"><button type="button" className="skill-preview-trigger ui-focus"
             aria-expanded={previewOpen} onClick={() => setPreviewOpen(!previewOpen)}>

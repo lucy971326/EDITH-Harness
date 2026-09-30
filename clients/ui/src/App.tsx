@@ -32,6 +32,7 @@ import {
 } from "./chat/context-references";
 import { Button } from "@/components/ui/button";
 import {
+  Hint,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -1339,9 +1340,9 @@ export default function App({ platform }: { platform: Platform }) {
               )}
               {!sidebar && <ConnectionIndicator status={connection} detail={connectionDetail} onReconnect={reconnect} />}
               <div className="conversation-heading">
-                {!page && selected && <span className="conversation-project" title={selected.settings.workspace}>
+                {!page && selected && <Hint text={selected.settings.workspace}><span className="conversation-project">
                   <Folder />{workspaceName(selected.settings.workspace)}
-                </span>}
+                </span></Hint>}
                 <span className="conversation-title">{page?.label ?? selected?.title ?? "新建会话"}</span>
               </div>
             </div>
@@ -1448,7 +1449,7 @@ export default function App({ platform }: { platform: Platform }) {
                       ? "正在同步历史与运行状态，请稍候。"
                       : "从一个问题、一段代码，或一个新的想法开始。"}</p>
                     <div className="welcome-context">
-                      {selected ? <span title={selected.settings.workspace}><Folder />{workspaceName(selected.settings.workspace)}</span> :
+                      {selected ? <Hint text={selected.settings.workspace}><span><Folder />{workspaceName(selected.settings.workspace)}</span></Hint> :
                         <Button variant="outline" size="sm" disabled={!connected || backendBusy} onClick={() => void openProject()}>
                           <Folder />{backendBusy ? "正在打开项目…" : "选择项目"}
                         </Button>}

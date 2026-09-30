@@ -10,6 +10,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import {
+  Hint,
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -158,14 +159,14 @@ export function Sidebar({
           <span className="brand"><img className="brand-mark" src="/edith-icon.svg" alt="" />EDITH</span>
           <span className="sidebar-workspace-label"><Folder />工作区</span>
           <ConnectionIndicator status={connection} detail={connectionDetail} onReconnect={onReconnect} />
-          <Button
+          <Hint text="收起项目侧栏"><Button
             variant="ghost"
             size="icon"
-            aria-label="收起项目侧栏" title="收起项目侧栏"
+            aria-label="收起项目侧栏"
             onClick={onClose}
           >
             <PanelLeft />
-          </Button>
+          </Button></Hint>
         </div>
         <nav className="feature-navigation" aria-label="功能导航">
           {navigation.filter((entry) => entry.placement === "primary").map(navigationItem)}
@@ -225,23 +226,23 @@ export function Sidebar({
               className="project-group"
             >
               <div className="project-heading">
-                <CollapsibleTrigger className="project-trigger ui-focus">
+                <Hint text={project.workspace}><CollapsibleTrigger className="project-trigger ui-focus">
                   <ChevronRight className="disclosure-chevron" />
                   <Folder />
-                  <span title={project.workspace}>{project.name}</span>
-                </CollapsibleTrigger>
-                <Button variant="ghost" size="icon-sm" className="sidebar-row-action"
-                  title="永久删除项目" aria-label={`永久删除项目 ${project.name}`} disabled={!connected}
-                  onClick={() => onDeleteProject(project.workspace)}><Trash2 /></Button>
-                <Button
+                  <span>{project.name}</span>
+                </CollapsibleTrigger></Hint>
+                <Hint text="永久删除项目"><Button variant="ghost" size="icon-sm" className="sidebar-row-action"
+                  aria-label={`永久删除项目 ${project.name}`} disabled={!connected}
+                  onClick={() => onDeleteProject(project.workspace)}><Trash2 /></Button></Hint>
+                <Hint text="新建会话"><Button
                   variant="ghost"
                   size="icon-sm"
-                  title="新建会话" aria-label={`在 ${project.name} 新建会话`}
+                  aria-label={`在 ${project.name} 新建会话`}
                   disabled={!connected || backendBusy}
                   onClick={() => onCreate(project.workspace)}
                 >
                   <Plus />
-                </Button>
+                </Button></Hint>
               </div>
               <CollapsibleContent className="project-sessions">
                 {project.sessions.map((item) => {
@@ -274,18 +275,18 @@ export function Sidebar({
                             void saveRename(item.sessionID);
                           }
                         }}
-                      /> : <button className="session-link ui-focus" title={item.title}
+                      /> : <Hint text={item.title}><button className="session-link ui-focus"
                         aria-current={item.sessionID === selectedID && activePath === "/" ? "page" : undefined}
-                        onClick={() => onSelect(item.sessionID)}><span>{item.title}</span></button>}
+                        onClick={() => onSelect(item.sessionID)}><span>{item.title}</span></button></Hint>}
                       {status && <Tooltip><TooltipTrigger asChild>
                         <span className="session-indicator-target ui-focus" tabIndex={0} role="img" aria-label={status.label}>
                           <span className={`session-indicator session-indicator-${status.kind}`} aria-hidden="true" />
                         </span>
                       </TooltipTrigger><TooltipContent>{status.label}</TooltipContent></Tooltip>}
                       {editingID !== item.sessionID && <div className="session-actions">
-                        <Button variant="ghost" size="icon-sm" className="sidebar-row-action"
-                        title="归档会话" aria-label={`归档会话 ${item.title}`}
-                        disabled={!connected} onClick={() => onArchiveSession(item.sessionID)}><Archive /></Button>
+                        <Hint text="归档会话"><Button variant="ghost" size="icon-sm" className="sidebar-row-action"
+                          aria-label={`归档会话 ${item.title}`}
+                          disabled={!connected} onClick={() => onArchiveSession(item.sessionID)}><Archive /></Button></Hint>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" className="sidebar-row-action"
                             aria-label={`更多会话操作 ${item.title}`} disabled={!connected}><MoreHorizontal /></Button></DropdownMenuTrigger>
