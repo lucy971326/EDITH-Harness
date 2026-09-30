@@ -123,6 +123,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           gh release create "$GITHUB_REF_NAME" release/* \
             --draft --verify-tag --generate-notes \
