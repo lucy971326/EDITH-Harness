@@ -43,8 +43,7 @@ try {
     nsis = candidates.find((command) => spawnSync(command, ["/VERSION"], { encoding: "utf8" }).status === 0);
     if (!nsis) throw new Error("缺少 NSIS。请运行 winget install --id NSIS.NSIS --exact，再重新打包。");
   }
-  // 开发热重启只编译 Go；首次前端准备由 Wails dev 配置执行。
-  if (mode !== "dev") run("make", ["web-build"]);
+  // 正式构建的前端准备是 Makefile 依赖；开发模式由 Wails dev 配置执行。
   mkdirSync(".build/temp", { recursive: true });
   if (process.platform === "win32") {
     const info = {

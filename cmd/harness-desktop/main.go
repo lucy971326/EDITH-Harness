@@ -46,10 +46,15 @@ func run() (result error) {
 	var wakeWindow *application.WebviewWindow
 	var wakeReady, wakePending bool
 	var lifecycle *desktop.Lifecycle
+	appIcon := desktop.Icon
+	if runtime.GOOS == "darwin" {
+		// macOS 从应用包读取留白的 ICNS；Wails 的运行时图标会覆盖 Dock 图标。
+		appIcon = nil
+	}
 	app := application.New(application.Options{
 		Name:        "EDITH",
 		Description: "EDITH " + version,
-		Icon:        desktop.Icon,
+		Icon:        appIcon,
 		Assets:      application.AssetOptions{Handler: application.AssetFileServerFS(assets)},
 		Mac:         application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: false},
 		SingleInstance: &application.SingleInstanceOptions{
