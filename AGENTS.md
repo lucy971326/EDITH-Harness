@@ -11,6 +11,7 @@
 | [设计书](docs/设计书.md) | 架构与重要决策 |
 | [DATA_MODEL](docs/AGENTS/DATA_MODEL.md) | 数据归属、持久化与恢复 |
 | [WEB_UI](docs/AGENTS/WEB_UI.md) | 应用前端状态、交互与视觉原则；官网样式独立 |
+| [CICD](docs/AGENTS/CICD.md) | GitHub 自动检查、桌面打包与发版流程 |
 | [plan](docs/plan/) | 尚未完成的实施计划，按任务选读 |
 
 STATUS 只保留当前能力、未解决限制和影响使用的重要验证结论，不逐次记录完成日志。普通修复、样式调整、例行检查结果只在交付回复说明，修复后的临时问题条目直接删除；重要决策写对应规范。模块 README 只做源码导读；未完成计划保留在 `docs/plan/`，但不当作已实现能力或现行约束。
