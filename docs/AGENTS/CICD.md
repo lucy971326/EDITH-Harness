@@ -8,25 +8,24 @@
 | --- | --- |
 | 只在本机改代码 | 不运行 |
 | 推送普通分支，但没有打开 PR | 不运行 |
-| 打开或更新 PR | 运行测试，制作 Mac 和 Windows 安装包 |
-| 推送到 `main` | 运行同样的测试与打包，不公开新版本 |
+| 打开或更新 PR | 只运行测试 |
+| 推送到 `main` | 只运行测试，不公开新版本 |
 | 推送 `v0.1.0` 这样的版本标签 | 检查标签、运行测试与打包，成功后生成 Release 草稿 |
 
-PR 是申请把修改合入主线的页面。也可以在 GitHub Actions 中手动运行工作流；通常选择 `main` 时只检查和打包。
+PR 是申请把修改合入主线的页面。也可以在 GitHub Actions 中手动运行工作流；选择 `main` 时只运行测试。
 
 ## GitHub 具体做什么
 
 ```text
-PR / main / 版本标签
-         ↓
-      make test
-         ↓ 通过后
-  Mac DMG + Windows 安装包
-         ↓ 仅版本标签
-  校验文件 → Release 草稿 → 人工确认后公开
+PR / main ─────────────→ make test → 结束
+版本标签 → 核对版本 ───→ make test
+                           ↓ 通过后
+                    Mac DMG + Windows 安装包
+                           ↓
+                校验文件 → Release 草稿 → 人工公开
 ```
 
-测试失败就不打包；任一平台打包失败就不生成 Release 草稿。PR 和 `main` 的安装包可在对应的 GitHub Actions 运行记录中下载，保留 7 天。当前自动构建的平台是 macOS Apple Silicon 和 Windows x64。
+标签流程中，测试失败就不打包；任一平台打包失败就不生成 Release 草稿。标签构建的安装包也会保留在 GitHub Actions 的运行记录中 7 天。当前自动构建的平台是 macOS Apple Silicon 和 Windows x64。
 
 ## 真正发版时
 

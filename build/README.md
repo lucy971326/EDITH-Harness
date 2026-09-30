@@ -62,7 +62,7 @@ macOS 必须在 Mac 上打包；DMG 内拖拽 EDITH 到 Applications。更新前
 
 ## GitHub 发版
 
-[Desktop CI and release](../.github/workflows/desktop.yml) 在 PR、`main` 更新和手动触发时运行 `make test`，随后分别在 macOS arm64 与 Windows amd64 上运行与本机相同的 `make desktop-package`，安装包保留在该次 Actions 的 Artifacts 中。测试或任一平台打包失败时，不会创建 Release。
+[Desktop CI and release](../.github/workflows/desktop.yml) 在 PR、`main` 更新和手动选择 `main` 时只运行 `make test`；推送版本标签时才在测试通过后，分别于 macOS arm64 与 Windows amd64 上运行与本机相同的 `make desktop-package`。标签构建的安装包保留在该次 Actions 的 Artifacts 中。触发规则见 [CICD](../docs/AGENTS/CICD.md)。
 
 发版只需一个指向 `main` 已合入提交的版本标签。标签须与 `build/version.txt` 相同，例如文件为 `0.1.0` 时使用 `v0.1.0`：
 

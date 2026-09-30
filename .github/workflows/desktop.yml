@@ -46,6 +46,7 @@ jobs:
         run: make test
 
   package:
+    if: startsWith(github.ref, 'refs/tags/')
     needs: test
     strategy:
       fail-fast: false
