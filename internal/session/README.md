@@ -10,11 +10,11 @@ Store -> 同一 ID 的 Session -> Append / History
 ```
 
 - `types.go`：消息、节点、元数据与 Persistence 契约。
-- `store.go`：创建、打开、按 ID 读取元数据、列表与分叉。
+- `store.go`：创建、打开、按 ID 读取元数据、列表、手动改名、归档标记与分叉。
 - `session.go`：追加节点、分支历史、摘要后的有效输入。
 - `jsonl.go / id.go`：文件格式与身份生成。
 
-`AppendID` 支持先分配身份再落账，重复 ID 报错。分叉复制指定边界前的账本；设置和运行记录由上层分别复制。这里不调模型、不发布运行事件。
+`AppendID` 支持先分配身份再落账，重复 ID 报错。手动改名写入 `meta.json` 的 `titleEdited`，防止首条消息覆盖标题；归档只更新元数据。分叉复制指定边界前的账本；设置和运行记录由上层分别复制。这里不调模型、不发布运行事件。
 
 ```text
 用户 → 助手 tool-call → tool-result → 助手正文

@@ -2,7 +2,7 @@
 
 EDITH Harness 网站的 Next.js 前端；与本机 Harness UI 分开构建。身份接入由 Clerk CLI 生成，当前绑定开发应用。
 
-网站视觉参照 [EDITH 视觉规范](../../docs/AGENTS/VISUAL_DESIGN.md)；网站布局与组件在本前端实现，不复制应用 CSS。首页展示的产品画面是界面示意图，未包含系统窗口标题栏；MiSans 字体与许可随网站资源提供。
+网站布局与组件在本前端实现，视觉样式不复制应用 CSS。首页展示的产品画面是界面示意图，未包含系统窗口标题栏；MiSans 字体与许可随网站资源提供。
 
 ```powershell
 npm install

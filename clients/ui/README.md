@@ -1,6 +1,6 @@
 # 共用 React 前端
 
-浏览器与 Desktop 使用本目录的同一份 React 页面、连接状态和投影。品牌视觉见 [VISUAL_DESIGN](../../docs/AGENTS/VISUAL_DESIGN.md)，页面规则见 [WEB_UI](../../docs/AGENTS/WEB_UI.md)，当前能力见 [STATUS](../../docs/AGENTS/STATUS.md)。
+浏览器与 Desktop 使用本目录的同一份 React 页面、连接状态和投影。页面状态与视觉原则见 [WEB_UI](../../docs/AGENTS/WEB_UI.md)，当前能力见 [STATUS](../../docs/AGENTS/STATUS.md)。
 
 平台能力由 `clients/main.tsx` 注入，`types.ts` 定义连接、打开网址与通知契约；本目录不导入两端适配器。
 

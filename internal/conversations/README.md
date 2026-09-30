@@ -1,6 +1,6 @@
 # conversations
 
-编排创建、发送、设置、停止、分叉和命令等会话操作。
+编排创建、列表、归档／恢复、重命名、发送、设置、停止、分叉、删除和命令等会话操作。
 
 ```text
 appserver -> Service
@@ -10,7 +10,8 @@ appserver -> Service
               +-> 会话资料 -> Session / Settings
 ```
 
-- `service.go`：主流程与同会话操作锁；等待 Steer 落账前释放锁，Stop 不取操作锁。
+- `service.go`：主流程、手动改名、末尾完整回答分叉与同会话操作锁；等待 Steer 落账前释放锁，Stop 不取操作锁。
+- `deletion.go`：永久删除的意图记录与失败恢复。
 - `reading.go`：组合轻量 Run 状态与独立阅读位置，验证实际已完成的 Run 后确认已读。
 - `subagents.go`：子任务页面的查询、发送与设置。
 - `types.go / errors.go`：操作输入、快照与可识别错误。

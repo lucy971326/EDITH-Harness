@@ -1,59 +1,30 @@
 # 项目状态
 
-更新：2026-09-28。架构决策见[设计书](../设计书.md)，数据位置见[DATA_MODEL](DATA_MODEL.md)。本篇只保留当前事实，不累计施工日志。
+更新：2026-09-30。这里只记录当前能力、限制和影响使用的验证结论；架构见[设计书](../设计书.md)，持久化见[DATA_MODEL](DATA_MODEL.md)，构建命令见[项目 README](../../README.md)与[打包说明](../../build/README.md)。
 
 ## 当前能力
 
-- React Web：项目与会话、会话重命名、归档与恢复、永久删除、文字／图片聊天、实时过程、Steer、停止、从回答或会话末尾分叉、压缩、上下文引用。
-- 模型选择：按供应商展示与独立思考滑块；开发时从 models.dev 生成内置目录，供应商名单对齐 Pi 的 OpenAI／Anthropic 协议入口，覆盖 DeepSeek、MiMo、MiniMax、Qwen、Kimi、GLM 等。已知模型自动提供能力，设置支持高级手动覆盖。协议使用 OpenAI Chat／Responses 与 Anthropic Messages 官方 SDK；内置账号登录保留 ChatGPT、xAI。
-- Wails v3 Desktop：支持 Windows／macOS，复用同一份 React 构建产物与后台，业务通过 Stream 传完整 JSON-RPC 2.0 消息；单实例唤醒、窗口布局恢复、关窗隐藏到托盘已实现；Windows 自绘标题栏，macOS 保留原生交通灯。Linux 保留 Web，不构建 Desktop；同一份用户数据只允许一个后台运行。
-- 设置：独立导航，通用内含主题与默认关闭的通知开关；Agent 分组表单、个人 Skill 管理、模型与供应商、智能审批方式、可折叠 Hooks 列表，以及全局 MCP Server 的增删改、开关、重连全部全局 Server 和 HTTP OAuth 登录；项目 Skill 只读，项目 MCP 配置只读、确认后可登录。分类切换保留草稿，离开前确认未保存修改。
-- 工作区：Monaco 编辑器、自动保存与冲突保护、文件监听、Run Diff 与受版本保护的撤销、真实 PTY 终端。
-- Agent 能力：命令／持续进程、补丁、MCP、Skills；每轮读取工作区根目录 `AGENTS.md`；子任务支持主会话 → 孩子 → 孙子，独立页面、续聊与递归停止。
-- 安全：四档权限、人工／LLM／Jev 审批、项目 MCP 配置信任与逐次工具审批；Linux bwrap + seccomp、macOS Seatbelt。
-- Hooks：PreToolUse 本地命令、全局／项目设置、项目信任、顺序与超时；明确拒绝阻止工具，故障报告后放行，Run 取消停止执行。用户已验证日志 Hook。
-- 后台采用入口显式装配、internal 领域组织；Host、Product、旧路径转发和旧数据迁移已移除。存储格式归领域，persist 只负责可靠文件操作；编辑器文件生命周期集中在 use-files。
+- Web 与 Windows／macOS Desktop 共用 React 页面和 Go 后台；本机同一份 `~/.harness` 只允许一个后台。Desktop 支持单实例、窗口恢复、关窗驻留托盘、通知；Windows 自绘标题栏，macOS 保留原生窗口控件。Linux 只提供 Web。
+- 会话支持文字／图片、实时过程、插话、停止、压缩、上下文引用、定点或末尾回答分叉、重命名、归档／恢复、永久删除及已读状态。工作区提供 Monaco 编辑器、版本保护保存与撤销、Run Diff、PTY 终端。
+- Agent 支持命令／持续进程、补丁、MCP、Skills、Hooks 和两级子任务；每轮读取工作区根目录 `AGENTS.md`。权限有四档，人工／LLM／Jev 审批；Linux 使用 bwrap + seccomp，macOS 使用 Seatbelt。
+- 模型目录在开发时由 models.dev 生成，运行时使用内置快照和用户覆盖；适配 OpenAI Chat／Responses、Anthropic Messages。ChatGPT 与 xAI 有内置账号登录，其余选定供应商使用 API Key。模型能力不等于账号权限。
+- 设置集中管理外观、通知、Agent、模型、Skills、审批、Hooks 与 MCP；HTTP MCP 可从本机 Web／Desktop 发起 OAuth 授权。Windows 安装包与 macOS DMG 已接入构建。
 
-## 构建与启动
+## 技术债
 
-需要 Go、Node.js、npm、Make；Windows 还需要 Git Bash。仓库根目录执行：
+| 触发场景 | 影响 | 建议的最小修复 |
+| --- | --- | --- |
+| 某个会话的 `meta.json` 损坏，或 `settings.json` 缺失／损坏 | [会话列表](../../internal/conversations/service.go)整体读取失败；前端仅显示通用错误，其他正常会话也不可见 | 列表逐项隔离坏会话并显示可定位的会话 ID 与原因；单会话打开继续明确报错 |
+| 新增或修改 JSON-RPC 方法时只改 Go 或 TS 一侧 | 手写契约可能漂移；类型检查不能证明两端一致 | 以 appserver 登记和 `clients/contracts` 为两端事实来源；后续给关键方法加自动一致性检查，避免再维护第三份清单 |
+| 项目 Hook 配置被信任后，其引用的脚本内容变化 | 当前信任只覆盖配置版本，脚本变化不会要求重新确认 | 若要把脚本内容纳入信任边界，记录并核对脚本摘要；在此之前明确向用户展示宿主执行边界 |
+| 前端构建出现主包或 Monaco chunk 过大的警告 | 首次加载可能变慢，尚无实测影响量 | 先量首屏加载，再仅对确实影响首屏的模块拆分；Monaco 已使用本地资源并按需加载 |
 
-```sh
-make run           # Web 开发：Vite 热更新，Go 后台提供 /rpc
-make build         # 产出 .build/harness
-make desktop-run   # wails3 dev，前端热更新、Go 改动后重启
-make desktop-build # 产出 .build/EDITH（Windows 带 .exe）；macOS 另生成 .build/EDITH.app
-make desktop-package # 本机生成 Windows 安装程序 / macOS DMG；Windows 构建机需 NSIS
-make agent-check   # 日常检查
-make test          # 完整串行验收
-```
+## 限制与待验收
 
-Web 开发页 `http://127.0.0.1:5173/`，业务连接同源 `/rpc` 并代理到 Go 后台 `127.0.0.1:8888`；Go 改动后重启 `make run`。Desktop 不开放业务 TCP 端口。前端 dist 由 Go embed 打包，不提交 Git。`make build` 仍完整构建前端并产出二进制。
+- Windows 受限 Agent 沙箱尚未实现；Full Access 可用。macOS Seatbelt 已在 macOS 27.0 arm64 验证，Intel 与其他版本未验收；Linux 依赖宿主提供可用的 bwrap／namespace／seccomp。沙箱不隔离硬链接别名，受保护目录内部的细粒度子路径授权暂时拒绝。
+- Windows 安装、重装、升级、降级拦截、运行中拦截和卸载已实测；Mac 上已安装并核对应用图标比例，DMG 覆盖升级和数据保留仍待实机验收。WebView2 缺失环境的真实下载／安装尚未验收；隔离环境已验证失败分支。分发签名、公证、发布上传和自动更新尚未实施。
+- Desktop 启动与构建已验证；Windows／macOS 的完整窗口、托盘、聊天、终端与后台通知交互仍需按平台验收。模型选择、账号状态、MCP 表单、上下文引用和嵌套子任务在亮暗主题、窄屏或真实远端环境中的专项验收也未完成。
+- MCP OAuth 已由用户在阿里云远程 Server 完成授权并发现工具；刷新、重启复用和其他服务待实机验收。GitHub 托管 MCP 若不支持动态客户端注册，需提供已注册客户端身份或使用访问令牌。MCP 与 Hook 在宿主或远端执行，不在 Agent 命令沙箱内。
+- ChatGPT 账号已实际用于对话；xAI 请求曾到达模型端，但工具 Schema 被拒绝，不能据此认定所有工具调用可用。两种账号的权限范围、令牌刷新和 macOS 登录仍需专项验收；第三方订阅接口的稳定性无公开承诺。LLM／Jev 已有实际使用反馈，自动审核准确率未做生产校准；供应商假服务测试不能替代真实远端验收。
 
-模型供应商密钥与 Jev 密钥保存在 `~/.harness/config.yaml`；内置模型快照随程序发布，`~/.harness/models.json` 只保存覆盖与隐藏项。其他数据位置与所有者见 DATA_MODEL。不提供旧数据迁移；旧 models.json 需由用户移走后重新配置。
-
-## 限制与未验证项
-
-- MCP 表单的亮暗主题与窄屏显示待用户截图验收。
-- 模型二级选择、账号登录状态与思考滑块的视觉、亮暗主题和窄屏交互待用户截图验收。四家账号的真实授权、刷新和模型调用仍待账号实机验收；第三方客户端身份与订阅接口的稳定性没有公开承诺。
-- Windows 受限 Agent 沙箱未实现，Full Access 可用；原生目录选择仍需交互式 Windows 验收。
-- Desktop 已通过构建与连接入口检查；Windows 用户实机确认可双击启动且无控制台，Agent 命令不再弹窗仍待用户实机验收，聊天／终端等交互未逐项验收；新标题栏、单实例、关窗、托盘与窗口恢复仍待实机验收，macOS 窗口交互亦待验收。
-- Windows 安装器仅当前用户安装；升级／卸载拦截运行中的 EDITH，拒绝降级，保留用户数据及非安装器文件。macOS DMG 打包流程已接入，仍需 Mac 实机验证；真实 WebView2 缺失环境的下载与安装待验收，失败分支已用隔离登记和模拟引导程序验证。
-- 后台通知的 Web 页面交互、Windows Toast 与 macOS 本机签名 `.app` 均待实机验收；分发签名、公证和自动更新未实施。
-- macOS Seatbelt 已在 macOS 27.0 arm64 验证，其他版本与 Intel 未验证。Linux 需要支持相应 namespace、seccomp 与挂载能力的 bwrap。
-- 沙箱不隔离硬链接别名；受保护目录内部的细粒度子路径授权暂时拒绝。异常断电／强杀可能留下 Linux 挂载占位空目录，不自动删除来源不明目录。
-- MCP 与 Hook 在宿主或远端执行，不在 Agent 命令沙箱内；Hook 信任仅覆盖配置，不跟踪脚本内容。
-- MCP OAuth 首版仅支持本机 Web／Desktop 的 HTTP Server；用户已通过阿里云远程 Server 完成授权并发现工具，令牌刷新、重启复用和其他第三方服务仍待实机验收。凭据保存在本机私有文件；Windows 通过当前用户 DPAPI 保护，Unix 依赖用户目录与文件权限。
-- GitHub 托管的远程 MCP 不支持动态客户端注册；Harness 要使用其 OAuth，需配置已注册的 GitHub App／OAuth App 客户端身份，也可改用 GitHub 访问令牌。
-- LLM／Jev 已有用户实际使用反馈，但自动审核的安全准确率没有完成生产校准。
-- 上下文引用的中文输入法／窄屏、嵌套子任务的实机流式交互及真实 MCP Server 交互，尚无完整验收记录；总体 UI 满意不替代这些专项验证。
-- Vite 仍提示较大的主包／Monaco chunk。Monaco 使用本地资源并按需加载。
-- 单个会话的 `meta.json` 损坏，或 `settings.json` 缺失／损坏，会使会话列表整体读取失败；前端只显示通用内部错误，尚缺逐项隔离和可诊断提示。
-
-## 后续方向（未实施）
-
-headless CLI、通用服务端反向请求、业务操作防重与完整多 Client 协调、辅助浏览器、Windows 沙箱。新的 Hook 事件仅在有具体需求时设计，不预建框架。
-
-现有 Web 与 Desktop 的共用边界见[设计书](../设计书.md)。
-
-- LLM 新适配的真实供应商调用、订阅账号权限及 macOS 登录仍需实机验证；自动化使用本地假服务覆盖请求、流事件和失败处理，不代表所有目录模型逐一通过远端验收。
+未完成工作见 [Desktop 总地图](../plan/desktop/Desktop%20总地图.md)、[远控](../plan/Remote-control.md)、[Site](../plan/site/方向书.md)与[插件系统](../plan/插件系统实现方向书.md)。

@@ -11,8 +11,8 @@ Wails Stream ┴→ ServeStream → clientconn → rpc.Registry → 具名 Handl
 ## 从哪里读
 
 - `server.go / lifecycle.go / connection.go`：方法表、通用连接入口与关闭；HTTP／WebSocket 与 Wails 传输分别归 `clients/web`、`clients/desktop`。
-- `harness.go / harness_types.go`：会话方法与契约；`harness_run.go`：运行订阅；`harness_subagents.go`：子任务接口。
-- `agents.go / models.go / skills.go / commands.go`：公共能力接口。
+- `harness.go / harness_types.go`：会话、活动、已读、分叉与子任务方法；`harness_run.go`：运行订阅；`harness_subagents.go`：子任务处理。
+- `agents.go / models.go / skills.go / commands.go / mcp.go`：公共能力接口。
 - `approvals.go / approval_types.go / hooks.go`：审批与 Hook 配置。
 - `filesystem.go / command_exec.go / workspace.go`：文件、用户终端和目录选择。
 

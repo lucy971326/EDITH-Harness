@@ -1,244 +1,51 @@
-# 数据模型与归属
+# 数据归属与恢复
 
-面向后续维护 Harness 的人和 AI。先确认一件事：数据放在哪里，取决于它是谁的事实；不是取决于它显示在哪个页面。
+数据归谁，取决于谁负责写入、校验和恢复，不取决于它显示在哪个页面。运行数据在当前用户的 `~/.harness`；Web 与 Desktop 启动前取得同一把 `.lock` 跨进程锁。`persist` 只提供限定路径、同步追加和原子替换，格式及坏数据处理归各领域。
 
-`internal/conversations` 只组合现有 Session / SessionSettings / Runner / Subagents 的业务，不迁移用户数据。`clients/contracts/` 是手工维护的 TS 接口类型；appserver 的 Schema 只用于运行时校验，不提供接口目录。这些契约都不是运行状态或持久化格式；对外 Session 投影中的时间编码为 RFC 3339 字符串。
-
-## 物理位置
-
-运行数据根目录固定为当前用户的 `~/.harness`，不写入项目目录。
-
-`persist` 是这棵目录的唯一底层读写入口：它提供按模块隔离的子目录视图、同步追加与原子替换。数据结构、校验、保存时机和恢复规则仍由数据主人负责。存储介质固定为本机文件，不配置 SQLite。
-
-Web 与 Desktop 启动前都独占 `.lock` 文件的操作系统锁；同一份目录不能同时由两个后台使用。锁文件可以保留，锁会在进程关闭后释放。
+## 存储位置
 
 ```text
 ~/.harness/
-├─ .lock
-│  跨进程独占锁，文件本身不保存业务数据
-│
-├─ desktop/window.json
-│  Desktop 私有窗口位置、普通尺寸和最大化状态；文件损坏时使用默认布局
-│
-├─ config.yaml
-│  LLM 供应商协议、API 地址和密钥，以及独立的 Jev 配置
-│
-├─ models.json
-│  用户模型覆盖与隐藏项；首次缺失创建空覆盖，和程序内置目录合并
-│
-├─ model-auth/codex.json
-│  ChatGPT 订阅令牌与账号 ID；Windows 内容由当前用户 DPAPI 加密，Unix 文件权限为 0600
-├─ model-auth/xai.json
-│  xAI 可刷新令牌；同样按本机用户保护，不进入模型配置与 RPC
-│
-├─ mcp.json
-│  用户级 MCP Server 配置（enabled 缺省为启用）；OAuth 只保存公开客户端设置和密钥环境变量名称，不保存令牌
-│  项目级配置仍放在项目目录
-│
-├─ mcp/oauth/<配置身份>.cred
-│  MCP OAuth 客户端身份与令牌；Unix 文件仅当前用户可读，Windows 内容由当前用户 DPAPI 加密
-│
-├─ reading/<session-id>.json
-│  当前本机用户已读完成结果的起始账本序号；同一后台连接共享，只能前进
-│
-├─ approvals/{settings.json,mcp-trust.json}
-│  审核设置与项目 MCP 配置信任
-│
-├─ hooks/
-│  settings.json 是全局 PreToolUse 配置；trust.json 按真实工作区路径保存项目配置摘要
-│  项目配置在 <workspace>/.harness/hooks.json；脚本文件内容不在信任摘要内
-│
-├─ agents/
-│  ├─ default.json
-│  │  新会话默认使用、可编辑但不可删除的 Agent 配置
-│  └─ <agent-id>.json
-│     其他用户创建的 Agent 配置
-│
-├─ skills/<skill-name>/
-│  用户安装的 Skill；正文为 SKILL.md
-├─ skills.json
-│  关闭的个人 Skill 名称；缺省启用，不移动或改写 SKILL.md
-├─ system/skills/<skill-name>/
-│  Harness 内置 Skill；与用户可编辑内容分开
-│
-├─ subagents/tasks/<task-id>.json
-│  只保存 TaskID、稳定任务名、父 Session、子 Session 和委派说明；v1 JSON 原子替换
-│  depth 与 rootID 不落盘；最大深度 2 由父子关系计算，恢复时校验循环和超深
-│  轮次、状态、结果和通知全部从子 Session 账本与 runs.json 派生
-│
-├─ deletions/<intent-id>.json
-│  永久删除先保存根与后代 SessionID、TaskID 及可选完整工作区路径；清理完成后移除
-│  启动时先重放未完成清理，再恢复子任务关系
-│  写入意图结果不确定时，本进程冻结目标，留待下次启动按磁盘状态恢复
-│
+├─ config.yaml                       LLM 供应商、API Key、Jev 配置
+├─ models.json                       用户模型覆盖与隐藏项；内置 catalog 随程序发布
+├─ model-auth/{codex,xai}.json       内置账号凭据
+├─ mcp.json / mcp/oauth/             全局 MCP 配置与独立 OAuth 凭据
+├─ approvals/{settings,mcp-trust}.json 审核设置、项目 MCP 信任
+├─ hooks/                            全局 Hook 设置与项目配置摘要信任
+├─ agents/ / skills/ / skills.json   Agent、个人 Skill 与开关
+├─ reading/<session-id>.json         单调前进的本机已读位置
+├─ subagents/tasks/<task-id>.json    父子关系与委派，不重复保存子 Run 状态
+├─ deletions/<intent-id>.json        永久删除意图；重启先重放清理
+├─ desktop/window.json               Desktop 窗口布局；坏文件回退默认布局
 └─ sessions/<session-id>/
-   ├─ messages.jsonl
-   │  对话账本
-   ├─ meta.json
-   │  会话元数据；titleEdited 标记手动标题并阻止首条消息自动命名及空会话复用；可选 archivedAt 只影响普通列表，不停止已运行的 Run
-   ├─ settings.json
-   │  此会话的运行设置
-   ├─ runs.json
-   │  各轮运行身份、状态、锚点、错误、最后一次模型用量与 Diff 摘要；不重复保存消息正文
-   └─ diffs/<run-id>.json.gz
-      此 Run 的完整文件前后内容；UTF-8 JSON 经 gzip 压缩，同一 Run 只保留最新 revision
+   ├─ meta.json                      标题、titleEdited、可选 archivedAt
+   ├─ settings.json                  Agent、模型、档位、工作区、权限模式
+   ├─ messages.jsonl                 追加式对话账本
+   ├─ runs.json                      Run 身份、状态、锚点、用量与 Diff 摘要
+   └─ diffs/<run-id>.json.gz          Run 的文件前后内容及 revision
 ```
 
-开发阶段只读写当前格式，不迁移旧目录、旧字段或旧工具名。
+项目文件不属于这棵用户数据目录。项目 MCP／Hook 配置在项目内，信任记录在 `~/.harness`；永久删除项目只删 Harness 会话与相关信任，不删真实项目目录。模型目录只接受当前格式，不迁移旧数据；内置快照不复制进用户文件。
 
-项目在 Harness 内以完整工作区路径分组，没有独立项目记录。归档会话仍可读取结果，恢复后才能启动新一轮。永久删除会拒绝运行中的根或后代；删除项目清除该路径下所有普通与已归档会话、子任务关系和该项目的 MCP／Hooks 信任记录，不删除真实工作区目录与代码文件。
+## 事实主人
 
-LLM 设置读取只返回供应商是否已配置密钥；内置账号状态由独立接口返回，均不暴露密钥和令牌。账号凭据由 LLM 领域按供应商分别保存；刷新令牌先持久化再使用，不进入 `config.yaml`。退出登录清除该账号凭据，使后续请求不可用。供应商保存只替换 `config.yaml` 的 `providers` 段，保留 Jev 等其他配置；模型覆盖单独写入 `models.json`（version=2，models 保存手动定义（混合网关模型可携带 protocol），hidden 保存隐藏键）；内置 catalog.json 随程序发布，不复制到用户文件。只接受当前 version=2 格式，不转换旧目录。两个文件的写入各自原子替换，跨文件删除若后一步失败则按磁盘实际内容重新加载。表单保存携带读取时的文件版本，检测外部修改；完整保存后才发布新模型目录。已开始的模型循环持有旧目录快照，新一轮使用最新目录。会话中被删除的模型 ID 保留为无效选择，发送前须重新选模型；审批引用它时显示不可用。
+| 事实 | 主人 | 边界 |
+| --- | --- | --- |
+| 对话 Entry、分支、标题和归档 | `session` | `titleEdited` 防止首条消息覆盖手动标题；归档不停止活 Run |
+| 本轮设置 | `session/settings` | 分叉复制；子任务继承父 Run 快照；单次批准不写入设置 |
+| 活 Run、草稿、终态、Diff | `runner` | 活状态在内存；终态和 Diff 独立于对话账本 |
+| 子任务 | `subagents` | Task 只存关系与委派；结果从子 Session 和 Run 派生 |
+| 待审批和批准 | `approvals` | 待办只在内存；断线不取消 Run，重启不恢复等待 |
+| 长期 Agent 进程 | `machine/local` | 跨 Turn 存活、进程退出清理；不写账本 |
+| 用户终端 | Client 连接与 machine | 断线终止；不与 Agent 进程表或 Session 生命周期混用 |
+| 页面投影、草稿、折叠和主题 | Client | 草稿按会话保存在内存；刷新不承诺恢复 |
 
-## 文件格式归属
+`messages.jsonl` 每行一个带 `id`、`parent`、`seq`、`body` 的 Entry；`parent` 是分支关系，`seq` 只在落账时分配。`body` 可含 text、image、reasoning、tool-call、tool-result、summary；工具调用与结果按 ToolCall.ID 配对，结果仍有自己的 Entry.ID。协作消息记录可信来源，只进入直属父账本，发给模型时作为普通输入，不提升为系统指令。上下文引用是用户 text 末尾的版本化文本，不另建引用表。
 
-```text
-reading           → 阅读位置；不是 Session 对话数据
-session           → 账本、元数据
-session/settings  → 会话运行设置
-agents            → Agent 设置
-runner            → 运行记录与 Diff
-        ↓
-persist.Files     → 限定路径、原子替换、同步追加
-```
+Runner 的流式草稿先作为事件发送，完整 Entry 落账后才发布耐久变化；`runs.json` 与账本分开。未完成 Run 在重启后标为 interrupted，不自动续跑。Stop 不落账，未落账的 Steer 被拒绝；协作回报以父账本 MessageID 确认，否则由来源重试。Snapshot 与订阅以 epoch／序号衔接，Client 按 Entry.ID 去重，序号缺口重新订阅。
 
-Agent 服务协调引用写入与删除；Runner 的 recordsMu 保护运行记录整次读改写与快照。文件层不持有业务锁或格式。
+助手 reasoning 或 tool-call 可保存模型续接数据；只在同供应商、模型、协议下重放，不能把它当 OAuth 凭据。内置账号与 MCP OAuth 凭据不进入 RPC 或日志；Windows 用当前用户 DPAPI、Unix 用私有文件权限保护。令牌刷新先保存再使用。项目 MCP 信任按真实路径与有效配置摘要，Hook 信任只覆盖配置版本，不覆盖脚本内容。
 
-## 谁拥有什么数据
+会话已读位置由 `reading` 根据实际完成的 Run 单调推进；旧确认不能抹掉新结果。永久删除先写意图再清理会话、子任务与相关读标，失败留待重启重放。单个损坏的会话元数据或设置目前会阻断整个会话列表，修复方向见 [STATUS](STATUS.md)。
 
-```text
-Session
-└─ 对话发生过什么
-   用户、助手、工具调用、工具结果；可分叉
-   collaboration 是带来源的协作消息，不是用户输入或系统指令
-
-SessionSettings
-└─ 这场会话怎样运行
-   Agent、模型、思考档位、工作区、权限模式（permissionMode）
-   模式随 settings.json 保存；分叉复制，子会话继承父 Run 快照
-   本次额外授权不写入设置；待审批归审批服务内存，不进入账本
-
-Agent 设置
-└─ 一个 Agent 怎样工作
-   System Prompt、允许的普通 Tool（执行固定 ReAct）；不进对话账本
-
-Skill 发现
-└─ 文件系统上的 Skill 定义，不复制进 Agent 或 Session
-   系统、个人与当前项目 Skill 对该作用域所有 Agent 自动可用
-
-领域服务状态
-└─ 各服务自己的业务事实
-   审批配置与待审批请求等；是否持久化由所属领域决定
-   Hook 最近故障只在服务内存；运行提示是非耐久事件，不进入 Session
-
-Runner 运行结果
-└─ 每轮 RunID、状态、账本锚点、错误和最后一次模型用量；与对话正文分开
-   `apply_patch` 的本轮净变化也归 Runner：摘要在 runs.json，完整前后内容在 diffs/<run-id>.json.gz
-   生成中草稿只在 liveRun 内存，不写硬盘
-   重启把未收尾的 running 标为 interrupted，不自动续跑
-
-Subagents
-└─ 父子 Session 关系、稳定任务 ID、稳定任务名和委派说明
-   每条 Task 都是一条直属父子边；服务由关系计算深度，固定只允许第 0 → 1 → 2 层
-   子会话仍使用普通账本及 SessionSettings，但不进入普通聊天列表或空会话复用
-   轮次、状态、错误和结果由子会话 messages.jsonl / runs.json 提供；Task 不重复保存
-   重启只恢复关系；Runner 将未完成轮次标记中断，不自动启动
-   List 返回 TaskView 查询投影；通知 ID 由 TaskID + 轮次稳定派生
-   停止代次、被停止的父 RunID 与孩子停止标记仅在服务内存；停止沿关系递归到全部后代，并拦截停止前的在途派生操作
-   不另建协作级 Context；实际执行取消沿用 Runner，关闭仍由服务自身生命周期负责
-
-Client 状态
-└─ 当前设备上的临时界面状态与后台投影
-   面板开关与宽度、折叠展开状态、主题及各端独立的通知开关、审查／终端／子任务标签与当前文件选择
-
-app-server 瞬时状态
-└─ 连接、JSON-RPC 请求响应配对、订阅和待回答请求
-   不进入 Session，也不是业务防重记录
-   初始化状态、待发队列和订阅读快照期间的缓冲也只存在内存
-   每个 Connection 只拥有一个 Client 的基础设施连接状态，断线后整体失效
-   不保存 Session、Run、设置或产品状态，也不参与任何业务判断
-```
-
-Agent 执行权限由 Runner 的本轮 SessionSettings 快照计算，经 Loop / Tool 传递；Policy 与启动方案只在内存中存在，不写入对话账本。machine-local 拥有执行进程、沙箱资源和临时占位引用，进程退出后释放；交付后的长期进程保持启动权限。批量文件助手的提交进度用于已有 FileDelta，不另建持久化记录。
-
-## 恢复与一致性
-
-- 账本、运行结果和领域设置分别持久化；草稿、审批等待、连接、进程只在内存。重启不恢复执行，未完成运行标记中断。
-- 状态与 updateSeq 一起提交；序号不能跨会话或后台 epoch 混用。网络订阅按序号整理通知，耐久消息按 Entry.ID 去重。runs.json 的读改写与快照互斥，旧记录不能覆盖新结果。
-- UI 终端归 Client 连接，断线终止；Agent 已交付的进程归 Session，可跨 Turn，均不写账本。
-- 项目文件与项目配置归 machine／对应 Provider，不经用户数据 persist。文件哈希、路径锁与监听只用于并发保护，磁盘文件是真相。
-- Skill 正文留在 SKILL.md 与相对资源中，Prepare 只放摘要和路径。Client 草稿与投影规则见 [WEB_UI](WEB_UI.md)。
-
-## 对话账本
-
-`messages.jsonl` 是追加式账本，每行一条 `Entry`：
-
-```text
-id      这一条是谁；生成开始时分配，增量、草稿和落账共用，不靠 stepSeq 对应
-parent  接在前一条哪里；支持分叉
-seq     全局写入顺序，只在实际落账时分配
-body    本条事实：role、runID、blocks；协作消息另带 messageID、sourceSessionID、sourceRunID、sourceTaskID
-        未完成助手消息带 incomplete；生成开始时的账本锚点为 afterSeq
-```
-
-Run 的起点与单条输出的位置分开：已开始的输出不会因 Steer 移位；检查点将待提交输入按到达顺序落账并消费后，新输出的 `afterSeq` 才前移。一次模型步骤包含助手输出及该批全部工具结果，外部输入不能插进两者中间。
-
-```text
-messages.jsonl
-├─ #1 用户文本
-├─ #2 助手推理 + 回答
-├─ #3 用户文本
-├─ #4 助手工具调用
-├─ #5 工具结果
-└─ #6 助手最终回答
-```
-
-`blocks` 只记录实际发生的对话内容：`text`、`image`、`reasoning`、`tool-call`、`tool-result`、`summary`。图片保存 Client 压缩后的 MIME 与 Base64，不另存原始大图。页面长什么样、哪些内容展开，不是账本事实。`summary` 是压缩落账的助手块；`History()` 把它收成普通文本再发给模型。未完成消息保留半截正文与思考，并附「未完成」说明；不把思考改成普通正文，不携带悬空工具调用。工具结果按 `ToolCall.ID` 回填，工具结果消息有自己的 Entry.ID。
-
-上下文引用是用户 `text` 末尾带版本标记、JSON 转义的普通文本段；格式约定见 WEB_UI 与 chat/context-references.ts。文件和目录仅记录路径，代码选区记录添加时的路径、行列范围与原文，助手选区记录完成回答的 Entry ID、渲染纯文本范围、原文与可选评论；两者都不跟随来源后续变化。后台不解析引用，也没有独立引用表或 Block；刷新／分叉从同一份用户正文恢复标签。草稿附件 ID、候选、预览展开状态只属于 Client，成功确认按提交 ID 清理，失败与等待期间的新引用继续留在对应会话草稿。
-
-协作消息在账本使用 `role=collaboration`，`runID` 是接收它的直属父 Run，`sourceSessionID/sourceRunID/sourceTaskID` 是孩子的来源。孙子的结果只进入孩子账本，不越级写根会话。TaskID 让页面按稳定身份打开子任务，不靠解析正文猜测。启动前失败没有真实子 Run，来源 RunID 留空，不捏造身份。发给模型时转换成带来源说明的普通输入，不提升为系统指令。通知进入活 Run 后先留在 Runner 的待提交输入中，只有检查点落账后才算投递；重试按父账本中实际存在的 `messageID` 去重，不靠内存中的“已发送”判断。
-
-待提交输入只是当前活 Run 的内存状态，不是第二份事实来源。Steer 在检查点落账并发布后才确认成功；若 Run 先结束或被停止，则拒绝尚未落账的 Steer。Stop 只通过 Context 取消运行，不是业务输入，也不写入对话账本。
-
-## 修改前四问
-
-新增一种数据前，先回答：
-
-```text
-1. 它是谁的事实？Session、会话设置、Agent、领域服务、app-server，还是 Client？
-2. 重启后必须恢复吗？
-3. 是否需要被其他领域读取？
-4. 它是耐久事实，还是本轮运行的临时通知？
-```
-
-答案明确后再选 Store、事件或 Client 状态；不要为了页面方便，把数据写进错误的主人。
-
-## 审批与权限说明
-
-- 全局审核方式、模型与思考档位归 approvals，保存到 `~/.harness/approvals/settings.json`；Jev 密钥与 LLM 密钥同在 `~/.harness/config.yaml`，分别解析各自配置段。Client 仅保存设置投影与编辑草稿。
-- Runner 在真实用户消息保存 `userAuthored`；委派输入保存已有的 `sourceSessionID / sourceRunID`，不标记为真实用户。来源字段由进程内调用传入，网络 UserMessage 不接受它们。未标记消息不推定可信。审核按未压缩分支追溯真实用户授权，不采信模型摘要和委派文字。
-
-- `approvals.Service` 拥有待审批表（原操作、可信 Session/Run/ToolCall 身份、Context、回答通道）和快照订阅，不持久化；断线只清订阅，取消/回答删除请求，重启不恢复。
-- 项目 MCP 配置确认按真实项目路径与有效配置摘要保存在 `~/.harness/approvals/mcp-trust.json`；MCP Tool 的逐次裁决和待审批请求不持久化。
-- MCP OAuth 凭据由 MCP 领域按全局／真实工作区路径、Server 名、原始配置地址和客户端身份隔离，保存在 `~/.harness/mcp/oauth/` 的独立文件中；Unix 文件权限为 0600，Windows 文件内容由当前用户的 DPAPI 加密。写入失败会报错，不退回仅内存的登录。令牌、DCR 客户端密钥、刷新令牌及 scope 不进入 `mcp.json`、RPC 或日志。每次新连接先核对资源、授权服务与端点，再使用旧令牌；刷新时附带资源并保存轮换令牌。配置撤下清持久凭据但旧 Run 继续用已有连接，退出登录使旧连接的后续调用失效。
-- `runs.json` 的可选 `permissionInstructions` 是该轮给模型的环境说明，沿用 Runner 的保存与分叉复制。准备完成的 Run 保存基线。它不是待审批或可复用授权。
-- 模型输入按可见 Run 重建环境说明，普通对话账本和网页聊天正文不增加权限消息；客户端审批卡片仅是服务内存的投影。
-
-## 会话内协调与 Client 草稿
-
-conversations 的操作锁仅协调同一会话的设置、发送、分叉和命令，不拥有 Run；Stop 独立执行。创建复用单独协调，Runner.live 仍是活 Run 的唯一入口。
-
-Client 每个会话保存一份草稿记录（文字、图片、引用、编辑版本）。当前输入框与异步回调引用同一版本，发送确认只清理已提交部分；订阅生命周期与页面投影分开，子任务 Diff 独立续订。
-
-## 会话阅读位置
-
-`reading.Store` 使用 `persist.Files` 原子保存单调游标，不维护第二份缓存。
-客户端提交实际看到的已完成 Run ID，由 conversations 验证身份与状态，取其 `AfterEntrySeq` 推进。
-新结果在后台完成而旧确认晚到时，只确认旧结果；写失败不发布成功通知，损坏游标返回错误而不静默覆盖。
-appserver 在成功保存后广播失效通知，各端重新读取状态；阅读确认不写对话账本。
-归档保留阅读位置，永久删除由既有删除意图一起清理。当前作用域是一个本机用户／后台，尚不涉及云端多用户身份。
-
-### 模型续接数据
-
-助手 reasoning 或 tool-call 块可有 `continuation`，含 provider、model、api 和协议原始 data，用于思考签名或加密内容续接；不是 OAuth 凭据。由 LLM 适配生成，账本持久保存，只向完全匹配的供应商／模型／协议重放；中断的助手消息不保留续接数据。
+新增字段前先问：谁的事实、是否耐久、谁需要读取、故障后如何恢复。
