@@ -1,15 +1,7 @@
 version: '3'
 
-# Wails CLI 的薄接入；构建流程只维护在 build/desktop.mjs。
+# Wails dev 只需要热重建和运行；正式构建由 Makefile 调用桌面脚本。
 tasks:
-  build:
-    cmds:
-      - node build/desktop.mjs build
-
-  package:
-    cmds:
-      - node build/desktop.mjs package
-
   build:dev:
     cmds:
       - node build/desktop.mjs dev

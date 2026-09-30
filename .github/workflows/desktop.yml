@@ -1,0 +1,131 @@
+name: Desktop CI and release
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  test:
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check release tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          version="$(cat build/version.txt)"
+          test "$GITHUB_REF_NAME" = "v${version}"
+          git fetch origin main --no-tags
+          git merge-base --is-ancestor HEAD origin/main
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: clients/package-lock.json
+      - name: Run full checks
+        run: make test
+
+  package:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            platform: macos-arm64
+            filename: macos-arm64.dmg
+          - os: windows-2025
+            platform: windows-amd64
+            filename: windows-amd64-setup.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: clients/package-lock.json
+      - name: Install Windows packaging tools
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install make nsis --no-progress --yes
+      - name: Install Wails CLI
+        shell: bash
+        run: |
+          wails_version="$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)"
+          go install "github.com/wailsapp/wails/v3/cmd/wails3@${wails_version}"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Build installer
+        shell: bash
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: make desktop-package
+      - name: Check installer
+        shell: bash
+        run: |
+          version="$(cat build/version.txt)"
+          filename=".build/EDITH-${version}-${{ matrix.filename }}"
+          test -s "$filename"
+          mkdir -p packages
+          cp "$filename" packages/
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: desktop-${{ matrix.platform }}
+          path: packages/EDITH-*
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  draft-release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: package
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: desktop-*
+          path: release
+          merge-multiple: true
+      - name: Verify assets and write checksums
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          test -s "release/EDITH-${version}-macos-arm64.dmg"
+          test -s "release/EDITH-${version}-windows-amd64-setup.exe"
+          cd release
+          sha256sum EDITH-* > SHA256SUMS.txt
+      - name: Create draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release/* \
+            --draft --verify-tag --generate-notes \
+            --title "EDITH $GITHUB_REF_NAME" \
+            --notes 'Windows 安装包尚未签名；macOS 应用仅为临时签名，尚未公证。首次打开可能需要系统确认。'

@@ -10,7 +10,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
-// Icon 是桌面应用和托盘共用的 EDITH 图标。
+// Icon 是 Windows 应用和各平台托盘使用的 EDITH 图标；macOS 应用图标来自 ICNS。
 //
 //go:embed edith-icon.png
 var Icon []byte
