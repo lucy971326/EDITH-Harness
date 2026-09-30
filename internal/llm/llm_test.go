@@ -35,6 +35,9 @@ func TestContextBudgetAndEstimate(t *testing.T) {
 	if client.InputBudget("test") != 80000 || client.InputBudget("missing") != 0 {
 		t.Fatal("wrong request budget")
 	}
+	if client.MaxOutput("test") != 10000 || client.MaxOutput("missing") != 0 {
+		t.Fatal("wrong model output limit")
+	}
 	base := EstimateInput(Input{History: []session.Message{{Role: session.RoleUser, Blocks: []session.Block{{Kind: "text", Text: "hello"}}}}})
 	withImage := EstimateInput(Input{System: "rules", History: []session.Message{{Role: session.RoleUser, Blocks: []session.Block{{Kind: "text", Text: "hello"}, {Kind: "image", Media: &session.Media{MIME: "image/png", Data: "base64"}}}}}})
 	if withImage <= base+4096 {

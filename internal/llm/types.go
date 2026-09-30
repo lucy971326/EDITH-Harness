@@ -74,7 +74,6 @@ type SaveModelInput struct {
 type RunConfig struct {
 	Model           string
 	ReasoningEffort string
-	MaxOutputTokens int
 }
 
 // 数据。一次模型调用的提示词、历史和工具定义。

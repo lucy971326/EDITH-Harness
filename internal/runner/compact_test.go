@@ -93,6 +93,10 @@ func TestCompactAppendsSummaryAndProjectsHistory(t *testing.T) {
 	if _, ok := request["tool_choice"]; ok {
 		t.Fatalf("compact request included tool choice: %#v", request["tool_choice"])
 	}
+	wantOutput := fixture.runner.llm.MaxOutput("deepseek/deepseek-flash")
+	if request["max_tokens"] != float64(wantOutput) {
+		t.Fatalf("compact max_tokens = %v, want %d", request["max_tokens"], wantOutput)
+	}
 	messages, _ := request["messages"].([]any)
 	if len(messages) == 0 {
 		t.Fatal("missing messages")
