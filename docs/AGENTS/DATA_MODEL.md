@@ -51,3 +51,12 @@ Runner 的流式草稿先作为事件发送，完整 Entry 落账后才发布耐
 会话已读位置由 `reading` 根据实际完成的 Run 单调推进；旧确认不能抹掉新结果。永久删除先写意图再清理会话、子任务与相关读标，失败留待重启重放。单个损坏的会话元数据或设置目前会阻断整个会话列表，修复方向见 [STATUS](STATUS.md)。
 
 新增字段前先问：谁的事实、是否耐久、谁需要读取、故障后如何恢复。
+
+
+## 压缩记录与恢复
+
+带 `summary` 块的助手 Message 可携带 `compaction: { throughEntryID, retainedEntryIDs }`。throughEntryID 是本次读取的分支头；追加时必须仍与 Session.head 一致。retainedEntryIDs 引用该分支已有消息，包含最近用户输入及完整近期工具批次，不复制正文。
+
+ContextEntries 从最新摘要重建「摘要节点 + 保留节点 + 摘要后新增节点」；History 将摘要标注为模型生成的交接文本，未完成消息仍按原规则投影。没有 compaction 引用的 summary 表示覆盖全部前文。重复压缩以该有效投影为输入；分叉重新生成 Entry ID，必须同步映射摘要边界与保留节点引用，保证与重启投影一致。原始账本继续供 UI、分叉和授权核查使用。
+
+Run.usage 的 inputTokens/cacheReadTokens 保持供应商真实请求用量；estimatedTokens 可选，表示压缩后重建请求的估算占用。下一次正常请求返回真实用量时清除此估算。估算基线与防重复压缩位置只属于活 Run，不写对话账本。

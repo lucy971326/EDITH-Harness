@@ -210,6 +210,9 @@ func (s streamSink) anthropic() error {
 		case "message_stop":
 			stopped = true
 		case "error":
+			if err := contextError("", event.Error.Message); err != nil {
+				return err
+			}
 			if event.Error.Message != "" {
 				return fmt.Errorf("llm: Anthropic stream failed: %s", event.Error.Message)
 			}

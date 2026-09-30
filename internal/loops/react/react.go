@@ -37,7 +37,28 @@ func (l *reactLoop) Run(ctx context.Context, invocation loops.Invocation) error 
 	modelClient := l.llm.Pin()
 
 	for {
+		if invocation.Compact != nil {
+			replacement, compactErr := invocation.Compact(ctx, modelClient, llm.Input{System: invocation.SystemPrompt, History: history, Tools: definitions}, false)
+			if compactErr != nil {
+				return compactErr
+			}
+			if replacement != nil {
+				history = replacement
+			}
+		}
 		assistant, assistantID, calls, err := l.request(ctx, modelClient, invocation, history, definitions)
+		if errors.Is(err, llm.ErrContextWindow) && invocation.Compact != nil {
+			replacement, compactErr := invocation.Compact(ctx, modelClient, llm.Input{System: invocation.SystemPrompt, History: history, Tools: definitions}, true)
+			if compactErr != nil {
+				return compactErr
+			}
+			if replacement == nil {
+				return err
+			}
+			history = replacement
+			// 同一个模型步骤仅恢复一次；不会重跑已经执行过的工具。
+			assistant, assistantID, calls, err = l.request(ctx, modelClient, invocation, history, definitions)
+		}
 		if err != nil {
 			return err
 		}
@@ -126,7 +147,7 @@ func (l *reactLoop) request(
 				if len(message.Blocks) == 0 && len(calls) == 0 {
 					return session.Message{}, "", nil, nil
 				}
-				err = l.emitUsage(ctx, modelClient, invocation, entryID, usage)
+				err = l.emitUsage(ctx, modelClient, invocation, entryID, usage, llm.EstimateInput(llm.Input{System: invocation.SystemPrompt, History: history, Tools: definitions}))
 				if err != nil {
 					return session.Message{}, "", nil, err
 				}
@@ -170,6 +191,10 @@ func (l *reactLoop) request(
 				if chunk.Error == nil {
 					return fail(fmt.Errorf("react: model stream failed"))
 				}
+				// 只有尚未输出任何内容的超限请求可恢复，避免丢掉或重放半截调用。
+				if errors.Is(chunk.Error, llm.ErrContextWindow) && len(message.Blocks) > 0 {
+					return fail(fmt.Errorf("react: 输出开始后上下文失败：%v", chunk.Error))
+				}
 				return fail(chunk.Error)
 			}
 		}
@@ -188,11 +213,12 @@ func (l *reactLoop) failRequest(ctx context.Context, invocation loops.Invocation
 	return session.Message{}, "", nil, cause
 }
 
-func (l *reactLoop) emitUsage(ctx context.Context, modelClient *llm.Client, invocation loops.Invocation, entryID string, usage llm.Usage) error {
+func (l *reactLoop) emitUsage(ctx context.Context, modelClient *llm.Client, invocation loops.Invocation, entryID string, usage llm.Usage, inputEstimate int) error {
 	return invocation.Emit(ctx, loops.Event{
 		Kind:    loops.EventUsage,
 		EntryID: entryID,
 		Usage: &loops.Usage{
+			InputEstimate:   inputEstimate,
 			InputTokens:     usage.InputTokens,
 			CacheReadTokens: usage.CacheReadTokens,
 			ContextWindow:   modelClient.ContextWindow(invocation.LLMConfig.Model),

@@ -110,6 +110,7 @@ func (s streamSink) responses() error {
 		var event struct {
 			Type      string          `json:"type"`
 			Message   string          `json:"message"`
+			Code      string          `json:"code"`
 			Index     int             `json:"output_index"`
 			Delta     string          `json:"delta"`
 			Arguments string          `json:"arguments"`
@@ -124,6 +125,7 @@ func (s streamSink) responses() error {
 					} `json:"input_tokens_details"`
 				} `json:"usage"`
 				Error struct {
+					Code    string `json:"code"`
 					Message string `json:"message"`
 				} `json:"error"`
 				Incomplete struct {
@@ -254,8 +256,14 @@ func (s streamSink) responses() error {
 			s.send(StreamChunk{Type: ChunkFinish, FinishReason: reason, Usage: Usage{InputTokens: max(0, u.Input-u.Details.Cached), OutputTokens: u.Output, CacheReadTokens: u.Details.Cached}})
 			finished = true
 		case "error":
+			if err := contextError(event.Code, event.Message); err != nil {
+				return err
+			}
 			return fmt.Errorf("llm: response failed: %s", event.Message)
 		case "response.failed", "response.cancelled":
+			if err := contextError(event.Response.Error.Code, event.Response.Error.Message); err != nil {
+				return err
+			}
 			return fmt.Errorf("llm: response failed (%s): %s", event.Type, event.Response.Error.Message)
 		}
 	}

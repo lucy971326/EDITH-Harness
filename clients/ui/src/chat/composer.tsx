@@ -147,6 +147,7 @@ export function Composer({
   permissionModes?: PermissionModeChoice[];
   onPermissionChange?: (mode: PermissionMode) => void;
   usage?: {
+    estimatedTokens?: number;
     inputTokens: number;
     cacheReadTokens: number;
     contextWindow: number;
@@ -257,7 +258,7 @@ export function Composer({
   const showSuggestions =
     !composing && (suggestions.length > 0 || showPathSuggestions) && triggerKey !== dismissedTrigger;
   const usedTokens = usage
-    ? usage.inputTokens + usage.cacheReadTokens
+    ? usage.estimatedTokens ?? (usage.inputTokens + usage.cacheReadTokens)
     : 0;
   const usagePercent = usage?.contextWindow
     ? Math.min(100, (usedTokens / usage.contextWindow) * 100)
@@ -501,7 +502,7 @@ export function Composer({
                     />
                   </span>
                 </TooltipTrigger>
-                <TooltipContent>上下文已使用 {usageLabel}</TooltipContent>
+                <TooltipContent>上下文{usage?.estimatedTokens !== undefined ? "估算占用" : "已使用"} {usageLabel}</TooltipContent>
               </Tooltip>}
               <div className="composer-model">
                 <ModelMenu

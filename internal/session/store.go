@@ -80,8 +80,23 @@ func (s *Store) Fork(sourceID, destinationID, throughEntryID, title string) (*Se
 
 	nodes := make([]Node, 0, through+1)
 	cloned := make(map[string]Node, through+1)
+	identities := make(map[string]string, through+1)
 	parent := ""
 	for index, entry := range entries[:through+1] {
+		if original := entry.Message.Compaction; original != nil {
+			mapped := &Compaction{ThroughEntryID: identities[original.ThroughEntryID], RetainedEntryIDs: []string{}}
+			if mapped.ThroughEntryID == "" {
+				return nil, fmt.Errorf("session: invalid compaction boundary during fork")
+			}
+			for _, retained := range original.RetainedEntryIDs {
+				id := identities[retained]
+				if id == "" {
+					return nil, fmt.Errorf("session: invalid compaction reference during fork")
+				}
+				mapped.RetainedEntryIDs = append(mapped.RetainedEntryIDs, id)
+			}
+			entry.Message.Compaction = mapped
+		}
 		body, err := json.Marshal(entry.Message)
 		if err != nil {
 			return nil, fmt.Errorf("session: fork encode entry %q: %w", entry.ID, err)
@@ -90,6 +105,7 @@ func (s *Store) Fork(sourceID, destinationID, throughEntryID, title string) (*Se
 		if err != nil {
 			return nil, err
 		}
+		identities[entry.ID] = id
 		node := Node{ID: id, Parent: parent, Seq: uint64(index + 1), Body: body}
 		nodes = append(nodes, node)
 		cloned[id] = node

@@ -161,6 +161,13 @@ func (c *Client) Stream(ctx context.Context, config RunConfig, input Input) (<-c
 	if err != nil {
 		return nil, err
 	}
+	if config.MaxOutputTokens > 0 {
+		if definition.MaxOutput <= 0 {
+			definition.MaxOutput = config.MaxOutputTokens
+		} else {
+			definition.MaxOutput = min(definition.MaxOutput, config.MaxOutputTokens)
+		}
+	}
 	request := streamRequest{definition: definition, protocol: protocol, baseURL: modelURL(definition, provider), token: provider.APIKey,
 		system: input.System, messages: messages, tools: toProviderTools(input.Tools), toolChoice: input.ToolChoice, options: options}
 	if strings.ContainsAny(request.baseURL, "{}") {

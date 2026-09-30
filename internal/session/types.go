@@ -67,6 +67,7 @@ type Block struct {
 
 // 数据。账本中的一个完整节点内容。
 type Message struct {
+	Compaction *Compaction `json:"compaction,omitempty"`
 	// UserAuthored 由 Runner 标记真实用户输入；未标记的输入不作为自动授权证据。
 	UserAuthored    bool    `json:"userAuthored,omitempty"`
 	DisplayText     string  `json:"displayText,omitempty"`
@@ -81,6 +82,12 @@ type Message struct {
 	Incomplete bool `json:"incomplete,omitempty"`
 	// AfterSeq 是开始生成本条时已落账的最大 Seq；Steer 插入后仍按此分段，不随落账 Seq 跳位。
 	AfterSeq uint64 `json:"afterSeq,omitempty"`
+}
+
+// 数据。摘要生成时的账本边界和继续原样发送的消息引用，不复制历史正文。
+type Compaction struct {
+	ThroughEntryID   string   `json:"throughEntryID"`
+	RetainedEntryIDs []string `json:"retainedEntryIDs"`
 }
 
 // 数据。当前分叉上一条已落账消息及其稳定位置。

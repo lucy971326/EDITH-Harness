@@ -55,17 +55,19 @@ type liveRun struct {
 	inputSignal chan struct{}
 
 	// 可恢复投影；结束状态置位后，仍占用 live 到完整收尾。
-	updateSeq   uint64
-	ended       bool
-	compact     bool
-	endStatus   RunStatus
-	endError    string
-	usage       *Usage
-	drafts      map[string]*runDraft
-	toolCalls   map[string]toolCallLoc
-	persisted   map[string]struct{}
-	diff        *turnDiffTracker
-	diffSummary *RunDiffSummary
+	updateSeq       uint64
+	ended           bool
+	compact         bool
+	endStatus       RunStatus
+	endError        string
+	usage           *Usage
+	inputEstimate   int    // 最近普通请求的本地估算，用实际用量校准同模型的新增输入。
+	lastCompactHead string // 本轮已压缩的账本位置；无新增内容不重复尝试。
+	drafts          map[string]*runDraft
+	toolCalls       map[string]toolCallLoc
+	persisted       map[string]struct{}
+	diff            *turnDiffTracker
+	diffSummary     *RunDiffSummary
 }
 
 // 数据。一条等待安全检查点提交的外部输入；result 只用于等待确认的用户 Steer。
@@ -450,11 +452,15 @@ func (r *Runner) executePrepared(runCtx context.Context, sessionID, runID string
 	if loadErr != nil {
 		return loadErr
 	}
-	history = permissionHistory(history, records)
-	if preparation.projectInstructions != "" {
-		projectContext := fmt.Sprintf("# AGENTS.md instructions for %s\n<INSTRUCTIONS>\n%s\n</INSTRUCTIONS>", runSettings.Workspace, preparation.projectInstructions)
-		history = append([]session.Message{{Role: session.RoleUser, Blocks: []session.Block{{Kind: "text", Text: projectContext}}}}, history...)
+	contextHistory := func(messages []session.Message) []session.Message {
+		messages = permissionHistory(messages, records)
+		if preparation.projectInstructions != "" {
+			project := fmt.Sprintf("# AGENTS.md instructions for %s\n<INSTRUCTIONS>\n%s\n</INSTRUCTIONS>", runSettings.Workspace, preparation.projectInstructions)
+			messages = append([]session.Message{{Role: session.RoleUser, Blocks: []session.Block{{Kind: "text", Text: project}}}}, messages...)
+		}
+		return messages
 	}
+	history = contextHistory(history)
 	invocation := loops.Invocation{
 		Policy:       policy,
 		Reviewer:     reviewer,
@@ -475,6 +481,9 @@ func (r *Runner) executePrepared(runCtx context.Context, sessionID, runID string
 		},
 		Checkpoint: func(_ context.Context, phase loops.CheckpointPhase) ([]session.Message, error) {
 			return r.checkpoint(sess, sessionID, current, phase)
+		},
+		Compact: func(ctx context.Context, client *llm.Client, input llm.Input, force bool) ([]session.Message, error) {
+			return r.manageContext(ctx, sessionID, current, sess, client, runSettings, input, force, contextHistory)
 		},
 	}
 	return r.loop.Run(runCtx, invocation)

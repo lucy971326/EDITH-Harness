@@ -3,11 +3,13 @@ package runner
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -67,16 +69,9 @@ func TestCompactAppendsSummaryAndProjectsHistory(t *testing.T) {
 			`{"choices":[{"delta":{},"index":0,"finish_reason":"stop"}],"usage":{"prompt_tokens":20,"completion_tokens":2,"total_tokens":22}}`,
 		)
 	})
-	_, err := fixture.session.Append(session.Message{Role: session.RoleUser, Blocks: []session.Block{{Kind: "text", Text: "one"}}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = fixture.session.Append(session.Message{Role: session.RoleAssistant, Blocks: []session.Block{{Kind: "text", Text: "a"}}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	seedCompactHistory(t, fixture.session)
 	ended := waitRunEnded(t, fixture.events)
-	err = fixture.runner.Compact(context.Background(), "session-1")
+	err := fixture.runner.Compact(context.Background(), "session-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,11 +80,11 @@ func TestCompactAppendsSummaryAndProjectsHistory(t *testing.T) {
 		t.Fatalf("status = %s error = %s", event.Status, event.Error)
 	}
 	entries := fixture.session.Entries()
-	if len(entries) != 3 || entries[2].Message.Blocks[0].Kind != "summary" || entries[2].Message.Blocks[0].Text != "keep going" {
+	if len(entries) != 5 || entries[4].Message.Blocks[0].Kind != "summary" || entries[4].Message.Blocks[0].Text != "keep going" {
 		t.Fatalf("entries = %#v", entries)
 	}
 	history := fixture.session.History()
-	if len(history) != 1 || history[0].Role != session.RoleUser || history[0].Blocks[0].Kind != "text" || history[0].Blocks[0].Text != "keep going" {
+	if len(history) != 3 || history[0].Role != session.RoleUser || history[0].Blocks[0].Kind != "text" || history[0].Blocks[0].Text != session.SummaryText("keep going") || history[1].Blocks[0].Text != "latest request" || history[2].Blocks[0].Text != "recent answer" {
 		t.Fatalf("history = %#v", history)
 	}
 	if _, ok := request["tools"]; ok {
@@ -122,6 +117,91 @@ func TestCompactDoesNotCommitOnLengthOrEmpty(t *testing.T) {
 	})
 }
 
+func TestCompactWriteFailureKeepsHistory(t *testing.T) {
+	fixture := newCompactFixture(t, func(w http.ResponseWriter, _ *http.Request) {
+		writeCompactSSE(w, `{"choices":[{"delta":{"content":"summary"},"index":0}]}`, `{"choices":[{"delta":{},"index":0,"finish_reason":"stop"}]}`)
+	})
+	seedCompactHistory(t, fixture.session)
+	fixture.persistence.mu.Lock()
+	fixture.persistence.addFail = errors.New("disk full")
+	fixture.persistence.mu.Unlock()
+	ended := waitRunEnded(t, fixture.events)
+	if err := fixture.runner.Compact(t.Context(), "session-1"); err != nil {
+		t.Fatal(err)
+	}
+	result := <-ended
+	if result.Status != RunFailed || !strings.Contains(result.Error, "disk full") || len(fixture.session.History()) != 4 {
+		t.Fatalf("result=%+v", result)
+	}
+}
+
+func TestAutomaticCompactReplacesContextWithinRun(t *testing.T) {
+	var requests atomic.Int32
+	fixture := newCompactFixture(t, func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		writeCompactSSE(w, `{"choices":[{"delta":{"content":"summary"},"index":0}]}`, `{"choices":[{"delta":{},"index":0,"finish_reason":"stop"}],"usage":{"prompt_tokens":20000,"completion_tokens":2}}`)
+	})
+	seedCompactHistory(t, fixture.session)
+	fixture.runner.loop = &runnerTestLoop{run: func(ctx context.Context, invocation loops.Invocation) error {
+		current, err := fixture.runner.current("session-1")
+		if err != nil {
+			return err
+		}
+		current.mu.Lock()
+		current.usage = &Usage{InputTokens: 2000000}
+		current.inputEstimate = 1
+		current.mu.Unlock()
+		input := llm.Input{System: invocation.SystemPrompt, History: invocation.History}
+		history, err := invocation.Compact(ctx, fixture.runner.llm.Pin(), input, false)
+		if err != nil {
+			return err
+		}
+		if len(history) == 0 || !strings.Contains(fmt.Sprint(history), "历史交接摘要") {
+			return fmt.Errorf("missing replacement")
+		}
+		input.History = history
+		again, err := invocation.Compact(ctx, fixture.runner.llm.Pin(), input, false)
+		if again != nil || err != nil {
+			return fmt.Errorf("repeated compaction: %v", err)
+		}
+		current.mu.Lock()
+		usage := *current.usage
+		current.mu.Unlock()
+		if usage.EstimatedTokens <= 0 || usage.EstimatedTokens >= usage.InputTokens {
+			return fmt.Errorf("invalid usage: %+v", usage)
+		}
+		return nil
+	}}
+	if err := fixture.runner.Run(t.Context(), "session-1", textInput("continue")); err != nil {
+		t.Fatal(err)
+	}
+	if requests.Load() != 1 {
+		t.Fatalf("requests=%d", requests.Load())
+	}
+}
+
+func TestCompactSelectionKeepsToolBatch(t *testing.T) {
+	entries := []session.Entry{
+		{ID: "user", Message: session.Message{Role: session.RoleUser, Blocks: []session.Block{{Kind: "text", Text: "goal"}}}},
+		{ID: "old", Message: session.Message{Role: session.RoleAssistant, Blocks: []session.Block{{Kind: "text", Text: strings.Repeat("old ", 1000)}}}},
+		{ID: "call", Message: session.Message{Role: session.RoleAssistant, Blocks: []session.Block{{Kind: "tool-call", Tool: &session.ToolCall{ID: "a", Name: "read", Args: "{}"}}, {Kind: "tool-call", Tool: &session.ToolCall{ID: "b", Name: "read", Args: "{}"}}}}},
+		{ID: "a", Message: session.Message{Role: session.RoleTool, Blocks: []session.Block{{Kind: "tool-result", Result: &session.ToolResult{ID: "a", Name: "read", Content: "a"}}}}},
+		{ID: "b", Message: session.Message{Role: session.RoleTool, Blocks: []session.Block{{Kind: "tool-result", Result: &session.ToolResult{ID: "b", Name: "read", Content: "b"}}}}},
+	}
+	history := []session.Message{}
+	for _, e := range entries {
+		history = append(history, e.Message)
+	}
+	cut, retained, err := compactSelection(entries, history, 128)
+	if err != nil || cut != 2 || strings.Join(retained, ",") != "user,call,a,b" {
+		t.Fatalf("cut=%d keep=%v err=%v", cut, retained, err)
+	}
+	_, _, err = compactSelection(entries[:4], history[:4], 128)
+	if err == nil {
+		t.Fatal("accepted incomplete batch")
+	}
+}
+
 func TestCompactStopDoesNotCommit(t *testing.T) {
 	started := make(chan struct{})
 	fixture := newCompactFixture(t, func(w http.ResponseWriter, _ *http.Request) {
@@ -132,12 +212,9 @@ func TestCompactStopDoesNotCommit(t *testing.T) {
 			`{"choices":[{"delta":{},"index":0,"finish_reason":"stop"}]}`,
 		)
 	})
-	_, err := fixture.session.Append(session.Message{Role: session.RoleUser, Blocks: []session.Block{{Kind: "text", Text: "one"}}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	seedCompactHistory(t, fixture.session)
 	ended := waitRunEnded(t, fixture.events)
-	err = fixture.runner.Compact(context.Background(), "session-1")
+	err := fixture.runner.Compact(context.Background(), "session-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +232,7 @@ func TestCompactStopDoesNotCommit(t *testing.T) {
 		t.Fatalf("Steer during Compact error = %v", err)
 	}
 	history := fixture.session.History()
-	if len(history) != 1 {
+	if len(history) != 4 {
 		t.Fatalf("history after rejected Compact Steer = %#v", history)
 	}
 	err = fixture.runner.Stop("session-1")
@@ -166,7 +243,7 @@ func TestCompactStopDoesNotCommit(t *testing.T) {
 	if event.Status != RunCancelled {
 		t.Fatalf("status = %s error = %s", event.Status, event.Error)
 	}
-	if len(fixture.session.Entries()) != 1 {
+	if len(fixture.session.Entries()) != 4 {
 		t.Fatalf("entries = %#v", fixture.session.Entries())
 	}
 }
@@ -176,12 +253,9 @@ func assertCompactDoesNotCommit(t *testing.T, wantErr string, frames ...string) 
 	fixture := newCompactFixture(t, func(w http.ResponseWriter, _ *http.Request) {
 		writeCompactSSE(w, frames...)
 	})
-	_, err := fixture.session.Append(session.Message{Role: session.RoleUser, Blocks: []session.Block{{Kind: "text", Text: "one"}}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	seedCompactHistory(t, fixture.session)
 	ended := waitRunEnded(t, fixture.events)
-	err = fixture.runner.Compact(context.Background(), "session-1")
+	err := fixture.runner.Compact(context.Background(), "session-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +263,7 @@ func assertCompactDoesNotCommit(t *testing.T, wantErr string, frames ...string) 
 	if event.Status != RunFailed || !strings.Contains(event.Error, wantErr) {
 		t.Fatalf("ended = %#v want %q", event, wantErr)
 	}
-	if len(fixture.session.Entries()) != 1 {
+	if len(fixture.session.Entries()) != 4 {
 		t.Fatalf("entries = %#v", fixture.session.Entries())
 	}
 }
@@ -266,4 +340,18 @@ func writeCompactSSE(w http.ResponseWriter, frames ...string) {
 		_, _ = fmt.Fprintf(w, "data: %s\n\n", frame)
 	}
 	_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
+}
+
+func seedCompactHistory(t *testing.T, sess *session.Session) {
+	t.Helper()
+	for _, m := range []session.Message{
+		{Role: session.RoleUser, Blocks: []session.Block{{Kind: "text", Text: "initial request"}}},
+		{Role: session.RoleAssistant, Blocks: []session.Block{{Kind: "text", Text: strings.Repeat("old findings ", 4000)}}},
+		{Role: session.RoleUser, Blocks: []session.Block{{Kind: "text", Text: "latest request"}}},
+		{Role: session.RoleAssistant, Blocks: []session.Block{{Kind: "text", Text: "recent answer"}}},
+	} {
+		if _, err := sess.Append(m); err != nil {
+			t.Fatal(err)
+		}
+	}
 }

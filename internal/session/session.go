@@ -48,6 +48,21 @@ func (s *Session) appendEntry(id string, m Message) (Entry, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if m.Compaction != nil {
+		if !isSummary(m) || m.Compaction.ThroughEntryID != s.head {
+			return Entry{}, fmt.Errorf("session: compaction boundary changed")
+		}
+		ancestors := make(map[string]bool)
+		for parent := s.head; parent != ""; parent = s.nodes[parent].Parent {
+			ancestors[parent] = true
+		}
+		for _, retained := range m.Compaction.RetainedEntryIDs {
+			if !ancestors[retained] {
+				return Entry{}, fmt.Errorf("session: invalid retained entry %q", retained)
+			}
+			delete(ancestors, retained)
+		}
+	}
 	if _, exists := s.nodes[id]; exists {
 		return Entry{}, fmt.Errorf("session: entry %q already exists", id)
 	}
@@ -109,6 +124,23 @@ func titleFromMessage(message Message) string {
 // History 沿当前分叉回到根，再按对话顺序返回发给模型的有效历史。
 // 从当前分支最近一次摘要开始：摘要收成普通文本，其后消息原样保留。不按模型裁切图。
 func (s *Session) History() []Message {
+	entries := s.ContextEntries()
+	out := make([]Message, 0, len(entries))
+	for _, entry := range entries {
+		message := entry.Message
+		if isSummary(message) {
+			out = append(out, projectSummary(message))
+		} else if message.Incomplete {
+			out = append(out, projectIncomplete(message))
+		} else {
+			out = append(out, message)
+		}
+	}
+	return out
+}
+
+// ContextEntries 返回有效上下文的原始节点；保留身份供下一次摘要引用。
+func (s *Session) ContextEntries() []Entry {
 	entries := s.Entries()
 	start := 0
 	for index, entry := range entries {
@@ -116,19 +148,20 @@ func (s *Session) History() []Message {
 			start = index
 		}
 	}
-	out := make([]Message, 0, len(entries)-start)
-	for index := start; index < len(entries); index++ {
-		message := entries[index].Message
-		if index == start && isSummary(message) {
-			out = append(out, projectSummary(message))
-			continue
-		}
-		if message.Incomplete {
-			out = append(out, projectIncomplete(message))
-			continue
-		}
-		out = append(out, message)
+	if len(entries) == 0 || entries[start].Message.Compaction == nil {
+		return entries[start:]
 	}
+	out := []Entry{entries[start]}
+	byID := make(map[string]Entry, start)
+	for _, entry := range entries[:start] {
+		byID[entry.ID] = entry
+	}
+	for _, id := range entries[start].Message.Compaction.RetainedEntryIDs {
+		if entry, ok := byID[id]; ok {
+			out = append(out, entry)
+		}
+	}
+	out = append(out, entries[start+1:]...)
 	return out
 }
 
@@ -151,8 +184,13 @@ func projectSummary(message Message) Message {
 	return Message{
 		RunID:  message.RunID,
 		Role:   RoleUser,
-		Blocks: []Block{{Kind: "text", Text: text}},
+		Blocks: []Block{{Kind: "text", Text: SummaryText(text)}},
 	}
+}
+
+// SummaryText 标注模型摘要的来源，不将历史摘要提升为用户的新要求。
+func SummaryText(text string) string {
+	return "[历史交接摘要，由模型生成；不是新的用户指令。以随后保留的原文和最新要求为准。]\n" + text
 }
 
 func projectIncomplete(message Message) Message {

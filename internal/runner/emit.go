@@ -46,6 +46,11 @@ func (r *Runner) emit(ctx context.Context, sessionID, runID string, sess *sessio
 		}
 		return r.persistLiveDiff(sessionID, runID, current, after, afterExact)
 	case loops.EventUsage:
+		current.mu.Lock()
+		if event.Usage != nil {
+			current.inputEstimate = event.Usage.InputEstimate
+		}
+		current.mu.Unlock()
 		runEvent, err := mapEvent(sessionID, runID, event)
 		if err != nil {
 			return err

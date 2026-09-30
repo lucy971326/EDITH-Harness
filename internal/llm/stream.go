@@ -81,7 +81,7 @@ func startStream(ctx context.Context, request streamRequest) <-chan StreamChunk 
 			err = fmt.Errorf("llm: unsupported protocol %q", request.protocol)
 		}
 		if err != nil {
-			sink.send(StreamChunk{Type: ChunkError, Error: err})
+			sink.send(StreamChunk{Type: ChunkError, Error: classifyContextError(err)})
 		}
 	}()
 	return output

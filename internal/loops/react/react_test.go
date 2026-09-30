@@ -34,6 +34,39 @@ type echoArgs struct {
 	Value string `json:"value" jsonschema:"minLength=1"`
 }
 
+func TestContextOverflowRetriesOnlyOnce(t *testing.T) {
+	for _, succeeds := range []bool{true, false} {
+		t.Run(fmt.Sprint(succeeds), func(t *testing.T) {
+			var requests atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				n := requests.Add(1)
+				if n == 1 || !succeeds {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(400)
+					_, _ = w.Write([]byte(`{"error":{"code":"context_length_exceeded","message":"maximum context length exceeded","type":"invalid_request_error"}}`))
+					return
+				}
+				writeSSE(w, `{"choices":[{"delta":{"content":"done"},"index":0}]}`, `{"choices":[{"delta":{},"index":0,"finish_reason":"stop"}]}`)
+			}))
+			defer server.Close()
+			loop, _ := installReact(t, server.URL)
+			invocation := testInvocation(nil)
+			forced := 0
+			invocation.Compact = func(_ context.Context, _ *llm.Client, input llm.Input, force bool) ([]session.Message, error) {
+				if !force {
+					return nil, nil
+				}
+				forced++
+				return input.History, nil
+			}
+			err := loop.Run(t.Context(), invocation)
+			if (err == nil) != succeeds || requests.Load() != 2 || forced != 1 {
+				t.Fatalf("err=%v requests=%d compact=%d", err, requests.Load(), forced)
+			}
+		})
+	}
+}
+
 func TestReactRunsToolRoundTrip(t *testing.T) {
 	var mu sync.Mutex
 	var requests []map[string]any

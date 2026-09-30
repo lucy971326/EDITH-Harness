@@ -101,6 +101,7 @@ type ToolEvent struct {
 
 // 数据。最近一次模型调用的输入占用。不进账本。
 type Usage struct {
+	EstimatedTokens int `json:"estimatedTokens,omitempty"` // 压缩后的上下文估算；不冒充供应商输入用量。
 	InputTokens     int `json:"inputTokens"`
 	CacheReadTokens int `json:"cacheReadTokens"`
 	ContextWindow   int `json:"contextWindow"`

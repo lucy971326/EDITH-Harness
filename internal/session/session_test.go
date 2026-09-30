@@ -33,6 +33,61 @@ func summaryMessage(text string) Message {
 	return Message{Role: RoleAssistant, Blocks: []Block{{Kind: "summary", Text: text}}}
 }
 
+func TestCompactionReferencesSurviveRepeatReloadAndFork(t *testing.T) {
+	store, disk := newTestStore(t)
+	sess, err := store.Create("compact")
+	if err != nil {
+		t.Fatal(err)
+	}
+	old, err := sess.Append(textMessage(RoleUser, "original goal"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = sess.Append(textMessage(RoleAssistant, "old details"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	call, err := sess.Append(Message{Role: RoleAssistant, Blocks: []Block{{Kind: "tool-call", Tool: &ToolCall{ID: "call", Name: "read", Args: "{}"}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := sess.Append(Message{Role: RoleTool, Blocks: []Block{{Kind: "tool-result", Result: &ToolResult{ID: "call", Name: "read", Content: "data"}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		m := summaryMessage("summary")
+		m.Compaction = &Compaction{ThroughEntryID: sess.Head(), RetainedEntryIDs: []string{old.ID, call.ID, result.ID}}
+		if _, err = sess.Append(m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	loaded, err := NewStore(disk).Get("compact")
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := store.Fork("compact", "fork", sess.Head(), "fork")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range []*Session{sess, loaded, child} {
+		h := s.History()
+		if len(h) != 4 || h[0].Blocks[0].Text != SummaryText("summary") || h[1].Blocks[0].Text != "original goal" || h[2].Blocks[0].Tool.ID != h[3].Blocks[0].Result.ID {
+			t.Fatalf("bad projection: %#v", h)
+		}
+	}
+	stale := summaryMessage("stale")
+	stale.Compaction = &Compaction{ThroughEntryID: result.ID}
+	if _, err = sess.Append(stale); err == nil {
+		t.Fatal("accepted stale snapshot")
+	}
+	stale.Compaction.ThroughEntryID = sess.Head()
+	stale.Compaction.RetainedEntryIDs = []string{"outside-branch"}
+	if _, err = sess.Append(stale); err == nil {
+		t.Fatal("accepted foreign reference")
+	}
+}
+
 func TestCreateAppendHistory(t *testing.T) {
 	store, _ := newTestStore(t)
 	s, err := store.Create("chat1")
@@ -312,7 +367,7 @@ func TestHistoryStartsFromLatestSummary(t *testing.T) {
 	}
 	got := s.History()
 	if len(got) != 3 ||
-		got[0].Role != RoleUser || got[0].Blocks[0].Kind != "text" || got[0].Blocks[0].Text != "sum-1" ||
+		got[0].Role != RoleUser || got[0].Blocks[0].Kind != "text" || got[0].Blocks[0].Text != SummaryText("sum-1") ||
 		got[1].Blocks[0].Text != "three" ||
 		got[2].Blocks[0].Text != "b" {
 		t.Fatalf("history = %#v", got)
@@ -340,7 +395,7 @@ func TestHistoryRecompactUsesLatestSummary(t *testing.T) {
 		}
 	}
 	got := s.History()
-	if len(got) != 1 || got[0].Role != RoleUser || got[0].Blocks[0].Kind != "text" || got[0].Blocks[0].Text != "sum-2" {
+	if len(got) != 1 || got[0].Role != RoleUser || got[0].Blocks[0].Kind != "text" || got[0].Blocks[0].Text != SummaryText("sum-2") {
 		t.Fatalf("history = %#v", got)
 	}
 }
@@ -398,7 +453,7 @@ func TestSummarySurvivesReload(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := loaded.History()
-	if len(got) != 1 || got[0].Blocks[0].Kind != "text" || got[0].Blocks[0].Text != "sum-1" {
+	if len(got) != 1 || got[0].Blocks[0].Kind != "text" || got[0].Blocks[0].Text != SummaryText("sum-1") {
 		t.Fatalf("history = %#v", got)
 	}
 	if len(loaded.Entries()) != 2 || loaded.Entries()[1].Message.Blocks[0].Kind != "summary" {
@@ -429,14 +484,14 @@ func TestForkKeepsSummaryProjection(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := child.History()
-	if len(got) != 2 || got[0].Blocks[0].Text != "sum-1" || got[1].Blocks[0].Text != "two" {
+	if len(got) != 2 || got[0].Blocks[0].Text != SummaryText("sum-1") || got[1].Blocks[0].Text != "two" {
 		t.Fatalf("fork history = %#v", got)
 	}
 	before, err := store.Fork("source", "before", sum.ID, "压前")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(before.History()) != 1 || before.History()[0].Blocks[0].Text != "sum-1" {
+	if len(before.History()) != 1 || before.History()[0].Blocks[0].Text != SummaryText("sum-1") {
 		t.Fatalf("fork at summary = %#v", before.History())
 	}
 }

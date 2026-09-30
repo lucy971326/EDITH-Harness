@@ -10,6 +10,7 @@ export interface Block {
 }
 
 export interface Message {
+	compaction?: { throughEntryID: string; retainedEntryIDs: string[] };
 	userAuthored?: boolean;
   displayText?: string;
   messageID?: string;
@@ -43,6 +44,7 @@ export interface RunState {
   error?: string;
   drafts?: RunDraft[];
   usage?: {
+	  estimatedTokens?: number;
     inputTokens: number;
     cacheReadTokens: number;
     contextWindow: number;
@@ -101,6 +103,7 @@ export interface RunEvent {
   entry?: Entry;
   tool?: { id: string; name: string; isError: boolean };
   usage?: {
+    estimatedTokens?: number;
     inputTokens: number;
     cacheReadTokens: number;
     contextWindow: number;

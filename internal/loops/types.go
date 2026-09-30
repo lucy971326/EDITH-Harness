@@ -31,6 +31,7 @@ type ToolEvent struct {
 
 // 数据。最近一次模型调用的输入占用。不进账本。
 type Usage struct {
+	InputEstimate   int
 	InputTokens     int
 	CacheReadTokens int
 	ContextWindow   int
@@ -75,6 +76,8 @@ type Invocation struct {
 	InputSignal func() <-chan struct{}
 	Emit        func(context.Context, Event) error
 	Checkpoint  func(context.Context, CheckpointPhase) ([]session.Message, error)
+	// 准备下一次请求；Runner 保存摘要后返回替换历史。nil 表示保持原历史。
+	Compact func(context.Context, *llm.Client, llm.Input, bool) ([]session.Message, error)
 }
 
 // 契约。Runner 调用的执行循环；生产固定使用 ReAct。

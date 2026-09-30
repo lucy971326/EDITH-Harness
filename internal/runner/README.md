@@ -16,7 +16,7 @@ Start -> 占用 live -> 准备配置 / Agent -> Loop.Run
 - `steer.go / collaboration.go`：外部输入、停止与协作消息去重。
 - `emit.go / snapshot.go`：草稿、耐久消息、事件与快照边界。
 - `records.go / permission_context.go`：运行记录与模型权限说明。
-- `compact.go`：历史压缩；`diff_tracker.go / diff_store.go`：净变化聚合、保存与撤销。
+- `compact.go`：手动／自动共用的压缩、预算校验、近期原文选择与提交；`diff_tracker.go / diff_store.go`：净变化聚合、保存与撤销。
 
 同一 Session 只有一个活 Run；准备期也受停止控制。完整消息先落账再发布；停止拒绝尚未落账的 Steer，已发出的工具调用必须补齐结果。
 

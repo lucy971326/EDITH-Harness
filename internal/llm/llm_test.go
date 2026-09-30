@@ -29,6 +29,32 @@ func TestLoadConfig(t *testing.T) {
 	}
 }
 
+func TestContextBudgetAndEstimate(t *testing.T) {
+	client := &Client{}
+	client.current.Store(&modelState{models: map[string]model{"test": {ContextWindow: 100000, MaxOutput: 10000}}})
+	if client.InputBudget("test") != 80000 || client.InputBudget("missing") != 0 {
+		t.Fatal("wrong request budget")
+	}
+	base := EstimateInput(Input{History: []session.Message{{Role: session.RoleUser, Blocks: []session.Block{{Kind: "text", Text: "hello"}}}}})
+	withImage := EstimateInput(Input{System: "rules", History: []session.Message{{Role: session.RoleUser, Blocks: []session.Block{{Kind: "text", Text: "hello"}, {Kind: "image", Media: &session.Media{MIME: "image/png", Data: "base64"}}}}}})
+	if withImage <= base+4096 {
+		t.Fatal("missing fixed context/media estimate")
+	}
+	for _, tc := range []struct {
+		code, text string
+		overflow   bool
+	}{
+		{"context_length_exceeded", "too big", true},
+		{"invalid_request_error", "prompt is too long: 10000 tokens", true},
+		{"authentication_error", "invalid key", false},
+		{"rate_limit_exceeded", "token rate limit", false},
+	} {
+		if errors.Is(contextError(tc.code, tc.text), ErrContextWindow) != tc.overflow {
+			t.Fatalf("wrong classification: %+v", tc)
+		}
+	}
+}
+
 func TestNewLoadsConfig(t *testing.T) {
 	dataDir := t.TempDir()
 	files, err := persist.NewFiles(dataDir)

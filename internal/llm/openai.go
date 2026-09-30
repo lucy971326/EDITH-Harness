@@ -263,6 +263,11 @@ func openAIStreamError(err error, response *http.Response) error {
 	}
 	decodeErr := json.Unmarshal(body, &failure)
 	if decodeErr == nil && failure.Error != "" {
+		if response.StatusCode == 400 || response.StatusCode == 413 {
+			if contextErr := contextError("", failure.Error); contextErr != nil {
+				return contextErr
+			}
+		}
 		return fmt.Errorf("llm: HTTP %d: %s", response.StatusCode, failure.Error)
 	}
 	return err
